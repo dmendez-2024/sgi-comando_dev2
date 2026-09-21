@@ -1,0 +1,60 @@
+{
+  "format": "cajamarca.sitcpack",
+  "formatVersion": "0.2",
+  "packageType": "vertical-delta",
+  "system": "SGI: Comando",
+  "vertical": "SER",
+  "version": "0.1",
+  "status": "UAT_CANDIDATE",
+  "asOf": "2026-09-09",
+  "baseFrozen": [
+    {
+      "code": "TER",
+      "version": "1.0",
+      "status": "FROZEN"
+    },
+    {
+      "code": "COM",
+      "version": "1.0",
+      "status": "FROZEN"
+    },
+    {
+      "code": "ASI",
+      "version": "0.6.5",
+      "status": "FROZEN"
+    }
+  ],
+  "changes": [
+    {
+      "type": "frontend",
+      "component": "Servicios master list",
+      "item": "Puesto-level table with Company, Service, Client, Point, Post, 14-day ID/IC, pending news and operational state"
+    },
+    {
+      "type": "frontend",
+      "component": "Servicios filters",
+      "item": "Company, Client, State, free-text search and CSV export"
+    },
+    {
+      "type": "backend",
+      "component": "GET /api/services/overview",
+      "item": "tenant/scope-filtered operational overview; 14-day ended-assignment proxy until SGI-07 Relevos provides executed minutes"
+    },
+    {
+      "type": "state-model",
+      "component": "Servicios status",
+      "item": "Visible labels Activo / Inactivo / Por Configurar; Inactivo derives from SIC: COM/Point status and is read-only in SGI"
+    },
+    {
+      "type": "shared-shell",
+      "component": "Sidebar version ledger",
+      "item": "ASI v0.6.5 moved to FROZEN; SER v0.1 shown as UAT"
+    }
+  ],
+  "externalConnectionsChanged": false,
+  "databaseChanged": false,
+  "backendChanged": true,
+  "frozenVerticalsChanged": true,
+  "decisionLog": "docs/verticals/SER/SER_DECISIONS.md",
+  "uat": "docs/verticals/SER/SER_UAT.md"
+}

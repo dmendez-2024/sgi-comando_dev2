@@ -1,0 +1,12 @@
+{
+  "format": "sitcpack",
+  "version": "0.5",
+  "scenario": "SGI-Comando-UAT-v0.5",
+  "changes": [
+    {"type":"component_update","component":"SGI-00T Territorio","version":"0.3","adds":["CORE territory catalog contract","approved Ecuador operational map","5s UI feedback","responsive/legibility improvements"]},
+    {"type":"component_update","component":"SGI-06 Asignaciones","version":"0.5","adds":["calendar-day shift segmentation","logical shift shared across visual segments","restored editor drag-drop","approved leave icons","responsive assignment cards","pool click opens employee modal + eligibility evaluation"]},
+    {"type":"connection","from":"CORE","to":"SGI-00T Territorio","contract":"country subdivision catalog by instance_country_id","sor":"CORE"},
+    {"type":"connection","from":"SIC: RRHH","to":"SGI-00T Territorio","contract":"active personnel for Zone/Region responsible selection","sor":"SIC: RRHH"},
+    {"type":"connection","from":"SIC: COM","to":"SGI-06 Asignaciones","contract":"logical ShiftOccurrence; presentation may split by calendar day","sor":"SIC: COM"}
+  ]
+}

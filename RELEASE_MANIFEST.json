@@ -1,0 +1,32 @@
+{
+  "product": "SGI: Comando",
+  "package": "SER v0.8.1 CERRADA SISTEMAS",
+  "status": "CLOSED_HANDOFF_BASELINE",
+  "closedAt": "2026-09-12",
+  "functionalVersion": "0.8.1",
+  "frozenVerticals": [
+    {
+      "code": "TER",
+      "version": "1.0"
+    },
+    {
+      "code": "COM",
+      "version": "1.0"
+    },
+    {
+      "code": "ASI",
+      "version": "0.6.5"
+    }
+  ],
+  "workingVertical": {
+    "code": "SER",
+    "version": "0.8.1",
+    "status": "CLOSED_HANDOFF_BASELINE",
+    "name": "Servicios"
+  },
+  "currentSitcPack": "sitc/SGI_Comando_CURRENT.sitcpack",
+  "deltaSitcPack": "sitc/SER_v0.8.1_HANDOFF_delta.sitcpack",
+  "systemsHandoff": "docs/HANDOFF_SER_v0.8.1_CERRADO.md",
+  "knownLimitations": "docs/KNOWN_LIMITATIONS_SER_v0.8.1.md",
+  "note": "El sufijo CERRADA identifica la baseline de handoff; no agrega funcionalidad sobre SER v0.8.1."
+}

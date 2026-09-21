@@ -1,0 +1,81 @@
+{
+  "format": "cajamarca.sitcpack",
+  "formatVersion": "0.2",
+  "packageType": "vertical-delta",
+  "system": "SGI: Comando",
+  "vertical": "ASI",
+  "version": "0.4",
+  "status": "UAT_CANDIDATE",
+  "asOf": "2026-09-09",
+  "baseFrozen": [
+    {
+      "code": "TER",
+      "version": "1.0",
+      "status": "FROZEN"
+    },
+    {
+      "code": "COM",
+      "version": "1.0",
+      "status": "FROZEN"
+    }
+  ],
+  "baseWorking": {
+    "code": "ASI",
+    "version": "0.3",
+    "status": "UAT_CANDIDATE"
+  },
+  "changes": [
+    {
+      "type": "frontend-ux",
+      "component": "ASI spreadsheet",
+      "item": "one ShiftOccurrence per start-date cell; overnight shifts show +1 instead of split calendar segments"
+    },
+    {
+      "type": "frontend-ux",
+      "component": "ASI timeline",
+      "item": "35-day horizontal operational timeline with sticky dates and Puesto/Turno columns; past dates read-only"
+    },
+    {
+      "type": "frontend-ux",
+      "component": "ASI bulk editing",
+      "item": "rectangular selection, Ctrl+C/V, Excel TSV paste, Delete, Undo/Redo and fill handle"
+    },
+    {
+      "type": "frontend-ux",
+      "component": "ASI copy semantics",
+      "item": "Copy Day / Cycle / Selection; empty source cells are part of the copied pattern"
+    },
+    {
+      "type": "integration-contract",
+      "component": "SIC: COM -> ASI",
+      "item": "Post projection consumes rotationCode, cycleLengthDays and cycleSourceVersion; cycle is not derived from week"
+    },
+    {
+      "type": "database",
+      "component": "post_planning_cycle_snapshot",
+      "item": "read-only audit snapshot for SIC: COM rotation/cycle contract; V9 migration"
+    },
+    {
+      "type": "backend-validation",
+      "component": "AssignmentResource",
+      "item": "overlap/auto-relief checks inspect employee operational assignments across weekly AssignmentPlan boundaries"
+    },
+    {
+      "type": "frontend-ux",
+      "component": "Personnel pool",
+      "item": "compact collapsible list to recover horizontal workspace"
+    },
+    {
+      "type": "shared-shell",
+      "component": "Sidebar",
+      "item": "version ledger shows TER v1.0 FROZEN, COM v1.0 FROZEN, ASI v0.4 UAT"
+    }
+  ],
+  "externalConnectionsChanged": true,
+  "databaseChanged": true,
+  "backendChanged": true,
+  "frozenVerticalsChanged": false,
+  "decisionLog": "docs/verticals/ASI/ASI_DECISIONS.md",
+  "uat": "docs/verticals/ASI/ASI_UAT.md",
+  "qualityGate": "docs/verticals/ASI/QUALITY_GATE_ASI_v0.4.md"
+}

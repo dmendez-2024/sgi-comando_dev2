@@ -1,0 +1,233 @@
+{
+  "format": "cajamarca.sitcpack",
+  "formatVersion": "0.2",
+  "packageType": "cumulative-current",
+  "system": "SGI: Comando",
+  "asOf": "2026-09-12",
+  "architecture": {
+    "style": "modular-monolith",
+    "frontend": "React 19.2 + TypeScript 6",
+    "backend": "Java 25 LTS + Quarkus",
+    "database": "PostgreSQL 17",
+    "objectStorage": "MinIO",
+    "deployment": "Docker Compose",
+    "isolationBoundary": "instance_country_id"
+  },
+  "frozenVerticals": [
+    {
+      "code": "TER",
+      "name": "Territorio",
+      "version": "1.0",
+      "status": "FROZEN",
+      "decisionLog": "docs/verticals/TER/TER_DECISIONS.md",
+      "delta": "sitc/TER_v1.0_FROZEN_delta.sitcpack"
+    },
+    {
+      "code": "COM",
+      "name": "Compañías",
+      "version": "1.0",
+      "status": "FROZEN",
+      "decisionLog": "docs/verticals/COM/COM_DECISIONS.md",
+      "delta": "sitc/COM_v1.0_FROZEN_delta.sitcpack"
+    },
+    {
+      "code": "ASI",
+      "name": "Asignaciones",
+      "version": "0.6.5",
+      "status": "FROZEN",
+      "decisionLog": "docs/verticals/ASI/ASI_DECISIONS.md",
+      "delta": "sitc/ASI_v0.5_delta.sitcpack"
+    }
+  ],
+  "systems": [
+    "CORE",
+    "SIC: RRHH",
+    "SER - Servicios",
+    "MinIO",
+    "PostgreSQL",
+    "ATS",
+    "VISINT (future)"
+  ],
+  "connections": [
+    {
+      "from": "CORE",
+      "to": "TER",
+      "data": [
+        "country subdivision type",
+        "official subdivision catalog",
+        "geometries/polygons",
+        "dataset version"
+      ],
+      "sor": "CORE"
+    },
+    {
+      "from": "SIC: RRHH",
+      "to": "TER",
+      "data": [
+        "eligible personnel for Zone/Region responsible"
+      ],
+      "sor": "SIC: RRHH"
+    },
+    {
+      "from": "TER",
+      "to": "COM",
+      "data": [
+        "Zone",
+        "Region",
+        "Region->Zone",
+        "territorial scope"
+      ],
+      "sor": "TER"
+    },
+    {
+      "from": "SER",
+      "to": "COM",
+      "data": [
+        "active Services by Company/Region"
+      ],
+      "sor": "SER",
+      "status": "SER v0.7.3 UAT; SIC: COM remains SoR of commercial Service/Punto/Puesto data"
+    },
+    {
+      "from": "COM",
+      "to": "MinIO",
+      "data": [
+        "Company logo binary"
+      ],
+      "status": "production target"
+    },
+    {
+      "from": "COM",
+      "to": "PostgreSQL",
+      "data": [
+        "Company identity",
+        "Company-Region links",
+        "versions/history",
+        "logo metadata"
+      ],
+      "sor": "COM"
+    },
+    {
+      "from": "COM",
+      "to": "ASI",
+      "data": [
+        "authorized Companies",
+        "Company-Region links"
+      ],
+      "sor": "COM"
+    },
+    {
+      "from": "TER",
+      "to": "ASI",
+      "data": [
+        "Zone/Region operational scopes"
+      ],
+      "sor": "TER"
+    },
+    {
+      "from": "SIC: COM",
+      "to": "ASI",
+      "data": [
+        "Client",
+        "Points",
+        "Posts",
+        "Shifts",
+        "TIER",
+        "Format",
+        "Rotation",
+        "cycle_length_days"
+      ],
+      "sor": "SIC: COM"
+    },
+    {
+      "from": "SIC: RRHH",
+      "to": "ASI",
+      "data": [
+        "Company personnel",
+        "employment status",
+        "skills",
+        "vacation",
+        "medical leave",
+        "unavailability"
+      ],
+      "sor": "SIC: RRHH"
+    },
+    {
+      "from": "SMC",
+      "to": "ASI",
+      "data": [
+        "ID - Índice de Desempeño"
+      ],
+      "sor": "SMC"
+    },
+    {
+      "from": "ASI",
+      "to": "PostgreSQL",
+      "data": [
+        "Assignment planning",
+        "Operational assignments",
+        "Post planning cycle snapshot (read-only copy of SIC: COM contract)"
+      ],
+      "sor": "ASI for assignments; SIC: COM remains SoR for rotation/cycle"
+    },
+    {
+      "from": "ATS",
+      "to": "SER",
+      "data": [
+        ".ats published architecture package",
+        "manifest/model metadata",
+        "plan asset",
+        "optional Point Risk Index"
+      ],
+      "sor": "ATS for published design; SGI imports and versions consumer copy"
+    },
+    {
+      "from": "SER",
+      "to": "PostgreSQL",
+      "data": [
+        "ATS package metadata and archive",
+        "materialized plan image",
+        "Puesto normalized coordinates bound to ATS revision",
+        "Bitácora protocol configuration",
+        "Protocol fields and evidence requirements",
+        "Standard-image assets for future VISINT comparison",
+        "Versioned Patrol protocols and immutable snapshots",
+        "Patrol definitions (open/closed; programmed/unprogrammed)",
+        "Patrol checkpoints with ATS/GPS/mixed origin",
+        "Checkpoint rules and versioned standard images",
+        "Canonical patrol_definition/patrol_checkpoint configuration reused by future execution",
+        "Normalized patrol_checkpoint_rule; no parallel patrol_config_* tables",
+        "Versioned Consignment protocols; one VIGENTE per Punto",
+        "Consignments with Todo el Punto or 1..n Puestos scope",
+        "Consignment validity/calendar/compliance rules",
+        "Optional expected ATS/GPS location and execution GPS requirement",
+        "Consignment evidence definitions and versioned standard-image assets for future VISINT"
+      ],
+      "sor": "SER for operational configuration and imported revision tracking"
+    }
+  ],
+  "productionOpenItems": [
+    {
+      "id": "COM-PROD-001",
+      "item": "Use MinIO adapter for Company logos instead of UAT Data URL"
+    },
+    {
+      "id": "COM-PROD-002",
+      "item": "SER must provide explicit operational region_id for Services before final multiregion production integration"
+    }
+  ],
+  "handoff": {
+    "projectContext": "docs/PROJECT_CONTEXT.md",
+    "systemsGuide": "docs/SYSTEMS_HANDOFF.md",
+    "frozenRegistry": "docs/FROZEN_VERTICALS.md",
+    "closedBaseline": "docs/HANDOFF_SER_v0.8.1_CERRADO.md",
+    "knownLimitations": "docs/KNOWN_LIMITATIONS_SER_v0.8.1.md"
+  },
+  "workingVertical": {
+    "code": "SER",
+    "name": "Servicios",
+    "version": "0.8.1",
+    "status": "CLOSED_HANDOFF_BASELINE",
+    "delta": "sitc/SER_v0.8.1_HANDOFF_delta.sitcpack"
+  }
+}

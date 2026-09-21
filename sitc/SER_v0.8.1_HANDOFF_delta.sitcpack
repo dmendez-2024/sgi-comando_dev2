@@ -1,0 +1,51 @@
+{
+  "format": "cajamarca.sitcpack",
+  "formatVersion": "0.2",
+  "packageType": "handoff-baseline-delta",
+  "system": "SGI: Comando",
+  "vertical": "SER",
+  "version": "0.8.1",
+  "status": "CLOSED_HANDOFF_BASELINE",
+  "asOf": "2026-09-12",
+  "baseFrozen": [
+    {
+      "code": "TER",
+      "version": "1.0",
+      "status": "FROZEN"
+    },
+    {
+      "code": "COM",
+      "version": "1.0",
+      "status": "FROZEN"
+    },
+    {
+      "code": "ASI",
+      "version": "0.6.5",
+      "status": "FROZEN"
+    }
+  ],
+  "changes": [
+    {
+      "type": "fix",
+      "component": "Configuración > Consignas",
+      "item": "Habilita navegación a Consignas desde la landing de Configuración del Punto."
+    },
+    {
+      "type": "handoff",
+      "component": "Governance",
+      "item": "Cierra SER v0.8.1 como baseline de comparación para entrega a Sistemas; no agrega funcionalidad."
+    },
+    {
+      "type": "documentation",
+      "component": "Handoff",
+      "item": "Agrega documento de cierre, pendientes conocidos y aclara que la decisión temporal patrol_config_* de v0.7.1 fue supersedida por el modelo canónico de v0.7.3.1."
+    }
+  ],
+  "externalConnectionsChanged": false,
+  "databaseChanged": false,
+  "backendChanged": false,
+  "frontendChanged": false,
+  "frozenVerticalsChanged": false,
+  "decisionLog": "docs/verticals/SER/SER_DECISIONS.md",
+  "handoff": "docs/HANDOFF_SER_v0.8.1_CERRADO.md"
+}

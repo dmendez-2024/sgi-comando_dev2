@@ -1,0 +1,11 @@
+Only in src/repo: COM_RELEASE_MANIFEST.json
+Files baseline/repo/backend/src/main/java/com/cajamarca/sgi/comando/companies/Company.java and src/repo/backend/src/main/java/com/cajamarca/sgi/comando/companies/Company.java differ
+Only in src/repo/backend/src/main/java/com/cajamarca/sgi/comando/companies: CompanyRegion.java
+Files baseline/repo/backend/src/main/java/com/cajamarca/sgi/comando/companies/CompanyResource.java and src/repo/backend/src/main/java/com/cajamarca/sgi/comando/companies/CompanyResource.java differ
+Only in src/repo/backend/src/main/java/com/cajamarca/sgi/comando/companies: CompanyVersion.java
+Only in src/repo/backend/src/main/resources/db/migration: V8__companies_vertical_v01.sql
+Only in src/repo/docs/verticals: COM
+Files baseline/repo/frontend/src/api.ts and src/repo/frontend/src/api.ts differ
+Files baseline/repo/frontend/src/pages/Companies.tsx and src/repo/frontend/src/pages/Companies.tsx differ
+Files baseline/repo/frontend/src/styles.css and src/repo/frontend/src/styles.css differ
+Only in src/repo/sitc: COM_v0.1_delta.sitcpack

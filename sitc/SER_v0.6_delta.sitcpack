@@ -1,0 +1,70 @@
+{
+  "format": "cajamarca.sitcpack",
+  "formatVersion": "0.2",
+  "packageType": "vertical-delta",
+  "system": "SGI: Comando",
+  "vertical": "SER",
+  "version": "0.6",
+  "status": "UAT_CANDIDATE",
+  "asOf": "2026-09-12",
+  "baseFrozen": [
+    {
+      "code": "TER",
+      "version": "1.0",
+      "status": "FROZEN"
+    },
+    {
+      "code": "COM",
+      "version": "1.0",
+      "status": "FROZEN"
+    },
+    {
+      "code": "ASI",
+      "version": "0.6.5",
+      "status": "FROZEN"
+    }
+  ],
+  "changes": [
+    {
+      "type": "database",
+      "component": "logbook_protocol",
+      "item": "Persist Bitácora protocols per Puesto with object, application, status, version and configuration rules"
+    },
+    {
+      "type": "database",
+      "component": "logbook_protocol_field",
+      "item": "Persist Identification/Verification fields, evidence requirements and uploaded standard image metadata/binary"
+    },
+    {
+      "type": "api",
+      "component": "Bitácora configuration endpoints",
+      "item": "List/create/save/publish protocols; create/save/delete fields; upload/read/delete standard image"
+    },
+    {
+      "type": "frontend",
+      "component": "Configuración > Bitácora",
+      "item": "Light-theme SGI configuration page with Puestos, Protocolos and 8-step protocol editor"
+    },
+    {
+      "type": "frontend",
+      "component": "Foto estándar",
+      "item": "Upload and preview JPG/PNG/WebP standard image per protocol field with notes and version"
+    },
+    {
+      "type": "decision",
+      "component": "VISINT readiness",
+      "item": "Store formal standard-image asset for future evidence-vs-standard comparison; VISINT remains non-functional in v0.6"
+    },
+    {
+      "type": "decision",
+      "component": "Configuración vs Operación",
+      "item": "Configuration defines protocol rules only; executed Bitácora remains in future Operación views"
+    }
+  ],
+  "externalConnectionsChanged": false,
+  "databaseChanged": true,
+  "backendChanged": true,
+  "frozenVerticalsChanged": false,
+  "decisionLog": "docs/verticals/SER/SER_DECISIONS.md",
+  "uat": "docs/verticals/SER/SER_UAT.md"
+}

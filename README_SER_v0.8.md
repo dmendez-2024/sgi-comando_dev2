@@ -1,4 +1,4 @@
-# SGI: Comando — SER v0.8.1 — Baseline cerrada para Sistemas
+# SGI: Comando — SER v0.8
 
 UAT de **Servicios / Configuración → Consignas**.
 
@@ -15,6 +15,3 @@ powershell -ExecutionPolicy Bypass -File .\repo\scripts\uat-start.ps1
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\repo\scripts\uat-open.ps1
 ```
-
-## Handoff cerrado
-Leer `docs/HANDOFF_SER_v0.8.1_CERRADO.md` antes de modificar esta baseline.

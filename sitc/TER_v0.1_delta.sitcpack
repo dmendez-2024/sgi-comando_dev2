@@ -1,0 +1,46 @@
+{
+  "format": "sitcpack",
+  "version": "TER-v0.1",
+  "scenario": "SGI-Comando-TER-v0.1",
+  "scope": "TER only",
+  "changes": [
+    {
+      "type": "component_update",
+      "component": "TER - Territorio",
+      "version": "0.1",
+      "adds": [
+        "country summary + operational map",
+        "zone/region hierarchical management UX",
+        "dynamic administrative subdivision terminology from CORE",
+        "territory audit viewer",
+        "explicit COM read-only boundary"
+      ]
+    },
+    {
+      "type": "connection",
+      "from": "CORE",
+      "to": "TER - Territorio",
+      "contract": "country metadata + subdivision type/labels + official subdivision catalog by instance_country_id",
+      "sor": "CORE"
+    },
+    {
+      "type": "connection",
+      "from": "SIC: RRHH",
+      "to": "TER - Territorio",
+      "contract": "active personnel candidates for Zone/Region responsible",
+      "sor": "SIC: RRHH"
+    },
+    {
+      "type": "connection",
+      "from": "TER - Territorio",
+      "to": "SGI Operational RBAC",
+      "contract": "Zone/Region/Company hierarchy and territorial scopes",
+      "sor": "TER"
+    },
+    {
+      "type": "boundary",
+      "component": "COM - Compañías",
+      "rule": "TER only reads Companies by Region; Company creation/editing remains COM"
+    }
+  ]
+}

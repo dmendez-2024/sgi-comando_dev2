@@ -1,0 +1,61 @@
+{
+  "format": "cajamarca.sitcpack",
+  "formatVersion": "0.2",
+  "packageType": "vertical-delta",
+  "system": "SGI: Comando",
+  "vertical": "ASI",
+  "version": "0.5",
+  "status": "UAT_CANDIDATE",
+  "asOf": "2026-09-09",
+  "baseFrozen": [
+    {
+      "code": "TER",
+      "version": "1.0",
+      "status": "FROZEN"
+    },
+    {
+      "code": "COM",
+      "version": "1.0",
+      "status": "FROZEN"
+    }
+  ],
+  "baseWorking": {
+    "code": "ASI",
+    "version": "0.4",
+    "status": "UAT_CANDIDATE"
+  },
+  "changes": [
+    {
+      "type": "frontend-ux",
+      "component": "ASI weekly summary",
+      "item": "fixed metric order: ID average, IC average, assigned shifts, unassigned shifts, assigned-shift percentage; labels updated per v0.5 request"
+    },
+    {
+      "type": "frontend-ux",
+      "component": "ASI drag-and-drop preview",
+      "item": "target border uses GREEN/AMBER/RED evaluation; RED is blocked before assignment POST; dragged personnel evaluation is primed at gesture start"
+    },
+    {
+      "type": "frontend-ux",
+      "component": "ASI assignment card",
+      "item": "compact card removes photo, circular IC control and inline assignment author; visible compatibility label is CP"
+    },
+    {
+      "type": "frontend-ux",
+      "component": "ASI assignment inspector",
+      "item": "click/release on card opens person summary, ID evolution, Post Compatibility and assignment authorship history"
+    },
+    {
+      "type": "shared-shell",
+      "component": "Sidebar",
+      "item": "version ledger shows ASI v0.5 UAT"
+    }
+  ],
+  "externalConnectionsChanged": false,
+  "databaseChanged": false,
+  "backendChanged": false,
+  "frozenVerticalsChanged": false,
+  "decisionLog": "docs/verticals/ASI/ASI_DECISIONS.md",
+  "uat": "docs/verticals/ASI/ASI_UAT.md",
+  "qualityGate": "docs/verticals/ASI/QUALITY_GATE_ASI_v0.5.md"
+}

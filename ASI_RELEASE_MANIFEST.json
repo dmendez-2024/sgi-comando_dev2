@@ -1,0 +1,20 @@
+{
+  "artifact": "SGI_Comando_ASI_v0.6.5.zip",
+  "vertical": "ASI",
+  "version": "0.6.5",
+  "status": "UAT_CANDIDATE",
+  "date": "2026-09-09",
+  "baseFrozen": {
+    "TER": "1.0",
+    "COM": "1.0"
+  },
+  "baseWorking": {
+    "ASI": "0.6.4"
+  },
+  "docs": "docs/verticals/ASI",
+  "sitcDelta": "sitc/ASI_v0.5_delta.sitcpack",
+  "sitcCurrent": "sitc/SGI_Comando_CURRENT.sitcpack",
+  "qualityGate": "docs/CHANGELOG_UAT_v0.6.5.md",
+  "databaseChanged": false,
+  "backendChanged": false
+}

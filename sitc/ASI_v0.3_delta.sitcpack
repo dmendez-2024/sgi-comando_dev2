@@ -1,0 +1,45 @@
+{
+  "format": "cajamarca.sitcpack",
+  "formatVersion": "0.2",
+  "packageType": "vertical-delta",
+  "system": "SGI: Comando",
+  "vertical": "ASI",
+  "version": "0.3",
+  "status": "UAT_CANDIDATE",
+  "asOf": "2026-09-09",
+  "baseFrozen": [
+    {
+      "code": "TER",
+      "version": "1.0",
+      "status": "FROZEN"
+    },
+    {
+      "code": "COM",
+      "version": "1.0",
+      "status": "FROZEN"
+    }
+  ],
+  "changes": [
+    {
+      "type": "frontend-ux",
+      "component": "ASI calendar",
+      "item": "logical ShiftOccurrence drop preview propagates to every calendar segment sharing shift_occurrence_id"
+    },
+    {
+      "type": "frontend-ux",
+      "component": "ASI summary",
+      "item": "weekly summary moved above matrix and recalculated from selected Company + Week + Client filter"
+    },
+    {
+      "type": "shared-shell",
+      "component": "Sidebar",
+      "item": "version ledger shows TER v1.0 FROZEN, COM v1.0 FROZEN, ASI v0.3 UAT"
+    }
+  ],
+  "externalConnectionsChanged": false,
+  "databaseChanged": false,
+  "backendChanged": false,
+  "frozenVerticalsChanged": false,
+  "decisionLog": "docs/verticals/ASI/ASI_DECISIONS.md",
+  "uat": "docs/verticals/ASI/ASI_UAT.md"
+}

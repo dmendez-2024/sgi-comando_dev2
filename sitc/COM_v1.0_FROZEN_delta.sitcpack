@@ -1,0 +1,79 @@
+{
+  "format": "sitcpack",
+  "version": "COM-v1.0-FROZEN",
+  "scenario": "SGI-Comando-COM-v1.0",
+  "scope": "COM only",
+  "status": "FROZEN",
+  "base": "TER v1.0 FROZEN",
+  "changes": [
+    {
+      "type": "component_update",
+      "component": "COM - Compañías",
+      "version": "1.0",
+      "state": "FROZEN",
+      "adds": [
+        "Company logo",
+        "historical review max 750 chars",
+        "versioned editing",
+        "single Zone per Company",
+        "multiple Regions within that Zone",
+        "inactivation blocked by active Services",
+        "reactivation",
+        "immutable identity"
+      ]
+    },
+    {
+      "type": "domain_rule",
+      "id": "COM-DEC-001..017",
+      "component": "COM - Compañías",
+      "rule": "See docs/verticals/COM/COM_DECISIONS.md"
+    },
+    {
+      "type": "connection",
+      "from": "TER - Territorio",
+      "to": "COM - Compañías",
+      "contract": "zone catalog + region catalog + Region->Zone + territorial scope",
+      "sor": "TER v1.0 FROZEN"
+    },
+    {
+      "type": "connection",
+      "from": "SER - Servicios",
+      "to": "COM - Compañías",
+      "contract": "active Services by company and operational region; SER must expose explicit region_id",
+      "sor": "SER",
+      "status": "FUTURE_VERTICAL_CONTRACT"
+    },
+    {
+      "type": "connection",
+      "from": "COM - Compañías",
+      "to": "MinIO",
+      "contract": "Company logo binary object",
+      "sor": "COM",
+      "status": "PRODUCTION_TARGET"
+    },
+    {
+      "type": "connection",
+      "from": "COM - Compañías",
+      "to": "PostgreSQL",
+      "contract": "company + company_region + company_version + logo metadata/hash/ref",
+      "sor": "COM"
+    },
+    {
+      "type": "boundary",
+      "component": "TER - Territorio",
+      "rule": "TER v1.0 FROZEN is read/consumed only; COM does not mutate TER domain behavior"
+    },
+    {
+      "type": "boundary",
+      "component": "SER - Servicios",
+      "rule": "COM never migrates/finalizes Services; SER owns that workflow"
+    }
+  ],
+  "frozenDependencies": [
+    "TER v1.0 FROZEN"
+  ],
+  "productionNotes": [
+    "Replace UAT logo Data URL adapter with MinIO before production",
+    "Replace transitional region inference with SER explicit operational region_id before final production integration"
+  ]
+}
