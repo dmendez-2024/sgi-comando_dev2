@@ -1,32 +1,66 @@
 {
   "product": "SGI: Comando",
-  "package": "SER v0.8.1 CERRADA SISTEMAS",
-  "status": "CLOSED_HANDOFF_BASELINE",
-  "closedAt": "2026-09-12",
-  "functionalVersion": "0.8.1",
-  "frozenVerticals": [
+  "package": "INT v0.1 + PERF v0.1; all functional verticals preserved/frozen",
+  "status": "UAT_CANDIDATE",
+  "date": "2026-09-21",
+  "programVersion": "1.1.0",
+  "verticals": [
     {
       "code": "TER",
-      "version": "1.0"
+      "version": "1.0",
+      "status": "FROZEN"
     },
     {
       "code": "COM",
-      "version": "1.0"
+      "version": "1.1.3",
+      "status": "FROZEN"
     },
     {
       "code": "ASI",
-      "version": "0.6.5"
+      "version": "0.7.4",
+      "status": "FROZEN"
+    },
+    {
+      "code": "SER",
+      "version": "0.10.10",
+      "status": "FROZEN"
+    },
+    {
+      "code": "COO",
+      "version": "0.1",
+      "status": "FROZEN"
+    },
+    {
+      "code": "BIT",
+      "version": "0.1",
+      "status": "FROZEN"
+    },
+    {
+      "code": "CNS",
+      "version": "0.1.2",
+      "status": "FROZEN"
+    },
+    {
+      "code": "NOV",
+      "version": "0.1",
+      "status": "FROZEN"
+    },
+    {
+      "code": "CSL",
+      "version": "0.1",
+      "status": "FROZEN"
+    },
+    {
+      "code": "INT",
+      "version": "0.1",
+      "status": "UAT_CANDIDATE"
     }
   ],
-  "workingVertical": {
-    "code": "SER",
-    "version": "0.8.1",
-    "status": "CLOSED_HANDOFF_BASELINE",
-    "name": "Servicios"
-  },
+  "databaseMigration": "No new database migration. INT v0.1 is an integration infrastructure/module + SITC/contracts change.",
   "currentSitcPack": "sitc/SGI_Comando_CURRENT.sitcpack",
-  "deltaSitcPack": "sitc/SER_v0.8.1_HANDOFF_delta.sitcpack",
-  "systemsHandoff": "docs/HANDOFF_SER_v0.8.1_CERRADO.md",
-  "knownLimitations": "docs/KNOWN_LIMITATIONS_SER_v0.8.1.md",
-  "note": "El sufijo CERRADA identifica la baseline de handoff; no agrega funcionalidad sobre SER v0.8.1."
+  "componentDelta": "sitc/SGI_COM_INT_v0.1_COMPONENT_DELTA.sitcpack",
+  "coreImportSnapshot": "sitc/v3/SITC-ECOSISTEMA-CM-20260921-SGI_COM-INTERCONNECTIONS-SCENARIO_SNAPSHOT.sitcpack",
+  "interconnectionCount": 24,
+  "interfaceCount": 30,
+  "summary": "Adds SITC-NOM-001 v3.0 generic interconnection module (CORE resolver/cache/transport/auth/resilience/observability) and 24 canonical interconnection IDs. No functional UI changes."
 }

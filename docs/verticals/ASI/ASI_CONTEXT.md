@@ -42,3 +42,7 @@ Existe botón Guardar borrador y checkpoint automático periódico ya definido.
 ## UI base
 
 Panel izquierdo de personal + matriz semanal de Punto → Puesto → Turno. Drag & Drop, selección múltiple/copia y semáforo de elegibilidad forman parte del diseño acumulado, aunque cada incremento se valida de forma aislada.
+
+
+### Contrato de ingreso de personal desde SIC: RRHH — 2026-09-19
+SIC: RRHH debe entregar cada colaborador visible en SGI con adscripción explícita a **Seguridad Física (SF) + Compañía**. SIC: RRHH es SoR de esa relación inicial. SGI no crea ni infiere la membresía laboral; las transferencias operacionales posteriores se orquestan en ASI y se sincronizan de vuelta a SIC: RRHH.

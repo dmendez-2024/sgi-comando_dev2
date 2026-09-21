@@ -1,8 +1,8 @@
-# COM v1.0 FROZEN — Contexto funcional y técnico
+# COM v1.1.3 FROZEN — Contexto funcional y técnico
 
 ## Qué representa una Compañía
 
-Una Compañía es una unidad operacional de mando/ejecución de Cajamarca dentro de una Instancia–País. Puede operar en varias Regiones, pero siempre dentro de una única Zona.
+Una Compañía es una unidad operacional de mando/ejecución dentro de una Instancia–País. **CORE es SoR de su identidad** (Nombre, Logo, Reseña histórica). SGI: Comando activa esa identidad y mantiene Estado, Zona y Regiones operativas. Puede operar en varias Regiones, pero siempre dentro de una única Zona.
 
 ## Relaciones esenciales
 
@@ -44,14 +44,14 @@ Cada modificación autorizada genera una nueva `CompanyVersion` con:
 
 ## Logo
 
-UAT actual: adapter local.  
-Producción: MinIO; no BLOB/Data URL permanente en PostgreSQL.
+El Logo proviene de CORE y es **solo lectura** en SGI. UAT conserva snapshot/adaptador local; producción debe consumir la integración formal CORE y almacenar binarios según la arquitectura definida.
 
 ## Reseña histórica
 
-- Campo libre opcional.
-- Máximo 750 caracteres.
-- Versionada junto con el resto de la ficha.
+- Proviene de CORE.
+- Máximo 750 caracteres en el contrato actual.
+- Solo lectura en SGI.
+- El snapshot operacional conserva trazabilidad de la versión CORE consumida.
 
 ## Multi-región / Zona única
 
@@ -72,7 +72,7 @@ El usuario debe primero migrar/finalizar Servicios desde SER.
 - SER: Servicios activos por Compañía/Región.
 - MinIO: Logo en producción.
 - PostgreSQL 17: persistencia y versiones.
-- CORE indirectamente a través de TER para geografía oficial.
+- CORE directamente para identidad de Compañía y, a través de TER, para geografía oficial.
 
 ## Scope guard
 

@@ -10,7 +10,7 @@ Usar el logo oficial de SGI: Comando entregado por el usuario. UI administrativa
 Toda arquitectura SGI parte de `Instancia–País`; no se duplican parámetros editables de CORE en SGI.
 
 ## D-004 Compañías
-Las Compañías se definen en SGI: Comando, no en SIC: COM. Una Compañía agrupa aproximadamente 200–400 Agentes de Seguridad más mando/supervisión y puede incluir Escoltas de Seguridad (Ronin).
+La identidad de las Compañías proviene de CORE. SGI: Comando activa y mantiene su configuración operacional (Estado, Zona, Regiones); SIC: COM no es SoR de Compañías.
 
 ## D-005 Servicios, Puntos y Puestos
 SIC: COM entrega Servicio, Punto y Puesto vendidos. SGI agrega la capa operacional de seguridad sin recrearlos comercialmente.

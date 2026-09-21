@@ -1,0 +1,46 @@
+{
+  "sourcePackage": "sitc/v3/SITC-ECOSISTEMA-CM-20260921-SGI_COM-INTERCONNECTIONS-SCENARIO_SNAPSHOT.sitcpack",
+  "expectedPrograms": 23,
+  "expectedInterconnections": 24,
+  "expectedInterfaces": 30,
+  "mergeKeys": {
+    "programs": "programId",
+    "interconnections": "interconnectionRef",
+    "interfaces": "interfaceId"
+  },
+  "allowedPreviewActions": [
+    "CREATE",
+    "UPDATE",
+    "NO_CHANGE",
+    "CONFLICT",
+    "INVALID"
+  ],
+  "mustNotActivateProductiveInstanceBindings": true,
+  "mustNotContainEffectiveSecrets": true,
+  "interconnectionIds": [
+    "SGI_COM__CORE__00001__V0001",
+    "SGI_COM__CORE__00002__V0001",
+    "SGI_COM__IDENT__00001__V0001",
+    "SGI_COM__SIC_COM__00001__V0001",
+    "SIC_COM__SGI_COM__00001__V0001",
+    "SGI_COM__SIC_RRHH__00001__V0001",
+    "SGI_COM__SIC_RRHH__00002__V0001",
+    "SIC_RRHH__SGI_COM__00001__V0001",
+    "SGI_COM__SIC_RRMM__00001__V0001",
+    "SIC_RRMM__SGI_COM__00001__V0001",
+    "ATS__SGI_COM__00001__V0001",
+    "SGI_COM__ATS__00001__V0001",
+    "SGI_COM__SMC__00001__V0001",
+    "SGI_COM__SMC__00002__V0001",
+    "SGI_COM__STC__00001__V0001",
+    "SGI_COM__STC__00002__V0001",
+    "SGI_COM__VISINT__00001__V0001",
+    "SGI_COM__VISINT__00002__V0001",
+    "SGI_OPR__SGI_COM__00001__V0001",
+    "SGI_OPR__SGI_COM__00002__V0001",
+    "SGI_CLT__SGI_COM__00001__V0001",
+    "SGI_CLT__SGI_COM__00002__V0001",
+    "SGI_COM__CM_CON__00001__V0001",
+    "SGI_COM__CM_CON__00002__V0001"
+  ]
+}

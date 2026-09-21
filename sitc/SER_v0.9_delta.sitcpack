@@ -1,0 +1,86 @@
+{
+  "format": "cajamarca.sitcpack",
+  "formatVersion": "0.2",
+  "packageType": "vertical-delta",
+  "system": "SGI: Comando",
+  "vertical": "SER",
+  "version": "0.9",
+  "status": "UAT_CANDIDATE",
+  "asOf": "2026-09-19",
+  "baseFrozen": [
+    {
+      "code": "TER",
+      "version": "1.0",
+      "status": "FROZEN"
+    },
+    {
+      "code": "COM",
+      "version": "1.1.3",
+      "status": "FROZEN"
+    }
+  ],
+  "changes": [
+    {
+      "type": "integration",
+      "component": "SIC: COM -> SER",
+      "item": "Receive commercial Service = Client + Point, including 1..n Posts. SIC: COM remains SoR and does not decide operational Company."
+    },
+    {
+      "type": "workflow",
+      "component": "Servicios / Kaibil",
+      "item": "New Services enter SGI with point.company_id NULL and operational_assignment_status=PENDING; UI presents them in logical Kaibil inbox without making Kaibil owner/operator."
+    },
+    {
+      "type": "authorization",
+      "component": "Service assignment",
+      "item": "Presidencia/Director Nacional may assign nationally; Director Zonal only to Companies in authorized Zones; Jefe Regional only to Companies in authorized Regions."
+    },
+    {
+      "type": "guardrail",
+      "component": "Service configuration",
+      "item": "Pending Services cannot be configured; action is Asignación. Configuration becomes available only after an operating Company is assigned."
+    },
+    {
+      "type": "audit",
+      "component": "PostgreSQL",
+      "item": "Persist assignment status/timestamps/actor and service_company_assignment_event audit trail."
+    },
+    {
+      "type": "migration",
+      "component": "Flyway V19",
+      "item": "Add SIC: COM source metadata and initial operational Company assignment state/audit. Includes one UAT pending Service fixture."
+    }
+  ],
+  "connections": [
+    {
+      "from": "SIC: COM",
+      "to": "SGI: Comando / SER",
+      "direction": "inbound",
+      "data": [
+        "service",
+        "client",
+        "point",
+        "posts",
+        "commercial status"
+      ],
+      "sor": "SIC: COM"
+    },
+    {
+      "from": "COM",
+      "to": "SER",
+      "direction": "internal",
+      "data": [
+        "active Companies",
+        "Zone/Region scope",
+        "Kaibil coordination identity"
+      ],
+      "sor": "COM/CORE"
+    }
+  ],
+  "databaseChanged": true,
+  "backendChanged": true,
+  "frontendChanged": true,
+  "frozenVerticalsChanged": true,
+  "decisionLog": "docs/verticals/SER/SER_DECISIONS.md",
+  "uat": "docs/CHANGELOG_UAT_SER_v0.9.md"
+}

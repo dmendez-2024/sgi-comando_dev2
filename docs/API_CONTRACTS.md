@@ -80,3 +80,24 @@ Todos los endpoints mutadores validan que el Protocolo padre esté en `BORRADOR`
 - `PUT /api/consignments/evidences/{id}` — editar Evidencia.
 - `POST|GET|DELETE /api/consignments/evidences/{id}/standard-image` — gestionar Foto estándar.
 - Compatibilidad: `GET /api/consignments?pointId={uuid}` permanece disponible.
+
+
+## SER v0.9 — asignación inicial de Servicios
+- `GET /api/services/overview` — incluye Servicios asignados dentro del scope y, para roles de Coordinación autorizados, Servicios `PENDING` recibidos desde SIC: COM.
+- `GET /api/services/overview/assignment-destinations?pointId=...` — Compañías destino permitidas según rol/ámbito territorial.
+- `POST /api/services/overview/points/{pointId}/assign-company` — asigna la Compañía operativa inicial; body `{ companyId, observations }`. Solo Presidencia, Director Nacional, Director Zonal y Jefe Regional.
+
+
+## SER v0.9.1 — Movimiento operacional de Servicios
+### `POST /api/services/overview/points/{pointId}/return-to-coordination`
+Roles: `PRESIDENTE`, `DIRECTOR_NACIONAL`, `DIRECTOR_ZONAL`, `JEFE_REGIONAL` según alcance territorial del Punto.
+
+Body:
+```json
+{ "observations": "opcional" }
+```
+
+Efecto: `company_id → NULL`, estado `PENDING`, preserva configuración del Punto, marca asignaciones futuras como `REMOVED`, conserva turnos activos y registra auditoría `RETURN_TO_COORDINATION`.
+
+### `POST /api/services/overview/points/{pointId}/assign-company`
+Cuando el Punto proviene de un retiro anterior, la misma operación registra `REASSIGNMENT_FROM_COORDINATION`; no requiere aceptación del Coordinador destino.

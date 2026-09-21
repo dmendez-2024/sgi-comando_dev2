@@ -100,3 +100,24 @@ Validar en orden:
 11. Activar el Protocolo PUBLICADO: el anterior debe pasar a PUBLICADO y solo uno debe quedar VIGENTE.
 12. Editar un Protocolo publicado: debe crearse una nueva versión BORRADOR sin modificar el snapshot previo.
 13. Revisar Historial y confirmar snapshots/versiones.
+
+
+## SER v0.9 — UAT Asignación inicial de Servicios
+1. Con Presidencia o Director Nacional, abrir Servicios y filtrar Compañía `Kaibil`.
+2. El fixture `Punto Nuevo SIC COM` debe aparecer como `Pendiente de asignación` con botón **Asignación** y sin Configuración.
+3. Abrir Asignación: el modal debe identificar SIC: COM como fuente y Kaibil como bandeja lógica, no propietaria.
+4. Confirmar que Kaibil no aparece entre Compañías destino.
+5. Con Director Nacional/Presidencia deben aparecer todas las Compañías activas permitidas a nivel nacional.
+6. Con Director Zonal deben aparecer únicamente Compañías de sus Zonas; con Jefe Regional únicamente de sus Regiones.
+7. Asignar el fixture a una Compañía. Al recargar, debe desaparecer de Kaibil y aparecer bajo la Compañía destino con botón **Configuración**.
+8. Verificar `point.company_id`, `operational_assignment_status=ASSIGNED`, `assigned_by_username`, `assigned_at`.
+9. Verificar un registro `service_company_assignment_event` con `INITIAL_ASSIGNMENT`.
+10. Confirmar regresión: Servicios ya asignados mantienen su Compañía y configuración previa.
+
+
+## SER v0.9.1 — retiro y reasignación de Servicios
+- Coordinación autorizada puede retirar un Servicio asignado hacia la bandeja lógica Kaibil según alcance territorial.
+- La configuración operacional permanece ligada al Punto y no se borra/copia al cambiar de Compañía.
+- Solo las asignaciones futuras desaparecen de planificación activa; histórico y turno en curso se conservan.
+- `operational_transition_until` protege el cierre del turno heredado y evita doble cobertura en la nueva Compañía.
+- Desde Kaibil se reasigna directamente a otra Compañía autorizada sin aceptación del Coordinador destino.

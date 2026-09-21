@@ -1,0 +1,28 @@
+{
+  "format": "sitcpack",
+  "version": "ASI-v0.7.3-patch",
+  "scenario": "SGI-Comando-ASI-v0.7.3-UAT-FIX",
+  "scope": "ASI Kaibil default context and transfer confirmation UX",
+  "status": "UAT_CANDIDATE",
+  "base": "COM v1.1.2 + ASI v0.7.2",
+  "asOf": "2026-09-19",
+  "changes": [
+    {
+      "type": "navigation_fix",
+      "component": "ASI - Asignaciones",
+      "rule": "Presidencia, Director Nacional, Director Zonal and Jefe Regional default to Kaibil when entering Assignments."
+    },
+    {
+      "type": "navigation_fix",
+      "component": "ASI - Asignaciones",
+      "rule": "For leadership profiles the Company selector remains visible even when Kaibil is selected; backend scope continues to determine available companies."
+    },
+    {
+      "type": "ui_fix",
+      "component": "ASI - Transferencias de Compañía",
+      "rule": "Sending a transfer uses an SGI-styled confirmation modal with origin/destination, operational impact and visible backend errors; no native browser confirm is used for transfer send/accept/reject/cancel."
+    }
+  ],
+  "functionalChange": false,
+  "databaseMigration": "none; latest remains V18__core_companies_and_company_transfers.sql"
+}

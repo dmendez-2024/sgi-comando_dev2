@@ -1,8 +1,5 @@
-import {useEffect,useMemo,useRef,useState} from 'react';
-import {
-  AlertTriangle,Building2,History,ImagePlus,Layers3,MapPin,Pencil,Plus,RefreshCw,
-  Save,ShieldCheck,Upload,X
-} from 'lucide-react';
+import {useEffect,useMemo,useState} from 'react';
+import {AlertTriangle,Building2,Database,History,Layers3,Lock,MapPin,Pencil,Plus,RefreshCw,Save,ShieldCheck,X} from 'lucide-react';
 import {ApiError,api,getUser} from '../api';
 
 type Zone={id:string;code:string;name:string;status:string};
@@ -10,181 +7,51 @@ type Region={id:string;zoneId:string;code:string;name:string;status:string};
 type Territory={zones:Zone[];regions:Region[]};
 type RegionLoad={regionId:string;activeServiceCount:number};
 type ServiceBlocker={id:string;code:string;name:string;clientName:string;regionId?:string};
-type Company={
-  id:string;code:string;name:string;status:string;requiredChangeCount:number;zoneId:string;regionIds:string[];
-  logoDataUrl?:string;historicalReview?:string;versionNumber:number;activeServiceCount:number;
-  regionLoads:RegionLoad[];activeServices:ServiceBlocker[];
-};
+type Company={id:string;code:string;name:string;status:string;requiredChangeCount:number;zoneId?:string|null;regionIds:string[];logoDataUrl?:string|null;historicalReview?:string|null;versionNumber:number;activeServiceCount:number;regionLoads:RegionLoad[];activeServices:ServiceBlocker[];coreCompanyId?:string|null;sourceSystem:string;sourceVersion?:string|null;companyType:string;alwaysActive:boolean};
+type CoreCompany={coreCompanyId:string;code:string;name:string;historicalReview?:string|null;logoDataUrl?:string|null;companyType:string;sourceVersion:string;sourceStatus:string;activated:boolean};
 type Version={versionNumber:number;changeType:string;changeReason?:string;actorUsername:string;effectiveAt:string;snapshotJson:string};
-type Editor={mode:'CREATE'|'EDIT';companyId?:string;name:string;status:string;zoneId:string;regionIds:string[];logoDataUrl:string;historicalReview:string;changeReason:string;activeServiceCount:number;regionLoads:RegionLoad[]}|null;
+type Editor={companyId:string;name:string;status:string;zoneId:string;regionIds:string[];logoDataUrl:string;historicalReview:string;changeReason:string;activeServiceCount:number;regionLoads:RegionLoad[];alwaysActive:boolean;companyType:string;sourceVersion?:string|null}|null;
+type Activate={coreCompanyId:string;zoneId:string;regionIds:string[];changeReason:string}|null;
 
 function msg(e:unknown){return e instanceof ApiError?(e.body||e.message):String(e)}
 function statusLabel(v:string){return v==='ACTIVE'?'Activa':v==='INACTIVE'?'Inactiva':'Borrador'}
-function changeLabel(v:string){return ({CREATED:'Creación',UPDATED:'Actualización',TERRITORY_UPDATED:'Territorio actualizado',INACTIVATED:'Inactivación',REACTIVATED:'Reactivación',BASELINE:'Versión base'} as Record<string,string>)[v]??v}
+function changeLabel(v:string){return ({CORE_ACTIVATED:'Activación desde CORE',UPDATED:'Actualización',TERRITORY_UPDATED:'Territorio actualizado',INACTIVATED:'Inactivación',REACTIVATED:'Reactivación',BASELINE:'Versión base'} as Record<string,string>)[v]??v}
 
 export default function Companies(){
-  const user=getUser();
-  const canManage=['presidente','dlatam','don','dnacional','dzonal'].includes(user);
-  const [data,setData]=useState<Company[]>([]);
-  const [territory,setTerritory]=useState<Territory>({zones:[],regions:[]});
-  const [error,setError]=useState('');
-  const [notice,setNotice]=useState('');
-  const [editor,setEditor]=useState<Editor>(null);
-  const [history,setHistory]=useState<{company:Company;versions:Version[]}|null>(null);
-  const [busy,setBusy]=useState(false);
-  const fileRef=useRef<HTMLInputElement|null>(null);
+ const user=getUser();const canManage=['presidente','dlatam','don','dnacional','dzonal'].includes(user);
+ const [data,setData]=useState<Company[]>([]);const [territory,setTerritory]=useState<Territory>({zones:[],regions:[]});const [catalog,setCatalog]=useState<CoreCompany[]>([]);
+ const [error,setError]=useState('');const [notice,setNotice]=useState('');const [editor,setEditor]=useState<Editor>(null);const [activate,setActivate]=useState<Activate>(null);const [history,setHistory]=useState<{company:Company;versions:Version[]}|null>(null);const [busy,setBusy]=useState(false);
+ const load=async()=>{try{const requests:any[]=[api.companies(),canManage?api.territoryAdmin():api.territory()];if(canManage)requests.push(api.companyCoreCatalog());const [companies,t,core]=await Promise.all(requests);setData(companies.items??[]);setTerritory(t);setCatalog(core??[]);setError('')}catch(e){setError(msg(e))}};
+ useEffect(()=>{void load()},[user]);useEffect(()=>{if(!notice)return;const id=window.setTimeout(()=>setNotice(''),5000);return()=>window.clearTimeout(id)},[notice]);
+ const zoneMap=useMemo(()=>new Map(territory.zones.map(z=>[z.id,z])),[territory]);const regionMap=useMemo(()=>new Map(territory.regions.map(r=>[r.id,r])),[territory]);const activeCount=data.filter(c=>c.status==='ACTIVE').length;const inactiveCount=data.filter(c=>c.status==='INACTIVE').length;const regionCoverage=new Set(data.flatMap(c=>c.regionIds)).size;
+ const openEdit=async(c:Company)=>{try{const d=await api.company(c.id);setEditor({companyId:c.id,name:d.name,status:d.status,zoneId:d.zoneId??'',regionIds:[...(d.regionIds??[])],logoDataUrl:d.logoDataUrl??'',historicalReview:d.historicalReview??'',changeReason:'',activeServiceCount:d.activeServiceCount??0,regionLoads:d.regionLoads??[],alwaysActive:!!d.alwaysActive,companyType:d.companyType??'SECURITY',sourceVersion:d.sourceVersion})}catch(e){setError(msg(e))}};
+ const openActivate=()=>{const available=catalog.find(c=>!c.activated);if(!available){setNotice('Todas las Compañías disponibles en el catálogo CORE ya están activadas.');return}const zone=territory.zones.find(z=>z.status==='ACTIVE')??territory.zones[0];const regions=zone?territory.regions.filter(r=>r.zoneId===zone.id&&r.status==='ACTIVE'):[];setActivate({coreCompanyId:available.coreCompanyId,zoneId:available.companyType==='COORDINATION'?'':zone?.id??'',regionIds:available.companyType==='COORDINATION'?[]:regions[0]?[regions[0].id]:[],changeReason:''})};
+ const showHistory=async(c:Company)=>{try{setHistory({company:c,versions:await api.companyHistory(c.id)})}catch(e){setError(msg(e))}};
+ const allowedRegions=useMemo(()=>editor?territory.regions.filter(r=>r.zoneId===editor.zoneId):[],[editor,territory.regions]);const activationCore=catalog.find(c=>c.coreCompanyId===activate?.coreCompanyId);const activationRegions=useMemo(()=>activate?territory.regions.filter(r=>r.zoneId===activate.zoneId):[],[activate,territory.regions]);
+ const setEditorZone=(zoneId:string)=>{if(!editor)return;const r=territory.regions.filter(x=>x.zoneId===zoneId&&x.status==='ACTIVE');setEditor({...editor,zoneId,regionIds:r[0]?[r[0].id]:[]})};
+ const toggleEditorRegion=(id:string)=>{if(!editor)return;const selected=editor.regionIds.includes(id);if(selected){const load=editor.regionLoads.find(x=>x.regionId===id)?.activeServiceCount??0;if(load>0){setError(`No se puede retirar esta Región: tiene ${load} Servicio(s) activo(s).`);return}if(editor.regionIds.length===1){setError('La Compañía debe operar en al menos una Región.');return}setEditor({...editor,regionIds:editor.regionIds.filter(x=>x!==id)})}else setEditor({...editor,regionIds:[...editor.regionIds,id]})};
+ const save=async()=>{if(!editor)return;if(!editor.alwaysActive&&(!editor.zoneId||!editor.regionIds.length)){setError('Zona y al menos una Región son obligatorias.');return}setBusy(true);try{await api.updateCompany(editor.companyId,{status:editor.alwaysActive?'ACTIVE':editor.status,zoneId:editor.alwaysActive?null:editor.zoneId,regionIds:editor.alwaysActive?[]:editor.regionIds,changeReason:editor.changeReason.trim()||null});setNotice('Compañía actualizada correctamente.');setEditor(null);await load()}catch(e){setError(msg(e))}finally{setBusy(false)}};
+ const activateSelected=async()=>{if(!activate||!activationCore)return;if(activationCore.companyType!=='COORDINATION'&&(!activate.zoneId||!activate.regionIds.length)){setError('Seleccione Zona y al menos una Región.');return}setBusy(true);try{await api.activateCompany({coreCompanyId:activate.coreCompanyId,status:'ACTIVE',zoneId:activationCore.companyType==='COORDINATION'?null:activate.zoneId,regionIds:activationCore.companyType==='COORDINATION'?[]:activate.regionIds,changeReason:activate.changeReason.trim()||null});setNotice(`${activationCore.name} activada desde CORE.`);setActivate(null);await load()}catch(e){setError(msg(e))}finally{setBusy(false)}};
 
-  const load=async()=>{
-    try{
-      const [companies,t]=await Promise.all([api.companies(),canManage?api.territoryAdmin():api.territory()]);
-      setData(companies.items??[]);setTerritory(t);setError('');
-    }catch(e){setError(msg(e))}
-  };
-  useEffect(()=>{void load()},[user]);
-  useEffect(()=>{if(!notice)return;const id=window.setTimeout(()=>setNotice(''),5000);return()=>window.clearTimeout(id)},[notice]);
-  useEffect(()=>{if(!error)return;const id=window.setTimeout(()=>setError(''),6500);return()=>window.clearTimeout(id)},[error]);
+ return <div className="com-page">{error&&<div className="uat-toast error">{error}</div>}{notice&&<div className="uat-toast notice">{notice}</div>}
+  <div className="com-head"><div><h2>Compañías</h2><p>Las Compañías se activan desde el catálogo CORE. SGI: Comando administra únicamente su estado y alcance operacional.</p></div><div className="com-actions"><button className="com-btn secondary" onClick={()=>void load()}><RefreshCw/>Actualizar</button>{canManage&&<button className="com-btn primary" onClick={openActivate}><Database/>Activar desde CORE</button>}</div></div>
+  <div className="com-kpis"><div><Building2/><span><small>Compañías</small><strong>{data.length}</strong></span></div><div><ShieldCheck/><span><small>Activas</small><strong>{activeCount}</strong></span></div><div><MapPin/><span><small>Regiones cubiertas</small><strong>{regionCoverage}</strong></span></div><div><Layers3/><span><small>Inactivas</small><strong>{inactiveCount}</strong></span></div></div>
+  <section className="com-card"><div className="com-table-head"><span>Compañía</span><span>Zona</span><span>Regiones</span><span>Servicios activos</span><span>Cambio requerido</span><span>Estado</span><span>Versión</span><span>Acciones</span></div><div className="com-list">{data.map(c=>{const zone=c.zoneId?zoneMap.get(c.zoneId):null;const regions=c.regionIds.map(id=>regionMap.get(id)).filter(Boolean) as Region[];return <div className="com-row" key={c.id}><div className="com-company-cell"><div className="com-logo">{c.logoDataUrl?<img src={c.logoDataUrl} alt={`Logo ${c.name}`}/>:<Building2/>}</div><div><strong>{c.name}</strong><small>{c.code} · Fuente CORE{c.alwaysActive?' · Operaciones':''}</small></div></div><div><strong className="com-zone">{c.alwaysActive?'Nacional':zone?.name??'—'}</strong><small>{c.alwaysActive?'Kaibil':zone?.code??''}</small></div><div className="com-region-chips">{c.alwaysActive?<span>Todas</span>:regions.map(r=><span key={r.id}>{r.code}</span>)}</div><div className="com-service-count"><strong>{c.activeServiceCount??0}</strong><small>{c.activeServiceCount===1?'servicio':'servicios'}</small></div><span className="com-change">{c.requiredChangeCount??0}</span><span className={`com-status ${c.status.toLowerCase()}`}>{statusLabel(c.status)}</span><span className="com-version">v{c.versionNumber}</span><div className="com-row-actions">{canManage&&<button title="Editar" onClick={()=>void openEdit(c)}><Pencil/></button>}<button title="Historial" onClick={()=>void showHistory(c)}><History/></button></div></div>})}{!data.length&&<div className="com-empty">No hay Compañías visibles para este alcance.</div>}</div></section>
 
-  const zoneMap=useMemo(()=>new Map(territory.zones.map(z=>[z.id,z])),[territory]);
-  const regionMap=useMemo(()=>new Map(territory.regions.map(r=>[r.id,r])),[territory]);
-  const activeCount=data.filter(c=>c.status==='ACTIVE').length;
-  const inactiveCount=data.filter(c=>c.status==='INACTIVE').length;
-  const regionCoverage=new Set(data.flatMap(c=>c.regionIds)).size;
+  {editor&&<div className="com-modal-backdrop" onMouseDown={()=>setEditor(null)}><div className="com-modal com-core-editor" onMouseDown={e=>e.stopPropagation()}><div className="com-modal-head"><div><div className="com-title-badge"><h3>Editar Compañía</h3><span><Database/>Catálogo CORE</span></div><p>La información base proviene de CORE. Los cambios generan una nueva versión y quedan en el historial.</p></div><button onClick={()=>setEditor(null)}><X/></button></div><div className="com-editor-grid">
+   <div className="com-logo-editor core-readonly"><div className="com-logo-preview">{editor.logoDataUrl?<img src={editor.logoDataUrl} alt="Logo de la Compañía"/>:<Building2/>}<span className="core-lock"><Lock/></span></div><div><strong>Logo de la Compañía</strong><small>Solo lectura · Fuente CORE</small><small>PNG, JPG o WEBP · máximo 300 KB</small></div></div>
+   <label>Nombre<div className="com-readonly-field"><span>{editor.name}</span><em><Lock/>Solo lectura · Fuente CORE</em></div></label>
+   <label>Zona{editor.alwaysActive?<div className="com-readonly-field"><span>Nacional</span><em>Kaibil · Compañía de Operaciones</em></div>:<select value={editor.zoneId} disabled={editor.activeServiceCount>0} onChange={e=>setEditorZone(e.target.value)}>{territory.zones.filter(z=>z.status!=='INACTIVE'||z.id===editor.zoneId).map(z=><option key={z.id} value={z.id}>{z.code} · {z.name}</option>)}</select>}</label>
+   <label className="com-review">Reseña histórica<div className="com-readonly-review"><span>{editor.historicalReview||'Sin reseña histórica en CORE.'}</span><em><Lock/>Solo lectura · Fuente CORE</em><small>{editor.historicalReview.length} / 750</small></div></label>
+   <label>Estado<select value={editor.status} disabled={editor.alwaysActive} onChange={e=>setEditor({...editor,status:e.target.value})}><option value="ACTIVE">Activa</option><option value="INACTIVE" disabled={editor.activeServiceCount>0}>Inactiva</option></select>{editor.alwaysActive&&<small>Kaibil permanece siempre activa.</small>}</label>
+   <label>Motivo del cambio<input value={editor.changeReason} maxLength={500} onChange={e=>setEditor({...editor,changeReason:e.target.value})} placeholder="Opcional · queda en auditoría"/></label>
+  </div>
+  <div className="com-region-picker"><div><strong>Regiones operativas</strong><span>{editor.alwaysActive?'Kaibil usa cobertura operativa por rol; no se limita a una Región.':'Puede seleccionar una o más Regiones, siempre dentro de la misma Zona.'}</span></div>{editor.alwaysActive?<div className="com-national-note"><ShieldCheck/>Cobertura nacional disponible según el ámbito del rol del usuario.</div>:<div className="com-region-grid">{allowedRegions.map(r=>{const selected=editor.regionIds.includes(r.id);const load=editor.regionLoads.find(x=>x.regionId===r.id)?.activeServiceCount??0;return <label key={r.id} className={selected?'selected':''}><input type="checkbox" checked={selected} onChange={()=>toggleEditorRegion(r.id)}/><span><strong>{r.code}</strong>{r.name}</span>{load>0&&<em>{load} servicio{load===1?'':'s'} activo{load===1?'':'s'}</em>}</label>})}</div>}</div>
+  {editor.activeServiceCount>0&&!editor.alwaysActive&&<div className="com-warning"><AlertTriangle/><span><strong>Operación activa.</strong> No puede retirar una Región con Servicios activos ni inactivar/cambiar Zona hasta migrarlos o finalizarlos.</span></div>}
+  <div className="com-modal-actions"><button className="com-btn ghost" onClick={()=>setEditor(null)}>Cancelar</button><button className="com-btn primary" disabled={busy||(!editor.alwaysActive&&(!editor.zoneId||!editor.regionIds.length))} onClick={()=>void save()}><Save/>{busy?'Guardando…':'Guardar'}</button></div></div></div>}
 
-  const openCreate=()=>{
-    const zone=territory.zones.find(z=>z.status==='ACTIVE')??territory.zones[0];
-    const regions=zone?territory.regions.filter(r=>r.zoneId===zone.id&&r.status==='ACTIVE'):[];
-    setEditor({mode:'CREATE',name:'',status:'ACTIVE',zoneId:zone?.id??'',regionIds:regions[0]?[regions[0].id]:[],logoDataUrl:'',historicalReview:'',changeReason:'',activeServiceCount:0,regionLoads:[]});
-  };
+  {activate&&activationCore&&<div className="com-modal-backdrop" onMouseDown={()=>setActivate(null)}><div className="com-modal activate-core" onMouseDown={e=>e.stopPropagation()}><div className="com-modal-head"><div><div className="com-title-badge"><h3>Activar desde CORE</h3><span><Database/>Catálogo CORE</span></div><p>Seleccione una Compañía existente en CORE y defina únicamente su alcance operacional en SGI: Comando.</p></div><button onClick={()=>setActivate(null)}><X/></button></div><div className="com-editor-grid"><label className="wide">Compañía<select value={activate.coreCompanyId} onChange={e=>{const core=catalog.find(c=>c.coreCompanyId===e.target.value);const zone=territory.zones.find(z=>z.status==='ACTIVE')??territory.zones[0];const rs=zone?territory.regions.filter(r=>r.zoneId===zone.id&&r.status==='ACTIVE'):[];setActivate({...activate,coreCompanyId:e.target.value,zoneId:core?.companyType==='COORDINATION'?'':zone?.id??'',regionIds:core?.companyType==='COORDINATION'?[]:rs[0]?[rs[0].id]:[]})}}>{catalog.filter(c=>!c.activated||c.coreCompanyId===activate.coreCompanyId).map(c=><option key={c.coreCompanyId} value={c.coreCompanyId}>{c.code} · {c.name}</option>)}</select></label>{activationCore.companyType!=='COORDINATION'&&<><label>Zona<select value={activate.zoneId} onChange={e=>{const rs=territory.regions.filter(r=>r.zoneId===e.target.value&&r.status==='ACTIVE');setActivate({...activate,zoneId:e.target.value,regionIds:rs[0]?[rs[0].id]:[]})}}>{territory.zones.filter(z=>z.status==='ACTIVE').map(z=><option key={z.id} value={z.id}>{z.code} · {z.name}</option>)}</select></label><label>Motivo del cambio<input value={activate.changeReason} onChange={e=>setActivate({...activate,changeReason:e.target.value})} placeholder="Opcional · queda en auditoría"/></label></>}</div>{activationCore.companyType!=='COORDINATION'&&<div className="com-region-picker"><div><strong>Regiones operativas</strong><span>Seleccione una o más Regiones de la Zona.</span></div><div className="com-region-grid">{activationRegions.map(r=><label key={r.id} className={activate.regionIds.includes(r.id)?'selected':''}><input type="checkbox" checked={activate.regionIds.includes(r.id)} onChange={()=>setActivate({...activate,regionIds:activate.regionIds.includes(r.id)?activate.regionIds.filter(x=>x!==r.id):[...activate.regionIds,r.id]})}/><span><strong>{r.code}</strong>{r.name}</span></label>)}</div></div>}<div className="com-info"><Database/><span><strong>{activationCore.name}</strong>, logo y reseña histórica serán de solo lectura y continuarán siendo propiedad de CORE.</span></div><div className="com-modal-actions"><button className="com-btn ghost" onClick={()=>setActivate(null)}>Cancelar</button><button className="com-btn primary" disabled={busy} onClick={()=>void activateSelected()}><Plus/>{busy?'Activando…':'Activar Compañía'}</button></div></div></div>}
 
-  const openEdit=async(c:Company)=>{
-    try{
-      const detail=await api.company(c.id);
-      setEditor({mode:'EDIT',companyId:c.id,name:detail.name,status:detail.status,zoneId:detail.zoneId,regionIds:[...(detail.regionIds??[])],logoDataUrl:detail.logoDataUrl??'',historicalReview:detail.historicalReview??'',changeReason:'',activeServiceCount:detail.activeServiceCount??0,regionLoads:detail.regionLoads??[]});
-    }catch(e){setError(msg(e))}
-  };
-
-  const showHistory=async(c:Company)=>{
-    try{setHistory({company:c,versions:await api.companyHistory(c.id)})}catch(e){setError(msg(e))}
-  };
-
-  const allowedRegions=useMemo(()=>editor?territory.regions.filter(r=>r.zoneId===editor.zoneId):[],[editor,territory.regions]);
-  const selectedZoneChanged=useMemo(()=>{
-    if(!editor||editor.mode!=='EDIT')return false;
-    const original=data.find(c=>c.id===editor.companyId);
-    return !!original&&original.zoneId!==editor.zoneId;
-  },[editor,data]);
-
-  const setZone=(zoneId:string)=>{
-    if(!editor)return;
-    const regions=territory.regions.filter(r=>r.zoneId===zoneId&&r.status==='ACTIVE');
-    setEditor({...editor,zoneId,regionIds:regions[0]?[regions[0].id]:[]});
-  };
-  const toggleRegion=(id:string)=>{
-    if(!editor)return;
-    const selected=editor.regionIds.includes(id);
-    if(selected){
-      const load=editor.regionLoads.find(x=>x.regionId===id)?.activeServiceCount??0;
-      if(load>0){setError(`No se puede retirar esta Región: tiene ${load} Servicio(s) activo(s) de la Compañía.`);return}
-      if(editor.regionIds.length===1){setError('La Compañía debe operar en al menos una Región.');return}
-      setEditor({...editor,regionIds:editor.regionIds.filter(x=>x!==id)});
-    }else setEditor({...editor,regionIds:[...editor.regionIds,id]});
-  };
-
-  const readLogo=(file?:File)=>{
-    if(!editor||!file)return;
-    if(!['image/png','image/jpeg','image/webp'].includes(file.type)){setError('El logo debe ser PNG, JPG o WEBP.');return}
-    if(file.size>300*1024){setError('El logo no puede superar 300 KB en esta UAT.');return}
-    const reader=new FileReader();reader.onload=()=>setEditor(prev=>prev?{...prev,logoDataUrl:String(reader.result??'')}:prev);reader.readAsDataURL(file);
-  };
-
-  const save=async()=>{
-    if(!editor)return;
-    if(!editor.name.trim()){setError('Nombre obligatorio.');return}
-    if(!editor.zoneId){setError('Zona obligatoria.');return}
-    if(!editor.regionIds.length){setError('Seleccione al menos una Región.');return}
-    if(editor.historicalReview.length>750){setError('La reseña histórica no puede superar 750 caracteres.');return}
-    setBusy(true);
-    try{
-      const body={name:editor.name.trim(),status:editor.status,zoneId:editor.zoneId,regionIds:editor.regionIds,logoDataUrl:editor.logoDataUrl||null,historicalReview:editor.historicalReview.trim()||null,changeReason:editor.changeReason.trim()||null};
-      if(editor.mode==='CREATE'){await api.createCompany(body);setNotice('Compañía creada correctamente.');}
-      else {await api.updateCompany(editor.companyId!,body);setNotice('Compañía actualizada correctamente.');}
-      setEditor(null);await load();
-    }catch(e){setError(msg(e))}finally{setBusy(false)}
-  };
-
-  return <div className="com-page">
-    {error&&<div className="uat-toast error">{error}</div>}{notice&&<div className="uat-toast notice">{notice}</div>}
-
-    <div className="com-head">
-      <div><h2>Compañías</h2><p>Unidad operacional de mando. Cada Compañía pertenece a una sola Zona y puede operar en una o más Regiones de esa Zona.</p></div>
-      <div className="com-actions"><button className="com-btn secondary" onClick={()=>void load()}><RefreshCw size={16}/>Actualizar</button>{canManage&&<button className="com-btn primary" onClick={openCreate}><Plus size={17}/>Nueva Compañía</button>}</div>
-    </div>
-
-    <div className="com-kpis">
-      <div><Building2/><span><small>Compañías</small><strong>{data.length}</strong></span></div>
-      <div><ShieldCheck/><span><small>Activas</small><strong>{activeCount}</strong></span></div>
-      <div><MapPin/><span><small>Regiones cubiertas</small><strong>{regionCoverage}</strong></span></div>
-      <div><Layers3/><span><small>Inactivas</small><strong>{inactiveCount}</strong></span></div>
-    </div>
-
-    <section className="com-card">
-      <div className="com-table-head"><span>Compañía</span><span>Zona</span><span>Regiones</span><span>Servicios activos</span><span>Cambio requerido</span><span>Estado</span><span>Versión</span><span>Acciones</span></div>
-      <div className="com-list">
-        {data.map(c=>{
-          const zone=zoneMap.get(c.zoneId);const regions=c.regionIds.map(id=>regionMap.get(id)).filter(Boolean) as Region[];
-          return <div className="com-row" key={c.id}>
-            <div className="com-company-cell">
-              <div className="com-logo">{c.logoDataUrl?<img src={c.logoDataUrl} alt={`Logo ${c.name}`}/>:<Building2/>}</div>
-              <div><strong>{c.name}</strong><small>{c.code}{c.historicalReview?` · ${c.historicalReview.slice(0,72)}${c.historicalReview.length>72?'…':''}`:''}</small></div>
-            </div>
-            <div><strong className="com-zone">{zone?zone.name:'—'}</strong><small>{zone?.code??''}</small></div>
-            <div className="com-region-chips">{regions.map(r=><span key={r.id}>{r.code}</span>)}</div>
-            <div className="com-service-count"><strong>{c.activeServiceCount??0}</strong><small>{c.activeServiceCount===1?'servicio':'servicios'}</small></div>
-            <span className="com-change">{c.requiredChangeCount??0}</span>
-            <span className={`com-status ${c.status.toLowerCase()}`}>{statusLabel(c.status)}</span>
-            <span className="com-version">v{c.versionNumber}</span>
-            <div className="com-row-actions">{canManage&&<button title="Editar" onClick={()=>void openEdit(c)}><Pencil/></button>}<button title="Historial" onClick={()=>void showHistory(c)}><History/></button></div>
-          </div>
-        })}
-        {!data.length&&<div className="com-empty">No hay Compañías visibles para este alcance.</div>}
-      </div>
-    </section>
-
-    {editor&&<div className="com-modal-backdrop" onMouseDown={()=>setEditor(null)}><div className="com-modal" onMouseDown={e=>e.stopPropagation()}>
-      <div className="com-modal-head"><div><h3>{editor.mode==='CREATE'?'Nueva Compañía':'Editar Compañía'}</h3><p>{editor.mode==='CREATE'?'Registra identidad, territorio, logo y reseña histórica.':'Los cambios generan una nueva versión y quedan en el historial.'}</p></div><button onClick={()=>setEditor(null)}><X/></button></div>
-      <div className="com-editor-grid">
-        <div className="com-logo-editor">
-          <div className="com-logo-preview">{editor.logoDataUrl?<img src={editor.logoDataUrl} alt="Vista previa del logo"/>:<ImagePlus/>}</div>
-          <div><strong>Logo de la Compañía</strong><small>PNG, JPG o WEBP · máximo 300 KB</small><div className="com-logo-actions"><button className="com-btn secondary small" onClick={()=>fileRef.current?.click()}><Upload/>Subir logo</button>{editor.logoDataUrl&&<button className="com-btn ghost small" onClick={()=>setEditor({...editor,logoDataUrl:''})}>Quitar</button>}</div></div>
-          <input ref={fileRef} className="com-hidden-file" type="file" accept="image/png,image/jpeg,image/webp" onChange={e=>readLogo(e.target.files?.[0])}/>
-        </div>
-        <label>Nombre<input value={editor.name} maxLength={160} onChange={e=>setEditor({...editor,name:e.target.value})}/></label>
-        <label>Zona<select value={editor.zoneId} disabled={editor.mode==='EDIT'&&editor.activeServiceCount>0} onChange={e=>setZone(e.target.value)}>{territory.zones.filter(z=>z.status!=='INACTIVE'||z.id===editor.zoneId).map(z=><option key={z.id} value={z.id}>{z.code} · {z.name}</option>)}</select>{editor.mode==='EDIT'&&editor.activeServiceCount>0&&<small>No puede cambiar de Zona mientras existan Servicios activos.</small>}</label>
-        <label className="com-review">Reseña histórica<textarea value={editor.historicalReview} maxLength={750} onChange={e=>setEditor({...editor,historicalReview:e.target.value})} placeholder="Breve reseña histórica de la Compañía..."/><small>{editor.historicalReview.length} / 750</small></label>
-        {editor.mode==='EDIT'&&<label>Estado<select value={editor.status} onChange={e=>setEditor({...editor,status:e.target.value})}><option value="ACTIVE">Activa</option><option value="INACTIVE" disabled={editor.activeServiceCount>0}>Inactiva</option></select>{editor.activeServiceCount>0&&<small>Para inactivar debe migrar o finalizar los {editor.activeServiceCount} Servicio(s) activo(s).</small>}</label>}
-        {editor.mode==='EDIT'&&<label>Motivo del cambio<input value={editor.changeReason} maxLength={500} onChange={e=>setEditor({...editor,changeReason:e.target.value})} placeholder="Opcional · queda en auditoría"/></label>}
-      </div>
-
-      <div className="com-region-picker">
-        <div><strong>Regiones operativas</strong><span>Puede seleccionar una o más Regiones, siempre dentro de la misma Zona.</span></div>
-        <div className="com-region-grid">{allowedRegions.map(r=>{
-          const selected=editor.regionIds.includes(r.id);const load=editor.regionLoads.find(x=>x.regionId===r.id)?.activeServiceCount??0;
-          return <label key={r.id} className={selected?'selected':''}><input type="checkbox" checked={selected} onChange={()=>toggleRegion(r.id)}/><span><strong>{r.code}</strong>{r.name}</span>{load>0&&<em>{load} servicio{load===1?'':'s'} activo{load===1?'':'s'}</em>}</label>
-        })}</div>
-      </div>
-
-      {editor.mode==='EDIT'&&editor.activeServiceCount>0&&<div className="com-warning"><AlertTriangle/><span><strong>Operación activa.</strong> Puede agregar Regiones de la misma Zona. No puede retirar una Región que tenga Servicios activos ni inactivar/cambiar de Zona hasta migrarlos o finalizarlos.</span></div>}
-      {selectedZoneChanged&&editor.activeServiceCount===0&&<div className="com-info"><MapPin/><span>El cambio de Zona quedará versionado. Todas las Regiones seleccionadas pertenecen a la nueva Zona.</span></div>}
-
-      <div className="com-modal-actions"><button className="com-btn ghost" onClick={()=>setEditor(null)}>Cancelar</button><button className="com-btn primary" disabled={busy||!editor.name.trim()||!editor.zoneId||!editor.regionIds.length} onClick={()=>void save()}><Save/> {busy?'Guardando…':'Guardar'}</button></div>
-    </div></div>}
-
-    {history&&<div className="com-modal-backdrop" onMouseDown={()=>setHistory(null)}><div className="com-modal history" onMouseDown={e=>e.stopPropagation()}>
-      <div className="com-modal-head"><div><h3>Historial · {history.company.name}</h3><p>{history.company.code} · Versionamiento completo de COM.</p></div><button onClick={()=>setHistory(null)}><X/></button></div>
-      <div className="com-history-list">{history.versions.map(v=>{let snap:any={};try{snap=JSON.parse(v.snapshotJson)}catch{}return <div key={v.versionNumber}>
-        <div className="com-history-version"><span>v{v.versionNumber}</span><div><strong>{changeLabel(v.changeType)}</strong><small>{v.actorUsername} · {new Date(v.effectiveAt).toLocaleString('es-EC')}</small></div></div>
-        <div className="com-history-snapshot"><span><b>Nombre</b>{snap.name??'—'}</span><span><b>Estado</b>{statusLabel(snap.status??'')}</span><span><b>Zona</b>{zoneMap.get(snap.zoneId)?.name??'—'}</span><span className="wide"><b>Regiones</b>{Array.isArray(snap.regionIds)?snap.regionIds.map((id:string)=>regionMap.get(id)?.code??id).join(' · '):'—'}</span>{snap.historicalReview&&<span className="wide"><b>Reseña histórica</b>{snap.historicalReview}</span>}{v.changeReason&&<span className="wide"><b>Motivo</b>{v.changeReason}</span>}</div>
-      </div>})}{!history.versions.length&&<div className="com-empty">Sin versiones registradas.</div>}</div>
-    </div></div>}
-  </div>;
+  {history&&<div className="com-modal-backdrop" onMouseDown={()=>setHistory(null)}><div className="com-modal history" onMouseDown={e=>e.stopPropagation()}><div className="com-modal-head"><div><h3>Historial · {history.company.name}</h3><p>{history.company.code} · Versionamiento completo de COM.</p></div><button onClick={()=>setHistory(null)}><X/></button></div><div className="com-history-list">{history.versions.map(v=>{let snap:any={};try{snap=JSON.parse(v.snapshotJson)}catch{}return <div key={v.versionNumber}><div className="com-history-version"><span>v{v.versionNumber}</span><div><strong>{changeLabel(v.changeType)}</strong><small>{v.actorUsername} · {new Date(v.effectiveAt).toLocaleString('es-EC')}</small></div></div><div className="com-history-snapshot"><span><b>Nombre</b>{snap.name??'—'}</span><span><b>Estado</b>{statusLabel(snap.status??'')}</span><span><b>Zona</b>{snap.alwaysActive?'Nacional':zoneMap.get(snap.zoneId)?.name??'—'}</span><span className="wide"><b>Regiones</b>{Array.isArray(snap.regionIds)?snap.regionIds.map((id:string)=>regionMap.get(id)?.code??id).join(' · '):'—'}</span>{snap.historicalReview&&<span className="wide"><b>Reseña histórica</b>{snap.historicalReview}</span>}{v.changeReason&&<span className="wide"><b>Motivo</b>{v.changeReason}</span>}</div></div>})}</div></div></div>}
+ </div>
 }

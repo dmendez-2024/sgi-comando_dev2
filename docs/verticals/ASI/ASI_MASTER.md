@@ -49,3 +49,7 @@ La UI **no** puede derivar `cycle_length_days` suponiendo siete días.
 - Los Turnos visibles son exactamente los definidos por SIC: COM para cada Puesto; no existe supuesto de 2 turnos.
 - TER v1.0 FROZEN y COM v1.0 FROZEN no reciben cambios funcionales.
 - ASI mantiene planificación y auditoría; no se convierte en SoR de Cliente, Personal, geografía, Formato o Rotación.
+
+
+### Contrato de ingreso de personal desde SIC: RRHH — 2026-09-19
+SIC: RRHH debe entregar cada colaborador visible en SGI con adscripción explícita a **Seguridad Física (SF) + Compañía**. SIC: RRHH es SoR de esa relación inicial. SGI no crea ni infiere la membresía laboral; las transferencias operacionales posteriores se orquestan en ASI y se sincronizan de vuelta a SIC: RRHH.

@@ -10,7 +10,7 @@ Usar el logo oficial de SGI: Comando entregado por el usuario. UI administrativa
 Toda arquitectura SGI parte de `Instancia–País`; no se duplican parámetros editables de CORE en SGI.
 
 ## D-004 Compañías
-Las Compañías se definen en SGI: Comando, no en SIC: COM. Una Compañía agrupa aproximadamente 200–400 Agentes de Seguridad más mando/supervisión y puede incluir Escoltas de Seguridad (Ronin).
+La identidad de las Compañías proviene de CORE. SGI: Comando activa y configura su capa operacional (Estado, Zona, Regiones). SIC: COM no es SoR de Compañías. Una Compañía puede agrupar Agentes de Seguridad, mando/supervisión y otros roles operacionales.
 
 ## D-005 Servicios, Puntos y Puestos
 SIC: COM entrega Servicio, Punto y Puesto vendidos. SGI agrega la capa operacional de seguridad sin recrearlos comercialmente.
@@ -436,3 +436,39 @@ SGI-05 se difiere hasta construir ATS. El paquete `.ats` deberá transportar al 
 - La ubicación de Puestos se selecciona sobre el plano real importado y se persiste en coordenadas normalizadas vinculadas a la revisión ATS vigente.
 - Habilidades requeridas del Puesto usan mínimo 1, máximo una en 5, máximo dos en 4, suma máxima 22.
 - Ver `docs/verticals/SER/SER_DECISIONS.md` como decisión canónica vigente.
+
+
+## SER v0.9 — asignación inicial de Servicios
+- SIC: COM es SoR de Cliente/Servicio/Punto/Puesto y no entrega Compañía operativa.
+- Servicio nuevo se mantiene `PENDING` y se visualiza bajo bandeja lógica Kaibil.
+- Kaibil no opera el Servicio; `company_id` permanece NULL hasta la asignación.
+- Presidencia/Director Nacional asignan nacionalmente; Director Zonal por Zona; Jefe Regional por Región.
+
+
+## SER v0.9.1 — retiro y reasignación de Servicios
+- Servicio/Punto conserva su configuración al cambiar de Compañía operadora.
+- Coordinación puede retirar un Servicio a Kaibil según alcance territorial; Kaibil es bandeja lógica y `company_id` queda NULL.
+- Se liberan solo asignaciones futuras; histórico y turno en ejecución permanecen.
+- Reasignación desde Kaibil no requiere aprobación del Coordinador destino.
+- Ver `docs/verticals/SER/SER_DECISIONS.md` para reglas canónicas SER-DEC-082..089.
+
+## VISINT / Impulsos — decisiones transversales
+
+- **SGI-IMP-DEC-001:** la evidencia fotográfica tomada en SGI: Operador para tareas/relevos viaja a VISINT **a través de SGI: Comando**; no se autoriza integración directa SGI_OPR→VISINT.
+- **SGI-IMP-DEC-002:** VISINT es responsable de la validación visual; no es System of Record ni motor de Impulsos.
+- **SGI-IMP-DEC-003:** SGI: Comando es System of Record de reglas, evaluación probabilística, cantidad adjudicada y ledger de Impulsos.
+- **SGI-IMP-DEC-004:** `VISINT PASS` habilita la evaluación de recompensa, pero no garantiza premio. `PASS + NO_AWARD` es un resultado válido.
+- **SGI-IMP-DEC-005:** un resultado visual no conforme no genera Impulsos mediante este flujo.
+- **SGI-IMP-DEC-006:** la probabilidad se resuelve una sola vez por combinación lógica `(task_execution_id, visint_review_id, impulse_rule_version)`; retries/callbacks duplicados deben devolver el resultado existente.
+- **SGI-IMP-DEC-007:** la cantidad mostrada en mockups (por ejemplo `+5`) es ilustrativa de una ejecución; el valor real proviene de la regla vigente en SGI: Comando.
+- **SGI-IMP-DEC-008:** la evaluación VISINT y la evaluación de Impulsos mantienen estados separados para no confundir cumplimiento de tarea con recompensa.
+
+
+## INT-DEC-001 — Interconexiones genéricas / SITC-NOM-001 v3.0 (2026-09-21)
+- Se adopta `SOURCE__TARGET__NNNNN` como referencia estable y `__VNNNN` como revisión maestra.
+- IDs legacy `INT_SOURCE__TARGET__001` quedan solo como alias histórico; no se crean nuevos IDs en ese formato.
+- SGI: Comando usa un único módulo genérico para resolver CORE, caché, transporte, auth, resiliencia y observabilidad.
+- CORE mantiene definiciones y bindings por Instancia PE + ambiente; no transporta el tráfico funcional.
+- La importación del `.sitcpack` acumulativo usa preview/merge y no cambia automáticamente bindings productivos.
+- Sistemas legacy quedan `MANUAL_PENDING` hasta adecuación y prueba por DEV.
+- Todo el resto de verticales SGI: Comando permanece FROZEN.

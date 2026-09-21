@@ -280,3 +280,12 @@
 - Corrección: respuestas HTTP 409 mediante `WebApplicationException(..., Response.Status.CONFLICT)`.
 - Sin cambios funcionales: SGI-00T permanece v0.2 y SGI-06 permanece v0.4.
 
+
+
+## INT v0.1 — 2026-09-21
+- Módulo genérico de interconexiones conforme SITC-NOM-001 v3.0.
+- 24 interconexiones canónicas y 30 interfaces registradas.
+- `SGI_Comando_CURRENT.sitcpack` migra a snapshot v3 importable en CORE; el JSON histórico queda preservado como `SGI_Comando_CURRENT_LEGACY_v0.2.json`.
+- Se agrega COMPONENT_DELTA versionado y SCENARIO_SNAPSHOT acumulativo para CORE.
+- No se modifica UI ni lógica funcional de verticales congeladas.
+- Sin migración de base de datos.

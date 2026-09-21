@@ -30,9 +30,10 @@ public class BitacoraResource {
 
     public record FieldDto(UUID id,UUID accreditationId,String section,int sortOrder,String name,String description,String fieldType,boolean required,boolean evidenceRequired,String captureMode,boolean customField,boolean hasStandardImage,String standardImageOriginalName,int standardImageVersion,String standardImageNotes,boolean visintEnabled) {}
     public record AccreditationDto(UUID id,UUID protocolId,String code,String name,String description,String identificationLogic,String verificationLogic,boolean authPreapproval,boolean authClient,boolean authSupervisor,boolean whiteListEnabled,boolean blackListEnabled,boolean captureManual,boolean captureQr,boolean captureBarcode,boolean captureNfc,boolean captureAutomatic,List<FieldDto> fields) {}
-    public record ProtocolDto(UUID id,UUID seriesId,UUID basedOnProtocolId,UUID postId,String code,String name,String objectType,String applicationType,String description,String status,int versionNo,String sourceModelType,String sourceModelName,Instant lastPublishedAt,String updatedBy,List<AccreditationDto> accreditations) {}
+    public record ProtocolDto(UUID id,UUID seriesId,UUID basedOnProtocolId,UUID postId,String code,String name,String objectType,String applicationType,String description,String status,int versionNo,String sourceModelType,String sourceModelName,Instant lastPublishedAt,String updatedBy,List<UUID> applicablePostIds,List<AccreditationDto> accreditations) {}
     public record CreateProtocolRequest(UUID postId,String name,String objectType,String applicationType) {}
-    public record SaveProtocolRequest(String name,String objectType,String applicationType,String description,String status) {}
+    public record SaveProtocolRequest(String name,String objectType,String applicationType,String description,String status,List<UUID> applicablePostIds) {}
+    public record SaveScopeRequest(List<UUID> applicablePostIds) {}
     public record CreateAccreditationRequest(String name,String description) {}
     public record SaveAccreditationRequest(String name,String description,String identificationLogic,String verificationLogic,boolean authPreapproval,boolean authClient,boolean authSupervisor,boolean whiteListEnabled,boolean blackListEnabled,boolean captureManual,boolean captureQr,boolean captureBarcode,boolean captureNfc,boolean captureAutomatic) {}
     public record SaveFieldRequest(String section,Integer sortOrder,String name,String description,String fieldType,boolean required,boolean evidenceRequired,String captureMode,boolean customField,String standardImageNotes) {}
@@ -65,6 +66,7 @@ public class BitacoraResource {
         if(request==null||request.postId()==null)throw new BadRequestException("Puesto obligatorio");PostEntity post=post(request.postId());PointEntity point=point(post.pointId);scope.requireCompany(point.companyId);
         LogbookProtocol p=new LogbookProtocol();p.id=UUID.randomUUID();p.instanceCountryId=tenant.instanceCountryId();p.seriesId=p.id;p.postId=post.id;p.code=nextProtocolCode();p.name=cleanOrDefault(request.name(),"Nuevo protocolo");p.objectType=normalize(request.objectType(),OBJECT_TYPES,"PAX","Objeto inválido");p.applicationType=normalize(request.applicationType(),APPLICATION_TYPES,"INGRESO","Aplicación inválida");p.description="";p.status="BORRADOR";p.versionNo=1;
         p.identificationLogic="ALL";p.verificationLogic="ALL";p.authPreapproval=true;p.authClient=true;p.authSupervisor=false;p.whiteListEnabled=true;p.blackListEnabled=true;p.captureManual=true;p.captureQr=true;p.captureBarcode=false;p.captureNfc=false;p.captureAutomatic=false;p.sourceModelType="LOCAL";p.updatedByUsername=user();p.persist();
+        setScope(p,List.of(post.id));
         LogbookAccreditation accreditation=createDefaultAccreditation(p,"Acreditación principal","Perfil inicial de acreditación del protocolo.");seedDefaultFields(p,accreditation);return dto(p);
     }
 
@@ -74,7 +76,25 @@ public class BitacoraResource {
     @Transactional
     @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
     public ProtocolDto save(@PathParam("protocolId") UUID protocolId,SaveProtocolRequest request){
-        LogbookProtocol p=protocol(protocolId);authorize(p);requireDraft(p);if(request==null)throw new BadRequestException("Solicitud obligatoria");if(request.name()==null||request.name().isBlank())throw new BadRequestException("El nombre del protocolo es obligatorio");p.name=request.name().trim();p.objectType=normalize(request.objectType(),OBJECT_TYPES,p.objectType,"Objeto inválido");p.applicationType=normalize(request.applicationType(),APPLICATION_TYPES,p.applicationType,"Aplicación inválida");p.description=request.description()==null?"":request.description().trim();p.status="BORRADOR";p.updatedByUsername=user();return dto(p);
+        LogbookProtocol p=protocol(protocolId);authorize(p);requireDraft(p);if(request==null)throw new BadRequestException("Solicitud obligatoria");if(request.name()==null||request.name().isBlank())throw new BadRequestException("El nombre del protocolo es obligatorio");p.name=request.name().trim();p.objectType=normalize(request.objectType(),OBJECT_TYPES,p.objectType,"Objeto inválido");p.applicationType=normalize(request.applicationType(),APPLICATION_TYPES,p.applicationType,"Aplicación inválida");p.description=request.description()==null?"":request.description().trim();p.status="BORRADOR";p.updatedByUsername=user();setScope(p,request.applicablePostIds());return dto(p);
+    }
+
+
+    @PUT
+    @Path("/protocols/{protocolId}/scope")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Transactional
+    @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
+    public ProtocolDto saveScope(@PathParam("protocolId") UUID protocolId,SaveScopeRequest request){
+        LogbookProtocol p=protocol(protocolId);authorize(p);
+        if(request==null)throw new BadRequestException("Solicitud obligatoria");
+        setScope(p,request.applicablePostIds());
+        if(!"BORRADOR".equals(p.status)){
+            if(scopeIds(p).isEmpty())p.status="INACTIVO";
+            else activateVersion(p);
+        }
+        p.updatedByUsername=user();
+        return dto(p);
     }
 
     @POST
@@ -84,6 +104,7 @@ public class BitacoraResource {
     public ProtocolDto fork(@PathParam("protocolId") UUID protocolId){
         LogbookProtocol source=protocol(protocolId);authorize(source);LogbookProtocol existing=LogbookProtocol.find("instanceCountryId=?1 and seriesId=?2 and status='BORRADOR'",tenant.instanceCountryId(),source.seriesId).firstResult();if(existing!=null)return dto(existing);
         LogbookProtocol target=new LogbookProtocol();target.id=UUID.randomUUID();target.instanceCountryId=tenant.instanceCountryId();target.seriesId=source.seriesId;target.basedOnProtocolId=source.id;target.postId=source.postId;target.code=source.code;target.name=source.name;target.objectType=source.objectType;target.applicationType=source.applicationType;target.description=source.description;target.status="BORRADOR";target.versionNo=source.versionNo+1;target.identificationLogic=source.identificationLogic;target.verificationLogic=source.verificationLogic;target.authPreapproval=source.authPreapproval;target.authClient=source.authClient;target.authSupervisor=source.authSupervisor;target.whiteListEnabled=source.whiteListEnabled;target.blackListEnabled=source.blackListEnabled;target.captureManual=source.captureManual;target.captureQr=source.captureQr;target.captureBarcode=source.captureBarcode;target.captureNfc=source.captureNfc;target.captureAutomatic=source.captureAutomatic;target.sourceModelType=source.sourceModelType;target.sourceModelName=source.sourceModelName;target.updatedByUsername=user();target.persist();
+        setScope(target,scopeIds(source));
         for(LogbookAccreditation old:accreditations(source.id)){LogbookAccreditation copy=cloneAccreditation(old,target.id);for(LogbookProtocolField field:fields(old.id))cloneField(field,target.id,copy.id);}
         return dto(target);
     }
@@ -93,8 +114,25 @@ public class BitacoraResource {
     @Transactional
     @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
     public ProtocolDto publish(@PathParam("protocolId") UUID protocolId){
-        LogbookProtocol p=protocol(protocolId);authorize(p);requireDraft(p);List<LogbookAccreditation> accreditations=accreditations(p.id);if(accreditations.isEmpty())throw new BadRequestException("El protocolo debe tener al menos una acreditación");for(LogbookAccreditation accreditation:accreditations){long identification=LogbookProtocolField.count("accreditationId=?1 and instanceCountryId=?2 and section='IDENTIFICACION'",accreditation.id,tenant.instanceCountryId());if(identification==0)throw new BadRequestException("La acreditación "+accreditation.code+" debe tener al menos un campo de identificación");}
-        List<LogbookProtocol> active=LogbookProtocol.list("instanceCountryId=?1 and seriesId=?2 and status='VIGENTE'",tenant.instanceCountryId(),p.seriesId);for(LogbookProtocol previous:active)previous.status="NO_VIGENTE";p.status="VIGENTE";p.lastPublishedAt=Instant.now();p.updatedByUsername=user();return dto(p);
+        LogbookProtocol p=protocol(protocolId);authorize(p);requireDraft(p);List<LogbookAccreditation> accreditations=accreditations(p.id);if(accreditations.isEmpty())throw new BadRequestException("El protocolo debe tener al menos una acreditación");if(accreditations.size()>10)throw new BadRequestException("El protocolo no puede contener más de 10 acreditaciones");for(LogbookAccreditation accreditation:accreditations){long identification=LogbookProtocolField.count("accreditationId=?1 and instanceCountryId=?2 and section='IDENTIFICACION'",accreditation.id,tenant.instanceCountryId());if(identification==0)throw new BadRequestException("La acreditación "+accreditation.code+" debe tener al menos un campo de identificación");}
+        if(scopeIds(p).isEmpty())p.status="INACTIVO";else activateVersion(p);p.lastPublishedAt=Instant.now();p.updatedByUsername=user();return dto(p);
+    }
+
+    @POST
+    @Path("/protocols/{protocolId}/activate")
+    @Transactional
+    @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
+    public ProtocolDto activate(@PathParam("protocolId") UUID protocolId){
+        LogbookProtocol p=protocol(protocolId);authorize(p);if(!"INACTIVO".equals(p.status)&&!"ACTIVO".equals(p.status))throw new ClientErrorException("Solo un Protocolo inactivo puede activarse.",409);if("ACTIVO".equals(p.status))return dto(p);
+        List<LogbookProtocol> active=LogbookProtocol.list("instanceCountryId=?1 and seriesId=?2 and status='ACTIVO'",tenant.instanceCountryId(),p.seriesId);for(LogbookProtocol previous:active)previous.status="INACTIVO";p.status="ACTIVO";p.updatedByUsername=user();return dto(p);
+    }
+
+    @POST
+    @Path("/protocols/{protocolId}/deactivate")
+    @Transactional
+    @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
+    public ProtocolDto deactivate(@PathParam("protocolId") UUID protocolId){
+        LogbookProtocol p=protocol(protocolId);authorize(p);if(!"ACTIVO".equals(p.status))throw new ClientErrorException("Solo un Protocolo activo puede inactivarse.",409);p.status="INACTIVO";p.updatedByUsername=user();return dto(p);
     }
 
     @POST
@@ -102,7 +140,7 @@ public class BitacoraResource {
     @Consumes(MediaType.APPLICATION_JSON)
     @Transactional
     @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
-    public AccreditationDto createAccreditation(@PathParam("protocolId") UUID protocolId,CreateAccreditationRequest request){LogbookProtocol p=protocol(protocolId);authorize(p);requireDraft(p);String name=cleanOrDefault(request==null?null:request.name(),"Nueva acreditación");String description=request==null||request.description()==null?"":request.description().trim();LogbookAccreditation accreditation=createDefaultAccreditation(p,name,description);if("PAX".equals(p.objectType))seedDefaultFields(p,accreditation);p.updatedByUsername=user();return accreditationDto(accreditation);}
+    public AccreditationDto createAccreditation(@PathParam("protocolId") UUID protocolId,CreateAccreditationRequest request){LogbookProtocol p=protocol(protocolId);authorize(p);requireDraft(p);long count=LogbookAccreditation.count("protocolId=?1 and instanceCountryId=?2",p.id,tenant.instanceCountryId());if(count>=10)throw new BadRequestException("Este Protocolo ya alcanzó el máximo de 10 acreditaciones. Para continuar, crea un nuevo Protocolo.");String name=cleanOrDefault(request==null?null:request.name(),"Nueva acreditación");String description=request==null||request.description()==null?"":request.description().trim();LogbookAccreditation accreditation=createDefaultAccreditation(p,name,description);if("PAX".equals(p.objectType))seedDefaultFields(p,accreditation);p.updatedByUsername=user();return accreditationDto(accreditation);}
 
     @PUT
     @Path("/accreditations/{accreditationId}")
@@ -162,17 +200,61 @@ public class BitacoraResource {
     private void seedDefaultFields(LogbookProtocol p,LogbookAccreditation a){if(!"PAX".equals(p.objectType))return;createSeedField(p,a,"IDENTIFICACION",1,"Cédula","Documento oficial de identidad.","DOCUMENTO",true,true,"MANUAL_QR",false);createSeedField(p,a,"IDENTIFICACION",2,"Pasaporte","Documento de viaje cuando aplique.","DOCUMENTO",false,true,"MANUAL",false);createSeedField(p,a,"IDENTIFICACION",3,"Credencial","Credencial emitida por el cliente o tercero autorizado.","DOCUMENTO",true,true,"MANUAL_QR",false);createSeedField(p,a,"IDENTIFICACION",4,"Rostro","Fotografía frontal de la persona.","IMAGEN",true,true,"CAMARA",false);createSeedField(p,a,"VERIFICACION",1,"Persona en lista autorizada","Validar que la persona conste en la lista aplicable.","TEXTO",true,false,"MANUAL",false);createSeedField(p,a,"VERIFICACION",2,"Empresa","Empresa u organización a la que pertenece.","TEXTO",true,false,"MANUAL",false);createSeedField(p,a,"VERIFICACION",3,"Motivo de visita","Motivo declarado y validado del ingreso.","TEXTO",true,false,"MANUAL",false);createSeedField(p,a,"VERIFICACION",4,"Persona anfitriona","Persona responsable de recibir al visitante.","TEXTO",true,false,"MANUAL",false);}
     private void createSeedField(LogbookProtocol p,LogbookAccreditation a,String section,int order,String name,String description,String type,boolean required,boolean evidence,String capture,boolean custom){LogbookProtocolField f=new LogbookProtocolField();f.instanceCountryId=tenant.instanceCountryId();f.protocolId=p.id;f.accreditationId=a.id;f.section=section;f.sortOrder=order;f.name=name;f.description=description;f.fieldType=type;f.required=required;f.evidenceRequired=evidence;f.captureMode=capture;f.customField=custom;f.standardImageVersion=0;f.standardImageNotes="";f.visintEnabled=false;f.persist();}
 
-    private int rank(LogbookProtocol p){return "BORRADOR".equals(p.status)?3:"VIGENTE".equals(p.status)?2:1;}
+    private void activateVersion(LogbookProtocol p){
+        List<LogbookProtocol> active=LogbookProtocol.list("instanceCountryId=?1 and seriesId=?2 and status='ACTIVO' and id<>?3",tenant.instanceCountryId(),p.seriesId,p.id);
+        for(LogbookProtocol previous:active){
+            previous.status="INACTIVO";
+            previous.updatedByUsername=user();
+            LogbookProtocolPostScope.delete("protocolId=?1 and instanceCountryId=?2",previous.id,tenant.instanceCountryId());
+        }
+        p.status="ACTIVO";
+    }
+    private int rank(LogbookProtocol p){return "BORRADOR".equals(p.status)?2:1;}
     private void requireDraft(LogbookProtocol p){if(!"BORRADOR".equals(p.status))throw new ClientErrorException("La versión publicada es inmutable. Cree una nueva versión en borrador para editar.",409);}
     private int nextSort(UUID accreditationId,String section){List<LogbookProtocolField> rows=LogbookProtocolField.list("accreditationId=?1 and instanceCountryId=?2 and section=?3 order by sortOrder desc",accreditationId,tenant.instanceCountryId(),section);return rows.isEmpty()?1:rows.get(0).sortOrder+1;}
     private String nextProtocolCode(){List<LogbookProtocol> all=LogbookProtocol.list("instanceCountryId=?1",tenant.instanceCountryId());long count=all.stream().map(p->p.seriesId).distinct().count();return String.format(Locale.ROOT,"PRO-BA-%04d",count+1);}
-    private String nextAccreditationCode(UUID protocolId){return String.format(Locale.ROOT,"ACC-%03d",LogbookAccreditation.count("protocolId=?1 and instanceCountryId=?2",protocolId,tenant.instanceCountryId())+1);}
+    private String nextAccreditationCode(UUID protocolId){
+        // Codes are identifiers, not a live-count. If an accreditation is deleted from a
+        // draft, reusing count+1 can collide with an existing code (e.g. 7 rows while
+        // ACC-010 still exists => count+1 would incorrectly try ACC-008).
+        // Always advance from the highest numeric suffix already used in this protocol.
+        int max=0;
+        List<LogbookAccreditation> rows=LogbookAccreditation.list(
+            "protocolId=?1 and instanceCountryId=?2",protocolId,tenant.instanceCountryId());
+        for(LogbookAccreditation row:rows){
+            if(row.code==null)continue;
+            String code=row.code.trim().toUpperCase(Locale.ROOT);
+            if(!code.startsWith("ACC-"))continue;
+            try{max=Math.max(max,Integer.parseInt(code.substring(4)));}
+            catch(NumberFormatException ignored){/* Imported/non-canonical code: do not reuse it. */}
+        }
+        return String.format(Locale.ROOT,"ACC-%03d",max+1);
+    }
     private String cleanOrDefault(String value,String fallback){return value==null||value.isBlank()?fallback:value.trim();}
     private String normalize(String value,Set<String> allowed,String fallback,String message){String v=value==null||value.isBlank()?fallback:value.trim().toUpperCase(Locale.ROOT);if(v==null||!allowed.contains(v))throw new BadRequestException(message);return v;}
     private String user(){return identity.getPrincipal().getName();}
-    private ProtocolDto dto(LogbookProtocol p){return new ProtocolDto(p.id,p.seriesId,p.basedOnProtocolId,p.postId,p.code,p.name,p.objectType,p.applicationType,p.description,p.status,p.versionNo,p.sourceModelType,p.sourceModelName,p.lastPublishedAt,p.updatedByUsername,accreditations(p.id).stream().map(this::accreditationDto).toList());}
+    private ProtocolDto dto(LogbookProtocol p){return new ProtocolDto(p.id,p.seriesId,p.basedOnProtocolId,p.postId,p.code,p.name,p.objectType,p.applicationType,p.description,p.status,p.versionNo,p.sourceModelType,p.sourceModelName,p.lastPublishedAt,p.updatedByUsername,scopeIds(p),accreditations(p.id).stream().map(this::accreditationDto).toList());}
     private AccreditationDto accreditationDto(LogbookAccreditation a){List<LogbookProtocolField> fields=fields(a.id);return new AccreditationDto(a.id,a.protocolId,a.code,a.name,a.description,a.identificationLogic,a.verificationLogic,a.authPreapproval,a.authClient,a.authSupervisor,a.whiteListEnabled,a.blackListEnabled,a.captureManual,a.captureQr,a.captureBarcode,a.captureNfc,a.captureAutomatic,fields.stream().map(this::fieldDto).toList());}
     private FieldDto fieldDto(LogbookProtocolField f){return new FieldDto(f.id,f.accreditationId,f.section,f.sortOrder,f.name,f.description,f.fieldType,f.required,f.evidenceRequired,f.captureMode,f.customField,f.standardImageData!=null&&f.standardImageData.length>0,f.standardImageOriginalName,f.standardImageVersion,f.standardImageNotes,f.visintEnabled);}
+
+    private List<UUID> scopeIds(LogbookProtocol p){
+        return LogbookProtocolPostScope.<LogbookProtocolPostScope>list("instanceCountryId=?1 and protocolId=?2 order by createdAt",tenant.instanceCountryId(),p.id).stream().map(x->x.postId).toList();
+    }
+    private void setScope(LogbookProtocol p,List<UUID> postIds){
+        PostEntity anchorPost=post(p.postId);
+        LinkedHashSet<UUID> unique=new LinkedHashSet<>();
+        if(postIds!=null)unique.addAll(postIds);
+        LogbookProtocolPostScope.delete("protocolId=?1 and instanceCountryId=?2",p.id,tenant.instanceCountryId());
+        for(UUID id:unique){
+            PostEntity candidate=post(id);
+            if(!candidate.pointId.equals(anchorPost.pointId))throw new BadRequestException("Todos los Puestos del alcance deben pertenecer al mismo Punto");
+            LogbookProtocolPostScope scopeRow=new LogbookProtocolPostScope();
+            scopeRow.instanceCountryId=tenant.instanceCountryId();
+            scopeRow.protocolId=p.id;
+            scopeRow.postId=id;
+            scopeRow.persist();
+        }
+    }
     private List<LogbookAccreditation> accreditations(UUID protocolId){return LogbookAccreditation.list("protocolId=?1 and instanceCountryId=?2 order by code",protocolId,tenant.instanceCountryId());}
     private List<LogbookProtocolField> fields(UUID accreditationId){return LogbookProtocolField.list("accreditationId=?1 and instanceCountryId=?2 order by section,sortOrder,name",accreditationId,tenant.instanceCountryId());}
     private void authorize(LogbookProtocol p){PostEntity post=post(p.postId);PointEntity point=point(post.pointId);scope.requireCompany(point.companyId);}

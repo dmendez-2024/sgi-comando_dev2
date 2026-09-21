@@ -350,3 +350,20 @@ Este archivo registra interconexiones que deben representarse posteriormente en 
 - Hechos: cobertura publicada, cobertura actual, vacantes, asignaciones posteriores, Reasignaciones.
 - Fan-out mediante Outbox cuando corresponda.
 
+
+
+## Actualización 2026-09-19 — CORE / SIC: RRHH / SIC: COM / SER v0.9
+- **CORE** es SoR de identidad de Compañía; COM v1.1.3 queda FROZEN.
+- **SIC: RRHH** es SoR de la relación persona–Compañía. Para ingreso a SGI debe entregar personal adscrito a **Seguridad Física (SF) + Compañía**.
+- **SIC: COM** es SoR de `Servicio = Cliente + Punto` y sus Puestos; no determina Compañía operativa.
+- **SER v0.9** recibe Servicios nuevos con Compañía pendiente (`company_id = NULL`), los presenta en bandeja lógica **Kaibil** y Coordinación asigna la Compañía operativa según ámbito. Kaibil no opera Servicios de clientes.
+- Tras la asignación inicial se habilita Configuración del Punto; mover posteriormente un Servicio ya asignado queda fuera de v0.9.
+
+
+## Actualización 2026-09-19 — SER v0.9.1 / movimiento de Servicios
+- **SER** conserva la asignación operacional de Compañía separada del maestro comercial de **SIC: COM**.
+- Un Servicio asignado puede regresar a la bandeja lógica **Kaibil** mediante `RETURN_TO_COORDINATION`, dejando `point.company_id = NULL` y `operational_assignment_status = PENDING`.
+- La configuración del Punto permanece ligada al mismo `point_id`; no se copia ni se borra durante el cambio de Compañía.
+- Asignaciones futuras de personal se liberan de planificación activa, conservando histórico; turnos actualmente en ejecución se dejan finalizar.
+- `point.operational_transition_until` impide nueva cobertura antes del cierre del turno heredado.
+- Desde Kaibil puede ejecutarse `REASSIGNMENT_FROM_COORDINATION` a una nueva Compañía autorizada, sin aceptación del Coordinador destino.

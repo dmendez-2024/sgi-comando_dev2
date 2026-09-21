@@ -19,7 +19,7 @@ import java.util.*;
 @Path("/api/consignments")
 @Produces(MediaType.APPLICATION_JSON)
 public class ConsignmentResource {
- private static final Set<String> PROTOCOL_STATUS=Set.of("BORRADOR","PUBLICADO","VIGENTE","NO_VIGENTE");
+ private static final Set<String> PROTOCOL_STATUS=Set.of("BORRADOR","INACTIVO","ACTIVO");
  private static final Set<String> PRIORITIES=Set.of("LOW","MEDIUM","HIGH","CRITICAL");
  private static final Set<String> SCOPES=Set.of("POINT","POSTS");
  private static final Set<String> VALIDITIES=Set.of("PERMANENT","TEMPORARY");
@@ -62,7 +62,7 @@ public class ConsignmentResource {
  @GET
  @Path("/protocols/current")
  @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION","SUPERVISOR_SEGURIDAD","AGENTE_SEGURIDAD","CLIENTE"})
- public ProtocolDto current(@QueryParam("pointId") UUID pointId){PointEntity point=point(pointId);scope.requireCompany(point.companyId);ConsignmentProtocol p=ConsignmentProtocol.find("instanceCountryId=?1 and pointId=?2 and status='VIGENTE'",tenant.instanceCountryId(),pointId).firstResult();return p==null?null:dto(p);}
+ public ProtocolDto current(@QueryParam("pointId") UUID pointId){PointEntity point=point(pointId);scope.requireCompany(point.companyId);ConsignmentProtocol p=ConsignmentProtocol.find("instanceCountryId=?1 and pointId=?2 and status='ACTIVO'",tenant.instanceCountryId(),pointId).firstResult();return p==null?null:dto(p);}
 
  @GET
  @Path("/protocols/{id}/history")
@@ -103,11 +103,7 @@ public class ConsignmentResource {
  @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
  public ProtocolDto publish(@PathParam("id")UUID id) throws Exception{
    ConsignmentProtocol p=protocol(id);authorize(p);requireDraft(p);List<Consignment> items=consignments(p.id);if(items.isEmpty())throw new BadRequestException("El protocolo debe contener al menos una Consigna");for(Consignment c:items)validate(c);
-   ConsignmentProtocol sameActive=ConsignmentProtocol.find("instanceCountryId=?1 and pointId=?2 and seriesId=?3 and status='VIGENTE'",tenant.instanceCountryId(),p.pointId,p.seriesId).firstResult();
-   List<ConsignmentProtocol> oldSeries=ConsignmentProtocol.list("instanceCountryId=?1 and seriesId=?2 and id<>?3 and status<>'BORRADOR'",tenant.instanceCountryId(),p.seriesId,p.id);for(ConsignmentProtocol old:oldSeries)if(!"VIGENTE".equals(old.status))old.status="NO_VIGENTE";
-   p.publishedAt=Instant.now();p.updatedByUsername=user();
-   if(sameActive!=null){ConsignmentProtocol.update("status='NO_VIGENTE' where id=?1 and instanceCountryId=?2",sameActive.id,tenant.instanceCountryId());p.status="VIGENTE";p.activatedAt=Instant.now();}else{ConsignmentProtocol anyActive=ConsignmentProtocol.find("instanceCountryId=?1 and pointId=?2 and status='VIGENTE'",tenant.instanceCountryId(),p.pointId).firstResult();if(anyActive==null){p.status="VIGENTE";p.activatedAt=Instant.now();}else p.status="PUBLICADO";}
-   String itemStatus="VIGENTE".equals(p.status)?"VIGENTE":"PUBLICADO";for(Consignment c:items){c.status=itemStatus;c.publishedAt=p.publishedAt;}
+   p.publishedAt=Instant.now();p.status="INACTIVO";p.activatedAt=null;p.updatedByUsername=user();for(Consignment c:items){c.status="PUBLICADO";c.publishedAt=p.publishedAt;}
    OutboxEvent.of(tenant.instanceCountryId(),"CONSIGNMENT_PROTOCOL",p.id,"CONSIGNMENT_PROTOCOL_PUBLISHED",mapper.writeValueAsString(Map.of("protocolId",p.id,"pointId",p.pointId,"code",p.code,"version",p.versionNo,"status",p.status))).persist();
    return dto(p);
  }
@@ -117,9 +113,17 @@ public class ConsignmentResource {
  @Transactional
  @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
  public ProtocolDto activate(@PathParam("id")UUID id){
-   ConsignmentProtocol p=protocol(id);authorize(p);if(!"PUBLICADO".equals(p.status)&&!"VIGENTE".equals(p.status))throw new ClientErrorException("Solo un Protocolo publicado puede activarse.",409);if("VIGENTE".equals(p.status))return dto(p);
-   List<ConsignmentProtocol> active=ConsignmentProtocol.list("instanceCountryId=?1 and pointId=?2 and status='VIGENTE'",tenant.instanceCountryId(),p.pointId);for(ConsignmentProtocol old:active){ConsignmentProtocol.update("status='PUBLICADO' where id=?1 and instanceCountryId=?2",old.id,tenant.instanceCountryId());for(Consignment c:consignments(old.id))c.status="PUBLICADO";}
-   p.status="VIGENTE";p.activatedAt=Instant.now();p.updatedByUsername=user();for(Consignment c:consignments(p.id))c.status="VIGENTE";return dto(p);
+   ConsignmentProtocol p=protocol(id);authorize(p);if(!"INACTIVO".equals(p.status)&&!"ACTIVO".equals(p.status))throw new ClientErrorException("Solo un Protocolo inactivo puede activarse.",409);if("ACTIVO".equals(p.status))return dto(p);
+   List<ConsignmentProtocol> active=ConsignmentProtocol.list("instanceCountryId=?1 and pointId=?2 and status='ACTIVO'",tenant.instanceCountryId(),p.pointId);for(ConsignmentProtocol old:active){old.status="INACTIVO";for(Consignment c:consignments(old.id))c.status="PUBLICADO";}
+   p.status="ACTIVO";p.activatedAt=Instant.now();p.updatedByUsername=user();for(Consignment c:consignments(p.id))c.status="VIGENTE";return dto(p);
+ }
+
+ @POST
+ @Path("/protocols/{id}/deactivate")
+ @Transactional
+ @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
+ public ProtocolDto deactivate(@PathParam("id")UUID id){
+   ConsignmentProtocol p=protocol(id);authorize(p);if(!"ACTIVO".equals(p.status))throw new ClientErrorException("Solo un Protocolo activo puede inactivarse.",409);p.status="INACTIVO";p.updatedByUsername=user();for(Consignment c:consignments(p.id))c.status="PUBLICADO";return dto(p);
  }
 
  @POST
@@ -128,7 +132,7 @@ public class ConsignmentResource {
  @Transactional
  @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
  public ConsignmentDto createConsignment(@PathParam("protocolId")UUID protocolId,CreateConsignmentRequest req){
-   ConsignmentProtocol p=protocol(protocolId);authorize(p);requireDraft(p);Consignment c=new Consignment();c.instanceCountryId=tenant.instanceCountryId();c.protocolId=p.id;c.pointId=p.pointId;c.code=nextConsignmentCode();c.title=clean(req==null?null:req.title(),"Nueva consigna");c.instruction="";c.priority="MEDIUM";c.status="BORRADOR";c.scopeType="POINT";c.validityType="PERMANENT";c.applicationType="ALL_TIME";c.applicationDaysJson="[]";c.acknowledgmentRequired=false;c.confirmationRequired=true;c.evidenceRequired=false;c.gpsRequired=false;c.observationRequired=false;c.expectedLocationMode="NONE";c.updatedByUsername=user();c.persist();return itemDto(c);
+   ConsignmentProtocol p=protocol(protocolId);authorize(p);requireDraft(p);if(consignments(p.id).size()>=20)throw new ClientErrorException("Este Protocolo ya alcanzó el máximo de 20 Consignas. Cree un nuevo Protocolo para continuar.",409);Consignment c=new Consignment();c.instanceCountryId=tenant.instanceCountryId();c.protocolId=p.id;c.pointId=p.pointId;c.code=nextConsignmentCode();c.title=clean(req==null?null:req.title(),"Nueva consigna");c.instruction="";c.priority="MEDIUM";c.status="BORRADOR";c.scopeType="POINT";c.validityType="PERMANENT";c.applicationType="ALL_TIME";c.applicationDaysJson="[]";c.acknowledgmentRequired=false;c.confirmationRequired=true;c.evidenceRequired=false;c.gpsRequired=false;c.observationRequired=false;c.expectedLocationMode="NONE";c.updatedByUsername=user();c.persist();return itemDto(c);
  }
 
  @PUT
@@ -202,7 +206,7 @@ public class ConsignmentResource {
  private List<Consignment> consignments(UUID protocolId){return Consignment.list("protocolId=?1 and instanceCountryId=?2 order by code",protocolId,tenant.instanceCountryId());}
  private List<ConsignmentPostScope> scopes(UUID id){return ConsignmentPostScope.list("consignmentId=?1 and instanceCountryId=?2 order by createdAt",id,tenant.instanceCountryId());}
  private List<ConsignmentEvidence> evidences(UUID id){return ConsignmentEvidence.list("consignmentId=?1 and instanceCountryId=?2 order by sortOrder",id,tenant.instanceCountryId());}
- private int rank(ConsignmentProtocol p){return "BORRADOR".equals(p.status)?4:"VIGENTE".equals(p.status)?3:"PUBLICADO".equals(p.status)?2:1;}
+ private int rank(ConsignmentProtocol p){return "BORRADOR".equals(p.status)?2:1;}
  private void requireDraft(ConsignmentProtocol p){if(!"BORRADOR".equals(p.status))throw new ClientErrorException("La versión publicada es inmutable. Edite el Protocolo para generar una nueva versión borrador.",409);}
  private void authorize(ConsignmentProtocol p){PointEntity point=point(p.pointId);scope.requireCompany(point.companyId);}
  private PointEntity point(UUID id){if(id==null)throw new BadRequestException("pointId obligatorio");PointEntity p=PointEntity.find("id=?1 and instanceCountryId=?2",id,tenant.instanceCountryId()).firstResult();if(p==null)throw new NotFoundException("Punto no encontrado");return p;}

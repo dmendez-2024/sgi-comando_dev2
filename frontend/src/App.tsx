@@ -4,8 +4,13 @@ import Header from './components/Header';
 import Dashboard from './pages/Dashboard';
 import Companies from './pages/Companies';
 import Services from './pages/Services';
+import Coordination from './pages/Coordination';
 import Assignments from './pages/Assignments';
 import Territory from './pages/Territory';
+import BitacoraGlobal from './pages/BitacoraGlobal';
+import ConsolaMonitor from './pages/ConsolaMonitor';
+import ConsignasExecution from './pages/ConsignasExecution';
+import NovedadesExecution from './pages/NovedadesExecution';
 import Placeholder from './pages/Placeholder';
 
 export default function App() {
@@ -20,8 +25,18 @@ export default function App() {
       ? <Companies />
       : active === 'Servicios'
         ? <Services />
+      : active === 'Coordinación'
+        ? <Coordination />
       : active === 'Asignaciones'
         ? <Assignments />
+      : active === 'Consola'
+        ? <ConsolaMonitor />
+      : active === 'Bitácora'
+        ? <BitacoraGlobal />
+      : active === 'Consignas'
+        ? <ConsignasExecution />
+      : active === 'Novedades'
+        ? <NovedadesExecution />
         : <Placeholder name={active} />;
 
   const title = active === 'Dashboard' ? 'Comando Operacional' : active;

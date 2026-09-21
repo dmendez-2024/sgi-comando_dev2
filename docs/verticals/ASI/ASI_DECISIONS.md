@@ -60,3 +60,109 @@ La tarjeta de asignación usa `CP` como abreviatura visible de **Compatibilidad 
 
 ## ASI-DEC-040 — Auditoría bajo demanda
 La autoría de una asignación no ocupa espacio permanente en la grilla. Click y soltar sobre la tarjeta abre el detalle con resumen de persona, evolución ID, Compatibilidad del Puesto e historial de la asignación puntual.
+
+---
+
+# Apertura ASI v0.7 — Transferencias entre Compañías
+
+**Fecha:** 2026-09-19  
+**Estado:** UAT
+
+## ASI-DEC-041 — SIC: RRHH conserva el SoR persona–Compañía
+La relación laboral entre colaborador y Compañía pertenece a **SIC: RRHH**. SGI: Comando orquesta la solicitud operacional de transferencia y mantiene trazabilidad, pero no crea un maestro paralelo de relación laboral.
+
+## ASI-DEC-042 — Origen inicia; destino acepta
+Nadie puede “jalar” un colaborador desde otra Compañía. La Compañía de origen inicia la transferencia de una persona que actualmente le pertenece y la Compañía destino debe **Aceptar transferencia** o **Rechazar transferencia**.
+
+## ASI-DEC-043 — Estados de transferencia
+Estados canónicos:
+1. `PENDING_ACCEPTANCE` — pendiente de aceptación.
+2. `ACCEPTED_PENDING_EFFECTIVE` — aceptada pero existe un turno actual que debe terminar.
+3. `EFFECTIVE` — transferencia efectiva.
+4. `REJECTED` — rechazada por destino.
+5. `CANCELLED` — anulada por origen mientras estaba pendiente.
+
+Solo `PENDING_ACCEPTANCE` puede anularse por el origen. Una transferencia aceptada es una transacción irreversible/no editable; una transferencia futura nueva puede volver a mover al colaborador.
+
+## ASI-DEC-044 — Asignaciones futuras se liberan al enviar
+Al iniciar la transferencia se liberan/cancelan inmediatamente todas las asignaciones futuras del colaborador en la Compañía origen, aun antes de la aceptación del destino.
+
+- Histórico ejecutado: no cambia.
+- Turno actualmente en ejecución: no cambia.
+- Transferencias pendientes bloquean nuevas asignaciones futuras.
+- Si la transferencia es rechazada o anulada, las asignaciones liberadas **no se reconstruyen automáticamente**.
+
+## ASI-DEC-045 — Momento efectivo
+Si el destino acepta mientras existe un turno en ejecución, la transferencia se registra como aceptada pero se hace efectiva al finalizar dicho turno. Si no existe turno en ejecución, se hace efectiva inmediatamente.
+
+## ASI-DEC-046 — Motivo y Observaciones
+Toda transferencia requiere:
+- Motivo obligatorio desde catálogo.
+- Observaciones obligatorias, máximo 500 caracteres.
+
+Catálogo inicial:
+- Necesidad operativa.
+- Reestructuración.
+- Promoción / cambio de función.
+- Solicitud del colaborador.
+- Desempeño.
+- Medida disciplinaria.
+- Otro.
+
+## ASI-DEC-047 — Visibilidad en Personal disponible
+El filtro de estado de `Personal disponible` incorpora:
+- Transferencias salientes.
+- Transferencias entrantes.
+
+Una persona con transferencia abierta deja de ser `Disponible`. En origen se marca `Saliente`; en destino se marca `Entrante`.
+
+## ASI-DEC-048 — Acciones canónicas
+Término funcional: **Transferencia**, no Asignación.
+
+Acciones:
+- `Transferir a otra Compañía`.
+- `Aceptar transferencia`.
+- `Rechazar transferencia`.
+- `Anular transferencia`.
+
+## ASI-DEC-049 — Permisos de Compañías normales
+En una Compañía distinta de Kaibil, únicamente:
+- Coordinador de Compañía.
+- Asistente de Coordinación.
+
+pueden iniciar transferencias de personal de su propia Compañía y aceptar/rechazar transferencias dirigidas a esa Compañía.
+
+## ASI-DEC-050 — Permisos de Kaibil
+Para personal de Kaibil:
+- Presidencia: ámbito nacional.
+- Director Nacional: ámbito nacional.
+- Director Zonal: limitado a sus Zonas.
+- Jefe Regional: limitado a sus Regiones.
+
+Para transferencias hacia/desde Kaibil, Director Zonal y Jefe Regional se validan contra el territorio de la Compañía contraparte.
+
+## ASI-DEC-051 — Una sola transferencia abierta
+Un colaborador no puede tener dos transferencias simultáneas en estado abierto.
+
+## ASI-DEC-052 — Trazabilidad e integración RRHH
+Toda transferencia registra origen, destino, motivo, observaciones, iniciador, fecha, decisión, actor de decisión, fecha efectiva y número de asignaciones futuras liberadas. La efectivización genera un evento de integración para SIC: RRHH. En UAT el snapshot local se actualiza como adaptador de una confirmación simulada de RRHH.
+
+## ASI-DEC-053 — Coordinación futura
+Se reserva una futura página **Coordinación**, ubicada en navegación entre Servicios y Asignaciones, para crear Puestos de Coordinación (p. ej. ruta de supervisión, turno de monitoreo). Esta función NO forma parte de ASI v0.7.
+
+
+## ASI-DEC-054 — Kaibil como contexto inicial de liderazgo
+En Asignaciones, los perfiles **Presidencia, Director Nacional, Director Zonal y Jefe Regional** abren por defecto la Compañía **Kaibil** cuando esta se encuentra dentro de su catálogo visible. Kaibil es el contexto inicial, no una restricción de navegación.
+
+## ASI-DEC-055 — Selector de Compañía persistente para liderazgo
+Para Presidencia, Director Nacional, Director Zonal y Jefe Regional, el selector de Compañía debe permanecer visible en todo momento, incluso cuando la Compañía seleccionada sea Kaibil. Las Compañías visibles continúan limitadas por el ámbito territorial entregado por backend.
+
+## ASI-DEC-056 — Confirmaciones de transferencia sin diálogos nativos
+Las acciones de transferencia trabajadas en ASI deben usar componentes visuales propios de SGI: **Enviar, Aceptar, Rechazar y Anular transferencia**. No se usa `window.confirm` para estas acciones. El modal debe mostrar claramente impacto, origen/destino y errores de backend.
+
+
+## ASI-DEC-057 — Alta operacional desde SIC: RRHH
+Para que una persona ingrese a SGI: Comando desde **SIC: RRHH**, SIC: RRHH debe entregar explícitamente su adscripción a **Seguridad Física (SF) + Compañía**. SIC: RRHH continúa siendo System of Record de esta relación laboral inicial. SGI consume esa membresía; no infiere ni crea de cero la adscripción SF/Compañía. Las transferencias posteriores entre Compañías se orquestan desde SGI conforme ASI-DEC-041..056 y se sincronizan de vuelta a SIC: RRHH.
+
+## ASI-DEC-058 — Guardia de transición cuando SER mueve un Servicio
+Cuando SER retira un Servicio hacia Kaibil y conserva un turno actualmente en ejecución, el Punto puede definir `operational_transition_until`. Si el Servicio es reasignado a una nueva Compañía antes de ese corte, ASI no debe permitir cobertura nueva sobre turnos que comiencen antes de dicha fecha/hora. La misma regla debe aplicarse en vista semanal, asignación manual, cobertura y publicación para evitar doble cobertura mientras finaliza el turno heredado de la Compañía anterior.

@@ -1,0 +1,51 @@
+{
+  "format": "sitcpack",
+  "version": "COM-v1.1",
+  "scenario": "SGI-Comando-COM-v1.1",
+  "scope": "COM only",
+  "status": "UAT_CANDIDATE",
+  "base": "COM v1.0 FROZEN",
+  "asOf": "2026-09-19",
+  "changes": [
+    {
+      "type": "component_update",
+      "component": "COM - Compañías",
+      "version": "1.1",
+      "state": "UAT_CANDIDATE",
+      "adds": [
+        "Company activation from CORE catalog",
+        "CORE-owned read-only Name/Logo/Historical review",
+        "Operational editable Status/Zone/Regions/change reason",
+        "Kaibil coordination Company always active",
+        "Company identity source metadata"
+      ]
+    },
+    {
+      "type": "connection",
+      "from": "CORE",
+      "to": "COM - Compañías",
+      "contract": "Company catalog: core_company_id, code, name, logo, historical review, company type, source version/status",
+      "sor": "CORE"
+    },
+    {
+      "type": "connection",
+      "from": "COM - Compañías",
+      "to": "PostgreSQL",
+      "contract": "company operational activation + company_region + company_version + core_company_catalog_snapshot UAT adapter",
+      "sor": "SGI for operational config; CORE for identity"
+    },
+    {
+      "type": "domain_rule",
+      "id": "COM-DEC-018..021",
+      "component": "COM - Compañías",
+      "rule": "See docs/verticals/COM/COM_DECISIONS.md"
+    }
+  ],
+  "supersedes": [
+    "COM v1.0 FROZEN for Company identity creation/editing only; territorial/versioning rules remain unless explicitly superseded"
+  ],
+  "productionNotes": [
+    "Replace core_company_catalog_snapshot feed with the formal CORE integration while preserving CORE as SoR.",
+    "Logo binary transport/storage must follow the production CORE asset contract."
+  ]
+}

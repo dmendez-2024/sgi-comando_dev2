@@ -1,0 +1,21 @@
+{
+  "format": "cajamarca.sitcpack",
+  "formatVersion": "0.2",
+  "packageType": "vertical-delta",
+  "system": "SGI: Comando",
+  "vertical": "SER",
+  "version": "0.10.4",
+  "status": "UAT_CANDIDATE",
+  "asOf": "2026-09-19",
+  "baseFrozen": [{"code":"TER","version":"1.0","status":"FROZEN"},{"code":"COM","version":"1.1.3","status":"FROZEN"}],
+  "baseWorking": [{"code":"ASI","version":"0.7.4","status":"UAT_CANDIDATE"}],
+  "changes": [
+    {"type":"workflow","component":"Bitácora Protocolos","item":"Operational activation is controlled per Puesto from Definición; published content remains immutable."},
+    {"type":"ux","component":"Bitácora","item":"Remove global Inactivar button; checkbox deselection warns before inactivating only that Puesto."},
+    {"type":"ux-standard","component":"SGI: Comando","item":"Do not use native browser confirm dialogs for new SGI UI; Bitácora uses SGI confirmation modal."},
+    {"type":"api","component":"Bitácora","item":"PUT /api/bitacora/protocols/{protocolId}/scope updates active Puestos without creating a content version."},
+    {"type":"migration","component":"Flyway V23","item":"Normalize legacy scope rows so published INACTIVO protocols start with zero active Puestos."}
+  ],
+  "databaseMigration": "backend/src/main/resources/db/migration/V23__ser_bitacora_scope_activation_semantics.sql",
+  "documents": ["docs/CHANGELOG_UAT_SER_v0.10.4.md","README_SER_v0.10.4.md"]
+}

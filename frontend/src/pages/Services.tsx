@@ -4,6 +4,7 @@ import {
   AlertTriangle,
   ArrowLeft,
   BarChart3,
+  Building2,
   ChevronLeft,
   ChevronRight,
   ClipboardList,
@@ -28,19 +29,20 @@ import {
   Users,
   Warehouse,
   Wrench,
+  X,
 } from 'lucide-react';
 import {api} from '../api';
 import BitacoraConfig from './BitacoraConfig';
 import PatrolConfig from './PatrolConfig';
 import ConsignasConfig from './ConsignasConfig';
 
-type State='ACTIVE'|'INACTIVE'|'TO_CONFIGURE';
+type State='ACTIVE'|'INACTIVE'|'TO_CONFIGURE'|'PENDING_ASSIGNMENT';
 type Row={
   serviceId:string;pointId:string;postId:string;companyId:string|null;
   companyName:string;companyLogoDataUrl?:string|null;
   serviceCode:string;serviceName:string;clientName:string;
   pointCode:string;pointName:string;postCode:string;postName:string;tier:string;
-  idAverage:number|null;icAverage:number|null;pendingNews:number;state:State;
+  idAverage:number|null;icAverage:number|null;pendingNews:number;state:State;assignmentStatus:'PENDING'|'ASSIGNED';canAssign:boolean;canReturn:boolean;returnedToCoordination:boolean;
 };
 type Overview={
   windowFrom:string;windowTo:string;executionBasis:string;
@@ -50,7 +52,7 @@ type Overview={
 type PointRow={
   serviceId:string;pointId:string;companyId:string|null;companyName:string;companyLogoDataUrl?:string|null;
   serviceCode:string;serviceName:string;clientName:string;pointCode:string;pointName:string;
-  idAverage:number|null;icAverage:number|null;pendingNews:number;state:State;posts:Row[];
+  idAverage:number|null;icAverage:number|null;pendingNews:number;state:State;assignmentStatus:'PENDING'|'ASSIGNED';canAssign:boolean;canReturn:boolean;returnedToCoordination:boolean;posts:Row[];
 };
 type ModuleStatus='complete'|'warning'|'blocked';
 type ModuleCard={
@@ -85,6 +87,7 @@ type CommercialPost={id:string;pointId:string;code:string;name:string;format:str
 type CommercialShift={id:string;postId:string;shiftName:string;startsAt:string;endsAt:string};
 type CommercialWeek={posts:CommercialPost[];shifts:CommercialShift[]};
 type SkillKey=keyof PostSkillSet;
+type AssignmentDestination={companyId:string;code:string;name:string;zoneId?:string|null;regionIds:string[]};
 
 type View='list'|'config-landing'|'config-ats'|'config-posts'|'config-bitacora'|'config-patrols'|'config-consignas';
 
@@ -107,7 +110,7 @@ const POST_TEMPLATES:Record<'CAA'|'PAT'|'VIG'|'MIX',PostSkillSet>={
   MIX:{attendance:3,accessControl:3,patrol:3,judgement:3,tactical:2,bearing:3,leadership:1,customerService:3},
 };
 
-function stateLabel(s:State){return s==='ACTIVE'?'Activo':s==='INACTIVE'?'Inactivo':'Por Configurar'}
+function stateLabel(s:State){return s==='ACTIVE'?'Activo':s==='INACTIVE'?'Inactivo':s==='PENDING_ASSIGNMENT'?'Pendiente de asignación':'Por Configurar'}
 function statusLabel(s:ModuleStatus){return s==='complete'?'Completo':s==='warning'?'Observación':'Bloqueante'}
 function metric(value:number|null,suffix=''){return value==null?'—':`${value.toFixed(1)}${suffix}`}
 function errorMessage(e:unknown){return e instanceof Error?e.message:String(e)}
@@ -161,15 +164,20 @@ function aggregatePoints(rows:Row[]):PointRow[]{
       current.posts.push(row);
       return;
     }
-    map.set(row.pointId,{serviceId:row.serviceId,pointId:row.pointId,companyId:row.companyId,companyName:row.companyName,companyLogoDataUrl:row.companyLogoDataUrl,serviceCode:row.serviceCode,serviceName:row.serviceName,clientName:row.clientName,pointCode:row.pointCode,pointName:row.pointName,idAverage:null,icAverage:null,pendingNews:0,state:'ACTIVE',posts:[row]});
+    map.set(row.pointId,{serviceId:row.serviceId,pointId:row.pointId,companyId:row.companyId,companyName:row.companyName,companyLogoDataUrl:row.companyLogoDataUrl,serviceCode:row.serviceCode,serviceName:row.serviceName,clientName:row.clientName,pointCode:row.pointCode,pointName:row.pointName,idAverage:null,icAverage:null,pendingNews:0,state:'ACTIVE',assignmentStatus:row.assignmentStatus,canAssign:row.canAssign,canReturn:row.canReturn,returnedToCoordination:row.returnedToCoordination,posts:[row]});
   });
   return [...map.values()].map((point:PointRow)=>{
     point.idAverage=average(point.posts.map((post:Row)=>post.idAverage));
     point.icAverage=average(point.posts.map((post:Row)=>post.icAverage));
     point.pendingNews=point.posts.reduce((sum:number,post:Row)=>sum+post.pendingNews,0);
+    const pendingAssignment=point.posts.some((post:Row)=>post.state==='PENDING_ASSIGNMENT'||post.assignmentStatus==='PENDING');
     const allInactive=point.posts.every((post:Row)=>post.state==='INACTIVE');
     const anyToConfigure=point.posts.some((post:Row)=>post.state==='TO_CONFIGURE');
-    point.state=allInactive?'INACTIVE':anyToConfigure?'TO_CONFIGURE':'ACTIVE';
+    point.state=pendingAssignment?'PENDING_ASSIGNMENT':allInactive?'INACTIVE':anyToConfigure?'TO_CONFIGURE':'ACTIVE';
+    point.assignmentStatus=pendingAssignment?'PENDING':'ASSIGNED';
+    point.canAssign=point.posts.some((post:Row)=>post.canAssign);
+    point.canReturn=point.posts.some((post:Row)=>post.canReturn);
+    point.returnedToCoordination=point.posts.some((post:Row)=>post.returnedToCoordination);
     point.posts.sort((a:Row,b:Row)=>a.postCode.localeCompare(b.postCode));
     return point;
   }).sort((a:PointRow,b:PointRow)=>a.clientName.localeCompare(b.clientName)||a.pointName.localeCompare(b.pointName));
@@ -760,6 +768,16 @@ export default function Services(){
   const [page,setPage]=useState(0);
   const [selectedPointId,setSelectedPointId]=useState('');
   const [view,setView]=useState<View>('list');
+  const [assignmentPoint,setAssignmentPoint]=useState<PointRow|null>(null);
+  const [assignmentOptions,setAssignmentOptions]=useState<AssignmentDestination[]>([]);
+  const [assignmentCompanyId,setAssignmentCompanyId]=useState('');
+  const [assignmentObservations,setAssignmentObservations]=useState('');
+  const [assignmentLoading,setAssignmentLoading]=useState(false);
+  const [assignmentError,setAssignmentError]=useState('');
+  const [returnPoint,setReturnPoint]=useState<PointRow|null>(null);
+  const [returnObservations,setReturnObservations]=useState('');
+  const [returnLoading,setReturnLoading]=useState(false);
+  const [returnError,setReturnError]=useState('');
 
   const reload=async()=>{
     setLoading(true);
@@ -784,6 +802,24 @@ export default function Services(){
   const clearFilters=()=>{setCompany('');setClient('');setState('');setQuery('')};
   const openConfiguration=(pointId:string)=>{setSelectedPointId(pointId);setView('config-landing')};
   const backToList=()=>{setSelectedPointId('');setView('list')};
+  const openAssignment=async(point:PointRow)=>{
+    if(!point.canAssign)return;
+    setAssignmentPoint(point);setAssignmentOptions([]);setAssignmentCompanyId('');setAssignmentObservations('');setAssignmentError('');setAssignmentLoading(true);
+    try{setAssignmentOptions(await api.serviceAssignmentDestinations(point.pointId) as AssignmentDestination[])}catch(e){setAssignmentError(errorMessage(e))}finally{setAssignmentLoading(false)}
+  };
+  const closeAssignment=()=>{if(assignmentLoading)return;setAssignmentPoint(null);setAssignmentOptions([]);setAssignmentCompanyId('');setAssignmentObservations('');setAssignmentError('')};
+  const submitAssignment=async()=>{
+    if(!assignmentPoint||!assignmentCompanyId||assignmentLoading)return;
+    setAssignmentLoading(true);setAssignmentError('');
+    try{await api.assignServiceCompany(assignmentPoint.pointId,{companyId:assignmentCompanyId,observations:assignmentObservations});setAssignmentPoint(null);setAssignmentOptions([]);setAssignmentCompanyId('');setAssignmentObservations('');await reload()}catch(e){setAssignmentError(errorMessage(e))}finally{setAssignmentLoading(false)}
+  };
+  const openReturnToCoordination=(point:PointRow)=>{if(!point.canReturn)return;setReturnPoint(point);setReturnObservations('');setReturnError('')};
+  const closeReturnToCoordination=()=>{if(returnLoading)return;setReturnPoint(null);setReturnObservations('');setReturnError('')};
+  const submitReturnToCoordination=async()=>{
+    if(!returnPoint||returnLoading)return;
+    setReturnLoading(true);setReturnError('');
+    try{await api.returnServiceToCoordination(returnPoint.pointId,{observations:returnObservations});setReturnPoint(null);setReturnObservations('');await reload()}catch(e){setReturnError(errorMessage(e))}finally{setReturnLoading(false)}
+  };
   const exportCsv=()=>{
     const head=['Compañía','Servicio','Cliente','Punto','Puestos','ID Promedio','IC Promedio','Novedades','Estado'];
     const body=filtered.map((row:PointRow)=>[row.companyName,row.serviceName,row.clientName,row.pointName,row.posts.length,row.idAverage??'',row.icAverage==null?'':`${row.icAverage}%`,row.pendingNews,stateLabel(row.state)]);
@@ -818,7 +854,7 @@ export default function Services(){
 
   return <div className="services-v01 services-v02">
     <div className="ser-titlebar">
-      <div><div className="ser-title-row"><h2>Servicios</h2><span>Listado maestro operacional</span></div><small>Vista a nivel de Cliente · Punto · acciones de Operación y Configuración</small></div>
+      <div><div className="ser-title-row"><h2>Servicios</h2><span>Listado maestro operacional</span></div><small>Vista a nivel de Cliente · Punto · Servicios desde SIC: COM y asignación operacional</small></div>
       <button className="ser-refresh" onClick={()=>void reload()} disabled={loading}><RefreshCcw size={15}/>{loading?'Actualizando…':'Actualizar'}</button>
     </div>
 
@@ -832,7 +868,7 @@ export default function Services(){
     <div className="ser-filterbar">
       <label><span>Compañía</span><select value={company} onChange={e=>setCompany(e.target.value)}><option value="">Todas las compañías</option>{companies.map((item:string)=><option key={item}>{item}</option>)}</select></label>
       <label><span>Cliente</span><select value={client} onChange={e=>setClient(e.target.value)}><option value="">Todos los clientes</option>{clients.map((item:string)=><option key={item}>{item}</option>)}</select></label>
-      <label><span>Estado</span><select value={state} onChange={e=>setState(e.target.value)}><option value="">Todos los estados</option><option value="ACTIVE">Activo</option><option value="TO_CONFIGURE">Por Configurar</option><option value="INACTIVE">Inactivo</option></select></label>
+      <label><span>Estado</span><select value={state} onChange={e=>setState(e.target.value)}><option value="">Todos los estados</option><option value="ACTIVE">Activo</option><option value="TO_CONFIGURE">Por Configurar</option><option value="PENDING_ASSIGNMENT">Pendiente de asignación</option><option value="INACTIVE">Inactivo</option></select></label>
       <label className="ser-search"><span className="sr-only">Buscar</span><Search size={16}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar cliente o punto…"/></label>
       <button className="ser-clear" onClick={clearFilters}><RefreshCcw size={15}/>Limpiar filtros</button>
     </div>
@@ -843,7 +879,7 @@ export default function Services(){
       <header><div><h3>Servicios <b>({filtered.length})</b></h3><span>Vista a nivel de Cliente · Punto</span></div><button onClick={exportCsv} disabled={!filtered.length}><Download size={15}/>Exportar</button></header>
       <div className="ser-table-wrap">
         <table className="ser-table ser-point-table">
-          <thead><tr><th>Compañía</th><th>Servicio</th><th>Cliente</th><th>Punto</th><th>Puestos</th><th>ID Promedio</th><th>IC Promedio</th><th>Novedades</th><th>Estado</th><th>Operación</th><th>Configuración</th></tr></thead>
+          <thead><tr><th>Compañía</th><th>Servicio</th><th>Cliente</th><th>Punto</th><th>Puestos</th><th>ID Promedio</th><th>IC Promedio</th><th>Novedades</th><th>Estado</th><th>Operación</th><th>Gestión</th></tr></thead>
           <tbody>
             {loading&&!data?<tr><td colSpan={11}><div className="ser-loading">Cargando Servicios…</div></td></tr>:visible.length?visible.map((row:PointRow)=>{
               const tier=highestTier(row.posts);
@@ -858,7 +894,7 @@ export default function Services(){
                 <td><span className={`ser-news ${row.pendingNews?'pending':'zero'}`}>{row.pendingNews}</span></td>
                 <td><span className={`ser-state ${row.state.toLowerCase()}`}><i/>{stateLabel(row.state)}</span></td>
                 <td><button className="ser-action ghost" disabled title="Operación queda temporalmente en stand by"><Eye size={15}/>Operación</button></td>
-                <td><button className="ser-action primary" onClick={()=>openConfiguration(row.pointId)}><Settings2 size={15}/>Configuración</button></td>
+                <td>{row.assignmentStatus==='PENDING'?<button className="ser-action primary" onClick={()=>void openAssignment(row)} disabled={!row.canAssign} title={row.canAssign?'Asignar Servicio a una Compañía operativa':'Su perfil no puede asignar este Servicio'}><Building2 size={15}/>Asignación</button>:<div className="ser-row-actions"><button className="ser-action primary" onClick={()=>openConfiguration(row.pointId)}><Settings2 size={15}/>Configuración</button>{row.canReturn&&<button className="ser-action return" onClick={()=>openReturnToCoordination(row)} title="Retirar Servicio a Kaibil para reasignación"><ArrowLeft size={15}/>Retirar a Kaibil</button>}</div>}</td>
               </tr>;
             }):<tr><td colSpan={11}><div className="ser-empty">No existen puntos que coincidan con los filtros.</div></td></tr>}
           </tbody>
@@ -866,5 +902,36 @@ export default function Services(){
       </div>
       <footer><span>Mostrando {visible.length} de {filtered.length} puntos</span><div className="ser-pagination"><button onClick={()=>setPage((current:number)=>Math.max(0,current-1))} disabled={page===0}><ChevronLeft size={16}/></button><b>{page+1}</b><span>de {pages}</span><button onClick={()=>setPage((current:number)=>Math.min(pages-1,current+1))} disabled={page>=pages-1}><ChevronRight size={16}/></button></div></footer>
     </section>
+
+    {assignmentPoint&&<div className="ser-assignment-backdrop" onMouseDown={e=>{if(e.currentTarget===e.target)closeAssignment()}}>
+      <section className="ser-assignment-modal" role="dialog" aria-modal="true" aria-labelledby="service-assignment-title">
+        <header><div><span className="ser-assignment-eyebrow">Kaibil · Coordinación</span><h3 id="service-assignment-title">Asignar Servicio a Compañía</h3><p>{assignmentPoint.returnedToCoordination?'El Servicio fue retirado de su Compañía anterior y está listo para ser reasignado. Su configuración operacional se conserva íntegramente.':'El Servicio fue recibido desde SIC: COM y todavía no tiene una Compañía operativa.'}</p></div><button className="ser-assignment-close" onClick={closeAssignment} disabled={assignmentLoading}><X size={20}/></button></header>
+        <div className="ser-assignment-summary"><span className="ser-assignment-icon"><Building2 size={22}/></span><div><small>Servicio</small><strong>{assignmentPoint.serviceName}</strong><span>{assignmentPoint.clientName} · {assignmentPoint.pointName} · {assignmentPoint.posts.length} puesto{assignmentPoint.posts.length===1?'':'s'}</span></div></div>
+        <div className="ser-assignment-form">
+          <label><span>Origen operacional</span><div className="ser-readonly-field">Kaibil · Pendiente de asignación</div></label>
+          <label><span>Compañía destino</span><select value={assignmentCompanyId} onChange={e=>setAssignmentCompanyId(e.target.value)} disabled={assignmentLoading}><option value="">Seleccione una Compañía…</option>{assignmentOptions.map(option=><option key={option.companyId} value={option.companyId}>{option.name}</option>)}</select></label>
+          <label className="wide"><span>Observaciones <em>Opcional</em></span><textarea maxLength={1000} value={assignmentObservations} onChange={e=>setAssignmentObservations(e.target.value)} placeholder="Agregue contexto para la asignación operacional…"/><small>{assignmentObservations.length} / 1000</small></label>
+        </div>
+        <div className="ser-assignment-info"><Info size={17}/><div><strong>{assignmentPoint.returnedToCoordination?'Reasignación operacional':'Asignación inicial'}</strong><span>{assignmentPoint.returnedToCoordination?'La configuración previa del Servicio viajará con el Punto a la nueva Compañía. No se requiere aceptación del Coordinador destino.':'Kaibil funciona como bandeja de Coordinación; no opera Servicios de clientes. Al confirmar, el Servicio pasará a la Compañía seleccionada y recién entonces podrá configurarse operacionalmente.'}</span></div></div>
+        {assignmentError&&<div className="ser-assignment-error"><AlertTriangle size={16}/><span>{assignmentError}</span></div>}
+        {!assignmentLoading&&!assignmentOptions.length&&!assignmentError&&<div className="ser-assignment-error"><AlertTriangle size={16}/><span>No existen Compañías destino dentro de su ámbito territorial.</span></div>}
+        <footer><button onClick={closeAssignment} disabled={assignmentLoading}>Cancelar</button><button className="primary" onClick={()=>void submitAssignment()} disabled={assignmentLoading||!assignmentCompanyId}><Building2 size={16}/>{assignmentLoading?'Asignando…':'Asignar Servicio'}</button></footer>
+      </section>
+    </div>}
+
+    {returnPoint&&<div className="ser-assignment-backdrop" onMouseDown={e=>{if(e.currentTarget===e.target)closeReturnToCoordination()}}>
+      <section className="ser-assignment-modal ser-return-modal" role="dialog" aria-modal="true" aria-labelledby="service-return-title">
+        <header><div><span className="ser-assignment-eyebrow">Kaibil · Coordinación</span><h3 id="service-return-title">Retirar Servicio a Kaibil</h3><p>El Servicio dejará de pertenecer a la Compañía operadora actual y volverá a la bandeja de Coordinación para su posterior reasignación.</p></div><button className="ser-assignment-close" onClick={closeReturnToCoordination} disabled={returnLoading}><X size={20}/></button></header>
+        <div className="ser-assignment-summary"><span className="ser-assignment-icon warning"><ArrowLeft size={22}/></span><div><small>Servicio</small><strong>{returnPoint.serviceName}</strong><span>{returnPoint.clientName} · {returnPoint.pointName} · {returnPoint.posts.length} puesto{returnPoint.posts.length===1?'':'s'}</span></div></div>
+        <div className="ser-assignment-form">
+          <label><span>Compañía operadora actual</span><div className="ser-readonly-field">{returnPoint.companyName}</div></label>
+          <label><span>Destino temporal</span><div className="ser-readonly-field">Kaibil · Pendiente de reasignación</div></label>
+          <label className="wide"><span>Observaciones <em>Opcional</em></span><textarea maxLength={1000} value={returnObservations} onChange={e=>setReturnObservations(e.target.value)} placeholder="Agregue contexto para el retiro y futura reasignación…"/><small>{returnObservations.length} / 1000</small></label>
+        </div>
+        <div className="ser-return-impact"><AlertTriangle size={18}/><div><strong>Impacto del retiro</strong><ul><li>La configuración del Servicio no se elimina y viajará a la próxima Compañía.</li><li>Las asignaciones futuras de personal se retirarán de la planificación activa, pero permanecerán en el histórico.</li><li>Si existe un turno actualmente en ejecución, podrá finalizar normalmente.</li><li>Mientras el Servicio esté en Kaibil no podrá configurarse.</li><li>La reasignación posterior no requerirá aprobación del Coordinador destino.</li></ul></div></div>
+        {returnError&&<div className="ser-assignment-error"><AlertTriangle size={16}/><span>{returnError}</span></div>}
+        <footer><button onClick={closeReturnToCoordination} disabled={returnLoading}>Cancelar</button><button className="danger" onClick={()=>void submitReturnToCoordination()} disabled={returnLoading}><ArrowLeft size={16}/>{returnLoading?'Retirando…':'Retirar Servicio a Kaibil'}</button></footer>
+      </section>
+    </div>}
   </div>;
 }

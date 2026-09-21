@@ -46,3 +46,7 @@ Se agrega a la proyección `PostDto` de ASI:
 - `cycleSourceVersion`
 
 No se modifica el modelo congelado de COM.
+
+
+### Contrato de ingreso de personal desde SIC: RRHH — 2026-09-19
+SIC: RRHH debe entregar cada colaborador visible en SGI con adscripción explícita a **Seguridad Física (SF) + Compañía**. SIC: RRHH es SoR de esa relación inicial. SGI no crea ni infiere la membresía laboral; las transferencias operacionales posteriores se orquestan en ASI y se sincronizan de vuelta a SIC: RRHH.

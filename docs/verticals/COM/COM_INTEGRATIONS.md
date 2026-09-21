@@ -1,4 +1,10 @@
-# COM v1.0 FROZEN — Integraciones
+# COM v1.1.3 FROZEN — Integraciones
+
+## CORE → COM — identidad de Compañía
+**SoR:** CORE
+
+CORE entrega catálogo/identidad de Compañía: Nombre, Logo, Reseña histórica, tipo, versión y estado fuente. SGI activa la entidad operacional y no edita esos campos.
+
 
 ## TER → COM
 
@@ -38,7 +44,7 @@ COM
 - Para retirar una Región, COM debe conocer cuántos Servicios activos de la Compañía operan en esa Región.
 - Para inactivar una Compañía, Servicios activos asociados debe ser 0.
 - COM no migra ni finaliza Servicios.
-- SER será responsable de transferir/finalizar Servicios.
+- SER será responsable de la asignación operacional inicial y de futuros flujos de transferencia/finalización de Servicios.
 - SER deberá tener `region_id` operacional explícito para soportar el modelo multi-región.
 
 ### Bridge UAT existente
@@ -82,3 +88,7 @@ La versión congelada se registra en:
 
 - `sitc/COM_v1.0_FROZEN_delta.sitcpack`
 - `sitc/SGI_Comando_CURRENT.sitcpack`
+
+
+## SER v0.9 → COM / frontera de responsabilidad
+SER usa el catálogo de Compañías activas de COM para asignar inicialmente Servicios recibidos desde SIC: COM. La bandeja Kaibil es lógica: un Punto pendiente mantiene `company_id = NULL`. Kaibil nunca es destino operativo de un Servicio de cliente.

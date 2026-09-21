@@ -1,14 +1,14 @@
 # SGI: Comando — COM / Compañías
 
-**Versión:** v1.0  
+**Versión:** v1.1.3  
 **Estado:** **FROZEN / CONGELADA**  
-**Fecha de congelamiento:** 2026-09-08  
+**Fecha de congelamiento:** 2026-09-19  
 **Base:** TER v1.0 FROZEN  
 **Scope:** exclusivamente vertical COM. TER y las demás verticales permanecen funcionalmente intactas.
 
 ## Objetivo
 
-Administrar la identidad operacional de las **Compañías** de Cajamarca, su pertenencia a una única Zona y su operación en una o más Regiones de esa Zona, preservando trazabilidad, historial y versionamiento.
+Administrar la capa operacional de las **Compañías** activadas desde CORE, su pertenencia a una única Zona y su operación en una o más Regiones de esa Zona, preservando trazabilidad, historial y versionamiento. CORE conserva la identidad maestra.
 
 ## Jerarquía territorial
 
@@ -30,41 +30,36 @@ Reglas:
 
 ## Datos de Compañía
 
-- `company_id` interno estable.
-- Código humano estable `COM-###`.
-- Nombre.
-- Estado: Activa / Inactiva; Borrador solo cuando corresponda a creación no publicada por flujo futuro.
-- Zona única.
-- Una o más Regiones de esa Zona.
-- Logo.
-- Reseña histórica opcional, máximo **750 caracteres**.
-- Cambio Requerido, conservado del baseline.
-- Número de versión vigente.
-
-## Creación
-
-Al crear una Compañía se debe poder registrar:
-
-1. Nombre.
-2. Logo.
-3. Reseña histórica (máx. 750 caracteres).
-4. Zona.
-5. Una o más Regiones pertenecientes a esa Zona.
-
-La identidad `company_id` y el código `COM-###` son estables.
-
-## Edición de Compañía Activa
-
-Una Compañía Activa puede modificar:
-
+**Fuente CORE / solo lectura en SGI:**
+- `core_catalog_id`.
 - Nombre.
 - Logo.
 - Reseña histórica.
-- Agregar Regiones de su misma Zona.
-- Retirar Regiones cuando no existan Servicios activos de esa Compañía en la Región a retirar.
-- Cambiar de Zona únicamente cuando previamente puedan retirarse todas las Regiones actuales; por tanto no puede completarse mientras existan Servicios activos que bloqueen esas remociones.
 
-Cada guardado genera una nueva versión y un evento histórico/auditable.
+**Configuración operacional SGI:**
+- `company_id` interno estable.
+- Estado: Activa / Inactiva.
+- Zona única.
+- Una o más Regiones de esa Zona.
+- Motivo del cambio / auditoría.
+- Cambio Requerido, conservado del baseline.
+- Número de versión vigente.
+
+## Activación
+
+SGI no crea Compañías desde cero. El usuario autorizado selecciona una entidad del **catálogo CORE** y la activa en SGI. La activación vincula `core_catalog_id`, conserva la identidad proveniente de CORE y exige la configuración territorial cuando corresponda.
+
+**Kaibil** es `company_type = COORDINATION`, `always_active = true`, permanece siempre Activa y no requiere Zona/Regiones como una Compañía comercial normal.
+
+## Edición de Compañía Activa
+
+En SGI se pueden modificar únicamente:
+- Estado (excepto Kaibil, que no puede inactivarse).
+- Zona.
+- Regiones operativas.
+- Motivo del cambio.
+
+Nombre, Logo y Reseña histórica permanecen bloqueados porque CORE es SoR. Cada guardado operacional genera versión e historial.
 
 ## Inactivación y reactivación
 

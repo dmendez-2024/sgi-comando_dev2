@@ -117,3 +117,19 @@ ATS todavía no está construido. Se reserva la integración `.ats` para planos,
 
 ### Estado de implementación — UAT v0.2
 `SGI-06 Asignaciones` pasa de diseño congelado a primera vertical operacional implementada sobre PostgreSQL real y providers LOCAL de SIC: RRHH / SIC: COM / SMC.
+
+
+## Actualización 2026-09-19 — CORE / SIC: RRHH / SIC: COM / SER v0.9
+- **CORE** es SoR de identidad de Compañía; COM v1.1.3 queda FROZEN.
+- **SIC: RRHH** es SoR de la relación persona–Compañía. Para ingreso a SGI debe entregar personal adscrito a **Seguridad Física (SF) + Compañía**.
+- **SIC: COM** es SoR de `Servicio = Cliente + Punto` y sus Puestos; no determina Compañía operativa.
+- **SER v0.9** recibe Servicios nuevos con Compañía pendiente (`company_id = NULL`), los presenta en bandeja lógica **Kaibil** y Coordinación asigna la Compañía operativa según ámbito. Kaibil no opera Servicios de clientes.
+- Tras la asignación inicial se habilita Configuración del Punto; mover posteriormente un Servicio ya asignado queda fuera de v0.9.
+
+
+## SER v0.9.1 — retiro y reasignación de Servicios
+- Coordinación autorizada puede retirar un Servicio asignado hacia la bandeja lógica Kaibil según alcance territorial.
+- La configuración operacional permanece ligada al Punto y no se borra/copia al cambiar de Compañía.
+- Solo las asignaciones futuras desaparecen de planificación activa; histórico y turno en curso se conservan.
+- `operational_transition_until` protege el cierre del turno heredado y evita doble cobertura en la nueva Compañía.
+- Desde Kaibil se reasigna directamente a otra Compañía autorizada sin aceptación del Coordinador destino.

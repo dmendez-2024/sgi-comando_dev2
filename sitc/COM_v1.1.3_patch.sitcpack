@@ -1,0 +1,18 @@
+{
+  "format": "sitcpack",
+  "version": "COM-v1.1.3-patch",
+  "scenario": "SGI-Comando-COM-v1.1.3-UAT-FIX",
+  "scope": "COM/ASI operational company navigation polish",
+  "status": "UAT_CANDIDATE",
+  "base": "COM v1.1.2 + ASI v0.7.2",
+  "asOf": "2026-09-19",
+  "changes": [
+    {
+      "type": "ux_rule",
+      "component": "COM/ASI - Kaibil",
+      "rule": "Kaibil remains an operationally selectable Company for authorized leadership profiles; making it the default context must not hide the Company selector."
+    }
+  ],
+  "functionalChange": false,
+  "databaseMigration": "none; latest remains V18__core_companies_and_company_transfers.sql"
+}

@@ -23,4 +23,10 @@ public class Company extends BaseEntity {
     @Column(name="historical_review", length=750) public String historicalReview;
     @Column(name="logo_data_url", columnDefinition="text") public String logoDataUrl;
     @Column(name="version_number", nullable=false) public int versionNumber;
+
+    @Column(name="core_catalog_id") public UUID coreCatalogId;
+    @Column(name="source_system", nullable=false, length=32) public String sourceSystem;
+    @Column(name="source_version", length=80) public String sourceVersion;
+    @Column(name="company_type", nullable=false, length=32) public String companyType;
+    @Column(name="always_active", nullable=false) public boolean alwaysActive;
 }

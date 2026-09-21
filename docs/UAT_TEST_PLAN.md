@@ -35,3 +35,18 @@
 | AC-ASG-11 | Cierre automático semanal | PENDIENTE UAT |
 | AC-ASG-12 | Copia múltiple parcial | PENDIENTE IMPLEMENTACIÓN UI |
 | AC-ASG-13 | Semáforo preventivo de drag | PENDIENTE IMPLEMENTACIÓN UI |
+
+## SER v0.9 — Servicios / asignación inicial de Compañía
+
+| ID | Caso | Resultado esperado |
+|---|---|---|
+| SER09-01 | Servicio nuevo recibido desde SIC: COM sin Compañía | Aparece como `Kaibil` / `Pendiente de asignación`; `company_id` sigue NULL |
+| SER09-02 | Intentar configurar Servicio pendiente | Configuración no está disponible; acción visible = `Asignación` |
+| SER09-03 | Director Nacional / Presidencia abre Asignación | Ve todas las Compañías activas no-Kaibil |
+| SER09-04 | Director Zonal abre Asignación | Solo ve Compañías de sus Zonas |
+| SER09-05 | Jefe Regional abre Asignación | Solo ve Compañías de sus Regiones |
+| SER09-06 | Seleccionar Kaibil como destino | Kaibil no aparece como destino válido |
+| SER09-07 | Confirmar asignación | Punto queda `ASSIGNED`, obtiene `company_id`, desaparece de bandeja Kaibil y habilita Configuración en destino |
+| SER09-08 | Auditoría | Existe `service_company_assignment_event` con actor, fecha, Servicio, Punto, destino y observaciones |
+| SER09-09 | Coordinador/Asistente | No ven/ejecutan asignación inicial de Servicios pendientes desde Kaibil |
+| SER09-10 | Regresión | Servicios previamente asignados conservan Operación/Configuración y no cambian de Compañía |

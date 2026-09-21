@@ -162,3 +162,42 @@ Bitácora incorpora la capa explícita de **Acreditación**. La jerarquía canó
 - Foto estándar por Hito preparada para futura integración VISINT.
 - Regla transversal de Configuración: publicado = snapshot inmutable; edición = nueva versión BORRADOR; publicación sustituye vigencia y conserva histórico.
 - Bitácora queda retroajustada a este mismo patrón de versionado.
+
+
+## Actualización 2026-09-19 — CORE / SIC: RRHH / SIC: COM / SER v0.9
+- **CORE** es SoR de identidad de Compañía; COM v1.1.3 queda FROZEN.
+- **SIC: RRHH** es SoR de la relación persona–Compañía. Para ingreso a SGI debe entregar personal adscrito a **Seguridad Física (SF) + Compañía**.
+- **SIC: COM** es SoR de `Servicio = Cliente + Punto` y sus Puestos; no determina Compañía operativa.
+- **SER v0.9** recibe Servicios nuevos con Compañía pendiente (`company_id = NULL`), los presenta en bandeja lógica **Kaibil** y Coordinación asigna la Compañía operativa según ámbito. Kaibil no opera Servicios de clientes.
+- Tras la asignación inicial se habilita Configuración del Punto; mover posteriormente un Servicio ya asignado queda fuera de v0.9.
+
+
+## SER v0.9.1 — retiro y reasignación de Servicios
+- Coordinación autorizada puede retirar un Servicio asignado hacia la bandeja lógica Kaibil según alcance territorial.
+- La configuración operacional permanece ligada al Punto y no se borra/copia al cambiar de Compañía.
+- Solo las asignaciones futuras desaparecen de planificación activa; histórico y turno en curso se conservan.
+- `operational_transition_until` protege el cierre del turno heredado y evita doble cobertura en la nueva Compañía.
+- Desde Kaibil se reasigna directamente a otra Compañía autorizada sin aceptación del Coordinador destino.
+
+## Checkpoint transversal VISINT / Impulsos — 2026-09-20
+
+Se congela conceptualmente la orquestación de evidencia visual y gamificación entre SGI: Operador, SGI: Comando y VISINT:
+
+1. Operador completa la tarea y captura evidencia.
+2. La evidencia entra a SGI: Comando; no existe integración directa Operador→VISINT.
+3. SGI: Comando solicita y recibe la revisión VISINT.
+4. VISINT devuelve la evaluación visual, sin decidir premios.
+5. SGI: Comando ejecuta la regla vigente de Impulsos (elegibilidad, probabilidad, cantidad y habilidad) y registra el resultado de forma idempotente.
+6. SGI: Operador muestra estado de revisión y, cuando exista, el premio otorgado.
+
+Ver `docs/SGI_OPR_VISINT_IMPULSOS.md`.
+
+
+## INT v0.1 — Módulo genérico de interconexiones (2026-09-21)
+SGI: Comando incorpora un único módulo reusable para integraciones salientes conforme a SITC-NOM-001 v3.0. La lógica de negocio ya no debe crear clientes HTTP ad-hoc ni hardcodear hosts/puertos/credenciales.
+
+Flujo técnico: `Business Adapter → GenericInterconnectionExecutor → CORE resolver/cache → auth/resilience/observability → programa destino`. CORE resuelve configuración por `interconnectionId + instance_country_id + ambiente`, pero no actúa como proxy del tráfico funcional.
+
+Componentes: `CoreInterconnectionResolver`, `ResolutionCache`, `CredentialRefResolver`, `CircuitRegistry`, `GenericInterconnectionExecutor`, catálogo canónico e IDs. La URL bootstrap del resolver CORE se configura por ambiente; todos los demás bindings provienen de CORE.
+
+Ver `docs/INTERCONNECTIONS.md`, `docs/API_CATALOG.md`, `docs/SITCPACK.md` y `sitc/SGI_Comando_CURRENT.sitcpack`.

@@ -1,38 +1,24 @@
-# COM v1.0 — Freeze Note
+# COM v1.1.3 — Freeze Note
 
-**Fecha:** 2026-09-08  
+**Fecha:** 2026-09-19  
 **Estado:** **FROZEN / CONGELADA**
 
-El Product Owner aprobó el modelo funcional de COM y solicitó congelar la vertical antes de avanzar a la siguiente.
+COM v1.1.3 queda congelada como baseline vigente.
 
 ## Alcance congelado
-
-- Logo.
-- Reseña histórica máx. 750 caracteres.
-- Edición de Compañías activas.
-- Zona única.
-- Una o más Regiones dentro de la Zona.
-- Agregar Regiones de la misma Zona aun en Activa.
-- Bloquear retiro de Región con Servicios activos en esa Región.
-- Bloquear operación multizona.
-- Cambio de Zona sujeto a retiro válido de las Regiones existentes.
-- Inactivación solo con 0 Servicios activos.
-- Reactivación permitida.
-- Identidad estable.
-- Historial y versionamiento.
+- CORE es SoR de identidad de Compañía: Nombre, Logo y Reseña histórica son read-only en SGI.
+- SGI activa Compañías desde catálogo CORE; no existe creación local desde cero.
+- SGI mantiene Estado, Motivo del cambio, Zona y Regiones operativas.
+- Zona única y multi-región dentro de la misma Zona.
+- Inactivación condicionada a no tener Servicios activos; reactivación permitida.
+- Historial y versionado operacional.
+- Kaibil es Compañía de coordinación, `always_active=true`, siempre Activa y no puede desactivarse.
+- Kaibil puede contener personal de coordinación y participar en transferencias de personal, pero **no opera Servicios de clientes**.
 
 ## Fronteras congeladas
+- CORE conserva identidad de Compañía.
+- TER conserva Zona/Región.
+- SER decide y registra la Compañía operativa de un Servicio.
+- SIC: RRHH conserva SoR de persona–Compañía.
 
-- TER v1.0 permanece intacta.
-- SER será responsable de la migración/finalización de Servicios y de su Región operacional explícita.
-- MinIO será el almacenamiento productivo de Logos.
-
-## Cambios futuros
-
-Cualquier cambio funcional posterior requiere:
-
-1. Nueva versión COM.
-2. Entrada en Decision Log.
-3. Evaluación de impacto SITC.
-4. Scope guard contra COM v1.0 FROZEN.
-5. Regresión de criterios de aceptación.
+Cualquier cambio funcional posterior requiere abrir una nueva versión COM, actualizar Decision Log/SITC y ejecutar regresión.

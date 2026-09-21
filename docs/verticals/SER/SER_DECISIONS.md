@@ -96,3 +96,24 @@
 - **SER-DEC-072:** GPS es opcional y se separa en dos conceptos: `Ubicación esperada` (ninguna / Plano ATS / coordenadas) y `GPS de ejecución` (captura futura por SGI: Operador cuando la regla lo exige).
 - **SER-DEC-073:** La sección Evidencias consolida las evidencias requeridas por la Consigna; no debe crear una segunda fuente de reglas. La definición primaria vive en la Consigna/Evidencia configurada.
 - **SER-DEC-074:** El snapshot versionado del Protocolo de Consignas incluye Consignas, alcance a Puestos, vigencia, calendario, reglas, ubicación esperada, Evidencias, Fotos estándar y metadatos necesarios para reconstrucción histórica.
+
+
+## Servicios — Asignación operacional inicial — SER v0.9
+- **SER-DEC-075:** **SIC: COM** es System of Record de la estructura comercial del Servicio: `Servicio = Cliente + Punto`, pudiendo el Punto contener uno o varios Puestos. SGI: Comando consume Servicio/Cliente/Punto/Puestos y no redefine esos maestros.
+- **SER-DEC-076:** SIC: COM no determina la Compañía operativa. Un Servicio nuevo ingresa a SGI con `company_id = NULL` y `operational_assignment_status = PENDING`. La UI lo presenta dentro de la **bandeja lógica Kaibil**, pero Kaibil **no se convierte en propietaria ni operadora del Servicio**.
+- **SER-DEC-077:** Mientras el Servicio esté Pendiente de asignación, **no puede configurarse** ni abrirse su Configuración operacional. En la columna de acción se muestra **Asignación** en lugar de Configuración.
+- **SER-DEC-078:** Roles autorizados para la asignación inicial: Presidencia y Director Nacional a cualquier Compañía activa nacional; Director Zonal únicamente a Compañías de sus Zonas; Jefe Regional únicamente a Compañías de sus Regiones. Coordinador de Compañía y Asistente de Coordinación no realizan la asignación inicial desde Kaibil.
+- **SER-DEC-079:** Kaibil nunca es un destino válido para Servicios de clientes. Solo funciona como bandeja de Coordinación para Servicios sin Compañía operativa.
+- **SER-DEC-080:** Al confirmar la asignación inicial, SGI registra la Compañía operativa en el Punto, conserva auditoría de actor/fecha/observaciones y cambia `operational_assignment_status` a `ASSIGNED`. Recién entonces se habilita `Configuración`.
+- **SER-DEC-081 (superseded por SER-DEC-082..089):** En SER v0.9 la transferencia posterior de un Servicio quedó fuera de alcance. SER v0.9.1 define formalmente ese flujo mediante retorno a Kaibil y reasignación.
+
+
+## Servicios — Retiro a Kaibil y reasignación — SER v0.9.1
+- **SER-DEC-082:** Un Servicio ya asignado puede ser **retirado a Kaibil** por Coordinación. Presidencia/Director Nacional tienen alcance nacional; Director Zonal solo sobre Servicios ubicados en sus Zonas; Jefe Regional solo sobre Servicios ubicados en sus Regiones. No se requiere aprobación del Coordinador de la Compañía origen.
+- **SER-DEC-083:** El retiro es un `pull` de Coordinación. El Punto queda con `company_id = NULL` y `operational_assignment_status = PENDING`; Kaibil es bandeja lógica, no Compañía operadora.
+- **SER-DEC-084:** La configuración operacional pertenece al Servicio/Punto y **no** a la Compañía operadora. ATS, Puestos, Bitácora, Patrullas, Consignas y demás configuración se preservan íntegramente durante `Compañía origen → Kaibil → nueva Compañía`.
+- **SER-DEC-085:** Al retirar el Servicio, todas las asignaciones **futuras** de personal vinculadas a sus Puestos desaparecen de la planificación activa, pero no se destruyen: permanecen auditables con estado `REMOVED` y razón `SERVICE_RETURN_TO_COORDINATION`.
+- **SER-DEC-086:** Si existe un turno actualmente en ejecución, ese turno se deja finalizar normalmente. El Punto conserva `operational_transition_until` hasta el último fin de turno activo retenido.
+- **SER-DEC-087:** Si el Servicio se reasigna a una nueva Compañía antes de finalizar el turno heredado, SGI no permite crear nuevas asignaciones sobre turnos que empiecen antes de `operational_transition_until`, evitando doble cobertura durante la transición.
+- **SER-DEC-088:** Desde Kaibil, el Servicio puede reasignarse directamente a una nueva Compañía autorizada sin aceptación del Coordinador destino. La nueva Compañía recibe la configuración previa intacta y continúa desde ella.
+- **SER-DEC-089:** Todo retiro y reasignación se registra en `service_company_assignment_event`, incluyendo Compañía origen/destino cuando aplica, actor, fecha, observaciones y cantidades de asignaciones futuras liberadas / activas retenidas.

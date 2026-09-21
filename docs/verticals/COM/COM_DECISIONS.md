@@ -1,7 +1,7 @@
 # COM — Decision Log
 
 **Vertical:** COM — Compañías  
-**Versión congelada:** v1.0  
+**Versión congelada:** v1.1.3  
 **Estado:** FROZEN
 
 ## COM-DEC-001 — Zona única
@@ -86,5 +86,56 @@ Cambios de Nombre, Logo, Reseña, Zona, Regiones, estado o reactivación no crea
 
 ## COM-DEC-017 — No eliminación de una Compañía histórica
 Una Compañía que haya estado Activa no se elimina físicamente. Se conserva mediante estado Inactiva y su historial/versionamiento.
+
+**Estado:** CONGELADA
+
+---
+
+# Apertura COM v1.1 — Catálogo CORE
+
+**Fecha:** 2026-09-19  
+**Estado:** UAT
+
+## COM-DEC-018 — CORE es SoR de identidad de Compañía
+SGI: Comando deja de crear Compañías desde cero. La identidad de Compañía se activa desde el catálogo de CORE.
+
+Los siguientes campos son de solo lectura en SGI y provienen de CORE:
+- Logo.
+- Nombre.
+- Reseña histórica.
+
+SGI conserva como configuración operacional editable:
+- Estado.
+- Motivo del cambio.
+- Zona.
+- Regiones operativas.
+
+Esta decisión **supersede parcialmente COM-DEC-010 y COM-DEC-011** en lo relativo a editar Nombre/Logo/Reseña y crear una Compañía localmente. El versionado de la configuración operacional continúa vigente.
+
+## COM-DEC-019 — Activación desde catálogo
+Una Compañía solo puede incorporarse a SGI mediante **Activar desde CORE**. La activación crea la entidad operacional SGI vinculada mediante `core_catalog_id`; no crea un nuevo maestro de identidad.
+
+## COM-DEC-020 — Kaibil
+**Kaibil** es la Compañía de Operaciones y debe existir siempre Activa.
+
+Reglas:
+- `company_type = COORDINATION`.
+- `always_active = true`.
+- No puede inactivarse.
+- Por el momento no tiene Servicios, Clientes ni Puntos asociados.
+- Puede ser origen o destino de movimientos de personal.
+- Contiene personal operacional de coordinación, por ejemplo Director Nacional, Director Zonal, Jefe Regional, Monitores y Analistas.
+- Coordinadores de Compañía y Asistentes pertenecen laboralmente a su propia Compañía, no a Kaibil.
+
+## COM-DEC-021 — Frontera CORE/SGI
+`CORE` conserva la autoridad sobre la identidad de Compañía. SGI mantiene un snapshot/adaptador local para UAT, pero no adquiere la autoridad sobre Nombre, Logo o Reseña histórica.
+
+
+## COM-DEC-022 — Kaibil como Compañía operacional navegable
+Kaibil permanece siempre activa y disponible en los selectores operacionales autorizados. Que sea la Compañía por defecto de ciertos perfiles de liderazgo en Asignaciones no debe ocultar ni bloquear el selector de Compañía.
+
+
+## COM-DEC-023 — COM v1.1.3 congelada
+**COM v1.1.3 queda FROZEN** a partir del 19-09-2026. La identidad de Compañías proviene de CORE; Kaibil permanece siempre Activa como Compañía de Operaciones; Zona/Regiones/Estado siguen siendo configuración SGI. Cambios posteriores requieren abrir explícitamente una nueva versión COM.
 
 **Estado:** CONGELADA

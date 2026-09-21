@@ -1,0 +1,52 @@
+{
+  "format": "cajamarca.sitcpack",
+  "formatVersion": "0.2",
+  "packageType": "vertical-delta",
+  "system": "SGI: Comando",
+  "vertical": "NOV",
+  "version": "0.1",
+  "status": "UAT_CANDIDATE",
+  "asOf": "2026-09-20",
+  "changes": [
+    {
+      "type": "new-vertical",
+      "component": "NOV",
+      "item": "Operaciones > Novedades para consulta, corrección, aprobación y descarte de Hallazgos, Vulnerabilidades e Incidentes."
+    },
+    {
+      "type": "source-system",
+      "component": "NOV",
+      "item": "Las novedades son levantadas por Agentes de Seguridad o Supervisores en SGI: Operador (SGI_OPR)."
+    },
+    {
+      "type": "workflow",
+      "component": "NOV",
+      "item": "Estado inicial Pendiente; perfiles autorizados revisan dentro de su alcance y pueden editar, Aprobar o Descartar."
+    },
+    {
+      "type": "publication-rule",
+      "component": "NOV",
+      "item": "Aprobada habilita la novedad para SGI: Cliente (SGI_CLI). Descartada exige comentario y conserva histórico sin publicación al cliente."
+    },
+    {
+      "type": "role-scope",
+      "component": "NOV",
+      "item": "Coordinador/Asistente por sus compañías; Jefe Regional por sus regiones; Director Zonal por sus zonas; Director Nacional/Presidencia a nivel nacional."
+    }
+  ],
+  "integrations": [
+    {
+      "source": "SGI_OPR",
+      "target": "SGI_COM",
+      "purpose": "Ingreso de Hallazgos, Vulnerabilidades e Incidentes levantados en terreno",
+      "transport": "TBD"
+    },
+    {
+      "source": "SGI_COM",
+      "target": "SGI_CLI",
+      "purpose": "Exposición al cliente únicamente después de aprobación",
+      "transport": "TBD"
+    }
+  ],
+  "dependencies": ["CNS v0.1.2 UAT", "BIT v0.1 FROZEN", "COO v0.1 FROZEN", "SER v0.10.10 FROZEN", "ASI v0.7.4 FROZEN"]
+}

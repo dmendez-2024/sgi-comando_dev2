@@ -16,15 +16,15 @@ Este archivo registra interconexiones que deben representarse posteriormente en 
 ## SIC: COM → SGI: Comando
 **Dirección:** SIC: COM → SGI  
 **Tipo lógico:** eventos + reconciliación/API  
-**Datos:** Cliente, logo del Cliente, Servicio y versiones, estado comercial, vigencias, Punto, Puesto, calendarios/turnos, FHE.  
+**Datos:** Cliente, logo del Cliente, Servicio y versiones, estado comercial, vigencias, Punto, Puesto, calendarios/turnos, FHE. **No incluye Compañía operativa.**  
 **Eventos conceptuales:** `SERVICE_CREATED`, `SERVICE_UPDATED`, `SERVICE_SUSPENDED`, `SERVICE_TERMINATED`, y equivalentes para Punto/Puesto.  
-**Reglas:** idempotencia; FHE/turnos read-only; cambios futuros pasan por Revisado/Preparado en SGI.
+**Reglas:** idempotencia; FHE/turnos read-only; cambios futuros pasan por Revisado/Preparado en SGI. Un Servicio nuevo entra con Compañía operativa pendiente y se presenta en la bandeja lógica Kaibil hasta que Coordinación lo asigne.
 
 ## SIC: RRHH → SGI: Comando
 **Dirección:** SIC: RRHH → SGI  
-**Datos mínimos:** `employee_id`, identidad operativa, cargo, estado laboral, `instance_country_id`; posteriormente habilidades/certificaciones/permisos relevantes.  
+**Datos mínimos:** `employee_id`, identidad operativa, cargo, estado laboral, `instance_country_id`, **dominio Seguridad Física (SF)** y **Compañía laboral**; posteriormente habilidades/certificaciones/permisos relevantes.  
 **Uso:** membresía primaria a Compañía, compatibilidad con Puestos, disponibilidad operacional.  
-**Regla:** SGI no crea personas ni modifica relación laboral.
+**Regla:** SIC: RRHH es SoR de persona–Compañía. Para que una persona sea visible en SGI debe llegar ya asignada a **SF + Compañía**; SGI no infiere ni crea esa adscripción inicial.
 
 ## SGI: Comando → SIC: RRHH (futuro)
 **Dirección:** SGI → SIC: RRHH  
@@ -387,3 +387,52 @@ CORE es System of Record del catálogo político-administrativo del país. Por `
 - opcionalmente geometría/metadata cartográfica.
 
 TER no crea estas unidades. Solo administra su agrupación operacional en Zonas/Regiones. UAT Ecuador usa `CORE LOCAL · UAT` como adapter/snapshot.
+
+
+## SER v0.9 — SIC: COM → bandeja Kaibil → Compañía operativa
+- **Entrada:** Servicio = Cliente + Punto, con 1..n Puestos, desde SIC: COM.
+- **SoR comercial:** SIC: COM.
+- **Estado inicial SGI:** `point.company_id = NULL`, `operational_assignment_status = PENDING`.
+- **Presentación UI:** Compañía visible `Kaibil`, únicamente como bandeja lógica de Coordinación.
+- **Autorización:** Presidencia/Director Nacional nacional; Director Zonal por Zona; Jefe Regional por Región.
+- **Salida:** asignación inicial registra `point.company_id`, actor, fecha y auditoría; a partir de ese momento se habilita Configuración.
+- **Guardrail:** Kaibil no puede ser destino de Servicios de clientes.
+
+
+## SER v0.9.1 — retiro y reasignación de Servicios
+- Coordinación autorizada puede retirar un Servicio asignado hacia la bandeja lógica Kaibil según alcance territorial.
+- La configuración operacional permanece ligada al Punto y no se borra/copia al cambiar de Compañía.
+- Solo las asignaciones futuras desaparecen de planificación activa; histórico y turno en curso se conservan.
+- `operational_transition_until` protege el cierre del turno heredado y evita doble cobertura en la nueva Compañía.
+- Desde Kaibil se reasigna directamente a otra Compañía autorizada sin aceptación del Coordinador destino.
+
+### SGI-IMP-01 — SGI: Operador → SGI: Comando → VISINT → Impulsos
+
+#### SGI: Operador → SGI: Comando
+- Tipo: evento/API de ejecución y evidencia.
+- Evento conceptual: `TASK_EVIDENCE_SUBMITTED`.
+- Datos mínimos: `event_id`, `instance_country_id`, `task_execution_id`, tipo de tarea, `employee_id`, Punto, Puesto, turno cuando aplique, fecha/hora, evidencia[] y `correlation_id`.
+- SGI: Operador no llama a VISINT directamente.
+
+#### SGI: Comando → VISINT
+- Tipo: solicitud asíncrona de evaluación visual.
+- Evento conceptual: `VISINT_REVIEW_REQUESTED`.
+- Datos: `visint_review_id`, contexto de tarea, evidencia visual, estándar/referencia cuando aplique y `correlation_id`.
+
+#### VISINT → SGI: Comando
+- Tipo: callback/evento de resultado.
+- Evento conceptual: `VISINT_REVIEW_COMPLETED`.
+- Datos: `visint_review_id`, `task_execution_id`, `PASS|FAIL|ERROR`, score/confianza cuando exista, metadata técnica y timestamps.
+- VISINT no devuelve ni calcula Impulsos.
+
+#### Motor de Impulsos en SGI: Comando
+- SGI: Comando resuelve regla versionada por acción/habilidad.
+- La regla define elegibilidad, requisito VISINT, probabilidad y cantidad.
+- `PASS` habilita el sorteo; el sorteo se ejecuta una sola vez y debe ser idempotente.
+- Persistencia conceptual separada: `VisualReview`, `ImpulseRule`, `ImpulseLedger`.
+
+#### SGI: Comando → SGI: Operador
+- Resultado de revisión visual y, cuando corresponda, evento `IMPULSE_AWARDED`.
+- Datos de premio: `award_id`, `task_execution_id`, `employee_id`, `skill_code`, `impulse_amount`, `rule_version`, `awarded_at`, `correlation_id`.
+
+Ver especificación completa y mockups en `docs/SGI_OPR_VISINT_IMPULSOS.md`.

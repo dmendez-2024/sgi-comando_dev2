@@ -1,5 +1,5 @@
 import {useEffect,useState} from 'react';
-import {BarChart3,Building2,ChevronDown,ClipboardList,FileSearch,FileText,Gauge,MapPinned,MessageSquareText,Radio,Settings,ShieldCheck,Users,Warehouse,Map} from 'lucide-react';
+import {BarChart3,Bell,Building2,ChevronDown,ClipboardList,FileSearch,FileText,Gauge,MapPinned,MessageSquareText,Radio,Settings,ShieldCheck,Users,Warehouse,Map,Network} from 'lucide-react';
 
 type NavItem={name:string;icon:any};
 type NavGroup={name:string;icon:any;children:NavItem[]};
@@ -9,7 +9,9 @@ const operations:NavGroup={
     {name:'Territorio',icon:Map},
     {name:'Compañías',icon:Building2},
     {name:'Servicios',icon:MapPinned},
+    {name:'Coordinación',icon:Network},
     {name:'Asignaciones',icon:Users},
+    {name:'Consola',icon:Bell},
     {name:'Bitácora',icon:FileText},
     {name:'Consignas',icon:ClipboardList},
     {name:'Novedades',icon:ShieldCheck},
@@ -54,9 +56,14 @@ export default function Sidebar({active,onChange}:{active:string;onChange:(v:str
     </nav>
     <div className="version version-ledger" aria-label="Versiones de verticales">
       <div><span>TER v1.0</span><b>FROZEN</b></div>
-      <div><span>COM v1.0</span><b>FROZEN</b></div>
-      <div><span>ASI v0.6.5</span><b>FROZEN</b></div>
-      <div><span>SER v0.8.1</span><em>UAT</em></div>
+      <div><span>COM v1.1.3</span><b>FROZEN</b></div>
+      <div><span>ASI v0.7.4</span><b>FROZEN</b></div>
+      <div><span>SER v0.10.10</span><b>FROZEN</b></div>
+      <div><span>COO v0.1</span><b>FROZEN</b></div>
+      <div><span>BIT v0.1</span><b>FROZEN</b></div>
+      <div><span>CNS v0.1.2</span><b>FROZEN</b></div>
+      <div><span>NOV v0.1</span><b>FROZEN</b></div>
+      <div><span>CSL v0.1</span><em>UAT</em></div>
     </div>
   </aside>
 }
