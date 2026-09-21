@@ -1,0 +1,22 @@
+{
+  "format": "sitcpack",
+  "version": "COM-v1.1.2-patch",
+  "scenario": "SGI-Comando-COM-v1.1.2-UAT-FIX",
+  "scope": "COM migration compatibility only",
+  "status": "UAT_CANDIDATE",
+  "base": "COM v1.1.1 + ASI v0.7.1",
+  "asOf": "2026-09-19",
+  "changes": [
+    {
+      "type": "migration_fix",
+      "migration": "V18__core_companies_and_company_transfers.sql",
+      "rule": "Resolve existing Company by core_catalog_id, then canonical CORE name, then canonical code; preserve existing UUID."
+    },
+    {
+      "type": "component_fix",
+      "component": "COM - Compañías",
+      "rule": "Activar desde CORE reuses matching legacy Company by name/code instead of creating a duplicate."
+    }
+  ],
+  "functionalChange": false
+}

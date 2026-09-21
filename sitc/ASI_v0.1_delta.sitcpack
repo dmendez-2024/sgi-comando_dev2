@@ -1,0 +1,83 @@
+{
+  "format": "cajamarca.sitcpack",
+  "formatVersion": "0.2",
+  "packageType": "vertical-delta",
+  "system": "SGI: Comando",
+  "vertical": {
+    "code": "ASI",
+    "name": "Asignaciones",
+    "version": "0.1",
+    "status": "UAT_CANDIDATE",
+    "legacyModule": "SGI-06"
+  },
+  "base": {
+    "TER": "1.0 FROZEN",
+    "COM": "1.0 FROZEN"
+  },
+  "scope": [
+    "person-card interaction",
+    "eligibility semaphore",
+    "company/client filters",
+    "assignment territorial read scope"
+  ],
+  "connections": [
+    {
+      "from": "COM",
+      "to": "ASI",
+      "data": [
+        "authorized Companies",
+        "Company-Region links"
+      ],
+      "sor": "COM"
+    },
+    {
+      "from": "TER",
+      "to": "ASI",
+      "data": [
+        "Zone/Region operational scopes"
+      ],
+      "sor": "TER"
+    },
+    {
+      "from": "SIC: COM",
+      "to": "ASI",
+      "data": [
+        "Client",
+        "Points",
+        "Posts",
+        "Shifts",
+        "TIER"
+      ],
+      "sor": "SIC: COM"
+    },
+    {
+      "from": "SIC: RRHH",
+      "to": "ASI",
+      "data": [
+        "Company personnel",
+        "employment status",
+        "skills",
+        "vacation",
+        "medical leave",
+        "unavailability"
+      ],
+      "sor": "SIC: RRHH"
+    },
+    {
+      "from": "SMC",
+      "to": "ASI",
+      "data": [
+        "ID - Índice de Desempeño"
+      ],
+      "sor": "SMC"
+    }
+  ],
+  "rules": [
+    "GREEN: no blockers and IC=100 and ID>=TIER minimum",
+    "YELLOW: no blockers but IC or ID does not comply",
+    "RED: hard blocker",
+    "only Coordinador/Asistente can edit/save/publish",
+    "higher roles are read-only within territorial scope"
+  ],
+  "documentation": "docs/verticals/ASI/ASI_MASTER.md"
+}

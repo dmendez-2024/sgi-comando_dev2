@@ -1,0 +1,52 @@
+{
+  "format": "cajamarca.sitcpack",
+  "formatVersion": "0.2",
+  "packageType": "vertical-delta",
+  "system": "SGI: Comando",
+  "vertical": "COO",
+  "version": "0.1",
+  "status": "UAT_CANDIDATE",
+  "asOf": "2026-09-19",
+  "changes": [
+    {
+      "type": "new-vertical",
+      "component": "COO",
+      "item": "Puestos de Coordinación de tipos Monitoreo y Supervisión por Compañía."
+    },
+    {
+      "type": "planning-input",
+      "component": "Puesto de Coordinación",
+      "item": "Formatos cerrados 24/7+6-2, 12/7+6-2, 12/5+5-2 con horario de inicio/relevo y day_mask."
+    },
+    {
+      "type": "route-versioning",
+      "component": "Ruta de Supervisión",
+      "item": "Ruta versionada, secuencia ordenada de Puntos, estados DRAFT/ACTIVE/REPLACED."
+    },
+    {
+      "type": "coverage-preview",
+      "component": "Ruta de Supervisión",
+      "item": "Preview por turno consume horarios requeridos de Puestos desde post_shift_template y omite Puntos sin Puestos aplicables al turno."
+    }
+  ],
+  "connections": [
+    {
+      "from": "SER",
+      "to": "COO",
+      "direction": "internal-read",
+      "data": ["Company", "Point", "Post", "post_shift_template"],
+      "sor": "SER/SIC_COM snapshot"
+    },
+    {
+      "from": "COO",
+      "to": "ASI",
+      "direction": "future-consumer",
+      "data": ["CoordinationPost", "Format", "Rotation", "Shift schedule"],
+      "sor": "COO"
+    }
+  ],
+  "databaseChanged": true,
+  "backendChanged": true,
+  "frontendChanged": true,
+  "uat": "docs/CHANGELOG_UAT_COO_v0.1.md"
+}

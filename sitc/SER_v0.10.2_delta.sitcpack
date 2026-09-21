@@ -1,0 +1,68 @@
+{
+  "format": "cajamarca.sitcpack",
+  "formatVersion": "0.2",
+  "packageType": "vertical-delta",
+  "system": "SGI: Comando",
+  "vertical": "SER",
+  "version": "0.10.2",
+  "status": "UAT_CANDIDATE",
+  "asOf": "2026-09-19",
+  "baseFrozen": [
+    {
+      "code": "TER",
+      "version": "1.0",
+      "status": "FROZEN"
+    },
+    {
+      "code": "COM",
+      "version": "1.1.3",
+      "status": "FROZEN"
+    }
+  ],
+  "baseWorking": [
+    {
+      "code": "ASI",
+      "version": "0.7.4",
+      "status": "UAT_CANDIDATE"
+    }
+  ],
+  "changes": [
+    {
+      "type": "workflow",
+      "component": "Bitacora / Patrullas / Consignas Protocols",
+      "item": "Standardize protocol states to BORRADOR, INACTIVO and ACTIVO; publish transitions draft to inactive; activate/deactivate is explicit."
+    },
+    {
+      "type": "guardrail",
+      "component": "Bitacora",
+      "item": "Maximum 10 Acreditaciones per Protocol, enforced in frontend and backend."
+    },
+    {
+      "type": "ux",
+      "component": "Patrullas",
+      "item": "Align layout with Bitacora using Puestos del Punto, Protocolos del Puesto and a large protocol detail panel containing Patrullas del protocolo and patrol configuration."
+    },
+    {
+      "type": "migration",
+      "component": "Flyway V21",
+      "item": "Map legacy protocol statuses and create updated status constraints/indexes while preserving child Consignment operational status compatibility."
+    },
+    {
+      "type": "runtime",
+      "component": "UAT scripts",
+      "item": "Preserve Docker Compose stack: backend readiness at port 8080; frontend opened at port 5173."
+    },
+    {
+      "id": "SER-BIT-ACC-CODE-001",
+      "type": "hotfix",
+      "scope": "Bitácora / Acreditaciones",
+      "detail": "Allocate next ACC code from highest existing numeric suffix rather than live row count; prevents duplicate unique-key collisions after deletions.",
+      "maxConcurrentAccreditations": 10
+    }
+  ],
+  "databaseMigration": "backend/src/main/resources/db/migration/V21__ser_protocol_states_and_bitacora_accreditation_limit.sql",
+  "documents": [
+    "docs/CHANGELOG_SER_v0.10.1.md",
+    "README_SER_v0.10.1.md"
+  ]
+}

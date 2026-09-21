@@ -1,0 +1,19 @@
+{
+  "release": "SGI_COM_INT_v0.1",
+  "date": "2026-09-21",
+  "programId": "SGI_COM",
+  "programVersion": "1.1.0",
+  "uiChanged": false,
+  "functionalVerticalsStatus": "FROZEN",
+  "genericInterconnectionModule": true,
+  "interconnections": 24,
+  "interfaces": 30,
+  "currentSitcpack": "sitc/SGI_Comando_CURRENT.sitcpack",
+  "coreImportSitcpack": "sitc/v3/SITC-ECOSISTEMA-CM-20260921-SGI_COM-INTERCONNECTIONS-SCENARIO_SNAPSHOT.sitcpack",
+  "componentDelta": "sitc/v3/SGI_COM-v1.1.0-INT-v0.1-COMPONENT_DELTA.sitcpack",
+  "notes": [
+    "No DB migration",
+    "Legacy partners remain MANUAL_PENDING until implemented/tested",
+    "CORE import does not activate productive Instancia PE bindings automatically"
+  ]
+}

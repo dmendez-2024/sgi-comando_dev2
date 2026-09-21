@@ -1,0 +1,65 @@
+{
+  "format": "sitcpack",
+  "version": "ASI-v0.7",
+  "scenario": "SGI-Comando-ASI-v0.7",
+  "scope": "ASI only",
+  "status": "UAT_CANDIDATE",
+  "base": "ASI v0.6.5 FROZEN",
+  "asOf": "2026-09-19",
+  "changes": [
+    {
+      "type": "component_update",
+      "component": "ASI - Asignaciones",
+      "version": "0.7",
+      "state": "UAT_CANDIDATE",
+      "adds": [
+        "Company transfer workflow with destination acceptance",
+        "Incoming/outgoing transfer filters",
+        "Transfer actions in employee profile",
+        "Immediate release of future origin assignments",
+        "Current-shift-safe effective transfer",
+        "Transfer reason catalog and audit history",
+        "Kaibil role/territorial authorization"
+      ]
+    },
+    {
+      "type": "connection",
+      "from": "SIC: RRHH",
+      "to": "ASI - Asignaciones",
+      "contract": "Current employee->Company membership, role and employment snapshot",
+      "sor": "SIC: RRHH"
+    },
+    {
+      "type": "connection",
+      "from": "ASI - Asignaciones",
+      "to": "SIC: RRHH",
+      "contract": "Accepted Company membership change request / acknowledgement",
+      "sor": "SIC: RRHH",
+      "mechanism": "Outbox event in UAT; production integration to be implemented"
+    },
+    {
+      "type": "connection",
+      "from": "COM - Compañías",
+      "to": "ASI - Asignaciones",
+      "contract": "Active Companies including Kaibil; zone/region used for transfer authorization",
+      "sor": "COM operational configuration / CORE identity"
+    },
+    {
+      "type": "domain_rule",
+      "id": "ASI-DEC-041..053",
+      "component": "ASI - Asignaciones",
+      "rule": "See docs/verticals/ASI/ASI_DECISIONS.md"
+    }
+  ],
+  "data": [
+    "employee_company_transfer",
+    "transfer_reason_catalog",
+    "company_membership existing canonical relation",
+    "employee_operational_snapshot UAT read adapter"
+  ],
+  "productionNotes": [
+    "SIC: RRHH remains SoR. Do not convert the UAT employee snapshot into a competing master.",
+    "Transfer retries/integration must remain idempotent in production.",
+    "Future Coordinación page is explicitly out of scope for ASI v0.7."
+  ]
+}

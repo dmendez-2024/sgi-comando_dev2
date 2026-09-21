@@ -1,12 +1,4 @@
-# SGI: Comando — INT v0.1 UAT (2026-09-21)
-
-**Cambio activo:** módulo genérico de interconexiones + catálogo/IDs SITC-NOM-001 v3.0. **Sin cambios de UI.** Todas las verticales funcionales permanecen FROZEN.
-
-Ver `README_INT_v0.1.md` y `docs/INTERCONNECTIONS.md`.
-
----
-
-# SGI: Comando — COO v0.1 + SER v0.10.10 FROZEN + COM v1.1.3 FROZEN + ASI v0.7.4
+# SGI: Comando — SER v0.9.1 + COM v1.1.3 FROZEN + ASI v0.7.4
 
 Entrega combinada UAT del 19-09-2026.
 
@@ -14,8 +6,7 @@ Entrega combinada UAT del 19-09-2026.
 - TER — Territorio v1.0: **FROZEN**
 - COM — Compañías v1.1.3: **FROZEN**
 - ASI — Asignaciones v0.7.4: **UAT_CANDIDATE**
-- SER — Servicios v0.10.10: **FROZEN**
-- COO — Coordinación v0.1: **UAT_CANDIDATE**
+- SER — Servicios v0.9.1: **UAT_CANDIDATE**
 
 ## COM v1.1
 - SGI ya no crea Compañías desde cero.
@@ -105,43 +96,3 @@ Para que una persona ingrese a SGI: Comando, SIC: RRHH debe entregarla adscrita 
 ## ASI v0.7.4 — Guardia de transición de Servicio
 - Cuando un Servicio fue retirado a Kaibil con un turno activo retenido, la nueva Compañía no puede crear asignaciones sobre turnos que inicien antes de `operational_transition_until`.
 - Resumen, cobertura y publicación excluyen esos turnos durante la transición para evitar doble cobertura.
-
-
-## SER v0.10.1 — Protocolos + Bitácora + Patrullas
-- Estados de Protocolos estandarizados en Bitácora, Patrullas y Consignas: **Borrador / Inactivo / Activo**.
-- Publicar lleva de Borrador a Inactivo; Activar/Inactivar es una acción operacional separada.
-- Bitácora limita cada Protocolo a **10 Acreditaciones**.
-- Patrullas adopta la composición visual de Bitácora: Puestos | Protocolos | Detalle, con las Patrullas dentro del panel derecho.
-- Migración Flyway: `V21__ser_protocol_states_and_bitacora_accreditation_limit.sql`.
-- Frontend UAT: `http://localhost:5173`; backend: `http://localhost:8080`.
-
-
-## SER v0.10.2 — Hotfix Acreditaciones
-- Corrige HTTP 500 al agregar una acreditación cuando existen huecos en los códigos ACC por eliminaciones previas.
-- El próximo código se calcula desde el mayor sufijo numérico existente, no desde la cantidad actual.
-- Ejemplo: 7 acreditaciones con `ACC-010` existente → siguiente código `ACC-011`, contador funcional `8/10`.
-- Se mantiene máximo 10 acreditaciones concurrentes por Protocolo de Bitácora.
-- Sin migración nueva de base de datos.
-
-
-## SER v0.10.4 — Activación por Puesto + confirmaciones SGI
-- En Bitácora, el contenido publicado sigue siendo inmutable, pero la **activación operativa se controla por Puesto** desde Definición.
-- Marcar un Puesto activa el Protocolo en ese Puesto; desmarcarlo lo inactiva solo allí y muestra una advertencia SGI.
-- Se elimina el botón global **Inactivar** de la cabecera.
-- Un Protocolo puede estar activo simultáneamente en varios Puestos del Punto.
-- Si no queda ningún Puesto activo, el Protocolo pasa globalmente a `Inactivo`; al activar al menos uno, pasa a `Activo`.
-- Bitácora elimina `window.confirm` para acreditaciones/campos y adopta modal SGI propio.
-- Regla UX: no usar diálogos nativos del navegador en nuevas pantallas de SGI: Comando.
-- Migración Flyway: `V23__ser_bitacora_scope_activation_semantics.sql`.
-
-
-## COO v0.1 — Coordinación
-- Nueva opción `Coordinación` entre Servicios y Asignaciones.
-- Puestos internos de `Monitoreo` y `Supervisión` por Compañía.
-- Formatos cerrados `24/7 + 6-2`, `12/7 + 6-2`, `12/5 + 5-2`.
-- Horarios de 12 h derivados desde hora de inicio/relevo; 12/5 exige cinco días.
-- Supervisión incorpora Ruta versionada con secuencia ordenada de Puntos.
-- Preview por turno usa los horarios requeridos de `post_shift_template`; la visita al Punto incluye todos los Puestos aplicables al turno.
-- Alertas de Puntos activos sin cobertura de Ruta.
-- Flyway `V25__coo_coordination_v01.sql`.
-- SER v0.10.10 permanece FROZEN.

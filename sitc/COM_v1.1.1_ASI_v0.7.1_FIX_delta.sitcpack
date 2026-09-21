@@ -1,0 +1,20 @@
+{
+  "package": "SGI Comando UAT migration fix",
+  "date": "2026-09-19",
+  "versions": {
+    "COM": "1.1.1",
+    "ASI": "0.7.1"
+  },
+  "base": {
+    "COM": "1.1",
+    "ASI": "0.7"
+  },
+  "scope": "Persistence/migration only; no functional rule changes.",
+  "changes": [
+    "V18 merges Company catalog activation on natural key instance_country_id + code.",
+    "Existing Company UUIDs are preserved to protect downstream foreign-key references.",
+    "company_region and company_version resolve the actual Company UUID after merge.",
+    "Kaibil employee snapshots resolve Kaibil by canonical code instead of assuming a seed UUID."
+  ],
+  "migration": "backend/src/main/resources/db/migration/V18__core_companies_and_company_transfers.sql"
+}

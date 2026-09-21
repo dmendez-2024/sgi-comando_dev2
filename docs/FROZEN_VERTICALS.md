@@ -1,0 +1,26 @@
+# SGI: Comando — Registro de Verticales Congeladas
+
+| Vertical | Versión | Estado | Fecha | Dependencias clave |
+|---|---:|---|---|---|
+| TER — Territorio | 1.0 | FROZEN | 2026-09-08 | CORE, SIC: RRHH |
+| COM — Compañías | 1.1.3 | FROZEN | 2026-09-19 | CORE, TER v1.0, SER, MinIO |
+| ASI — Asignaciones | 0.6.5 | FROZEN | 2026-09-09 | SIC: COM, SIC: RRHH, SMC |
+
+## Regla
+
+No modificar una vertical `FROZEN` durante el desarrollo de otra vertical. Cualquier cambio posterior debe abrir explícitamente una nueva versión de esa vertical.
+
+## Cierre final 2026-09-20
+
+Baselines congeladas al cierre de SGI: Comando:
+- TER v1.0
+- COM v1.1.3
+- SER v0.10.10
+- ASI v0.7.4
+- COO v0.1
+- BIT v0.1
+- CNS v0.1.2
+- NOV v0.1
+- CSL v0.1
+
+`PERF v0.1` es hardening técnico sin cambio de UI ni redefinición funcional.

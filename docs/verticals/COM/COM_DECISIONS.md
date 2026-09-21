@@ -1,0 +1,141 @@
+# COM — Decision Log
+
+**Vertical:** COM — Compañías  
+**Versión congelada:** v1.1.3  
+**Estado:** FROZEN
+
+## COM-DEC-001 — Zona única
+Una Compañía pertenece exactamente a una Zona.
+
+**Estado:** CONGELADA
+
+## COM-DEC-002 — Multi-región
+Una Compañía puede operar en una o más Regiones.
+
+**Estado:** CONGELADA
+
+## COM-DEC-003 — Regiones dentro de una sola Zona
+Todas las Regiones asignadas a una Compañía deben pertenecer a su única Zona.
+
+**Estado:** CONGELADA
+
+## COM-DEC-004 — Agregar Regiones
+Una Compañía Activa puede agregar Regiones de su misma Zona en cualquier momento.
+
+**Estado:** CONGELADA
+
+## COM-DEC-005 — Retirar Región
+Una Región solo puede retirarse de una Compañía cuando no existan Servicios activos de esa Compañía en dicha Región.
+
+**Estado:** CONGELADA
+
+## COM-DEC-006 — Históricos no bloquean
+Los Servicios históricos/finalizados no bloquean retirar la relación Compañía–Región.
+
+**Estado:** CONGELADA
+
+## COM-DEC-007 — Prohibición multizona
+Una Compañía no puede operar simultáneamente en más de una Zona.
+
+**Estado:** CONGELADA
+
+## COM-DEC-008 — Cambio de Zona
+Para cambiar de Zona deben poder retirarse previamente todas las Regiones actuales. Por transitividad, el cambio no se permite mientras existan Servicios activos que bloqueen dichas remociones.
+
+**Estado:** CONGELADA
+
+## COM-DEC-009 — Reactivación
+Una Compañía Inactiva puede volver a Activa conservando identidad, código, historial y versionamiento.
+
+**Estado:** CONGELADA
+
+## COM-DEC-010 — Edición versionada
+Una Compañía Activa puede editar Nombre, Logo, Reseña Histórica y estructura territorial conforme a las reglas COM. Cada guardado genera una nueva versión e historial.
+
+**Estado:** CONGELADA
+
+## COM-DEC-011 — Logo y reseña
+Al crear una Compañía se puede cargar Logo y registrar Reseña Histórica de máximo 750 caracteres.
+
+**Estado:** CONGELADA
+
+## COM-DEC-012 — Inactivación por Servicios
+Una Compañía solo puede inactivarse cuando no tenga Servicios activos asociados. Debe migrarlos o finalizarlos primero.
+
+**Estado:** CONGELADA
+
+## COM-DEC-013 — Frontera con SER
+COM no migra Servicios. La transferencia/finalización corresponde a SER. SER deberá mantener Región operacional explícita para cada Servicio compatible con una Compañía multirregión.
+
+**Estado:** CONGELADA COMO CONTRATO ENTRE VERTICALES
+
+## COM-DEC-014 — Protección TER
+TER v1.0 permanece congelada. COM consume Zona/Región de TER y no modifica funcionalmente la vertical TER.
+
+**Estado:** CONGELADA
+
+## COM-DEC-015 — Almacenamiento productivo de Logo
+En producción, el archivo de Logo se almacena en MinIO y PostgreSQL conserva referencia, hash, metadata y versión. El adapter LOCAL/Data URL es exclusivamente UAT/transición y no debe llegar a producción.
+
+**Estado:** CONGELADA
+
+## COM-DEC-016 — Identidad estable
+Cambios de Nombre, Logo, Reseña, Zona, Regiones, estado o reactivación no crean una Compañía nueva. `company_id` y código `COM-###` permanecen estables.
+
+**Estado:** CONGELADA
+
+## COM-DEC-017 — No eliminación de una Compañía histórica
+Una Compañía que haya estado Activa no se elimina físicamente. Se conserva mediante estado Inactiva y su historial/versionamiento.
+
+**Estado:** CONGELADA
+
+---
+
+# Apertura COM v1.1 — Catálogo CORE
+
+**Fecha:** 2026-09-19  
+**Estado:** UAT
+
+## COM-DEC-018 — CORE es SoR de identidad de Compañía
+SGI: Comando deja de crear Compañías desde cero. La identidad de Compañía se activa desde el catálogo de CORE.
+
+Los siguientes campos son de solo lectura en SGI y provienen de CORE:
+- Logo.
+- Nombre.
+- Reseña histórica.
+
+SGI conserva como configuración operacional editable:
+- Estado.
+- Motivo del cambio.
+- Zona.
+- Regiones operativas.
+
+Esta decisión **supersede parcialmente COM-DEC-010 y COM-DEC-011** en lo relativo a editar Nombre/Logo/Reseña y crear una Compañía localmente. El versionado de la configuración operacional continúa vigente.
+
+## COM-DEC-019 — Activación desde catálogo
+Una Compañía solo puede incorporarse a SGI mediante **Activar desde CORE**. La activación crea la entidad operacional SGI vinculada mediante `core_catalog_id`; no crea un nuevo maestro de identidad.
+
+## COM-DEC-020 — Kaibil
+**Kaibil** es la Compañía de Operaciones y debe existir siempre Activa.
+
+Reglas:
+- `company_type = COORDINATION`.
+- `always_active = true`.
+- No puede inactivarse.
+- Por el momento no tiene Servicios, Clientes ni Puntos asociados.
+- Puede ser origen o destino de movimientos de personal.
+- Contiene personal operacional de coordinación, por ejemplo Director Nacional, Director Zonal, Jefe Regional, Monitores y Analistas.
+- Coordinadores de Compañía y Asistentes pertenecen laboralmente a su propia Compañía, no a Kaibil.
+
+## COM-DEC-021 — Frontera CORE/SGI
+`CORE` conserva la autoridad sobre la identidad de Compañía. SGI mantiene un snapshot/adaptador local para UAT, pero no adquiere la autoridad sobre Nombre, Logo o Reseña histórica.
+
+
+## COM-DEC-022 — Kaibil como Compañía operacional navegable
+Kaibil permanece siempre activa y disponible en los selectores operacionales autorizados. Que sea la Compañía por defecto de ciertos perfiles de liderazgo en Asignaciones no debe ocultar ni bloquear el selector de Compañía.
+
+
+## COM-DEC-023 — COM v1.1.3 congelada
+**COM v1.1.3 queda FROZEN** a partir del 19-09-2026. La identidad de Compañías proviene de CORE; Kaibil permanece siempre Activa como Compañía de Operaciones; Zona/Regiones/Estado siguen siendo configuración SGI. Cambios posteriores requieren abrir explícitamente una nueva versión COM.
+
+**Estado:** CONGELADA

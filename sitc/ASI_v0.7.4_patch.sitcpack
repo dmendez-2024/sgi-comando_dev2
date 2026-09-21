@@ -1,0 +1,41 @@
+{
+  "format": "cajamarca.sitcpack",
+  "formatVersion": "0.2",
+  "packageType": "vertical-delta",
+  "system": "SGI: Comando",
+  "vertical": "ASI",
+  "version": "0.7.4",
+  "status": "UAT_CANDIDATE",
+  "asOf": "2026-09-19",
+  "changes": [
+    {
+      "type": "integration-guard",
+      "component": "ASI <- SER",
+      "item": "Consume point.operational_transition_until during Service Company handover to prevent destination coverage before inherited current shift ends."
+    },
+    {
+      "type": "planning",
+      "component": "Week/Coverage/Publish",
+      "item": "Exclude shift occurrences beginning before Service transition cutoff for the new operating Company."
+    },
+    {
+      "type": "validation",
+      "component": "Assign",
+      "item": "Reject assignments before operational_transition_until with SERVICIO_EN_TRANSICION conflict."
+    }
+  ],
+  "connections": [
+    {
+      "from": "SER",
+      "to": "ASI",
+      "direction": "internal",
+      "data": ["point.operational_transition_until", "Service operating Company"],
+      "sor": "SER"
+    }
+  ],
+  "databaseChanged": false,
+  "backendChanged": true,
+  "frontendChanged": false,
+  "decisionLog": "docs/verticals/ASI/ASI_DECISIONS.md",
+  "uat": "docs/CHANGELOG_UAT_ASI_v0.7.4.md"
+}

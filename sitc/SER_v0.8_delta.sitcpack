@@ -1,0 +1,29 @@
+{
+  "format": "cajamarca.sitcpack",
+  "formatVersion": "0.2",
+  "packageType": "vertical-delta",
+  "system": "SGI: Comando",
+  "vertical": "SER",
+  "version": "0.8",
+  "status": "UAT_CANDIDATE",
+  "asOf": "2026-09-12",
+  "baseFrozen": [
+    {"code":"TER","version":"1.0","status":"FROZEN"},
+    {"code":"COM","version":"1.0","status":"FROZEN"},
+    {"code":"ASI","version":"0.6.5","status":"FROZEN"}
+  ],
+  "changes": [
+    {"type":"feature","component":"Configuración > Consignas","item":"Implement Punto -> Protocolo de Consignas -> Consigna -> Alcance -> Reglas/Evidencias."},
+    {"type":"governance","component":"Consignment protocols","item":"Only one Consignment Protocol may be VIGENTE per Punto; published content is immutable and edits create a draft version copy."},
+    {"type":"scope","component":"Consignas","item":"Support Todo el Punto or 1..n Puestos without duplicating the Consigna."},
+    {"type":"evidence","component":"Consignas","item":"Support standard-image assets and future VISINT comparison, plus optional expected ATS/GPS location and execution GPS rule."},
+    {"type":"migration","component":"Flyway V17","item":"Evolve canonical consignment table; add consignment_protocol, consignment_post_scope and consignment_evidence. No parallel consignment model."}
+  ],
+  "externalConnectionsChanged": false,
+  "databaseChanged": true,
+  "backendChanged": true,
+  "frontendChanged": true,
+  "frozenVerticalsChanged": false,
+  "decisionLog": "docs/verticals/SER/SER_DECISIONS.md",
+  "uat": "docs/CHANGELOG_UAT_SER_v0.8.md"
+}

@@ -1,0 +1,487 @@
+{
+  "format": "cajamarca.sitcpack",
+  "formatVersion": "0.2",
+  "packageType": "cumulative-final",
+  "system": "SGI: Comando",
+  "asOf": "2026-09-20",
+  "architecture": {
+    "style": "modular-monolith",
+    "frontend": "React 19.2 + TypeScript 6",
+    "backend": "Java 25 LTS + Quarkus",
+    "database": "PostgreSQL 17",
+    "objectStorage": "MinIO",
+    "deployment": "Docker Compose",
+    "isolationBoundary": "instance_country_id"
+  },
+  "frozenVerticals": [
+    {
+      "code": "TER",
+      "name": "Territorio",
+      "version": "1.0",
+      "status": "FROZEN"
+    },
+    {
+      "code": "COM",
+      "name": "Compañías",
+      "version": "1.1.3",
+      "status": "FROZEN"
+    },
+    {
+      "code": "SER",
+      "name": "Servicios",
+      "version": "0.10.10",
+      "status": "FROZEN"
+    },
+    {
+      "code": "ASI",
+      "name": "Asignaciones",
+      "version": "0.7.4",
+      "status": "FROZEN"
+    },
+    {
+      "code": "COO",
+      "name": "Coordinación",
+      "version": "0.1",
+      "status": "FROZEN"
+    },
+    {
+      "code": "BIT",
+      "name": "Bitácora global",
+      "version": "0.1",
+      "status": "FROZEN"
+    },
+    {
+      "code": "CNS",
+      "name": "Consignas operativas",
+      "version": "0.1.2",
+      "status": "FROZEN"
+    },
+    {
+      "code": "NOV",
+      "name": "Novedades",
+      "version": "0.1",
+      "status": "FROZEN"
+    },
+    {
+      "code": "CSL",
+      "name": "Consola",
+      "version": "0.1",
+      "status": "FROZEN"
+    }
+  ],
+  "systems": [
+    "ASI - Asignaciones",
+    "ATS",
+    "COM - Compañías",
+    "CORE",
+    "IDENT",
+    "MinIO",
+    "PostgreSQL",
+    "SER - Servicios",
+    "SGI: Cliente",
+    "SGI: Operador",
+    "SIC: COM",
+    "SIC: RRHH",
+    "SIC: RRMM",
+    "VISINT"
+  ],
+  "connections": [
+    {
+      "from": "CORE",
+      "to": "TER",
+      "data": [
+        "country subdivision type",
+        "official subdivision catalog",
+        "geometries/polygons",
+        "dataset version"
+      ],
+      "sor": "CORE"
+    },
+    {
+      "from": "SIC: RRHH",
+      "to": "TER",
+      "data": [
+        "eligible personnel for Zone/Region responsible"
+      ],
+      "sor": "SIC: RRHH"
+    },
+    {
+      "from": "TER",
+      "to": "COM",
+      "data": [
+        "Zone",
+        "Region",
+        "Region->Zone",
+        "territorial scope"
+      ],
+      "sor": "TER"
+    },
+    {
+      "from": "CORE",
+      "to": "COM - Compañías",
+      "data": [
+        "Company identity/catalog",
+        "Company name",
+        "Company logo",
+        "Historical review",
+        "company_type",
+        "source version/status"
+      ],
+      "sor": "CORE",
+      "status": "COM v1.1.3 FROZEN; CORE remains SoR of Company identity and Kaibil remains always-active coordination Company."
+    },
+    {
+      "from": "SER",
+      "to": "COM",
+      "data": [
+        "active Services by operating Company/Region",
+        "operational Company assignment status"
+      ],
+      "sor": "SER for operational assignment; SIC: COM for commercial Service master",
+      "status": "SER v0.10.4 UAT; SIC: COM remains SoR of commercial Service/Punto/Puesto data; SGI SER owns operational Company assignment and reassignment."
+    },
+    {
+      "from": "COM",
+      "to": "MinIO",
+      "data": [
+        "Company logo binary"
+      ],
+      "status": "production target"
+    },
+    {
+      "from": "COM",
+      "to": "PostgreSQL",
+      "data": [
+        "Operational Company activation",
+        "Company-Region links",
+        "versions/history",
+        "CORE catalog snapshot adapter",
+        "CORE source metadata"
+      ],
+      "sor": "SGI for operational config; CORE for Company identity"
+    },
+    {
+      "from": "COM",
+      "to": "ASI",
+      "data": [
+        "Active Companies",
+        "Kaibil coordination Company",
+        "Company Zone/Region links",
+        "Company type/always-active flags"
+      ],
+      "sor": "COM operational config / CORE identity"
+    },
+    {
+      "from": "TER",
+      "to": "ASI",
+      "data": [
+        "Zone/Region operational scopes"
+      ],
+      "sor": "TER"
+    },
+    {
+      "from": "SIC: COM",
+      "to": "ASI",
+      "data": [
+        "Client",
+        "Points",
+        "Posts",
+        "Shifts",
+        "TIER",
+        "Format",
+        "Rotation",
+        "cycle_length_days"
+      ],
+      "sor": "SIC: COM"
+    },
+    {
+      "from": "SIC: RRHH",
+      "to": "ASI",
+      "data": [
+        "Personnel assigned to Seguridad Física (SF)",
+        "Current Company membership",
+        "employment status",
+        "skills",
+        "vacation",
+        "medical leave",
+        "unavailability"
+      ],
+      "sor": "SIC: RRHH",
+      "status": "Required inbound contract: personnel must arrive already assigned to SF + Company."
+    },
+    {
+      "from": "SMC",
+      "to": "ASI",
+      "data": [
+        "ID - Índice de Desempeño"
+      ],
+      "sor": "SMC"
+    },
+    {
+      "from": "ASI",
+      "to": "PostgreSQL",
+      "data": [
+        "Assignment planning",
+        "Operational assignments",
+        "Post planning cycle snapshot (read-only copy of SIC: COM contract)"
+      ],
+      "sor": "ASI for assignments; SIC: COM remains SoR for rotation/cycle"
+    },
+    {
+      "from": "ATS",
+      "to": "SER",
+      "data": [
+        ".ats published architecture package",
+        "manifest/model metadata",
+        "plan asset",
+        "optional Point Risk Index"
+      ],
+      "sor": "ATS for published design; SGI imports and versions consumer copy"
+    },
+    {
+      "from": "SER",
+      "to": "PostgreSQL",
+      "data": [
+        "ATS package metadata and archive",
+        "materialized plan image",
+        "Puesto normalized coordinates bound to ATS revision",
+        "Bitácora protocol configuration",
+        "Protocol fields and evidence requirements",
+        "Standard-image assets for future VISINT comparison",
+        "Versioned Patrol protocols and immutable snapshots",
+        "Patrol definitions (open/closed; programmed/unprogrammed)",
+        "Patrol checkpoints with ATS/GPS/mixed origin",
+        "Checkpoint rules and versioned standard images",
+        "Canonical patrol_definition/patrol_checkpoint configuration reused by future execution",
+        "Normalized patrol_checkpoint_rule; no parallel patrol_config_* tables",
+        "Versioned Consignment protocols; one VIGENTE per Punto",
+        "Consignments with Todo el Punto or 1..n Puestos scope",
+        "Consignment validity/calendar/compliance rules",
+        "Optional expected ATS/GPS location and execution GPS requirement",
+        "Consignment evidence definitions and versioned standard-image assets for future VISINT"
+      ],
+      "sor": "SER for operational configuration and imported revision tracking"
+    },
+    {
+      "from": "ASI",
+      "to": "SIC: RRHH",
+      "data": [
+        "Accepted employee Company transfer request",
+        "effective_at",
+        "transfer audit identifiers"
+      ],
+      "sor": "SIC: RRHH",
+      "status": "UAT outbox / acknowledgement adapter"
+    },
+    {
+      "from": "SIC: COM",
+      "to": "SER",
+      "data": [
+        "Service = Client + Point",
+        "Point",
+        "1..n Posts",
+        "commercial status/source version"
+      ],
+      "sor": "SIC: COM",
+      "status": "SER v0.10.4: SIC: COM does not assign operating Company; SGI may return/reassign operational Company via Kaibil without changing the commercial master."
+    },
+    {
+      "from": "COM - Compañías",
+      "to": "SER",
+      "data": [
+        "Active operating Companies",
+        "Kaibil coordination Company",
+        "Zone/Region scope"
+      ],
+      "sor": "CORE for identity / COM for operational territorial configuration",
+      "status": "Used to resolve initial operating Company assignment."
+    },
+    {
+      "from": "SER",
+      "to": "ASI",
+      "data": [
+        "Point operating Company after assignment/reassignment",
+        "Service/Point/Post availability for assignment planning",
+        "operational_transition_until guard during Company handover",
+        "release of future personnel assignments when Service returns to Kaibil"
+      ],
+      "sor": "SER for operational Company assignment/reassignment; ASI for personnel assignment history; SIC: COM for commercial Service/Post master"
+    },
+    {
+      "from": "SGI: Operador",
+      "to": "SGI: Comando",
+      "data": [
+        "task execution",
+        "task evidence/photos",
+        "employee",
+        "Point/Post",
+        "shift context",
+        "capture timestamp",
+        "correlation_id"
+      ],
+      "sor": "SGI: Comando for orchestration/evidence correlation",
+      "status": "Runtime contract defined 2026-09-20; no direct SGI: Operador→VISINT call."
+    },
+    {
+      "from": "SGI: Comando",
+      "to": "VISINT",
+      "data": [
+        "visual evidence",
+        "task context",
+        "standard/reference when applicable",
+        "visint_review_id",
+        "correlation_id"
+      ],
+      "sor": "SGI: Comando orchestrates request",
+      "status": "Adapter contract defined; implementation may be pending."
+    },
+    {
+      "from": "VISINT",
+      "to": "SGI: Comando",
+      "data": [
+        "PASS/FAIL/ERROR",
+        "score/confidence when available",
+        "technical findings",
+        "review timestamps",
+        "correlation_id"
+      ],
+      "sor": "VISINT for visual assessment",
+      "status": "VISINT does not calculate Impulses."
+    },
+    {
+      "from": "SGI: Comando",
+      "to": "SGI: Operador",
+      "data": [
+        "visual review result",
+        "optional IMPULSE_AWARDED event",
+        "skill_code",
+        "impulse_amount",
+        "rule_version"
+      ],
+      "sor": "SGI: Comando for Impulse rules/awards",
+      "status": "PASS enables probabilistic evaluation; reward is not guaranteed."
+    },
+    {
+      "from": "CORE",
+      "to": "SGI: Comando",
+      "direction": "inbound-master-data",
+      "data": [
+        "Instance",
+        "Country",
+        "InstanceCountry / instance_country_id",
+        "language",
+        "locale",
+        "timezone",
+        "currency",
+        "unit system",
+        "date/time/number formats",
+        "calendar and holidays",
+        "RegulatoryProfile + version/effective dates",
+        "SubdivisionType",
+        "official Subdivision catalog",
+        "SubdivisionGeometry",
+        "TerritorialDatasetVersion",
+        "Company master catalog/identity/logo/status/source version"
+      ],
+      "sor": "CORE",
+      "consumer": "SGI: Comando",
+      "traceability": [
+        "stable IDs",
+        "dataset/object version",
+        "effective_from",
+        "effective_to",
+        "source",
+        "updated_at"
+      ],
+      "documentation": [
+        "docs/CORE_REQUIREMENTS_SGI_COMANDO.md",
+        "docs/SGI_Comando_Requerimientos_CORE.pdf"
+      ]
+    },
+    {
+      "from": "IDENT",
+      "to": "SGI: Comando",
+      "direction": "bidirectional-auth",
+      "data": [
+        "authentication",
+        "identity",
+        "authorization context"
+      ],
+      "sor": "IDENT"
+    },
+    {
+      "from": "SIC: RRMM",
+      "to": "SGI: Comando",
+      "direction": "bidirectional-domain-integration",
+      "data": [
+        "material resources",
+        "inventory/dotation context"
+      ],
+      "sor": "SIC: RRMM"
+    },
+    {
+      "from": "SGI: Comando",
+      "to": "SGI: Cliente",
+      "direction": "approved-information",
+      "data": [
+        "approved/publishable operational information including approved novelties"
+      ],
+      "sor": "SGI: Comando moderation; source domain retained"
+    }
+  ],
+  "productionOpenItems": [
+    {
+      "id": "COM-PROD-002",
+      "item": "SER must provide explicit operational region_id for Services before final multiregion production integration"
+    },
+    {
+      "id": "COM-PROD-CORE-001",
+      "item": "Replace UAT CORE catalog snapshot adapter with formal CORE catalog API/event integration; CORE remains SoR."
+    },
+    {
+      "id": "ASI-PROD-RRHH-001",
+      "item": "Implement production SIC: RRHH transfer acknowledgement/idempotency contract for accepted Company changes."
+    },
+    {
+      "id": "SER-PROD-SICCOM-001",
+      "item": "Replace V19 UAT pending-Service fixture with formal SIC: COM inbound API/event adapter; preserve SIC: COM as SoR."
+    },
+    {
+      "id": "ASI-PROD-RRHH-002",
+      "item": "Formalize SIC: RRHH inbound contract requiring Seguridad Física (SF) + Company membership before personnel is visible in SGI: Comando."
+    },
+    {
+      "id": "IMP-PROD-VISINT-001",
+      "item": "Implement production SGI_COM↔VISINT adapter plus idempotent VisualReview/ImpulseRule/ImpulseLedger persistence according to docs/SGI_OPR_VISINT_IMPULSOS.md; architecture is defined but not implied to be deployed by this documentation patch."
+    }
+  ],
+  "handoff": {
+    "projectContext": "docs/PROJECT_CONTEXT.md",
+    "systemsGuide": "docs/SYSTEMS_HANDOFF.md",
+    "frozenRegistry": "docs/FROZEN_VERTICALS.md",
+    "closure": "docs/SGI_COMANDO_CIERRE_FINAL.md",
+    "coreRequirements": "docs/CORE_REQUIREMENTS_SGI_COMANDO.md",
+    "coreRequirementsPdf": "docs/SGI_Comando_Requerimientos_CORE.pdf"
+  },
+  "activeVerticals": [],
+  "workingRelease": {
+    "name": "SGI: Comando - Cierre 2026-09-20",
+    "status": "CLOSED_FROZEN",
+    "technicalHardening": "PERF v0.1",
+    "uiChangesFromHardening": false
+  },
+  "uatNotes": [
+    "SER v0.10.4: Protocol states BORRADOR/INACTIVO/ACTIVO; Bitacora max 10 Acreditaciones per Protocol; Patrullas UI aligned with Bitacora; Flyway V21 + V22 + V23.",
+    "2026-09-20: VISINT/Impulsos runtime contract documented. SGI: Comando owns reward probability/amount and ledger; VISINT only validates visual evidence. No frozen UI change.",
+    "2026-09-20: Final closure. All functional verticals FROZEN; PERF v0.1 retained as technical hardening without UI change."
+  ],
+  "hotfixes": [
+    {
+      "id": "SER-BIT-ACC-CODE-001",
+      "version": "0.10.4",
+      "date": "2026-09-19",
+      "summary": "Avoid duplicate accreditation codes after deletions by advancing from max numeric ACC suffix."
+    }
+  ],
+  "status": "CLOSED_FROZEN"
+}

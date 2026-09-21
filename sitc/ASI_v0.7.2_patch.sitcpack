@@ -1,0 +1,23 @@
+{
+  "format": "sitcpack",
+  "version": "ASI-v0.7.2-patch",
+  "scenario": "SGI-Comando-ASI-v0.7.2-UAT-FIX",
+  "scope": "ASI company transfer acceptance transaction and UX",
+  "status": "UAT_CANDIDATE",
+  "base": "COM v1.1.2 + ASI v0.7.1",
+  "asOf": "2026-09-19",
+  "changes": [
+    {
+      "type": "transaction_fix",
+      "component": "ASI - Transferencias de Compañía",
+      "rule": "Close and flush the current active PRIMARY company_membership before inserting the destination PRIMARY membership, preserving the one-active-membership invariant."
+    },
+    {
+      "type": "ui_fix",
+      "component": "ASI - Transferencias de Compañía",
+      "rule": "Use SGI-styled confirmation modal for accept/reject/cancel; backend errors remain visible inside the decision modal."
+    }
+  ],
+  "functionalChange": false,
+  "databaseMigration": "none; latest remains V18__core_companies_and_company_transfers.sql"
+}

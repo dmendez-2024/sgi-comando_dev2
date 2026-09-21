@@ -1,0 +1,18 @@
+{
+  "format": "cajamarca.sitcpack",
+  "formatVersion": "0.2",
+  "packageType": "vertical-freeze",
+  "system": "SGI: Comando",
+  "vertical": "COM",
+  "version": "1.1.3",
+  "status": "FROZEN",
+  "asOf": "2026-09-19",
+  "base": "COM v1.1.3 UAT",
+  "decisions": [
+    "CORE is SoR for Company identity",
+    "Kaibil is always-active coordination Company",
+    "SGI owns operational Zone/Region/State configuration",
+    "Direct local Company creation is disabled"
+  ],
+  "decisionLog": "docs/verticals/COM/COM_DECISIONS.md"
+}

@@ -1,0 +1,50 @@
+{
+  "format": "cajamarca.sitcpack",
+  "formatVersion": "0.2",
+  "packageType": "vertical-delta",
+  "system": "SGI: Comando",
+  "vertical": "SER",
+  "version": "0.7.1",
+  "status": "UAT_CANDIDATE",
+  "asOf": "2026-09-12",
+  "baseFrozen": [
+    {
+      "code": "TER",
+      "version": "1.0",
+      "status": "FROZEN"
+    },
+    {
+      "code": "COM",
+      "version": "1.0",
+      "status": "FROZEN"
+    },
+    {
+      "code": "ASI",
+      "version": "0.6.5",
+      "status": "FROZEN"
+    }
+  ],
+  "changes": [
+    {
+      "type": "fix",
+      "component": "Flyway V14",
+      "item": "Resolve baseline schema collision: configuration Patrol entities now persist to patrol_config_definition, patrol_config_checkpoint and patrol_config_checkpoint_rule; legacy patrol_definition/patrol_checkpoint remain untouched."
+    },
+    {
+      "type": "fix",
+      "component": "UAT bootstrap",
+      "item": "uat-start.ps1 now waits for /q/health/ready and prints backend logs if Quarkus/Flyway cannot become READY."
+    },
+    {
+      "type": "decision-preserved",
+      "component": "SER v0.7",
+      "item": "No functional design change: Punto > Puesto > Protocolo > Patrulla > Reglas; mixed ATS/Field checkpoint configuration and immutable publication/versioning remain as approved."
+    }
+  ],
+  "externalConnectionsChanged": false,
+  "databaseChanged": true,
+  "backendChanged": true,
+  "frozenVerticalsChanged": false,
+  "decisionLog": "docs/verticals/SER/SER_DECISIONS.md",
+  "uat": "docs/verticals/SER/SER_UAT.md"
+}

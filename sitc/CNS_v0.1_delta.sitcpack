@@ -1,0 +1,28 @@
+{
+  "format": "cajamarca.sitcpack",
+  "formatVersion": "0.2",
+  "packageType": "vertical-delta",
+  "system": "SGI: Comando",
+  "vertical": "CNS",
+  "version": "0.1",
+  "status": "UAT_CANDIDATE",
+  "asOf": "2026-09-19",
+  "changes": [
+    {
+      "type": "new-vertical",
+      "component": "CNS",
+      "item": "Consulta operacional de Relevos, Patrullas y Consignas ad-hoc desde Operaciones > Consignas."
+    },
+    {
+      "type": "role-scope",
+      "component": "CNS",
+      "item": "Triage por rol: Coordinador/Asistente por sus compañías; Jefe Regional por sus regiones; Director Zonal por sus zonas; Presidencia/Director Nacional a nivel nacional."
+    },
+    {
+      "type": "read-only",
+      "component": "CNS",
+      "item": "Pantalla de solo consulta con KPIs, filtros, estado de ejecución, progreso, detalle rápido, timeline y exportación CSV."
+    }
+  ],
+  "dependencies": ["BIT v0.1 FROZEN", "COO v0.1 FROZEN", "SER v0.10.10 FROZEN", "ASI v0.7.4 FROZEN"]
+}

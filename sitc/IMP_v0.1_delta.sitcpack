@@ -1,0 +1,133 @@
+{
+  "format": "cajamarca.sitcpack",
+  "formatVersion": "0.2",
+  "packageType": "delta",
+  "system": "SGI: Comando",
+  "capability": "IMP - Impulsos / VISINT orchestration",
+  "version": "0.1",
+  "status": "ARCHITECTURE_DEFINED",
+  "asOf": "2026-09-20",
+  "changes": [
+    {
+      "type": "integration-flow",
+      "component": "Visual evidence",
+      "item": "Task evidence captured in SGI: Operador flows through SGI: Comando before VISINT. No direct SGI_OPR→VISINT contract."
+    },
+    {
+      "type": "sor",
+      "component": "Impulsos",
+      "item": "SGI: Comando is System of Record for Impulse rules, probability evaluation, award amount and immutable award ledger."
+    },
+    {
+      "type": "responsibility",
+      "component": "VISINT",
+      "item": "VISINT validates visual evidence and returns PASS/FAIL/ERROR plus technical metadata when available; VISINT does not calculate or award Impulses."
+    },
+    {
+      "type": "gamification-rule",
+      "component": "Impulse Engine",
+      "item": "VISINT PASS enables probabilistic reward evaluation but does not guarantee an award. PASS+NO_AWARD is valid; FAIL yields no Impulses through this flow."
+    },
+    {
+      "type": "idempotency",
+      "component": "Impulse Engine",
+      "item": "Probability is evaluated once for (task_execution_id, visint_review_id, impulse_rule_version); retries must return the persisted result and cannot duplicate awards."
+    },
+    {
+      "type": "ux-contract",
+      "component": "SGI: Operador",
+      "item": "Operator shows an asynchronous VISINT-review state after task completion and, only when awarded, a reward message with the skill and Impulse amount returned by SGI: Comando."
+    }
+  ],
+  "connections": [
+    {
+      "from": "SGI_OPR",
+      "to": "SGI_COM",
+      "event": "TASK_EVIDENCE_SUBMITTED",
+      "data": [
+        "event_id",
+        "instance_country_id",
+        "task_execution_id",
+        "task_type",
+        "employee_id",
+        "point_id",
+        "post_id",
+        "shift_occurrence_id?",
+        "captured_at",
+        "evidence[]",
+        "correlation_id"
+      ],
+      "sor": "SGI_COM for orchestration/task evidence metadata"
+    },
+    {
+      "from": "SGI_COM",
+      "to": "VISINT",
+      "event": "VISINT_REVIEW_REQUESTED",
+      "data": [
+        "visint_review_id",
+        "task_execution_id",
+        "task context",
+        "visual evidence",
+        "reference/standard when applicable",
+        "correlation_id"
+      ],
+      "security": "VISINT receives evidence through SGI_COM; no SGI_OPR credentials/direct call"
+    },
+    {
+      "from": "VISINT",
+      "to": "SGI_COM",
+      "event": "VISINT_REVIEW_COMPLETED",
+      "data": [
+        "visint_review_id",
+        "task_execution_id",
+        "PASS|FAIL|ERROR",
+        "score/confidence?",
+        "technical findings?",
+        "timestamps",
+        "correlation_id"
+      ],
+      "sor": "VISINT for visual assessment result"
+    },
+    {
+      "from": "SGI_COM",
+      "to": "SGI_OPR",
+      "event": "IMPULSE_AWARDED (optional) / review result",
+      "data": [
+        "award_id?",
+        "task_execution_id",
+        "employee_id",
+        "skill_code?",
+        "impulse_amount?",
+        "rule_version?",
+        "awarded_at?",
+        "correlation_id"
+      ],
+      "sor": "SGI_COM for Impulse award"
+    }
+  ],
+  "logicalComponents": [
+    {
+      "name": "VisualReview",
+      "owner": "SGI_COM",
+      "purpose": "Persist/correlate VISINT request and result independently from reward state."
+    },
+    {
+      "name": "ImpulseRule",
+      "owner": "SGI_COM",
+      "purpose": "Versioned eligibility, VISINT requirement, probability, award amount and skill mapping."
+    },
+    {
+      "name": "ImpulseLedger",
+      "owner": "SGI_COM",
+      "purpose": "Immutable auditable awards; prevents duplicated rewards."
+    }
+  ],
+  "mockups": [
+    "docs/assets/impulsos_visint/01_visint_validando.png",
+    "docs/assets/impulsos_visint/02_impulsos_otorgados.png"
+  ],
+  "documentation": "docs/SGI_OPR_VISINT_IMPULSOS.md",
+  "uiChanged": false,
+  "databaseChanged": false,
+  "implementationStatus": "Architecture/contract documented; production VISINT adapter and Impulse persistence remain implementation work."
+}

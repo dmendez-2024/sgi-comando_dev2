@@ -1,0 +1,98 @@
+{
+  "format": "cajamarca.sitcpack",
+  "formatVersion": "0.1",
+  "packageType": "delta",
+  "system": "SGI: Comando",
+  "module": "SGI-06 Asignaciones",
+  "moduleVersion": "0.2",
+  "baseUatVersion": "0.2.1",
+  "targetUatVersion": "0.2.2",
+  "entities": [
+    "AssignmentPlan",
+    "ShiftOccurrence",
+    "OperationalAssignment",
+    "AssignmentEvent",
+    "EmployeeOperationalSnapshot",
+    "EmployeeSkillSnapshot",
+    "EmployeeUnavailabilitySnapshot",
+    "PostShiftTemplate",
+    "PostSkillRequirement"
+  ],
+  "connections": [
+    {
+      "from": "SIC: COM",
+      "to": "SGI-06",
+      "direction": "inbound",
+      "type": "API/event adapter",
+      "data": [
+        "Punto",
+        "Puesto",
+        "Formato",
+        "Turnos",
+        "FHE",
+        "TIER",
+        "commercial_version"
+      ],
+      "sor": "SIC: COM"
+    },
+    {
+      "from": "SIC: RRHH",
+      "to": "SGI-06",
+      "direction": "inbound",
+      "type": "API/event adapter",
+      "data": [
+        "CompanyMembership",
+        "role",
+        "employmentStatus",
+        "skills",
+        "vacation",
+        "medicalLeave",
+        "unavailability"
+      ],
+      "sor": "SIC: RRHH"
+    },
+    {
+      "from": "SMC",
+      "to": "SGI-06",
+      "direction": "inbound",
+      "type": "API/event adapter",
+      "data": [
+        "ID"
+      ],
+      "sor": "SMC"
+    },
+    {
+      "from": "SGI-06",
+      "to": "SGI-07 Relevos",
+      "direction": "outbound",
+      "type": "API/event",
+      "data": [
+        "PublishedPlan",
+        "ShiftOccurrence",
+        "plannedEmployee"
+      ],
+      "sor": "SGI-06 for planned assignment"
+    },
+    {
+      "from": "SGI-06",
+      "to": "Dashboard/SMC",
+      "direction": "outbound",
+      "type": "Outbox/API",
+      "data": [
+        "publishedCoverage",
+        "currentCoverage",
+        "vacancies",
+        "postPublicationAssignments",
+        "reassignments"
+      ],
+      "sor": "SGI-06"
+    }
+  ],
+  "rules": [
+    "instance_country_id required",
+    "published snapshot immutable",
+    "post-publication vacancy fill != reassignment",
+    "current coverage does not mutate published coverage",
+    "weekly auto-close"
+  ]
+}
