@@ -31,7 +31,7 @@ import {
   Wrench,
   X,
 } from 'lucide-react';
-import {api} from '../api';
+import {api,ApiError} from '../api';
 import BitacoraConfig from './BitacoraConfig';
 import PatrolConfig from './PatrolConfig';
 import ConsignasConfig from './ConsignasConfig';
@@ -40,9 +40,9 @@ type State='ACTIVE'|'INACTIVE'|'TO_CONFIGURE'|'PENDING_ASSIGNMENT';
 type Row={
   serviceId:string;pointId:string;postId:string;companyId:string|null;
   companyName:string;companyLogoDataUrl?:string|null;
-  serviceCode:string;serviceName:string;clientName:string;
+  serviceCode:string;serviceName:string;clientId:string;clientName:string;
   pointCode:string;pointName:string;postCode:string;postName:string;tier:string;
-  idAverage:number|null;icAverage:number|null;pendingNews:number;state:State;assignmentStatus:'PENDING'|'ASSIGNED';canAssign:boolean;canReturn:boolean;returnedToCoordination:boolean;
+  idAverage:number|null;icAverage:number|null;pendingNews:number;state:State;assignmentStatus:'PENDING'|'ASSIGNED';canAssign:boolean;canReturn:boolean;returnedToCoordination:boolean;atsLoaded:boolean;
 };
 type Overview={
   windowFrom:string;windowTo:string;executionBasis:string;
@@ -51,8 +51,8 @@ type Overview={
 };
 type PointRow={
   serviceId:string;pointId:string;companyId:string|null;companyName:string;companyLogoDataUrl?:string|null;
-  serviceCode:string;serviceName:string;clientName:string;pointCode:string;pointName:string;
-  idAverage:number|null;icAverage:number|null;pendingNews:number;state:State;assignmentStatus:'PENDING'|'ASSIGNED';canAssign:boolean;canReturn:boolean;returnedToCoordination:boolean;posts:Row[];
+  serviceCode:string;serviceName:string;clientId:string;clientName:string;pointCode:string;pointName:string;
+  idAverage:number|null;icAverage:number|null;pendingNews:number;state:State;assignmentStatus:'PENDING'|'ASSIGNED';canAssign:boolean;canReturn:boolean;returnedToCoordination:boolean;atsLoaded:boolean;posts:Row[];
 };
 type ModuleStatus='complete'|'warning'|'blocked';
 type ModuleCard={
@@ -72,6 +72,7 @@ type AtsSnapshot={
   checkpoints:AtsLinkedCheckpoint[];checklist:AtsChecklistItem[];changes:{adds:number;modifies:number;removes:number};
   observations:string[];history:AtsHistoryItem[];
 };
+type AtsValidationState={status:'success'|'warning';checkedAt:string;observations:string[]};
 
 type AtsPackageDto={
   id:string;pointId:string;revisionNo:number;current:boolean;originalFilename:string;atsSchemaVersion?:string|null;packageType?:string|null;
@@ -88,6 +89,7 @@ type CommercialShift={id:string;postId:string;shiftName:string;startsAt:string;e
 type CommercialWeek={posts:CommercialPost[];shifts:CommercialShift[]};
 type SkillKey=keyof PostSkillSet;
 type AssignmentDestination={companyId:string;code:string;name:string;zoneId?:string|null;regionIds:string[]};
+type ClientOption={id:string;code:string;name:string};
 
 type View='list'|'config-landing'|'config-ats'|'config-posts'|'config-bitacora'|'config-patrols'|'config-consignas';
 
@@ -113,15 +115,27 @@ const POST_TEMPLATES:Record<'CAA'|'PAT'|'VIG'|'MIX',PostSkillSet>={
 function stateLabel(s:State){return s==='ACTIVE'?'Activo':s==='INACTIVE'?'Inactivo':s==='PENDING_ASSIGNMENT'?'Pendiente de asignación':'Por Configurar'}
 function statusLabel(s:ModuleStatus){return s==='complete'?'Completo':s==='warning'?'Observación':'Bloqueante'}
 function metric(value:number|null,suffix=''){return value==null?'—':`${value.toFixed(1)}${suffix}`}
-function errorMessage(e:unknown){return e instanceof Error?e.message:String(e)}
+function errorMessage(e:unknown){
+  const raw=e instanceof ApiError?e.body:e instanceof Error?e.message:String(e);
+  const readPayload=(text:string)=>{
+    try{
+      const body=JSON.parse(text);
+      if(typeof body?.message==='string'&&body.message.trim())return body.message;
+      if(typeof body?.error==='string'&&body.error.trim())return body.error;
+      if(typeof body?.details==='string'&&body.details.trim())return body.details;
+      if(typeof body?.title==='string'&&body.title.trim())return body.title;
+    }catch{}
+    return '';
+  };
+  const direct=readPayload(raw);
+  if(direct)return direct;
+  const jsonMatch=raw.match(/\{[\s\S]*\}$/);
+  const embedded=jsonMatch?readPayload(jsonMatch[0]):'';
+  if(embedded)return embedded;
+  return raw.replace(/^\d{3}\s+/,'').trim();
+}
 function csvCell(v:unknown){const s=String(v??'');return `"${s.replaceAll('"','""')}"`}
 function average(values:(number|null)[]){const nums=values.filter((v):v is number=>v!=null);return nums.length?nums.reduce((a,b)=>a+b,0)/nums.length:null}
-function pointFileName(pointName:string){return `${pointName.replace(/\s+/g,'-')}_v3.ats`}
-function pointIdentifier(pointId:string){return `ATS-${pointId.toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,4)}-${pointId.toUpperCase().replace(/[^A-Z0-9]/g,'').slice(-4)}`}
-function pointRiskIndex(point:PointRow){
-  const base=6.2 + Math.min(point.posts.length,4)*0.45 + Math.min(point.pendingNews,4)*0.12;
-  return Math.min(9.9, Number(base.toFixed(1)));
-}
 function currentMondayIso(){
   const now=new Date();
   const local=new Date(now.toLocaleString('en-US',{timeZone:'America/Guayaquil'}));
@@ -164,7 +178,7 @@ function aggregatePoints(rows:Row[]):PointRow[]{
       current.posts.push(row);
       return;
     }
-    map.set(row.pointId,{serviceId:row.serviceId,pointId:row.pointId,companyId:row.companyId,companyName:row.companyName,companyLogoDataUrl:row.companyLogoDataUrl,serviceCode:row.serviceCode,serviceName:row.serviceName,clientName:row.clientName,pointCode:row.pointCode,pointName:row.pointName,idAverage:null,icAverage:null,pendingNews:0,state:'ACTIVE',assignmentStatus:row.assignmentStatus,canAssign:row.canAssign,canReturn:row.canReturn,returnedToCoordination:row.returnedToCoordination,posts:[row]});
+    map.set(row.pointId,{serviceId:row.serviceId,pointId:row.pointId,companyId:row.companyId,companyName:row.companyName,companyLogoDataUrl:row.companyLogoDataUrl,serviceCode:row.serviceCode,serviceName:row.serviceName,clientId:row.clientId,clientName:row.clientName,pointCode:row.pointCode,pointName:row.pointName,idAverage:null,icAverage:null,pendingNews:0,state:'ACTIVE',assignmentStatus:row.assignmentStatus,canAssign:row.canAssign,canReturn:row.canReturn,returnedToCoordination:row.returnedToCoordination,atsLoaded:row.atsLoaded,posts:[row]});
   });
   return [...map.values()].map((point:PointRow)=>{
     point.idAverage=average(point.posts.map((post:Row)=>post.idAverage));
@@ -190,7 +204,7 @@ function snapshotFor(point:PointRow):Snapshot{
   const totalPosts=point.posts.length;
   const configuredPosts=point.posts.filter((post:Row)=>post.state!=='TO_CONFIGURE').length;
   const highest=highestTier(point.posts);
-  const atsStatus:ModuleStatus=point.state==='TO_CONFIGURE'?'warning':'complete';
+  const atsStatus:ModuleStatus=point.atsLoaded?'complete':'blocked';
   const postStatus:ModuleStatus=configuredPosts===totalPosts?'complete':'blocked';
   const bitacoraStatus:ModuleStatus=configuredPosts===totalPosts?'complete':'warning';
   const patrullaStatus:ModuleStatus=point.pendingNews>2?'warning':'complete';
@@ -199,7 +213,7 @@ function snapshotFor(point:PointRow):Snapshot{
   const rrmmStatus:ModuleStatus=point.pendingNews>0?'warning':'complete';
   const historialStatus:ModuleStatus='complete';
   const modules:ModuleCard[]=[
-    {key:'ats',title:'ATS',summary:'Plano del punto, importación y vinculación operacional',meta:`${pointFileName(point.pointName)} · vigente`,status:atsStatus,blocking:true,icon:'ats'},
+    {key:'ats',title:'ATS',summary:'Plano del punto, importación y vinculación operacional',meta:point.atsLoaded?'Archivo .ats vigente':'Sin archivo .ats importado',status:atsStatus,blocking:true,icon:'ats'},
     {key:'puestos',title:'Puestos',summary:'Estructura contractual recibida de SIC: COM',meta:`${configuredPosts}/${totalPosts} puestos con configuración base`,status:postStatus,blocking:true,icon:'posts'},
     {key:'bitacora',title:'Bitácora',summary:'Procedimiento operativo y protocolos por puesto',meta:`${configuredPosts}/${totalPosts} puestos con bitácora definida`,status:bitacoraStatus,blocking:true,icon:'bitacora'},
     {key:'patrullas',title:'Patrullas',summary:'Rutas, hitos y frecuencia de patrullaje',meta:`${Math.max(1,totalPosts-1)}/${Math.max(1,totalPosts)} patrullas configuradas`,status:patrullaStatus,blocking:false,icon:'patrullas'},
@@ -219,68 +233,6 @@ function snapshotFor(point:PointRow):Snapshot{
   if(rrmmStatus==='warning')nextActions.push('Revisar los activos observados o no confirmados en el punto.');
   return {version:`REGESEP v1.${Math.max(1,totalPosts)}`,progress,blockers,warnings,updatedAt:'09-sept, 18:40',modules,nextActions:nextActions.slice(0,4)};
 }
-function atsSnapshotFor(point:PointRow):AtsSnapshot{
-  const totalPosts=point.posts.length;
-  const linkedPosts:AtsLinkedPost[]=point.posts.slice(0,3).map((post:Row,index:number)=>({
-    location:index===0?'Acceso Principal':index===1?'Perímetro Norte':'Lobby Principal',
-    code:post.postCode,
-    status:index===Math.min(2,totalPosts-1)&&point.state==='TO_CONFIGURE'?'PENDIENTE':'VINCULADO',
-  }));
-  if(!linkedPosts.length){
-    linkedPosts.push({location:'Acceso Principal',code:'GGTT01',status:'PENDIENTE'});
-  }
-  const linkedPatrols:AtsLinkedPatrol[]=[
-    {route:'Ruta R-01',patrol:'P01 Perímetro Norte',status:'VINCULADA'},
-    {route:'Ruta R-02',patrol:'P02 Interna Nocturna',status:point.pendingNews>0?'PENDIENTE':'VINCULADA'},
-  ];
-  const checkpoints:AtsLinkedCheckpoint[]=[
-    {code:'NFC-001',kind:'Control',linkedTo:'P01',status:'VINCULADO'},
-    {code:'NFC-002',kind:'Control',linkedTo:'P01',status:'VINCULADO'},
-    {code:'QR-004',kind:'Punto de control',linkedTo:'—',status:point.state==='TO_CONFIGURE'?'SIN_VINCULAR':'VINCULADO'},
-  ];
-  const pendingPost=linkedPosts.some((row:AtsLinkedPost)=>row.status==='PENDIENTE');
-  const pendingPatrol=linkedPatrols.some((row:AtsLinkedPatrol)=>row.status==='PENDIENTE');
-  const pendingCheckpoint=checkpoints.some((row:AtsLinkedCheckpoint)=>row.status==='SIN_VINCULAR');
-  const checklist:AtsChecklistItem[]=[
-    {label:'Archivo .ats cargado',status:'complete'},
-    {label:'Versión vigente definida',status:'complete'},
-    {label:'Puestos vinculados',status:pendingPost?'warning':'complete'},
-    {label:'Patrullas base vinculadas',status:pendingPatrol?'warning':'complete'},
-    {label:'Hitos validados',status:pendingCheckpoint?'blocked':'complete'},
-    {label:'Sin conflictos pendientes',status:(point.pendingNews>0||pendingCheckpoint)?'warning':'complete'},
-  ];
-  const completeWeight=checklist.filter((item:AtsChecklistItem)=>item.status==='complete').length;
-  const coverage=Math.round((completeWeight/checklist.length)*100);
-  const observations:string[]=[];
-  if(pendingPatrol)observations.push('Ruta R-02 requiere revisión porque presenta cambios respecto a la última importación.');
-  if(pendingPost)observations.push(`${linkedPosts.find((row:AtsLinkedPost)=>row.status==='PENDIENTE')?.code ?? 'Un puesto'} no tiene ubicación vinculada.`);
-  if(pendingCheckpoint)observations.push('Existe al menos un hito o punto de control sin vinculación operativa.');
-  if(!observations.length)observations.push('No existen observaciones pendientes en la configuración ATS.');
-  return {
-    fileName:pointFileName(point.pointName),
-    version:'v3',
-    importedAt:'09-sept · 18:40',
-    importedAtLong:'09-sept-2026 18:40',
-    updatedAt:'09 sept 2026',
-    importedBy:'coord.gye',
-    identifier:pointIdentifier(point.pointId),
-    riskIndex:pointRiskIndex(point),
-    coverage,
-    conflicts:observations.length,
-    state:'Vigente',
-    linkedPosts,
-    linkedPatrols,
-    checkpoints,
-    checklist,
-    changes:{adds:2,modifies:1,removes:1},
-    observations,
-    history:[
-      {version:'v3',file:pointFileName(point.pointName),date:'09-sept',user:'coord.gye',state:'Vigente'},
-      {version:'v2',file:pointFileName(point.pointName).replace('_v3','_v2'),date:'01-sept',user:'coord.gye',state:'Reemplazada'},
-      {version:'v1',file:pointFileName(point.pointName).replace('_v3','_v1'),date:'20-ago',user:'coord.gye',state:'Reemplazada'},
-    ],
-  };
-}
 function moduleIcon(icon:ModuleCard['icon']){
   switch(icon){
     case 'ats': return <MapIcon size={18}/>;
@@ -296,36 +248,20 @@ function moduleIcon(icon:ModuleCard['icon']){
 function statusPillClass(status:ModuleStatus){return `ser-status-tag ${status}`}
 function atsRowStatusClass(status:'VINCULADO'|'PENDIENTE'|'VINCULADA'|'SIN_VINCULAR'){return status==='VINCULADO'||status==='VINCULADA'?'good':status==='PENDIENTE'?'warn':'bad'}
 
-function AtsViewerMap(){
-  return <div className="ats-map-board">
-    <div className="ats-map-compass"><span>N</span></div>
-    <div className="ats-map-road vertical"/>
-    <div className="ats-map-road top"/>
-    <div className="ats-map-park"/>
-    <div className="ats-map-building main"><span>Telco-City</span></div>
-    <div className="ats-map-building lobby"><span>Lobby</span></div>
-    <div className="ats-map-building side"/>
-    <div className="ats-map-marker access">Acceso Principal</div>
-    <div className="ats-map-marker north">Perímetro Norte</div>
-    <div className="ats-map-marker south">Perímetro Sur</div>
-    <div className="ats-map-marker parking">Parqueo</div>
-    <div className="ats-map-perimeter"/>
-    <span className="ats-camera c1"/><span className="ats-camera c2"/><span className="ats-camera c3"/><span className="ats-camera c4"/><span className="ats-camera c5"/>
-    {Array.from({length:20}).map((_item: unknown,index:number)=><span key={index} className={`ats-tree t${index+1}`}/>)}
-  </div>
-}
-
 function AtsPage({point,onBack}:{point:PointRow;onBack:()=>void}){
-  const synthetic=useMemo(()=>atsSnapshotFor(point),[point]);
   const [current,setCurrent]=useState<AtsPackageDto|null>(null);
   const [history,setHistory]=useState<AtsPackageDto[]>([]);
   const [planUrl,setPlanUrl]=useState('');
   const [loadingAts,setLoadingAts]=useState(true);
   const [uploading,setUploading]=useState(false);
+  const [validating,setValidating]=useState(false);
+  const [validatedSnapshot,setValidatedSnapshot]=useState<AtsSnapshot|null>(null);
+  const [validationState,setValidationState]=useState<AtsValidationState|null>(null);
   const [atsError,setAtsError]=useState('');
   const [atsNotice,setAtsNotice]=useState('');
   const [zoom,setZoom]=useState(1);
   const inputRef=useRef<HTMLInputElement|null>(null);
+  const historySectionRef=useRef<HTMLElement|null>(null);
   const planObjectUrlRef=useRef('');
 
   const replacePlanUrl=(next:string)=>{
@@ -341,8 +277,8 @@ function AtsPage({point,onBack}:{point:PointRow;onBack:()=>void}){
     setLoadingAts(true);setAtsError('');
     try{
       const [pkg,rows]=await Promise.all([api.atsCurrent(point.pointId),api.atsHistory(point.pointId)]) as [AtsPackageDto|null,AtsPackageDto[]];
-      setCurrent(pkg);setHistory(rows);
-      if(pkg) await loadPlan(); else replacePlanUrl('');
+      setCurrent(pkg);setHistory(rows);setValidatedSnapshot(null);setValidationState(null);
+      if(pkg){await loadPlan();await validateLinks(pkg,true)} else replacePlanUrl('');
     }catch(error){setAtsError(errorMessage(error))}finally{setLoadingAts(false)}
   };
   useEffect(()=>{void loadAts();return()=>{if(planObjectUrlRef.current)URL.revokeObjectURL(planObjectUrlRef.current)}},[point.pointId]);
@@ -353,9 +289,10 @@ function AtsPage({point,onBack}:{point:PointRow;onBack:()=>void}){
     setUploading(true);setAtsError('');setAtsNotice('');
     try{
       const pkg=await api.atsUpload(point.pointId,file) as AtsPackageDto;
-      setCurrent(pkg);
+      setCurrent(pkg);setValidatedSnapshot(null);setValidationState(null);
       setHistory(await api.atsHistory(point.pointId) as AtsPackageDto[]);
       await loadPlan();
+      await validateLinks(pkg,true);
       setZoom(1);
       setAtsNotice(`Archivo ${file.name} importado correctamente. El plano ya está disponible en SGI.`);
     }catch(error){setAtsError(errorMessage(error))}finally{setUploading(false);if(inputRef.current)inputRef.current.value=''}
@@ -367,13 +304,93 @@ function AtsPage({point,onBack}:{point:PointRow;onBack:()=>void}){
       const url=URL.createObjectURL(blob);const anchor=document.createElement('a');anchor.href=url;anchor.download=current.originalFilename;anchor.click();URL.revokeObjectURL(url);
     }catch(error){setAtsError(errorMessage(error))}
   };
+  const scrollToHistory=()=>{
+    const section=historySectionRef.current;
+    if(!section)return;
+    section.scrollIntoView({behavior:'smooth',block:'start'});
+    section.focus({preventScroll:true});
+  };
+  const validateLinks=async(packageOverride?:AtsPackageDto|null,silent=false)=>{
+    const targetCurrent=packageOverride??current;
+    if(!targetCurrent||validating)return;
+    setValidating(true);setAtsError('');setAtsNotice('');
+    try{
+      const [configs,protocols]=await Promise.all([
+        api.postConfigurations(point.pointId) as Promise<PostOperationalConfig[]>,
+        api.patrolProtocols(point.pointId) as Promise<any[]>,
+      ]);
+      const coordinate=(value:number|null|undefined)=>value!=null&&value>=0&&value<=1;
+      const versionLabel=targetCurrent.publicationVersion?.trim()||`r${targetCurrent.revisionNo}`;
+      const currentVersion=Boolean(targetCurrent.current&&targetCurrent.revisionNo>0&&targetCurrent.originalFilename?.toLowerCase().endsWith('.ats')&&versionLabel&&targetCurrent.atsSchemaVersion?.trim());
+      const linkedPosts:AtsLinkedPost[]=point.posts.map((post:Row)=>{
+        const config=configs.find((item:PostOperationalConfig)=>item.postId===post.postId);
+        const linked=Boolean(config&&config.configStatus==='CONFIGURED'&&config.atsPackageId===targetCurrent.id&&coordinate(config.atsLocationX)&&coordinate(config.atsLocationY));
+        return {location:linked?(config?.atsLocationLabel||'Ubicación en plano'):'Sin ubicación válida en el ATS vigente',code:post.postCode,status:linked?'VINCULADO':'PENDIENTE'};
+      });
+      const patrolRows=protocols.flatMap((protocol:any)=>(Array.isArray(protocol?.patrols)?protocol.patrols:[]).map((patrol:any)=>({protocol,patrol})));
+      const linkedPatrols:AtsLinkedPatrol[]=patrolRows.length?patrolRows.map(({protocol,patrol}:{protocol:any;patrol:any})=>({
+        route:patrol.code||protocol.code||'Ruta sin código',
+        patrol:patrol.name||'Patrulla sin nombre',
+        status:protocol.status==='ACTIVO'&&Boolean(patrol.code||patrol.name)?'VINCULADA':'PENDIENTE',
+      })): [{route:'Protocolos del Punto',patrol:'Sin patrullas configuradas',status:'PENDIENTE'}];
+      const checkpointRows=patrolRows.flatMap(({protocol,patrol}:{protocol:any;patrol:any})=>(Array.isArray(patrol?.checkpoints)?patrol.checkpoints:[]).map((checkpoint:any)=>({protocol,patrol,checkpoint})));
+      const checkpoints:AtsLinkedCheckpoint[]=checkpointRows.length?checkpointRows.map(({patrol,checkpoint}:{protocol:any;patrol:any;checkpoint:any})=>{
+        const linked=Boolean((checkpoint.originMode==='ATS'||checkpoint.originMode==='MIXED')&&checkpoint.atsPackageId===targetCurrent.id&&coordinate(checkpoint.atsX)&&coordinate(checkpoint.atsY));
+        return {code:checkpoint.code||'Hito sin código',kind:checkpoint.controlType||'Punto de control',linkedTo:linked?(patrol.code||'Patrulla'):'—',status:linked?'VINCULADO':'SIN_VINCULAR'};
+      }): [{code:'HITOS',kind:'Punto de control',linkedTo:'—',status:'SIN_VINCULAR'}];
+      const pendingPosts=linkedPosts.filter((row:AtsLinkedPost)=>row.status==='PENDIENTE');
+      const pendingPatrols=linkedPatrols.filter((row:AtsLinkedPatrol)=>row.status==='PENDIENTE');
+      const pendingCheckpoints=checkpoints.filter((row:AtsLinkedCheckpoint)=>row.status==='SIN_VINCULAR');
+      const observations:string[]=[];
+      if(!currentVersion)observations.push('El archivo vigente no tiene una versión de publicación válida o no está marcado como vigente.');
+      if(pendingPosts.length)observations.push(`${pendingPosts.length} Puesto${pendingPosts.length===1?'':'s'} sin ubicación válida en la versión ATS vigente: ${pendingPosts.map((row:AtsLinkedPost)=>row.code).join(', ')}.`);
+      if(pendingPatrols.length)observations.push(`${pendingPatrols.length} ruta${pendingPatrols.length===1?'':'s'} o Patrulla${pendingPatrols.length===1?'':'s'} sin vinculación activa.`);
+      if(pendingCheckpoints.length)observations.push(`${pendingCheckpoints.length} hito${pendingCheckpoints.length===1?'':'s'} sin coordenadas ATS vinculadas a la versión vigente.`);
+      if(!observations.length)observations.push('El ATS vigente y sus vínculos operacionales están completos.');
+      const checklist:AtsChecklistItem[]=[
+        {label:'Archivo .ats cargado',status:targetCurrent.current?'complete':'blocked'},
+        {label:'Versión vigente definida',status:currentVersion?'complete':'blocked'},
+        {label:'Puestos vinculados',status:pendingPosts.length?'warning':'complete'},
+        {label:'Patrullas base vinculadas',status:pendingPatrols.length?'warning':'complete'},
+        {label:'Hitos validados',status:pendingCheckpoints.length?'blocked':'complete'},
+        {label:'Sin conflictos pendientes',status:observations.length===1?'complete':'warning'},
+      ];
+      const snapshot:AtsSnapshot={
+        fileName:targetCurrent.originalFilename,
+        version:targetCurrent.publicationVersion??`r${targetCurrent.revisionNo}`,
+        importedAt:targetCurrent.importedAt,
+        importedAtLong:targetCurrent.importedAt,
+        updatedAt:targetCurrent.importedAt,
+        importedBy:targetCurrent.importedByUsername,
+        identifier:targetCurrent.id,
+        riskIndex:targetCurrent.riskIndex??0,
+        state:'Vigente',
+        coverage:Math.round((checklist.filter((item:AtsChecklistItem)=>item.status==='complete').length/checklist.length)*100),
+        conflicts:observations.length===1?0:observations.length,
+        linkedPosts,
+        linkedPatrols,
+        checkpoints,
+        checklist,
+        changes:{adds:0,modifies:0,removes:0},
+        observations,
+        history:[],
+      };
+      setValidatedSnapshot(snapshot);
+      setValidationState({status:observations.length===1?'success':'warning',checkedAt:localDateTime(new Date().toISOString()),observations});
+      if(!silent)setAtsNotice(observations.length===1?'Validación completada sin pendientes.':'Validación completada con pendientes de vinculación.');
+    }catch(error){setAtsError(errorMessage(error))}finally{setValidating(false)}
+  };
   const localDateTime=(value?:string|null)=>{
     if(!value)return '—';
     try{return new Intl.DateTimeFormat('es-EC',{dateStyle:'medium',timeStyle:'short',timeZone:'America/Guayaquil'}).format(new Date(value))}catch{return value}
   };
   const importedShort=current?localDateTime(current.importedAt):'—';
   const version=current?.publicationVersion??(current?`r${current.revisionNo}`:'—');
-  const pendingLinks=synthetic.linkedPosts.filter((row:AtsLinkedPost)=>row.status==='PENDIENTE').length + synthetic.linkedPatrols.filter((row:AtsLinkedPatrol)=>row.status==='PENDIENTE').length + synthetic.checkpoints.filter((row:AtsLinkedCheckpoint)=>row.status==='SIN_VINCULAR').length;
+  const renderedSnapshot=validatedSnapshot??{
+    fileName:'',version:'',importedAt:'',importedAtLong:'',updatedAt:'',importedBy:'',identifier:'',riskIndex:0,
+    coverage:0,conflicts:0,state:'Vigente' as const,linkedPosts:[],linkedPatrols:[],checkpoints:[],checklist:[],changes:{adds:0,modifies:0,removes:0},observations:[],history:[],
+  };
+  const pendingLinks=renderedSnapshot.linkedPosts.filter((row:AtsLinkedPost)=>row.status==='PENDIENTE').length + renderedSnapshot.linkedPatrols.filter((row:AtsLinkedPatrol)=>row.status==='PENDIENTE').length + renderedSnapshot.checkpoints.filter((row:AtsLinkedCheckpoint)=>row.status==='SIN_VINCULAR').length;
 
   return <div className="services-v01 services-v02 ser-config-landing ats-page">
     <input ref={inputRef} type="file" accept=".ats,application/octet-stream" hidden onChange={event=>void onFileSelected(event.target.files?.[0])}/>
@@ -386,8 +403,8 @@ function AtsPage({point,onBack}:{point:PointRow;onBack:()=>void}){
       </div>
       <div className="ats-header-actions">
         <button className="ser-action ghost" onClick={()=>inputRef.current?.click()} disabled={uploading}><Upload size={15}/>{uploading?'Importando…':current?'Reemplazar archivo':'Importar archivo'}</button>
-        <button className="ser-action ghost" disabled={!history.length}><History size={15}/>Ver historial</button>
-        <button className="ser-action primary" disabled={!current}><ShieldCheck size={15}/>Validar vínculos</button>
+        <button className="ser-action ghost" onClick={scrollToHistory} disabled={!history.length} aria-controls="ats-history-section"><History size={15}/>Ver historial</button>
+        <button className="ser-action primary" onClick={()=>void validateLinks()} disabled={!current||validating}><ShieldCheck size={15}/>{validating?'Validando…':'Validar vínculos'}</button>
       </div>
     </div>
 
@@ -401,6 +418,7 @@ function AtsPage({point,onBack}:{point:PointRow;onBack:()=>void}){
 
     {atsError&&<div className="ser-error"><AlertTriangle size={16}/><span>{atsError}</span></div>}
     {atsNotice&&<div className="posts-notice"><Info size={15}/><span>{atsNotice}</span></div>}
+    {validationState&&<div className={`ats-validation-banner ${validationState.status}`}><div><ShieldCheck size={16}/><strong>Validación ejecutada · {validationState.checkedAt}</strong></div><ul>{validationState.observations.map((item:string)=><li key={item}>{item}</li>)}</ul></div>}
 
     {!current&&!loadingAts?<section className="ser-table-card ats-upload-empty">
       <div className="ats-upload-empty-icon"><MapIcon size={28}/></div>
@@ -413,8 +431,8 @@ function AtsPage({point,onBack}:{point:PointRow;onBack:()=>void}){
         <article><span className="ser-kpi-icon blue"><FileText/></span><div><small>Archivo vigente</small><strong className="ats-kpi-value ats-kpi-file">{current.originalFilename}</strong><em>paquete .ats importado</em></div></article>
         <article><span className="ser-kpi-icon blue"><MapIcon/></span><div><small>Versión publicada</small><strong className="ats-kpi-value">{version}</strong><em>revisión SGI {current.revisionNo}</em></div></article>
         <article><span className="ser-kpi-icon blue"><History/></span><div><small>Última importación</small><strong className="ats-kpi-value ats-kpi-time">{importedShort}</strong><em>por {current.importedByUsername}</em></div></article>
-        <article><span className="ser-kpi-icon green"><Link2/></span><div><small>Cobertura de vinculación</small><strong className="ats-kpi-value">{synthetic.coverage}%</strong><em>{pendingLinks} vínculos pendientes</em></div></article>
-        <article><span className="ser-kpi-icon red"><AlertTriangle/></span><div><small>Conflictos</small><strong className="ats-kpi-value">{synthetic.conflicts}</strong><em>requieren revisión</em></div></article>
+        <article><span className="ser-kpi-icon green"><Link2/></span><div><small>Cobertura de vinculación</small><strong className="ats-kpi-value">{validatedSnapshot?`${renderedSnapshot.coverage}%`:'—'}</strong><em>{validatedSnapshot?`${pendingLinks} vínculos pendientes`:'Validando vínculos reales…'}</em></div></article>
+        <article><span className="ser-kpi-icon red"><AlertTriangle/></span><div><small>Conflictos</small><strong className="ats-kpi-value">{validatedSnapshot?renderedSnapshot.conflicts:'—'}</strong><em>{validatedSnapshot?'requieren revisión':'Pendiente de validación'}</em></div></article>
         <article><span className="ser-kpi-icon green"><ShieldCheck/></span><div><small>Estado</small><strong className="ats-kpi-value">Vigente</strong><em>publicación ATS: {current.publicationStatus??'—'}</em></div></article>
         <article><span className="ser-kpi-icon blue"><BarChart3/></span><div><small>Índice de Riesgo de Punto</small><strong className="ats-kpi-value">{current.riskIndex==null?'—':current.riskIndex.toFixed(1)}</strong><em>{current.riskIndex==null?'no informado por este archivo .ats':'importado del archivo .ats'}</em></div></article>
       </div>
@@ -432,28 +450,30 @@ function AtsPage({point,onBack}:{point:PointRow;onBack:()=>void}){
       </section>
 
       <div className="ats-main-grid">
-        <section className="ser-table-card ats-viewer-card">
-          <header><div><h3>Visor del plano</h3><span>{current.planLevelName??'Plano principal'} · {current.planOriginalFilename??'imagen incluida en .ats'}</span></div><div className="ats-map-tools"><button onClick={()=>setZoom(value=>Math.min(3,Number((value+.2).toFixed(1))))}><Plus size={14}/></button><button onClick={()=>setZoom(value=>Math.max(.4,Number((value-.2).toFixed(1))))}><Minus size={14}/></button><button onClick={()=>setZoom(1)}><MapPin size={14}/>Ajustar</button><button disabled><Layers3 size={14}/>Capas</button></div></header>
-          <div className="ats-viewer-wrap ats-real-viewer">{planUrl?<div className="ats-real-plan-scroll"><img className="ats-real-plan" src={planUrl} alt={`Plano ATS de ${point.pointName}`} style={{width:`${zoom*100}%`}}/></div>:<div className="ser-loading">Cargando plano…</div>}</div>
-        </section>
+        <div className="ats-left-column">
+          <section className="ser-table-card ats-viewer-card">
+            <header><div><h3>Visor del plano</h3><span>{current.planLevelName??'Plano principal'} · {current.planOriginalFilename??'imagen incluida en .ats'}</span></div><div className="ats-map-tools"><button onClick={()=>setZoom(value=>Math.min(3,Number((value+.2).toFixed(1))))}><Plus size={14}/></button><button onClick={()=>setZoom(value=>Math.max(.4,Number((value-.2).toFixed(1))))}><Minus size={14}/></button><button onClick={()=>setZoom(1)}><MapPin size={14}/>Ajustar</button><button disabled><Layers3 size={14}/>Capas</button></div></header>
+            <div className="ats-viewer-wrap ats-real-viewer">{planUrl?<div className="ats-real-plan-scroll"><img className="ats-real-plan" src={planUrl} alt={`Plano ATS de ${point.pointName}`} style={{width:`${zoom*100}%`}}/></div>:<div className="ser-loading">Cargando plano…</div>}</div>
+          </section>
+
+          <section id="ats-history-section" ref={historySectionRef} tabIndex={-1} className="ser-table-card ats-history-card">
+            <header><div><h3>Historial ATS</h3><span>Cada reemplazo conserva la versión anterior del archivo importado.</span></div></header>
+            <div className="ser-table-wrap"><table className="ser-table ats-history-table"><thead><tr><th>Revisión SGI</th><th>Archivo</th><th>Versión ATS</th><th>Importado</th><th>Usuario</th><th>Estado</th></tr></thead><tbody>{history.map((row:AtsPackageDto)=><tr key={row.id}><td>r{row.revisionNo}</td><td>{row.originalFilename}</td><td>{row.publicationVersion??'—'}</td><td>{localDateTime(row.importedAt)}</td><td>{row.importedByUsername}</td><td><span className={`ats-inline-state ${row.current?'good':'neutral'}`}>{row.current?'Vigente':'Reemplazada'}</span></td></tr>)}</tbody></table></div>
+          </section>
+        </div>
 
         <div className="ats-right-column">
           <section className="ser-table-card ats-link-card">
             <header><div><h3>Vinculación operacional</h3><span>Relación entre el plano y la configuración del punto</span></div></header>
             <div className="ats-link-sections">
-              <div><h4>Puestos vinculados</h4><table className="ats-mini-table"><thead><tr><th>Ubicación</th><th>Código</th><th>Estado</th></tr></thead><tbody>{synthetic.linkedPosts.map((row:AtsLinkedPost)=><tr key={`${row.location}-${row.code}`}><td>{row.location}</td><td>{row.code}</td><td><span className={`ats-inline-state ${atsRowStatusClass(row.status)}`}>{row.status==='VINCULADO'?'Vinculado':'Pendiente'}</span></td></tr>)}</tbody></table></div>
-              <div><h4>Patrullas vinculadas</h4><table className="ats-mini-table"><thead><tr><th>Ruta</th><th>Patrulla</th><th>Estado</th></tr></thead><tbody>{synthetic.linkedPatrols.map((row:AtsLinkedPatrol)=><tr key={row.route}><td>{row.route}</td><td>{row.patrol}</td><td><span className={`ats-inline-state ${atsRowStatusClass(row.status)}`}>{row.status==='VINCULADA'?'Vinculada':'Pendiente'}</span></td></tr>)}</tbody></table></div>
-              <div><h4>Hitos / puntos de control</h4><table className="ats-mini-table"><thead><tr><th>Código</th><th>Tipo</th><th>Vinculado a</th></tr></thead><tbody>{synthetic.checkpoints.map((row:AtsLinkedCheckpoint)=><tr key={row.code}><td>{row.code}</td><td>{row.kind}</td><td><span className={`ats-inline-state ${atsRowStatusClass(row.status)}`}>{row.status==='SIN_VINCULAR'?'Sin vincular':row.linkedTo}</span></td></tr>)}</tbody></table></div>
+              <div><h4>Puestos vinculados</h4><table className="ats-mini-table"><thead><tr><th>Ubicación</th><th>Código</th><th>Estado</th></tr></thead><tbody>{renderedSnapshot.linkedPosts.length?renderedSnapshot.linkedPosts.map((row:AtsLinkedPost)=><tr key={`${row.location}-${row.code}`}><td>{row.location}</td><td>{row.code}</td><td><span className={`ats-inline-state ${atsRowStatusClass(row.status)}`}>{row.status==='VINCULADO'?'Vinculado':'Pendiente'}</span></td></tr>):<tr><td colSpan={3}>{validating?'Validando vínculos…':'Sin resultados'}</td></tr>}</tbody></table></div>
+              <div><h4>Patrullas vinculadas</h4><table className="ats-mini-table"><thead><tr><th>Ruta</th><th>Patrulla</th><th>Estado</th></tr></thead><tbody>{renderedSnapshot.linkedPatrols.length?renderedSnapshot.linkedPatrols.map((row:AtsLinkedPatrol)=><tr key={row.route}><td>{row.route}</td><td>{row.patrol}</td><td><span className={`ats-inline-state ${atsRowStatusClass(row.status)}`}>{row.status==='VINCULADA'?'Vinculada':'Pendiente'}</span></td></tr>):<tr><td colSpan={3}>{validating?'Validando vínculos…':'Sin resultados'}</td></tr>}</tbody></table></div>
+              <div><h4>Hitos / puntos de control</h4><table className="ats-mini-table"><thead><tr><th>Código</th><th>Tipo</th><th>Vinculado a</th></tr></thead><tbody>{renderedSnapshot.checkpoints.length?renderedSnapshot.checkpoints.map((row:AtsLinkedCheckpoint)=><tr key={row.code}><td>{row.code}</td><td>{row.kind}</td><td><span className={`ats-inline-state ${atsRowStatusClass(row.status)}`}>{row.status==='SIN_VINCULAR'?'Sin vincular':row.linkedTo}</span></td></tr>):<tr><td colSpan={3}>{validating?'Validando vínculos…':'Sin resultados'}</td></tr>}</tbody></table></div>
             </div>
           </section>
-          <section className="ser-table-card ats-checklist-card"><header><div><h3>Lista de verificación ATS</h3><span>Control mínimo para dar el módulo por completo</span></div></header><div className="ats-checklist">{synthetic.checklist.map((item:AtsChecklistItem)=><div key={item.label} className="ats-check-row"><span>{item.label}</span><span className={statusPillClass(item.status)}>{statusLabel(item.status)}</span></div>)}</div></section>
+          <section className="ser-table-card ats-checklist-card"><header><div><h3>Lista de verificación ATS</h3><span>Control mínimo para dar el módulo por completo</span></div></header><div className="ats-checklist">{renderedSnapshot.checklist.length?renderedSnapshot.checklist.map((item:AtsChecklistItem)=><div key={item.label} className="ats-check-row"><span>{item.label}</span><span className={statusPillClass(item.status)}>{statusLabel(item.status)}</span></div>):<div className="ats-check-empty">Validando información real del Punto…</div>}</div></section>
         </div>
       </div>
-
-      <section className="ser-table-card ats-history-card">
-        <header><div><h3>Historial ATS</h3><span>Cada reemplazo conserva la versión anterior del archivo importado.</span></div></header>
-        <div className="ser-table-wrap"><table className="ser-table ats-history-table"><thead><tr><th>Revisión SGI</th><th>Archivo</th><th>Versión ATS</th><th>Importado</th><th>Usuario</th><th>Estado</th></tr></thead><tbody>{history.map((row:AtsPackageDto)=><tr key={row.id}><td>r{row.revisionNo}</td><td>{row.originalFilename}</td><td>{row.publicationVersion??'—'}</td><td>{localDateTime(row.importedAt)}</td><td>{row.importedByUsername}</td><td><span className={`ats-inline-state ${row.current?'good':'neutral'}`}>{row.current?'Vigente':'Reemplazada'}</span></td></tr>)}</tbody></table></div>
-      </section>
     </>}
     {loadingAts&&<div className="ser-loading">Cargando configuración ATS…</div>}
   </div>
@@ -544,7 +564,15 @@ function PostsPage({point,onBack}:{point:PointRow;onBack:()=>void}){
   const template=draft?POST_TEMPLATES[draft.postType]:POST_TEMPLATES.VIG;
   const adjusted=draft?!skillsEqual(draft.skills,template):false;
   const hasPlanLocation=!!draft&&(atsPackage?(draft.atsLocationX!=null&&draft.atsLocationY!=null&&draft.atsPackageId===atsPackage.id):!!draft.atsLocationKey);
-  const canComplete=!!draft&&!currentRuleError&&draft.description.trim().length>0&&hasPlanLocation&&(!adjusted||!!draft.adjustmentJustification?.trim());
+  const postValidationMessages=()=>{
+    if(!draft)return [] as string[];
+    const messages:string[]=[];
+    if(!draft.description.trim())messages.push('Ingresa la descripción operacional del Puesto.');
+    if(!hasPlanLocation)messages.push('Selecciona la ubicación del Puesto directamente en el plano ATS.');
+    if(currentRuleError)messages.push(currentRuleError);
+    if(adjusted&&!draft.adjustmentJustification?.trim())messages.push('Ingresa una justificación para los ajustes de habilidades.');
+    return messages;
+  };
 
   const selectType=(type:PostOperationalConfig['postType'])=>{
     if(!draft)return;
@@ -561,8 +589,9 @@ function PostsPage({point,onBack}:{point:PointRow;onBack:()=>void}){
   };
   const save=async(status:'DRAFT'|'CONFIGURED')=>{
     if(!draft)return;
-    if(status==='CONFIGURED'&&!canComplete){
-      setPageError(currentRuleError||(!draft.description.trim()?'La descripción es obligatoria.':!hasPlanLocation?'Debes seleccionar la ubicación del puesto directamente en el plano ATS.':'Los ajustes de habilidades requieren una justificación.'));
+    const validationMessages=postValidationMessages();
+    if(validationMessages.length){
+      setPageError(validationMessages.join(' '));
       return;
     }
     setSaving(true);setPageError('');setNotice('');
@@ -643,9 +672,9 @@ function PostsPage({point,onBack}:{point:PointRow;onBack:()=>void}){
             <header><h4>B. Configuración SGI</h4></header>
             {draft&&<div className="posts-config-form">
               <label><span>Tipo de Puesto</span><select value={draft.postType} onChange={event=>selectType(event.target.value as PostOperationalConfig['postType'])}><option value="CAA">CAA</option><option value="PAT">PAT</option><option value="VIG">VIG</option><option value="MIX">MIX</option></select></label>
-              <label className="posts-description"><span>Descripción</span><textarea value={draft.description} maxLength={600} onChange={event=>setDraft({...draft,description:event.target.value})} placeholder="Describe brevemente la función operacional del puesto…"/></label>
+              <label className={`posts-description ${!draft.description.trim()?'posts-invalid-field':''}`}><span>Descripción *</span><textarea aria-invalid={!draft.description.trim()} value={draft.description} maxLength={600} onChange={event=>setDraft({...draft,description:event.target.value})} placeholder="Describe brevemente la función operacional del puesto…"/>{!draft.description.trim()&&<small className="posts-field-error">Ingresa la descripción operacional del Puesto.</small>}</label>
               <div className="posts-config-status"><span>Estado de configuración</span><b className={isConfigCurrent(draft)?'complete':'pending'}>{isConfigCurrent(draft)?'Completo':'Pendiente'}</b></div>
-              <div className="posts-map-field"><div className="posts-map-title"><div><strong>Ubicación en el plano</strong><span>{atsPackage?'Seleccione directamente en el plano importado desde el archivo .ats.':'No existe un archivo .ats vigente para este Punto.'}</span></div><Info size={14}/></div><PostLocationMap planUrl={atsPlanUrl} x={draft.atsLocationX} y={draft.atsLocationY} onSelect={(x:number,y:number)=>setDraft({...draft,atsPackageId:atsPackage?.id??null,atsLocationX:x,atsLocationY:y,atsLocationKey:'XY',atsLocationLabel:`Ubicación en plano (${(x*100).toFixed(1)}%, ${(y*100).toFixed(1)}%)`})}/></div>
+              <div className={`posts-map-field ${!hasPlanLocation?'posts-invalid-field':''}`}><div className="posts-map-title"><div><strong>Ubicación en el plano *</strong><span>{atsPackage?'Seleccione directamente en el plano importado desde el archivo .ats.':'No existe un archivo .ats vigente para este Punto.'}</span></div><Info size={14}/></div><PostLocationMap planUrl={atsPlanUrl} x={draft.atsLocationX} y={draft.atsLocationY} onSelect={(x:number,y:number)=>setDraft({...draft,atsPackageId:atsPackage?.id??null,atsLocationX:x,atsLocationY:y,atsLocationKey:'XY',atsLocationLabel:`Ubicación en plano (${(x*100).toFixed(1)}%, ${(y*100).toFixed(1)}%)`})}/>{!hasPlanLocation&&<small className="posts-field-error">Selecciona la ubicación del Puesto directamente en el plano ATS.</small>}</div>
             </div>}
           </section>
         </div>
@@ -679,7 +708,7 @@ function PostsPage({point,onBack}:{point:PointRow;onBack:()=>void}){
           </section>
         </div>}
 
-        <div className="posts-actions"><button className="ser-action ghost" onClick={()=>{const original=configs.find((item:PostOperationalConfig)=>item.postId===selectedPostId);if(original)setDraft({...original,skills:{...original.skills}})}}>Cancelar cambios</button><button className="ser-action ghost" onClick={()=>void save('DRAFT')} disabled={saving}><Save size={15}/>{saving?'Guardando…':'Guardar borrador'}</button><button className="ser-action primary" onClick={()=>void save('CONFIGURED')} disabled={saving||!canComplete}><Save size={15}/>{saving?'Guardando…':'Guardar configuración'}</button></div>
+        <div className="posts-actions"><button className="ser-action ghost" onClick={()=>{const original=configs.find((item:PostOperationalConfig)=>item.postId===selectedPostId);if(original)setDraft({...original,skills:{...original.skills}})}}>Cancelar cambios</button><button className="ser-action ghost" onClick={()=>void save('DRAFT')} disabled={saving}><Save size={15}/>{saving?'Guardando…':'Guardar borrador'}</button><button className="ser-action primary" onClick={()=>void save('CONFIGURED')} disabled={saving}><Save size={15}/>{saving?'Guardando…':'Guardar configuración'}</button></div>
       </div>
     </div>
   </div>
@@ -759,6 +788,7 @@ function ConfigurationLanding({point,onBack,onOpenModule}:{point:PointRow;onBack
 
 export default function Services(){
   const [data,setData]=useState<Overview|null>(null);
+  const [clientOptions,setClientOptions]=useState<ClientOption[]>([]);
   const [loading,setLoading]=useState(true);
   const [error,setError]=useState('');
   const [company,setCompany]=useState('');
@@ -782,16 +812,20 @@ export default function Services(){
   const reload=async()=>{
     setLoading(true);
     setError('');
-    try{setData(await api.serviceOverview())}catch(e){setError(errorMessage(e))}finally{setLoading(false)}
+    try{
+      const [overview,clientOptions]=await Promise.all([api.serviceOverview(),api.clients()]);
+      setData(overview);
+      setClientOptions(clientOptions as ClientOption[]);
+    }catch(e){setError(errorMessage(e))}finally{setLoading(false)}
   };
   useEffect(()=>{void reload()},[]);
 
   const points=useMemo(()=>aggregatePoints(data?.rows??[]),[data]);
   const companies=useMemo(()=>Array.from(new Set(points.map((row:PointRow)=>row.companyName))).sort(),[points]);
-  const clients=useMemo(()=>Array.from(new Set(points.map((row:PointRow)=>row.clientName))).sort(),[points]);
+  const clients=useMemo(()=>clientOptions.filter((option:ClientOption)=>points.some((point:PointRow)=>point.clientId===option.id)),[clientOptions,points]);
   const filtered=useMemo(()=>{
     const q=query.trim().toLowerCase();
-    return points.filter((row:PointRow)=>(!company||row.companyName===company)&&(!client||row.clientName===client)&&(!state||row.state===state)&&(!q||[row.serviceName,row.serviceCode,row.clientName,row.pointName,row.pointCode,row.companyName].some((value:string)=>value.toLowerCase().includes(q))));
+    return points.filter((row:PointRow)=>(!company||row.companyName===company)&&(!client||row.clientId===client)&&(!state||row.state===state)&&(!q||[row.serviceName,row.serviceCode,row.clientName,row.pointName,row.pointCode,row.companyName].some((value:string)=>value.toLowerCase().includes(q))));
   },[points,company,client,state,query]);
   const pages=Math.max(1,Math.ceil(filtered.length/PAGE_SIZE));
   useEffect(()=>{setPage(0)},[company,client,state,query]);
@@ -867,7 +901,7 @@ export default function Services(){
 
     <div className="ser-filterbar">
       <label><span>Compañía</span><select value={company} onChange={e=>setCompany(e.target.value)}><option value="">Todas las compañías</option>{companies.map((item:string)=><option key={item}>{item}</option>)}</select></label>
-      <label><span>Cliente</span><select value={client} onChange={e=>setClient(e.target.value)}><option value="">Todos los clientes</option>{clients.map((item:string)=><option key={item}>{item}</option>)}</select></label>
+      <label><span>Cliente</span><select value={client} onChange={e=>setClient(e.target.value)}><option value="">Todos los clientes</option>{clients.map((item:ClientOption)=><option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
       <label><span>Estado</span><select value={state} onChange={e=>setState(e.target.value)}><option value="">Todos los estados</option><option value="ACTIVE">Activo</option><option value="TO_CONFIGURE">Por Configurar</option><option value="PENDING_ASSIGNMENT">Pendiente de asignación</option><option value="INACTIVE">Inactivo</option></select></label>
       <label className="ser-search"><span className="sr-only">Buscar</span><Search size={16}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar cliente o punto…"/></label>
       <button className="ser-clear" onClick={clearFilters}><RefreshCcw size={15}/>Limpiar filtros</button>

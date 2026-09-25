@@ -11,5 +11,6 @@ public class PostEntity extends BaseEntity {
     @Column(nullable=false) public String format;
     @Column(precision=8,scale=2,nullable=false) public BigDecimal fhe;
     @Column(nullable=false) public String tier;
+    @Column(name="commercial_status",nullable=false) public String commercialStatus;
     @Column(name="config_status",nullable=false) public String configStatus;
 }

@@ -8,8 +8,8 @@ import java.util.UUID;
 @Table(name="territory_region")
 public class TerritoryRegion extends BaseEntity {
     @Column(name="zone_id", nullable=false) public UUID zoneId;
-    @Column(nullable=false, length=32) public String code;
-    @Column(nullable=false, length=160) public String name;
-    @Column(nullable=false, length=32) public String status;
+    @Column(nullable=false) public String code;
+    @Column(nullable=false) public String name;
+    @Column(nullable=false) public String status;
     @Column(name="responsible_employee_id") public UUID responsibleEmployeeId;
 }

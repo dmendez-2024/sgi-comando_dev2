@@ -19,8 +19,6 @@ import java.util.stream.Collectors;
 @Produces(MediaType.APPLICATION_JSON)
 @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION","SUPERVISOR_SEGURIDAD"})
 public class TerritoryResource {
-    private static final int CODE_MAX_LENGTH=32;
-    private static final int NAME_MAX_LENGTH=160;
     private static final Set<String> COUNTRY_EDIT_ROLES=Set.of("PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL");
     private static final Set<String> REGION_EDIT_ROLES=Set.of("PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL");
     @Inject TenantContext tenant;
@@ -68,50 +66,46 @@ public class TerritoryResource {
     @POST @Path("/zones") @Transactional
     public Response createZone(ZoneRequest req){
         requireCountryEditor(); if(req==null||blank(req.code())||blank(req.name())) throw new BadRequestException("Código y nombre son obligatorios.");
-        String code=normalizeCode(req.code());String name=normalizeName(req.name());ensureZoneUnique(code,name,null);
-        TerritoryZone z=new TerritoryZone();z.instanceCountryId=tenant.instanceCountryId();z.code=code;z.name=name;z.status=normalizeStatus(req.status());z.responsibleEmployeeId=req.responsibleEmployeeId();z.persist();
-        applyZoneProvinces(z,req.provinceCodes(),"ACTIVE".equals(z.status)); audit("ZONE",z.id,"CREATED",Map.of("code",z.code,"name",z.name,"status",z.status));
+        TerritoryZone z=new TerritoryZone();z.instanceCountryId=tenant.instanceCountryId();z.code=req.code().trim().toUpperCase(Locale.ROOT);z.name=req.name().trim();z.status=blank(req.status())?"DRAFT":req.status();z.responsibleEmployeeId=req.responsibleEmployeeId();z.persist();
+        applyZoneProvinces(z.id,req.provinceCodes()); audit("ZONE",z.id,"CREATED",Map.of("code",z.code,"name",z.name,"status",z.status));
         return Response.status(Response.Status.CREATED).entity(zoneDto(z)).build();
     }
 
     @PUT @Path("/zones/{id}") @Transactional
     public ZoneDto updateZone(@PathParam("id") UUID id, ZoneRequest req){
         requireCountryEditor(); TerritoryZone z=zone(id); if(req==null) throw new BadRequestException("Datos obligatorios.");
-        boolean activating=!"ACTIVE".equals(z.status)&&"ACTIVE".equals(normalizeStatus(req.status()));
-        if(!"ACTIVE".equals(z.status)){ if(!blank(req.name())){String name=normalizeName(req.name());ensureZoneUnique(z.code,name,z.id);z.name=name;} if(!blank(req.status()))z.status=normalizeStatus(req.status()); }
-        z.responsibleEmployeeId=req.responsibleEmployeeId(); applyZoneProvinces(z,req.provinceCodes(),activating); audit("ZONE",z.id,"UPDATED",Map.of("status",z.status)); return zoneDto(z);
+        if(!"ACTIVE".equals(z.status)){ if(!blank(req.name()))z.name=req.name().trim(); if(!blank(req.status()))z.status=req.status(); }
+        z.responsibleEmployeeId=req.responsibleEmployeeId(); applyZoneProvinces(z.id,req.provinceCodes()); audit("ZONE",z.id,"UPDATED",Map.of("status",z.status)); return zoneDto(z);
     }
 
     @DELETE @Path("/zones/{id}") @Transactional
     public Response deleteZone(@PathParam("id") UUID id){
-        requireCountryEditor(); TerritoryZone z=zone(id); if("ACTIVE".equals(z.status)) throw conflict("No se puede eliminar la Zona porque está Activa.");
-        long regions=TerritoryRegion.count("instanceCountryId=?1 and zoneId=?2",tenant.instanceCountryId(),z.id); if(regions>0) throw conflict("No se puede eliminar la Zona porque tiene Regiones asociadas. Elimine primero las Regiones.");
-        CountrySubdivision.update("draftZoneId=null, draftRegionId=null where instanceCountryId=?1 and draftZoneId=?2",tenant.instanceCountryId(),z.id); audit("ZONE",z.id,"DELETED",Map.of("code",z.code)); z.delete(); return Response.noContent().build();
+        requireCountryEditor(); TerritoryZone z=zone(id); if("ACTIVE".equals(z.status)) throw new WebApplicationException("Una Zona activa no se puede eliminar; debe conservarse para auditoría.", Response.Status.CONFLICT);
+        long regions=TerritoryRegion.count("instanceCountryId=?1 and zoneId=?2",tenant.instanceCountryId(),z.id); if(regions>0) throw new WebApplicationException("Elimine primero las Regiones no activas de esta Zona.", Response.Status.CONFLICT);
+        CountrySubdivision.update("zoneId=null, regionId=null where instanceCountryId=?1 and zoneId=?2",tenant.instanceCountryId(),z.id); audit("ZONE",z.id,"DELETED",Map.of("code",z.code)); z.delete(); return Response.noContent().build();
     }
 
     @POST @Path("/regions") @Transactional
     public Response createRegion(RegionRequest req){
         requireRegionEditor(); if(req==null||req.zoneId()==null||blank(req.code())||blank(req.name())) throw new BadRequestException("Zona, código y nombre son obligatorios.");
         TerritoryZone z=zone(req.zoneId()); requireVisibleZone(z.id);
-        String code=normalizeCode(req.code());String name=normalizeName(req.name());ensureRegionUnique(code,name,null);
-        TerritoryRegion r=new TerritoryRegion();r.instanceCountryId=tenant.instanceCountryId();r.zoneId=z.id;r.code=code;r.name=name;r.status=normalizeStatus(req.status());r.responsibleEmployeeId=req.responsibleEmployeeId();r.persist();
-        applyRegionProvinces(r,req.provinceCodes(),"ACTIVE".equals(r.status)); audit("REGION",r.id,"CREATED",Map.of("zoneId",z.id,"code",r.code,"name",r.name));
+        TerritoryRegion r=new TerritoryRegion();r.instanceCountryId=tenant.instanceCountryId();r.zoneId=z.id;r.code=req.code().trim().toUpperCase(Locale.ROOT);r.name=req.name().trim();r.status=blank(req.status())?"DRAFT":req.status();r.responsibleEmployeeId=req.responsibleEmployeeId();r.persist();
+        applyRegionProvinces(r,req.provinceCodes()); audit("REGION",r.id,"CREATED",Map.of("zoneId",z.id,"code",r.code,"name",r.name));
         return Response.status(Response.Status.CREATED).entity(regionDto(r)).build();
     }
 
     @PUT @Path("/regions/{id}") @Transactional
     public RegionDto updateRegion(@PathParam("id") UUID id, RegionRequest req){
         requireRegionEditor(); TerritoryRegion r=region(id); requireVisibleZone(r.zoneId); if(req==null) throw new BadRequestException("Datos obligatorios.");
-        boolean activating=!"ACTIVE".equals(r.status)&&"ACTIVE".equals(normalizeStatus(req.status()));
-        if(!"ACTIVE".equals(r.status)){ if(req.zoneId()!=null){TerritoryZone z=zone(req.zoneId());requireVisibleZone(z.id);r.zoneId=z.id;} if(!blank(req.name())){String name=normalizeName(req.name());ensureRegionUnique(r.code,name,r.id);r.name=name;} if(!blank(req.status()))r.status=normalizeStatus(req.status()); }
-        r.responsibleEmployeeId=req.responsibleEmployeeId(); applyRegionProvinces(r,req.provinceCodes(),activating); audit("REGION",r.id,"UPDATED",Map.of("status",r.status)); return regionDto(r);
+        if(!"ACTIVE".equals(r.status)){ if(req.zoneId()!=null){TerritoryZone z=zone(req.zoneId());requireVisibleZone(z.id);r.zoneId=z.id;} if(!blank(req.name()))r.name=req.name().trim(); if(!blank(req.status()))r.status=req.status(); }
+        r.responsibleEmployeeId=req.responsibleEmployeeId(); applyRegionProvinces(r,req.provinceCodes()); audit("REGION",r.id,"UPDATED",Map.of("status",r.status)); return regionDto(r);
     }
 
     @DELETE @Path("/regions/{id}") @Transactional
     public Response deleteRegion(@PathParam("id") UUID id){
         requireRegionEditor(); TerritoryRegion r=region(id); requireVisibleZone(r.zoneId); if("ACTIVE".equals(r.status)) throw new WebApplicationException("Una Región activa no se puede eliminar; debe conservarse para auditoría.", Response.Status.CONFLICT);
         long companies=Company.count("instanceCountryId=?1 and regionId=?2",tenant.instanceCountryId(),r.id); if(companies>0) throw new WebApplicationException("La Región tiene Compañías asociadas.", Response.Status.CONFLICT);
-        CountrySubdivision.update("draftRegionId=null where instanceCountryId=?1 and draftRegionId=?2",tenant.instanceCountryId(),r.id); audit("REGION",r.id,"DELETED",Map.of("code",r.code)); r.delete(); return Response.noContent().build();
+        CountrySubdivision.update("regionId=null where instanceCountryId=?1 and regionId=?2",tenant.instanceCountryId(),r.id); audit("REGION",r.id,"DELETED",Map.of("code",r.code)); r.delete(); return Response.noContent().build();
     }
 
     @PUT @Path("/companies/{companyId}/region/{regionId}") @Transactional
@@ -137,67 +131,17 @@ public class TerritoryResource {
         return new TreeResponse(zones.stream().map(this::zoneDto).toList(),regions.stream().map(this::regionDto).toList(),companies.stream().map(c->new CompanyDto(c.id,c.code,c.name,c.status,c.regionId)).toList(),provinces.stream().map(p->new ProvinceDto(p.id,p.code,p.name,p.zoneId,p.regionId,p.status)).toList());
     }
 
-    private ZoneDto zoneDto(TerritoryZone z){ return new ZoneDto(z.id,z.code,z.name,z.status,z.responsibleEmployeeId,responsibleName(z.responsibleEmployeeId),provinceCodes(z)); }
-    private RegionDto regionDto(TerritoryRegion r){ return new RegionDto(r.id,r.zoneId,r.code,r.name,r.status,r.responsibleEmployeeId,responsibleName(r.responsibleEmployeeId),provinceCodes(r)); }
+    private ZoneDto zoneDto(TerritoryZone z){ return new ZoneDto(z.id,z.code,z.name,z.status,z.responsibleEmployeeId,responsibleName(z.responsibleEmployeeId),provinceCodes(z.id,null)); }
+    private RegionDto regionDto(TerritoryRegion r){ return new RegionDto(r.id,r.zoneId,r.code,r.name,r.status,r.responsibleEmployeeId,responsibleName(r.responsibleEmployeeId),provinceCodes(null,r.id)); }
     private String responsibleName(UUID id){ if(id==null)return null; EmployeeOperationalSnapshot e=EmployeeOperationalSnapshot.find("instanceCountryId=?1 and employeeId=?2",tenant.instanceCountryId(),id).firstResult();return e==null?null:e.fullName; }
-    private List<String> provinceCodes(TerritoryZone z){ String field="ACTIVE".equals(z.status)?"zoneId":"draftZoneId"; return CountrySubdivision.<CountrySubdivision>list("instanceCountryId=?1 and "+field+"=?2 order by name",tenant.instanceCountryId(),z.id).stream().map(p->p.code).toList(); }
-    private List<String> provinceCodes(TerritoryRegion r){ TerritoryZone z=zone(r.zoneId); boolean effective="ACTIVE".equals(r.status)&&"ACTIVE".equals(z.status); String field=effective?"regionId":"draftRegionId"; return CountrySubdivision.<CountrySubdivision>list("instanceCountryId=?1 and "+field+"=?2 order by name",tenant.instanceCountryId(),r.id).stream().map(p->p.code).toList(); }
-    private void applyZoneProvinces(TerritoryZone z,List<String> codes,boolean activating){
-        if(codes==null)return;
-        if("ACTIVE".equals(z.status)){
-            List<CountrySubdivision> current=CountrySubdivision.list("instanceCountryId=?1 and zoneId=?2",tenant.instanceCountryId(),z.id);
-            for(CountrySubdivision p:current)if(!codes.contains(p.code)){p.zoneId=null;p.regionId=null;}
-            for(String code:codes){
-                CountrySubdivision p=subdivision(code);if(p==null)continue;p.zoneId=z.id;
-                if(p.regionId!=null){TerritoryRegion currentRegion=TerritoryRegion.find("id=?1",p.regionId).firstResult();if(currentRegion==null||!Objects.equals(currentRegion.zoneId,z.id))p.regionId=null;}
-                if(activating&&p.draftRegionId!=null){TerritoryRegion pendingRegion=TerritoryRegion.find("id=?1",p.draftRegionId).firstResult();if(pendingRegion!=null&&"ACTIVE".equals(pendingRegion.status)&&Objects.equals(pendingRegion.zoneId,z.id)){p.regionId=pendingRegion.id;p.draftRegionId=null;}}
-                if(activating&&Objects.equals(p.draftZoneId,z.id))p.draftZoneId=null;
-            }
-            if(activating)for(CountrySubdivision p:CountrySubdivision.<CountrySubdivision>list("instanceCountryId=?1 and draftZoneId=?2",tenant.instanceCountryId(),z.id)){p.draftZoneId=null;p.draftRegionId=null;}
-            return;
-        }
-        List<CountrySubdivision> current=CountrySubdivision.list("instanceCountryId=?1 and draftZoneId=?2",tenant.instanceCountryId(),z.id);
-        for(CountrySubdivision p:current)if(!codes.contains(p.code)){p.draftZoneId=null;p.draftRegionId=null;}
-        for(String code:codes){CountrySubdivision p=subdivision(code);if(p!=null){p.draftZoneId=z.id;if(p.draftRegionId!=null){TerritoryRegion pendingRegion=TerritoryRegion.find("id=?1",p.draftRegionId).firstResult();if(pendingRegion==null||!Objects.equals(pendingRegion.zoneId,z.id))p.draftRegionId=null;}}}
-    }
-    private void applyRegionProvinces(TerritoryRegion r,List<String> codes,boolean activating){
-        if(codes==null)return;
-        TerritoryZone z=zone(r.zoneId);boolean effective="ACTIVE".equals(r.status)&&"ACTIVE".equals(z.status);
-        if(effective){
-            List<CountrySubdivision> current=CountrySubdivision.list("instanceCountryId=?1 and regionId=?2",tenant.instanceCountryId(),r.id);
-            for(CountrySubdivision p:current)if(!codes.contains(p.code))p.regionId=null;
-            for(String code:codes){CountrySubdivision p=subdivision(code);if(p==null)continue;if(!Objects.equals(p.zoneId,r.zoneId))throw new BadRequestException("La provincia "+p.name+" no pertenece a la Zona de esta Región.");p.regionId=r.id;if(activating&&Objects.equals(p.draftRegionId,r.id))p.draftRegionId=null;}
-            if(activating)for(CountrySubdivision p:CountrySubdivision.<CountrySubdivision>list("instanceCountryId=?1 and draftRegionId=?2",tenant.instanceCountryId(),r.id))p.draftRegionId=null;
-            return;
-        }
-        List<CountrySubdivision> current=CountrySubdivision.list("instanceCountryId=?1 and draftRegionId=?2",tenant.instanceCountryId(),r.id);
-        for(CountrySubdivision p:current)if(!codes.contains(p.code))p.draftRegionId=null;
-        for(String code:codes){CountrySubdivision p=subdivision(code);if(p==null)continue;UUID configuredZoneId="ACTIVE".equals(z.status)?p.zoneId:p.draftZoneId;if(!Objects.equals(configuredZoneId,r.zoneId))throw new BadRequestException("La provincia "+p.name+" no pertenece a la Zona de esta Región.");p.draftRegionId=r.id;}
-    }
-    private CountrySubdivision subdivision(String code){return CountrySubdivision.find("instanceCountryId=?1 and code=?2",tenant.instanceCountryId(),code).firstResult();}
+    private List<String> provinceCodes(UUID zoneId,UUID regionId){ List<CountrySubdivision> list=regionId!=null?CountrySubdivision.list("instanceCountryId=?1 and regionId=?2 order by name",tenant.instanceCountryId(),regionId):CountrySubdivision.list("instanceCountryId=?1 and zoneId=?2 order by name",tenant.instanceCountryId(),zoneId); return list.stream().map(p->p.code).toList(); }
+    private void applyZoneProvinces(UUID zoneId,List<String> codes){ if(codes==null)return; List<CountrySubdivision> current=CountrySubdivision.list("instanceCountryId=?1 and zoneId=?2",tenant.instanceCountryId(),zoneId); for(CountrySubdivision p:current){if(!codes.contains(p.code)){p.zoneId=null;p.regionId=null;}} for(String code:codes){CountrySubdivision p=CountrySubdivision.find("instanceCountryId=?1 and code=?2",tenant.instanceCountryId(),code).firstResult();if(p!=null){p.zoneId=zoneId;if(p.regionId!=null){TerritoryRegion r=TerritoryRegion.find("id=?1",p.regionId).firstResult();if(r==null||!Objects.equals(r.zoneId,zoneId))p.regionId=null;}}} }
+    private void applyRegionProvinces(TerritoryRegion r,List<String> codes){ if(codes==null)return; List<CountrySubdivision> current=CountrySubdivision.list("instanceCountryId=?1 and regionId=?2",tenant.instanceCountryId(),r.id); for(CountrySubdivision p:current)if(!codes.contains(p.code))p.regionId=null; for(String code:codes){CountrySubdivision p=CountrySubdivision.find("instanceCountryId=?1 and code=?2",tenant.instanceCountryId(),code).firstResult();if(p==null)continue;if(!Objects.equals(p.zoneId,r.zoneId))throw new BadRequestException("La provincia "+p.name+" no pertenece a la Zona de esta Región.");p.regionId=r.id;} }
     private TerritoryZone zone(UUID id){TerritoryZone z=TerritoryZone.find("id=?1 and instanceCountryId=?2",id,tenant.instanceCountryId()).firstResult();if(z==null)throw new NotFoundException("Zona no encontrada");return z;}
     private TerritoryRegion region(UUID id){TerritoryRegion r=TerritoryRegion.find("id=?1 and instanceCountryId=?2",id,tenant.instanceCountryId()).firstResult();if(r==null)throw new NotFoundException("Región no encontrada");return r;}
     private void requireVisibleZone(UUID zoneId){ if(!scope.countryWide()&&!scope.visibleZoneIds().contains(zoneId)) throw new ForbiddenException("La Zona está fuera del alcance territorial del usuario."); }
     private void requireCountryEditor(){ if(identity.getRoles().stream().noneMatch(COUNTRY_EDIT_ROLES::contains)) throw new ForbiddenException("Solo un rol de alcance país puede configurar Zonas."); }
     private void requireRegionEditor(){ if(identity.getRoles().stream().noneMatch(REGION_EDIT_ROLES::contains)) throw new ForbiddenException("Rol de solo lectura para Territorio."); }
-    private String normalizeCode(String value){String out=value.trim().toUpperCase(Locale.ROOT);if(out.length()>CODE_MAX_LENGTH)throw validationError("El código no puede superar "+CODE_MAX_LENGTH+" caracteres.");return out;}
-    private String normalizeName(String value){String out=value.trim();if(out.length()>NAME_MAX_LENGTH)throw validationError("El nombre no puede superar "+NAME_MAX_LENGTH+" caracteres.");return out;}
-    private String normalizeStatus(String value){return blank(value)?"DRAFT":value.trim().toUpperCase(Locale.ROOT);}
-    private void ensureZoneUnique(String code,String name,UUID excludedId){
-        TerritoryZone byCode=TerritoryZone.find("instanceCountryId=?1 and lower(code)=?2",tenant.instanceCountryId(),code.toLowerCase(Locale.ROOT)).firstResult();
-        if(byCode!=null&&!Objects.equals(byCode.id,excludedId))throw conflict("Ya existe una Zona con el código «"+code+"».");
-        TerritoryZone byName=TerritoryZone.find("instanceCountryId=?1 and lower(name)=?2",tenant.instanceCountryId(),name.toLowerCase(Locale.ROOT)).firstResult();
-        if(byName!=null&&!Objects.equals(byName.id,excludedId))throw conflict("Ya existe una Zona con el nombre «"+name+"».");
-    }
-    private void ensureRegionUnique(String code,String name,UUID excludedId){
-        TerritoryRegion byCode=TerritoryRegion.find("instanceCountryId=?1 and lower(code)=?2",tenant.instanceCountryId(),code.toLowerCase(Locale.ROOT)).firstResult();
-        if(byCode!=null&&!Objects.equals(byCode.id,excludedId))throw conflict("Ya existe una Región con el código «"+code+"».");
-        TerritoryRegion byName=TerritoryRegion.find("instanceCountryId=?1 and lower(name)=?2",tenant.instanceCountryId(),name.toLowerCase(Locale.ROOT)).firstResult();
-        if(byName!=null&&!Objects.equals(byName.id,excludedId))throw conflict("Ya existe una Región con el nombre «"+name+"».");
-    }
-    private WebApplicationException validationError(String message){return responseError(Response.Status.BAD_REQUEST,message);}
-    private WebApplicationException conflict(String message){return responseError(Response.Status.CONFLICT,message);}
-    private WebApplicationException responseError(Response.Status status,String message){return new WebApplicationException(Response.status(status).type(MediaType.TEXT_PLAIN).entity(message).build());}
     private void audit(String entityType,UUID entityId,String eventType,Object payload){ try{TerritoryAuditEvent e=new TerritoryAuditEvent();e.instanceCountryId=tenant.instanceCountryId();e.entityType=entityType;e.entityId=entityId;e.eventType=eventType;e.actorUsername=identity.getPrincipal().getName();e.payloadJson=mapper.writeValueAsString(payload);e.occurredAt=Instant.now();e.persist();}catch(Exception ex){throw new InternalServerErrorException("No se pudo registrar auditoría territorial",ex);} }
     private static boolean blank(String s){ return s==null||s.isBlank(); }
 }

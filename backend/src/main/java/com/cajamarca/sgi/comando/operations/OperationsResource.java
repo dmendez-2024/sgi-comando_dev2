@@ -16,6 +16,14 @@ public class OperationsResource {
   @Inject TenantContext tenant;
   @Inject OperationalScopeService scope;
 
+  public record ClientOptionDto(UUID id, String code, String name) {}
+
+  @GET @Path("/clients")
+  public List<ClientOptionDto> clients(){
+    return ClientEntity.<ClientEntity>list("instanceCountryId=?1 order by name", tenant.instanceCountryId())
+        .stream().map(client -> new ClientOptionDto(client.id, client.code, client.name)).toList();
+  }
+
   @GET @Path("/services")
   public List<ServiceEntity> services(){
     Set<UUID> allowed=scope.allowedCompanyIds(); if(allowed.isEmpty()) return List.of();

@@ -55,7 +55,7 @@ Todos los IDs siguen SITC-NOM-001 v3.0. Paths son contratos lógicos; host/baseP
 ### `SGI_COM__SIC_COM__00001__IF01`
 `GET /api/v1/sgi-export/services` — Paged/versioned Client, Service, Point, Post, shifts, FHE and TIER snapshot
 
-## `SIC_COM__SGI_COM__00001__V0001` — Notify SGI: Comando of commercial Service/Point/Post lifecycle changes.
+## `SIC_COM__SGI_COM__00001__V0001` — Apply SIC:COM commercial Client/Service/Point/Post lifecycle changes in SGI: Comando.
 - Origen técnico: `SIC_COM`
 - Destino: `SGI_COM`
 - Tipo: `WEBHOOK / ASYNC / HTTPS`
@@ -64,7 +64,7 @@ Todos los IDs siguen SITC-NOM-001 v3.0. Paths son contratos lógicos; host/baseP
 - Estado: `DESIGN`; destino `BLOCKED`
 
 ### `SIC_COM__SGI_COM__00001__IF01`
-`POST /api/v1/inbound/sic-com/commercial-events` — Versioned commercial lifecycle event
+`POST /api/v1/inbound/sic-com/commercial-events` — Idempotent, versioned commercial catalog lifecycle event. The body contains `client`, `service` and one or more `points` with their `posts`; it does not contain or persist SIC:COM orders. For every Post in a `COMMERCIAL_CATALOG_CREATED` or `COMMERCIAL_CATALOG_UPDATED` event, `rotation.code`, `rotation.cycleLengthDays` (1–366) and at least one `shifts[]` entry (`code`, `name`, `startTime`, `endTime`, `dayMask` and `active`) are mandatory. `COMMERCIAL_CATALOG_INACTIVATED` may omit planning data because it only applies logical inactivation. It requires `Authorization: Bearer <service-token>` plus `X-Correlation-Id`, `X-Interconnection-Id`, `X-Contract-Version` and `Idempotency-Key` (equal to `eventId`). The receiver resolves the effective token at runtime from `sgi.sic-com.inbound.credential-ref` through `CredentialRefResolver`; neither the credential reference's secret nor a fallback token is versioned.
 
 ## `SGI_COM__SIC_RRHH__00001__V0001` — Read employee operational context for territory, assignments and supervision.
 - Origen técnico: `SGI_COM`
@@ -283,4 +283,3 @@ Todos los IDs siguen SITC-NOM-001 v3.0. Paths son contratos lógicos; host/baseP
 
 ### `SGI_COM__CM_CON__00002__IF01`
 `GET /api/v1/shift-confirmations/{requestId}` — Confirmation result
-

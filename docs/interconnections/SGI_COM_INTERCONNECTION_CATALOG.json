@@ -383,8 +383,8 @@
     "interconnectionId": "SIC_COM__SGI_COM__00001__V0001",
     "sourceProgramId": "SIC_COM",
     "targetProgramId": "SGI_COM",
-    "purpose": "Notify SGI: Comando of commercial Service/Point/Post lifecycle changes.",
-    "trigger": "SERVICE/POINT/POST created, updated, suspended or terminated in SIC_COM.",
+    "purpose": "Apply SIC_COM commercial Client/Service/Point/Post lifecycle changes in SGI: Comando.",
+    "trigger": "CLIENT/SERVICE/POINT/POST created, updated, suspended or terminated in SIC_COM.",
     "interactionType": "WEBHOOK",
     "mode": "ASYNC",
     "protocol": "HTTPS",
@@ -434,16 +434,34 @@
             "eventId",
             "eventType",
             "instanceCountryId",
-            "entityType",
-            "entityId",
             "commercialVersion",
             "occurredAt",
-            "payload"
+            "client.code",
+            "client.name",
+            "service.code",
+            "service.name",
+            "service.clientCode",
+            "points[].code",
+            "points[].posts[].code",
+            "points[].posts[].rotation.code",
+            "points[].posts[].rotation.cycleLengthDays",
+            "points[].posts[].shifts[].code",
+            "points[].posts[].shifts[].name",
+            "points[].posts[].shifts[].startTime",
+            "points[].posts[].shifts[].endTime",
+            "points[].posts[].shifts[].dayMask",
+            "points[].posts[].shifts[].active"
           ]
         },
         "response": {
           "fields": [
-            "accepted",
+            "status",
+            "eventId",
+            "commercialVersion",
+            "client.sgiId",
+            "service.sgiId",
+            "points[].sgiId",
+            "points[].posts[].sgiId",
             "correlationId"
           ]
         }
@@ -466,7 +484,7 @@
         "allowStaleSeconds": 3600
       }
     },
-    "notes": "Legacy SIC_COM producer must be implemented manually. SGI_COM inbound adapter is not enabled until contract UAT.",
+    "notes": "SGI_COM has a local inbound adapter for the complete commercial catalog event. SIC_COM orders are outside this contract. The local UAT adapter validates Bearer SERVICE_TOKEN through a runtime credential_ref and does not persist secrets. Activation remains pending the effective CORE binding and service identity for UAT.",
     "legacySource": true,
     "sourceImplementationStatus": "MANUAL_PENDING"
   },

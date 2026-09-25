@@ -8,3 +8,4 @@
 - Correlation ID obligatorio; no registrar tokens/secretos/evidencia sensible en logs.
 - `instance_country_id` proviene del contexto autenticado y participa en resolución.
 - El módulo no expone un endpoint proxy genérico de ejecución, para evitar SSRF y bypass de autorización.
+- El ingreso `SIC_COM__SGI_COM__00001__V0001` valida `Authorization: Bearer` en el adaptador técnico como primera acción del receptor de catálogo. En UAT local se configura exclusivamente `sgi.sic-com.inbound.credential-ref`; el token efectivo se resuelve por `CredentialRefResolver` desde el entorno. Si no hay referencia o secreto disponible, el receptor responde `503`; un token ausente o no válido responde `401`.

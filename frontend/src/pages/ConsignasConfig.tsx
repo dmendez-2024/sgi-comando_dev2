@@ -6,7 +6,6 @@ import {
   CalendarDays,
   Camera,
   CheckCircle2,
-  ChevronLeft,
   ChevronRight,
   ClipboardList,
   Clock3,
@@ -63,7 +62,6 @@ export default function ConsignasConfig({point,onBack}:{point:PointContext;onBac
   const [currentProtocol,setCurrentProtocol]=useState<Protocol|null>(null);
   const [selectedPostId,setSelectedPostId]=useState(point.posts[0]?.postId??'');
   const [postQuery,setPostQuery]=useState('');
-  const [postsCollapsed,setPostsCollapsed]=useState(false);
   const [protocolQuery,setProtocolQuery]=useState('');
   const [selectedProtocolId,setSelectedProtocolId]=useState('');
   const [selectedItemId,setSelectedItemId]=useState('');
@@ -85,25 +83,6 @@ export default function ConsignasConfig({point,onBack}:{point:PointContext;onBac
   const [ats,setAts]=useState<AtsMeta|null>(null);
   const [planUrl,setPlanUrl]=useState('');
   const planRef=useRef('');
-  const stepTabsRef=useRef<HTMLDivElement>(null);
-
-  useEffect(()=>{
-    const frame=requestAnimationFrame(()=>{
-      const container=stepTabsRef.current;
-      const active=container?.querySelector<HTMLButtonElement>('.active');
-      if(!container||!active)return;
-      const inset=12;
-      const containerRect=container.getBoundingClientRect();
-      const activeRect=active.getBoundingClientRect();
-      const left=activeRect.left-containerRect.left+container.scrollLeft;
-      const right=left+activeRect.width;
-      const visibleLeft=container.scrollLeft+inset;
-      const visibleRight=container.scrollLeft+container.clientWidth-inset;
-      if(left<visibleLeft)container.scrollTo({left:Math.max(0,left-inset)});
-      else if(right>visibleRight)container.scrollTo({left:right-container.clientWidth+inset});
-    });
-    return ()=>cancelAnimationFrame(frame);
-  },[tab,selectedProtocolId,selectedItemId]);
 
   const revokeStandard=()=>{if(standardRef.current)URL.revokeObjectURL(standardRef.current);standardRef.current='';setStandardUrl('')};
   const setStandard=(u:string)=>{revokeStandard();standardRef.current=u;setStandardUrl(u)};
@@ -306,8 +285,8 @@ export default function ConsignasConfig({point,onBack}:{point:PointContext;onBac
     {error&&<div className="ser-error"><AlertTriangle size={16}/><span>{error}</span><button onClick={()=>setError('')}>Cerrar</button></div>}
     {notice&&<div className="posts-notice"><Info size={15}/><span>{notice}</span><button className="icon-only" onClick={()=>setNotice('')}><X size={14}/></button></div>}
 
-    <div className={`bit-main-grid${postsCollapsed?' posts-collapsed':''}`}>
-      <section className="ser-table-card bit-posts-card"><header><div><h3>Puestos del Punto</h3><span>{postsCollapsed&&selectedPost?`Seleccionado: ${selectedPost.postCode} · ${selectedPost.postName}`:'Seleccione un Puesto para configurar sus Protocolos'}</span></div><button type="button" className="bit-posts-toggle" aria-expanded={!postsCollapsed} aria-controls="consignas-post-list-content" aria-label={postsCollapsed?'Expandir panel Puestos del Punto':'Contraer panel Puestos del Punto'} title={postsCollapsed?'Expandir panel':'Contraer panel'} onClick={()=>setPostsCollapsed(value=>!value)}>{postsCollapsed?<ChevronRight size={16}/>:<ChevronLeft size={16}/>}</button></header><div id="consignas-post-list-content" hidden={postsCollapsed}><div className="bit-search"><Search size={15}/><input value={postQuery} onChange={e=>setPostQuery(e.target.value)} placeholder="Buscar puesto por código o nombre…"/></div><div className="bit-post-list">{visiblePosts.map(post=>{const protocolRows=protocols.filter(protocol=>protocolAppliesToPost(protocol,post.postId));return <button key={post.postId} className={selectedPostId===post.postId?'selected':''} onClick={()=>selectPost(post.postId)}><span className="bit-post-icon"><ShieldCheck size={17}/></span><div><strong>{post.postCode}</strong><span>{post.postName}</span><small>{protocolRows.length} protocolo{protocolRows.length===1?'':'s'} · {protocolRows.length?'Configurado':'Pendiente'}</small></div><span className={`bit-status-dot ${protocolRows.length?'good':'warn'}`}/><ChevronRight size={15}/></button>})}</div></div></section>
+    <div className="bit-main-grid">
+      <section className="ser-table-card bit-posts-card"><header><div><h3>Puestos del Punto</h3><span>Seleccione un Puesto para configurar sus Protocolos</span></div></header><div className="bit-search"><Search size={15}/><input value={postQuery} onChange={e=>setPostQuery(e.target.value)} placeholder="Buscar puesto por código o nombre…"/></div><div className="bit-post-list">{visiblePosts.map(post=>{const protocolRows=protocols.filter(protocol=>protocolAppliesToPost(protocol,post.postId));return <button key={post.postId} className={selectedPostId===post.postId?'selected':''} onClick={()=>selectPost(post.postId)}><span className="bit-post-icon"><ShieldCheck size={17}/></span><div><strong>{post.postCode}</strong><span>{post.postName}</span><small>{protocolRows.length} protocolo{protocolRows.length===1?'':'s'} · {protocolRows.length?'Configurado':'Pendiente'}</small></div><span className={`bit-status-dot ${protocolRows.length?'good':'warn'}`}/><ChevronRight size={15}/></button>})}</div></section>
 
       <section className="ser-table-card bit-protocols-card"><header><div><h3>Protocolos del Punto</h3><span>{selectedPost?`${selectedPost.postCode} · ${selectedPost.postName}`:'Seleccione un Puesto'}</span></div></header><div className="bit-protocol-actions"><button className="primary" onClick={()=>void createProtocol()}><Plus size={14}/>Crear protocolo</button><button disabled><Upload size={14}/>Importar protocolo</button></div><div className="bit-search"><Search size={15}/><input value={protocolQuery} onChange={e=>setProtocolQuery(e.target.value)} placeholder="Buscar protocolo por código o nombre…"/></div><div className="bit-protocol-table-wrap"><table className="bit-protocol-table"><thead><tr><th>Código</th><th>Protocolo</th><th>Consignas</th><th>Estado</th></tr></thead><tbody>{loading?<tr><td colSpan={4}>Cargando…</td></tr>:filteredProtocols.length?filteredProtocols.map(protocol=>{const coverage=protocolCoverageCount(protocol,point.posts);return <tr key={protocol.id} className={protocol.id===selectedProtocolId?'selected':''} onClick={()=>chooseProtocol(protocol)}><td>{protocol.code}</td><td><strong>{protocol.name}</strong><small>{coverage===point.posts.length?'Todo el punto':`${coverage}/${point.posts.length} Puestos`}</small></td><td>{protocol.consignments.length}</td><td><span className={`bit-protocol-state ${protocolStateClass(protocol.status)}`}>{statusLabel(protocol.status)}</span></td></tr>}):<tr><td colSpan={4} className="bit-empty-cell">No hay Protocolos para este criterio.</td></tr>}</tbody></table></div></section>
 
@@ -316,7 +295,7 @@ export default function ConsignasConfig({point,onBack}:{point:PointContext;onBac
 
         <div className="bit-accreditation-strip"><div className="bit-accreditation-label"><ClipboardList size={16}/><div><strong>Consignas ({selectedProtocol.consignments.length}/{MAX_CONSIGNMENTS_PER_PROTOCOL})</strong><span>Máximo {MAX_CONSIGNMENTS_PER_PROTOCOL} por Protocolo. Si necesita más, cree un nuevo Protocolo.</span></div></div><div className="bit-accreditation-options">{selectedProtocol.consignments.map(item=><button key={item.id} className={item.id===selectedItemId?'active':''} onClick={()=>chooseItem(item)}><b>{item.code}</b><span>{item.title||'Sin título'}</span></button>)}<button className="add" onClick={()=>void createItem()} disabled={!isDraft||selectedProtocol.consignments.length>=MAX_CONSIGNMENTS_PER_PROTOCOL}><Plus size={14}/>Nueva consigna</button></div></div>
 
-        <div className="bit-step-tabs-rail"><div className="bit-step-tabs" ref={stepTabsRef}>{TABS.map(item=><button key={item.key} className={tab===item.key?'active':''} onClick={()=>setTab(item.key)}><b>{item.short}</b>{item.label}</button>)}</div></div>
+        <div className="bit-step-tabs">{TABS.map(item=><button key={item.key} className={tab===item.key?'active':''} onClick={()=>setTab(item.key)}><b>{item.short}</b>{item.label}</button>)}</div>
         <div className="bit-version-lock"><ShieldCheck size={14}/><span>{isDraft?'Borrador editable. Al publicar, la versión pasa a Inactivo y queda inmutable.':'Versión publicada e inmutable. Para modificar su contenido, cree una nueva versión del Protocolo.'}</span></div>
 
         <div className="bit-detail-body"><fieldset className="bit-version-fieldset" disabled={!isDraft}>

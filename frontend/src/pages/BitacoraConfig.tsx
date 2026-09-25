@@ -5,7 +5,6 @@ import {
   BadgeCheck,
   Camera,
   Check,
-  ChevronLeft,
   ChevronRight,
   CircleHelp,
   ClipboardList,
@@ -84,13 +83,11 @@ export default function BitacoraConfig({point,onBack}:{point:PointContext;onBack
   const [error,setError]=useState('');
   const [notice,setNotice]=useState('');
   const [postQuery,setPostQuery]=useState('');
-  const [postsCollapsed,setPostsCollapsed]=useState(false);
   const [selectedPostId,setSelectedPostId]=useState(point.posts[0]?.postId??'');
   const [selectedProtocolId,setSelectedProtocolId]=useState('');
   const [selectedAccreditationId,setSelectedAccreditationId]=useState('');
   const [draft,setDraft]=useState<Protocol|null>(null);
   const [tab,setTab]=useState<DetailTab>('DEFINICION');
-  const stepTabsRef=useRef<HTMLDivElement>(null);
   const [fieldDraft,setFieldDraft]=useState<FieldDraft|null>(null);
   const [fieldImageUrl,setFieldImageUrl]=useState('');
   const fieldImageUrlRef=useRef('');
@@ -101,24 +98,6 @@ export default function BitacoraConfig({point,onBack}:{point:PointContext;onBack
   const [confirmState,setConfirmState]=useState<ConfirmState|null>(null);
   const [confirmBusy,setConfirmBusy]=useState(false);
   const [scopeBusy,setScopeBusy]=useState(false);
-
-  useEffect(()=>{
-    const frame=requestAnimationFrame(()=>{
-      const container=stepTabsRef.current;
-      const active=container?.querySelector<HTMLButtonElement>('.active');
-      if(!container||!active)return;
-      const inset=12;
-      const containerRect=container.getBoundingClientRect();
-      const activeRect=active.getBoundingClientRect();
-      const left=activeRect.left-containerRect.left+container.scrollLeft;
-      const right=left+activeRect.width;
-      const visibleLeft=container.scrollLeft+inset;
-      const visibleRight=container.scrollLeft+container.clientWidth-inset;
-      if(left<visibleLeft)container.scrollTo({left:Math.max(0,left-inset)});
-      else if(right>visibleRight)container.scrollTo({left:right-container.clientWidth+inset});
-    });
-    return ()=>cancelAnimationFrame(frame);
-  },[tab,selectedProtocolId,draft?.code]);
 
   const setImageUrl=(value:string)=>{
     if(fieldImageUrlRef.current)URL.revokeObjectURL(fieldImageUrlRef.current);
@@ -294,8 +273,8 @@ export default function BitacoraConfig({point,onBack}:{point:PointContext;onBack
     {error&&<div className="ser-error"><AlertTriangle size={16}/><span>{error}</span><button onClick={()=>void load()}>Reintentar</button></div>}
     {notice&&<div className="posts-notice"><Info size={15}/><span>{notice}</span></div>}
 
-    <div className={`bit-main-grid${postsCollapsed?' posts-collapsed':''}`}>
-      <section className="ser-table-card bit-posts-card"><header><div><h3>Puestos del Punto</h3><span>{postsCollapsed&&selectedPost?`Seleccionado: ${selectedPost.postCode} · ${selectedPost.postName}`:'Seleccione un Puesto para configurar sus protocolos'}</span></div><button type="button" className="bit-posts-toggle" aria-expanded={!postsCollapsed} aria-controls="bit-post-list-content" aria-label={postsCollapsed?'Expandir panel Puestos del Punto':'Contraer panel Puestos del Punto'} title={postsCollapsed?'Expandir panel':'Contraer panel'} onClick={()=>setPostsCollapsed(value=>!value)}>{postsCollapsed?<ChevronRight size={16}/>:<ChevronLeft size={16}/>}</button></header><div id="bit-post-list-content" hidden={postsCollapsed}><div className="bit-search"><Search size={15}/><input value={postQuery} onChange={event=>setPostQuery(event.target.value)} placeholder="Buscar puesto por código o nombre…"/></div><div className="bit-post-list">{visiblePosts.map(post=>{const counts=postCounts.get(post.postId)??{count:0,activo:0,borrador:0};return <button key={post.postId} className={selectedPostId===post.postId?'selected':''} onClick={()=>selectPost(post.postId)}><span className="bit-post-icon"><ShieldCheck size={17}/></span><div><strong>{post.postCode}</strong><span>{post.postName}</span><small>{counts.count} protocolo{counts.count===1?'':'s'} · {counts.count?'Configurado':'Pendiente'}</small></div><span className={`bit-status-dot ${counts.count?'good':'warn'}`}/><ChevronRight size={15}/></button>})}</div></div></section>
+    <div className="bit-main-grid">
+      <section className="ser-table-card bit-posts-card"><header><div><h3>Puestos del Punto</h3><span>Seleccione un Puesto para configurar sus protocolos</span></div></header><div className="bit-search"><Search size={15}/><input value={postQuery} onChange={event=>setPostQuery(event.target.value)} placeholder="Buscar puesto por código o nombre…"/></div><div className="bit-post-list">{visiblePosts.map(post=>{const counts=postCounts.get(post.postId)??{count:0,activo:0,borrador:0};return <button key={post.postId} className={selectedPostId===post.postId?'selected':''} onClick={()=>selectPost(post.postId)}><span className="bit-post-icon"><ShieldCheck size={17}/></span><div><strong>{post.postCode}</strong><span>{post.postName}</span><small>{counts.count} protocolo{counts.count===1?'':'s'} · {counts.count?'Configurado':'Pendiente'}</small></div><span className={`bit-status-dot ${counts.count?'good':'warn'}`}/><ChevronRight size={15}/></button>})}</div></section>
 
       <section className="ser-table-card bit-protocols-card"><header><div><h3>Protocolos del Punto</h3><span>{selectedPost?`${selectedPost.postCode} · ${selectedPost.postName}`:'Seleccione un Puesto'}</span></div></header><div className="bit-protocol-actions"><button className="primary" onClick={()=>void createProtocol()} disabled={!selectedPostId}><Plus size={15}/>Crear protocolo</button><button disabled><Upload size={15}/>Importar protocolo</button></div><div className="bit-protocol-table-wrap"><table className="bit-protocol-table"><thead><tr><th>Código</th><th>Protocolo</th><th>Objeto</th><th>Acredit.</th><th>Estado</th></tr></thead><tbody>{loading?<tr><td colSpan={5}>Cargando protocolos…</td></tr>:selectedProtocols.length?selectedProtocols.map(protocol=>{const contextualStatus=statusForPost(protocol,selectedPostId);const applies=appliesToPost(protocol,selectedPostId);return <tr key={protocol.id} className={selectedProtocolId===protocol.id?'selected':''} onClick={()=>selectProtocol(protocol)}><td>{protocol.code}</td><td><strong>{protocol.name}</strong><small>{appLabel(protocol.applicationType)} · {scopeSummary(protocol,point.posts)}</small></td><td>{protocol.objectType}</td><td>{protocol.accreditations.length}</td><td><span className={`bit-protocol-state ${contextualStatus.toLowerCase()}`}>{statusLabel(contextualStatus)}</span>{!applies&&<small className="bit-contextual-note">No aplica al puesto</small>}</td></tr>}):<tr><td className="bit-empty-cell" colSpan={5}>Este Punto todavía no tiene protocolos.</td></tr>}</tbody></table></div></section>
 
@@ -304,7 +283,7 @@ export default function BitacoraConfig({point,onBack}:{point:PointContext;onBack
           <header className="bit-detail-header"><div><h3>{draft.code} · {draft.name}</h3><span>{draft.objectType} · {appLabel(draft.applicationType)} · v{draft.versionNo} · {statusLabel(draft.status)}{!isDraft?` · ${applicablePosts(draft).length}/${point.posts.length} Puestos activos`:''}</span></div><div><button onClick={()=>void showHistory()}><History size={14}/>Historial</button>{isDraft?<><button onClick={()=>void saveProtocol()} disabled={savingProtocol}><Save size={14}/>{savingProtocol?'Guardando…':'Guardar borrador'}</button><button className="primary" onClick={()=>void publishProtocol()} disabled={savingProtocol}><ShieldCheck size={14}/>Publicar versión</button></>:<button onClick={()=>void forkProtocol()} disabled={savingProtocol}><Plus size={14}/>Crear nueva versión</button>}</div></header>
           {!appliesToPost(draft,selectedPostId)&&<div className="bit-selection-warning"><Info size={15}/><span>Este Protocolo está inactivo en el Puesto seleccionado. Puede activarlo marcando ese Puesto desde Definición.</span></div>}
           <div className="bit-accreditation-strip"><div className="bit-accreditation-label"><KeyRound size={15}/><div><strong>Acreditaciones ({draft.accreditations.length}/10)</strong><span>Máximo 10 por Protocolo. Si necesita más, cree un nuevo Protocolo.</span></div></div><div className="bit-accreditation-options">{draft.accreditations.map(acc=><button key={acc.id} className={selectedAccreditation?.id===acc.id?'active':''} onClick={()=>selectAccreditation(acc.id)}><b>{acc.code}</b><span>{acc.name}</span></button>)}{isDraft&&<button className="add" onClick={()=>void createAccreditation()} disabled={draft.accreditations.length>=10} title={draft.accreditations.length>=10?'Máximo 10 acreditaciones por Protocolo':''}><Plus size={14}/>Nueva acreditación</button>}</div></div>
-          <div className="bit-step-tabs-rail"><div className="bit-step-tabs" ref={stepTabsRef}>{TABS.map(item=><button key={item.key} className={tab===item.key?'active':''} onClick={()=>setTab(item.key)}><b>{item.short}</b>{item.label}</button>)}</div></div>{!isDraft&&<div className="bit-version-lock"><ShieldCheck size={14}/><span>Versión publicada e inmutable en contenido. La activación por Puesto sí puede modificarse desde Definición sin crear una nueva versión.</span></div>}
+          <div className="bit-step-tabs">{TABS.map(item=><button key={item.key} className={tab===item.key?'active':''} onClick={()=>setTab(item.key)}><b>{item.short}</b>{item.label}</button>)}</div>{!isDraft&&<div className="bit-version-lock"><ShieldCheck size={14}/><span>Versión publicada e inmutable en contenido. La activación por Puesto sí puede modificarse desde Definición sin crear una nueva versión.</span></div>}
           {tab==='DEFINICION'?<div className="bit-detail-body"><DefinitionTab draft={draft} posts={point.posts} editableContent={isDraft} scopeBusy={scopeBusy} update={updateDraft} onTogglePost={toggleProtocolPost}/></div>:<fieldset className="bit-detail-body bit-version-fieldset" disabled={!isDraft}>
             
             {tab==='ACREDITACION'&&selectedAccreditation&&<AccreditationTab accreditation={selectedAccreditation} update={updateAccreditation} canDelete={draft.accreditations.length>1} onDelete={()=>void deleteAccreditation()}/>} 
