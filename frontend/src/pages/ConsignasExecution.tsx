@@ -1,8 +1,8 @@
 import {useEffect, useMemo, useState, type ReactNode} from 'react';
 import {
-  AlertTriangle, CheckCircle2, ClipboardList, Clock3, Download,
-  FileText, FilterX, MapPin, RefreshCw, Search, ShieldCheck, UserRound,
-  Building2, Briefcase, CarFront, AlertCircle
+  AlertTriangle, ClipboardList, Clock3, Download,
+  FileText, FilterX, RefreshCw, Search, ShieldCheck,
+  CarFront, AlertCircle, X
 } from 'lucide-react';
 import {getUser, type UatUser} from '../api';
 
@@ -139,6 +139,7 @@ export default function ConsignasExecution(){
   const scope=scopeByUser[user];
   const [filters,setFilters]=useState<Filters>(EMPTY_FILTERS);
   const [selectedId,setSelectedId]=useState('');
+  const [inspectorId,setInspectorId]=useState<string|null>(null);
 
   const scoped=useMemo(()=>DATA.filter(row=>withinScope(row,scope)),[scope]);
 
@@ -180,6 +181,7 @@ export default function ConsignasExecution(){
   },[rows,selectedId]);
 
   const selected=rows.find(x=>x.id===selectedId) ?? rows[0] ?? null;
+  const inspected=rows.find(x=>x.id===inspectorId) ?? null;
 
   const metrics=useMemo(()=>({
     reliefRunning:scoped.filter(x=>x.type==='RELIEF'&&x.status==='IN_PROGRESS').length,
@@ -190,6 +192,8 @@ export default function ConsignasExecution(){
   }),[scoped]);
 
   function set<K extends keyof Filters>(key:K,value:Filters[K]){setFilters(prev=>({...prev,[key]:value}))}
+  function openInspector(row:Execution){setSelectedId(row.id);setInspectorId(row.id)}
+  function closeInspector(){setInspectorId(null)}
   function clear(){setFilters(EMPTY_FILTERS)}
   function setClient(value:string){setFilters(prev=>({...prev,client:value,point:'',post:''}))}
   function setPoint(value:string){setFilters(prev=>({...prev,point:value,post:''}))}
@@ -237,17 +241,41 @@ export default function ConsignasExecution(){
 
         <div className="cns-results-card"><div className="cns-results-head"><h3>Ejecuciones ({rows.length})</h3><div>Ordenar por: <strong>Fecha más reciente</strong></div></div><div className="cns-table-wrap"><table className="cns-table"><thead><tr><th>Tipo</th><th>Código</th><th>Nombre / Descripción</th><th>Cliente</th><th>Punto / Puesto</th><th>Responsable</th><th>Ventana / Hora</th><th>Estado de ejecución</th><th>Resultado / Progreso</th><th></th></tr></thead><tbody>{rows.map(row=>{
           const pct=Math.round((row.progressCurrent/Math.max(row.progressTotal,1))*100);
-          return <tr key={row.id} className={selected?.id===row.id?'selected':''} onClick={()=>setSelectedId(row.id)}><td><span className={`cns-type ${typeClass(row.type)}`}>{typeIcon(row.type)}{typeLabel(row.type)}</span></td><td>{row.code}</td><td><strong>{row.name}</strong><small>{row.company}</small></td><td>{row.client}</td><td><strong>{row.point}</strong><small>{row.post}</small></td><td>{row.responsible}</td><td>{formatDateTime(row.start)} – {formatTime(row.end)}</td><td><span className={`cns-status ${statusClass(row.status)}`}>{statusLabel(row.status)}</span></td><td><div className="cns-progress-cell"><span>{row.result}</span><div><i style={{width:`${pct}%`}}/></div></div></td><td><button>Ver</button></td></tr>
+          return <tr key={row.id} className={selected?.id===row.id?'selected':''} onClick={()=>openInspector(row)}><td><span className={`cns-type ${typeClass(row.type)}`}>{typeIcon(row.type)}{typeLabel(row.type)}</span></td><td>{row.code}</td><td><strong>{row.name}</strong><small>{row.company}</small></td><td>{row.client}</td><td><strong>{row.point}</strong><small>{row.post}</small></td><td>{row.responsible}</td><td>{formatDateTime(row.start)} – {formatTime(row.end)}</td><td><span className={`cns-status ${statusClass(row.status)}`}>{statusLabel(row.status)}</span></td><td><div className="cns-progress-cell"><span>{row.result}</span><div><i style={{width:`${pct}%`}}/></div></div></td><td><button onClick={e=>{e.stopPropagation();openInspector(row)}}>Ver</button></td></tr>
         })}{!rows.length&&<tr><td className="empty" colSpan={10}>{dateError ? 'Corrija el rango de fechas para consultar resultados.' : 'No se encontraron ejecuciones con los filtros aplicados.'}</td></tr>}</tbody></table></div><div className="cns-results-footer">Mostrando {rows.length?1:0} a {rows.length} de {rows.length} resultados</div></div>
       </section>
 
-      <aside className="cns-detail-card"><div className="cns-title"><FileText size={19}/><h3>Detalle de ejecución</h3></div>{selected?<><div className="cns-detail-head"><span className={`cns-type ${typeClass(selected.type)}`}>{typeIcon(selected.type)}{typeLabel(selected.type)}</span><div><strong>{selected.code}</strong><h4>{selected.name}</h4></div><span className={`cns-status ${statusClass(selected.status)}`}>{statusLabel(selected.status)}</span></div><dl className="cns-detail-list">
-        <Detail icon={<Briefcase size={14}/>} label="Cliente" value={selected.client}/><Detail icon={<Building2 size={14}/>} label="Compañía" value={selected.company}/><Detail icon={<MapPin size={14}/>} label="Ciudad" value={selected.city}/><Detail icon={<MapPin size={14}/>} label="Punto" value={selected.point}/><Detail icon={<MapPin size={14}/>} label="Puesto" value={selected.post}/><Detail icon={<UserRound size={14}/>} label="Responsable" value={selected.responsible}/><Detail icon={<ShieldCheck size={14}/>} label="Prioridad" value={priorityLabel(selected.priority)}/><Detail icon={<Clock3 size={14}/>} label="Hora de inicio" value={formatDateTime(selected.start)}/><Detail icon={<Clock3 size={14}/>} label="Hora de fin" value={formatDateTime(selected.end)}/><Detail icon={<CheckCircle2 size={14}/>} label="Estado" value={statusLabel(selected.status)}/>
-      </dl><div className="cns-detail-progress"><div><strong>Progreso {selected.type==='RELIEF'?'del relevo':selected.type==='PATROL'?'de hitos':'de acciones'}</strong><b>{selected.progressCurrent}/{selected.progressTotal}</b></div><div className="bar"><i style={{width:`${Math.round(selected.progressCurrent/Math.max(selected.progressTotal,1)*100)}%`}}/></div><span>{Math.round(selected.progressCurrent/Math.max(selected.progressTotal,1)*100)}% completado</span></div><div className="cns-timeline"><div className="cns-timeline-head"><h4>{selected.type==='RELIEF'?'Hitos del relevo':'Últimos eventos'}</h4><button>Ver todos</button></div>{selected.timeline.map(event=><article key={event.id}><i className={event.state.toLowerCase()}/><div><span>{formatTime(event.at)}</span><strong>{event.title}</strong><small>{event.detail}</small></div></article>)}</div><button className="cns-detail-button"><Search size={16}/>Ver detalle completo</button></>:<div className="cns-empty">Seleccione una ejecución para ver su detalle.</div>}</aside>
     </div>
+
+    {inspected&&<div className="nov-modal-backdrop" onClick={closeInspector}>
+      <aside className="nov-modal cns-inspector" role="dialog" aria-modal="true" aria-labelledby="cns-inspector-title" onClick={e=>e.stopPropagation()}>
+        <header><div><h3 id="cns-inspector-title">Detalle de ejecución</h3><span>{inspected.code} · {typeLabel(inspected.type)} · Solo lectura</span></div><button aria-label="Cerrar detalle" onClick={closeInspector}><X size={19}/></button></header>
+        <div className="nov-modal-body cns-inspector-body">
+          <div className="cns-inspector-summary"><span className={`cns-type ${typeClass(inspected.type)}`}>{typeIcon(inspected.type)}{typeLabel(inspected.type)}</span><strong>{inspected.name}</strong><span className={`cns-status ${statusClass(inspected.status)}`}>{statusLabel(inspected.status)}</span></div>
+          <div className="nov-edit-grid three">
+            <ModalReadField label="Cliente" value={inspected.client}/><ModalReadField label="Compañía" value={inspected.company}/><ModalReadField label="Ciudad" value={inspected.city}/>
+          </div>
+          <div className="nov-edit-grid two">
+            <ModalReadField label="Punto" value={inspected.point}/><ModalReadField label="Puesto" value={inspected.post}/>
+          </div>
+          <div className="nov-edit-grid two">
+            <ModalReadField label="Responsable" value={inspected.responsible}/><ModalReadField label="Prioridad" value={priorityLabel(inspected.priority)}/>
+          </div>
+          <div className="nov-edit-grid two">
+            <ModalReadField label="Fecha y hora de inicio" value={formatDateTime(inspected.start)}/><ModalReadField label="Fecha y hora de fin" value={formatDateTime(inspected.end)}/>
+          </div>
+          <div className="nov-edit-grid two">
+            <ModalReadField label="Estado" value={statusLabel(inspected.status)}/><ModalReadField label="Resultado" value={inspected.result}/>
+          </div>
+          <section className="cns-detail-progress"><div><strong>Progreso {inspected.type==='RELIEF'?'del relevo':inspected.type==='PATROL'?'de hitos':'de acciones'}</strong><b>{inspected.progressCurrent}/{inspected.progressTotal}</b></div><div className="bar"><i style={{width:`${Math.round(inspected.progressCurrent/Math.max(inspected.progressTotal,1)*100)}%`}}/></div><span>{Math.round(inspected.progressCurrent/Math.max(inspected.progressTotal,1)*100)}% completado</span></section>
+          <section className="cns-timeline"><div className="cns-timeline-head"><h4>{inspected.type==='RELIEF'?'Hitos del relevo':'Últimos eventos'}</h4></div>{inspected.timeline.map(event=><article key={event.id}><i className={event.state.toLowerCase()}/><div><span>{formatDateTime(event.at)}</span><strong>{event.title}</strong><small>{event.detail}</small></div></article>)}</section>
+        </div>
+        <footer><button type="button" className="cns-inspector-full-detail"><Search size={16}/>Ver detalle completo</button></footer>
+      </aside>
+    </div>}
   </div>
 }
 
 function Metric({icon,label,value,subtitle,tone}:{icon:ReactNode;label:string;value:string|number;subtitle:string;tone:'blue'|'green'|'purple'|'red'}){return <article className={`cns-metric ${tone}`}><span>{icon}</span><div><small>{label}</small><strong>{value}</strong><p>{subtitle}</p></div></article>}
 function Field({label,children}:{label:string;children:ReactNode}){return <label className="cns-field"><span>{label}</span>{children}</label>}
-function Detail({icon,label,value}:{icon:ReactNode;label:string;value:string}){return <div><dt>{icon}{label}</dt><dd>{value}</dd></div>}
+function ModalReadField({label,value}:{label:string;value:string}){return <label className="nov-modal-field"><span>{label}</span><input value={value} disabled readOnly/></label>}

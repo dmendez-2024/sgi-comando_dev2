@@ -1,7 +1,7 @@
 import {useEffect, useMemo, useState, type ReactNode} from 'react';
 import {
   CalendarDays, CarFront, Clock3, Container, Download, FileSearch2,
-  FilterX, MapPin, Search, ShieldCheck, UserRound, Building2, Briefcase
+  FilterX, MapPin, Search, ShieldCheck, UserRound, Building2, Briefcase, Eye, X, ChevronRight
 } from 'lucide-react';
 import {getUser, type UatUser} from '../api';
 
@@ -205,6 +205,7 @@ export default function BitacoraGlobal(){
   const [userRevision,setUserRevision]=useState(0);
   const [filters,setFilters]=useState<Filters>(EMPTY_FILTERS);
   const [selectedId,setSelectedId]=useState('');
+  const [viewedId,setViewedId]=useState('');
 
   useEffect(()=>{
     const onStorage=()=>setUserRevision(x=>x+1);
@@ -246,6 +247,7 @@ export default function BitacoraGlobal(){
   },[rows,selectedId]);
 
   const selected=rows.find(r=>r.id===selectedId) ?? rows[0] ?? null;
+  const viewed=scopedData.find(r=>r.id===viewedId) ?? null;
   const metrics=useMemo(()=>({
     total:rows.length,
     people:rows.filter(r=>r.type==='PERSON').length,
@@ -267,17 +269,17 @@ export default function BitacoraGlobal(){
     URL.revokeObjectURL(url);
   }
 
-  return <div className="bit-global-page">
-    <div className="bit-global-topbar">
+  return <div className="bit-global-page nov-page">
+    <div className="bit-global-topbar nov-topbar">
       <div>
         <div className="page-backline">Operaciones / Bitácora</div>
         <h2>Bitácora</h2>
         <p>Buscador global de registros operativos</p>
       </div>
-      <div className="bit-global-scope"><ShieldCheck size={16}/><span>{scope.label}</span></div>
+      <div className="bit-global-scope nov-scope"><ShieldCheck size={16}/><span>{scope.label}</span></div>
     </div>
 
-    <div className="bit-global-kpis">
+    <div className="bit-global-kpis coord-kpis nov-kpis">
       <Metric icon={<FileSearch2 size={22}/>} label="Resultados" value={metrics.total} subtitle="registros encontrados" tone="blue"/>
       <Metric icon={<UserRound size={22}/>} label="Personas" value={metrics.people} subtitle="registros" tone="green"/>
       <Metric icon={<CarFront size={22}/>} label="Vehículos" value={metrics.vehicles} subtitle="registros" tone="green"/>
@@ -286,7 +288,7 @@ export default function BitacoraGlobal(){
     </div>
 
     <div className="bit-global-layout">
-      <section className="bit-global-search-card">
+      <section className="bit-global-search-card nov-main-card">
         <div className="bit-global-card-head">
           <div className="bit-global-card-title"><Search size={20}/><h3>Búsqueda global</h3></div>
           <div className="bit-global-tabs">
@@ -297,7 +299,7 @@ export default function BitacoraGlobal(){
           </div>
         </div>
 
-        <label className="bit-global-main-search"><Search size={18}/><input value={filters.query} onChange={e=>set('query',e.target.value)} placeholder="Buscar por nombre, apellido, identificación, placa, contenedor…"/></label>
+        <label className="bit-global-main-search nov-main-search"><Search size={18}/><input value={filters.query} onChange={e=>set('query',e.target.value)} placeholder="Buscar por nombre, apellido, identificación, placa, contenedor…"/></label>
 
         <div className="bit-global-filter-grid">
           <Field label="Nombres"><input value={filters.firstName} onChange={e=>set('firstName',e.target.value)} placeholder="Ej. Juan"/></Field>
@@ -318,13 +320,13 @@ export default function BitacoraGlobal(){
           <button className="export" onClick={exportCsv}><Download size={16}/>Exportar</button>
         </div>
 
-        <div className="bit-global-results-card">
-          <div className="bit-global-results-head">
+        <div className="bit-global-results-card nov-results-card">
+          <div className="bit-global-results-head nov-results-head">
             <h3>Resultados ({rows.length})</h3>
             <div>Ordenado por <strong>Fecha más reciente</strong></div>
           </div>
-          <div className="bit-global-table-wrap">
-            <table className="bit-global-table">
+          <div className="bit-global-table-wrap nov-table-wrap">
+            <table className="bit-global-table nov-table">
               <thead><tr><th>Tipo</th><th>Identificador</th><th>Nombre / Descripción</th><th>Cliente</th><th>Ciudad</th><th>Punto</th><th>Fecha / Hora</th><th>Resultado</th><th></th></tr></thead>
               <tbody>
                 {rows.map(row=><tr key={row.id} className={selectedId===row.id?'selected':''} onClick={()=>setSelectedId(row.id)}>
@@ -336,13 +338,13 @@ export default function BitacoraGlobal(){
                   <td>{row.point}</td>
                   <td>{formatDateTime(row.at)}</td>
                   <td><span className={`bit-global-status ${statusClass(row.status)}`}>{statusLabel(row.status)}</span></td>
-                  <td><button className="ghost">Ver detalle</button></td>
+                  <td><button className="ghost" onClick={e=>{e.stopPropagation();setSelectedId(row.id);setViewedId(row.id)}}><Eye size={14}/>Ver <ChevronRight size={13}/></button></td>
                 </tr>)}
                 {!rows.length&&<tr><td colSpan={9} className="empty">No se encontraron registros con los filtros aplicados.</td></tr>}
               </tbody>
             </table>
           </div>
-          <div className="bit-global-results-footer">Mostrando {rows.length?1:0} a {rows.length} de {rows.length} resultados</div>
+          <div className="bit-global-results-footer nov-results-footer">Mostrando {rows.length?1:0} a {rows.length} de {rows.length} resultados</div>
         </div>
       </section>
 
@@ -369,15 +371,16 @@ export default function BitacoraGlobal(){
             <h4>Línea de tiempo</h4>
             {selected.timeline.map((event,index)=><article key={event.id}><i className={index===0?'active':''}/><div><span>{formatDateTime(event.at)}</span><strong>{event.title}</strong><small>{event.place}</small></div></article>)}
           </div>
-          <button className="bit-global-detail-button"><Search size={16}/>Ver detalle completo</button>
+          <button className="bit-global-detail-button" onClick={()=>setViewedId(selected.id)}><Search size={16}/>Ver detalle completo</button>
         </>:<div className="bit-global-empty-detail">Seleccione un registro para ver su detalle.</div>}
       </aside>
     </div>
+    {viewed&&<div className="nov-modal-backdrop record-view-backdrop" onClick={()=>setViewedId('')}><aside className="nov-modal record-view-modal" role="dialog" aria-modal="true" aria-labelledby="record-view-title" onClick={e=>e.stopPropagation()}><header><div><h3 id="record-view-title">{viewed.identifier} · {typeLabel(viewed.type)}</h3><span>Detalle del registro · Solo lectura</span></div><button aria-label="Cerrar detalle" onClick={()=>setViewedId('')}><X size={19}/></button></header><div className="nov-modal-body record-view-body"><div className="record-view-summary"><span className={`bit-global-type type-${viewed.type.toLowerCase()}`}>{iconByType(viewed.type)}{typeLabel(viewed.type)}</span><strong>{viewed.label}</strong><span className={`bit-global-status ${statusClass(viewed.status)}`}>{statusLabel(viewed.status)}</span></div><dl className="bit-global-detail-list record-view-details"><div><dt><Building2 size={15}/>Cliente</dt><dd>{viewed.client}</dd></div><div><dt><Briefcase size={15}/>Compañía</dt><dd>{viewed.company}</dd></div><div><dt><MapPin size={15}/>Ciudad</dt><dd>{viewed.city}</dd></div><div><dt><MapPin size={15}/>Punto</dt><dd>{viewed.point}</dd></div><div><dt><Eye size={15}/>Identificador</dt><dd>{viewed.identifier}</dd></div><div><dt><CalendarDays size={15}/>Fecha / Hora</dt><dd>{formatDateTime(viewed.at)}</dd></div><div><dt><ShieldCheck size={15}/>Estado</dt><dd>{statusLabel(viewed.status)}</dd></div></dl><div className="bit-global-timeline record-view-timeline"><h4>Línea de tiempo</h4>{viewed.timeline.map((event,index)=><article key={event.id}><i className={index===0?'active':''}/><div><span>{formatDateTime(event.at)}</span><strong>{event.title}</strong><small>{event.place}</small></div></article>)}</div></div><footer><button className="close" onClick={()=>setViewedId('')}><X size={15}/>Cerrar</button></footer></aside></div>}
   </div>
 }
 
 function Metric({icon,label,value,subtitle,tone}:{icon:ReactNode;label:string;value:string|number;subtitle:string;tone:'blue'|'green'|'purple'|'gray'}){
-  return <article className={`bit-global-metric ${tone}`}><span>{icon}</span><div><small>{label}</small><strong>{value}</strong><p>{subtitle}</p></div></article>
+  return <article><span className={tone}>{icon}</span><div><small>{label}</small><strong>{value}</strong><em>{subtitle}</em></div></article>
 }
 function Field({label,children}:{label:string;children:ReactNode}){
   return <label className="bit-global-field"><span>{label}</span>{children}</label>
