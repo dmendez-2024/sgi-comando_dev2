@@ -11,6 +11,7 @@ import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
+import jakarta.ws.rs.core.Response;
 import java.util.*;
 
 @Path("/api/post-configurations")
@@ -55,7 +56,11 @@ public class PostConfigurationResource {
         if(post==null) throw new NotFoundException("Puesto no encontrado");
         PointEntity point=point(post.pointId);
         scope.requireCompany(point.companyId);
-        validate(request,point);
+        try{
+            validate(request,point);
+        }catch(BadRequestException error){
+            throw validationResponse(error.getMessage());
+        }
         PostOperationalConfig config=PostOperationalConfig.find("postId=?1 and instanceCountryId=?2",postId,tenant.instanceCountryId()).firstResult();
         if(config==null){
             config=new PostOperationalConfig();
@@ -155,4 +160,11 @@ public class PostConfigurationResource {
 
     private String blankToNull(String value){return value==null||value.isBlank()?null:value.trim();}
     private String blankToEmpty(String value){return value==null?"":value.trim();}
+
+    private BadRequestException validationResponse(String message){
+        return new BadRequestException(Response.status(Response.Status.BAD_REQUEST)
+            .type(MediaType.APPLICATION_JSON)
+            .entity(Map.of("message",message==null||message.isBlank()?"La solicitud no cumple las validaciones requeridas.":message))
+            .build());
+    }
 }

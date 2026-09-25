@@ -55,7 +55,7 @@ Todos los IDs siguen SITC-NOM-001 v3.0. Paths son contratos lógicos; host/baseP
 ### `SGI_COM__SIC_COM__00001__IF01`
 `GET /api/v1/sgi-export/services` — Paged/versioned Client, Service, Point, Post, shifts, FHE and TIER snapshot
 
-## `SIC_COM__SGI_COM__00001__V0001` — Notify SGI: Comando of commercial Service/Point/Post lifecycle changes.
+## `SIC_COM__SGI_COM__00001__V0001` — Apply SIC:COM commercial Client/Service/Point/Post lifecycle changes in SGI: Comando.
 - Origen técnico: `SIC_COM`
 - Destino: `SGI_COM`
 - Tipo: `WEBHOOK / ASYNC / HTTPS`
@@ -64,7 +64,7 @@ Todos los IDs siguen SITC-NOM-001 v3.0. Paths son contratos lógicos; host/baseP
 - Estado: `DESIGN`; destino `BLOCKED`
 
 ### `SIC_COM__SGI_COM__00001__IF01`
-`POST /api/v1/inbound/sic-com/commercial-events` — Versioned commercial lifecycle event
+## `SIC_COM__SGI_COM__00001__V0001` — Apply SIC:COM commercial Client/Service/Point/Post lifecycle changes in SGI: Comando.
 
 ## `SGI_COM__SIC_RRHH__00001__V0001` — Read employee operational context for territory, assignments and supervision.
 - Origen técnico: `SGI_COM`

@@ -48,6 +48,7 @@ export const api={
  company:(id:string)=>request<any>(`/api/companies/${encodeURIComponent(id)}`),
  updateCompany:(id:string,body:any)=>request<any>(`/api/companies/${encodeURIComponent(id)}`,{method:'PUT',body:JSON.stringify(body)}),
  companyHistory:(id:string)=>request<any[]>(`/api/companies/${encodeURIComponent(id)}/history`),
+ clients:()=>request<any[]>('/api/clients'),
  services:()=>request<any[]>('/api/services'),
  serviceOverview:()=>request<any>('/api/services/overview'),
  serviceAssignmentDestinations:(pointId:string)=>request<any[]>(`/api/services/overview/assignment-destinations?pointId=${encodeURIComponent(pointId)}`),

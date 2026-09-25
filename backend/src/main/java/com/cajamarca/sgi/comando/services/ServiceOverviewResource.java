@@ -2,6 +2,7 @@ package com.cajamarca.sgi.comando.services;
 
 import com.cajamarca.sgi.comando.assignments.OperationalAssignmentEntity;
 import com.cajamarca.sgi.comando.assignments.ShiftOccurrenceEntity;
+import com.cajamarca.sgi.comando.ats.AtsPointPackage;
 import com.cajamarca.sgi.comando.common.TenantContext;
 import com.cajamarca.sgi.comando.companies.Company;
 import com.cajamarca.sgi.comando.companies.CompanyRegion;
@@ -45,10 +46,11 @@ public class ServiceOverviewResource {
     public record OverviewRow(
         UUID serviceId, UUID pointId, UUID postId, UUID companyId,
         String companyName, String companyLogoDataUrl,
-        String serviceCode, String serviceName, String clientName,
+        String serviceCode, String serviceName, UUID clientId, String clientName,
         String pointCode, String pointName, String postCode, String postName,
         String tier, Double idAverage, Double icAverage,
-        int pendingNews, String state, String assignmentStatus, boolean canAssign, boolean canReturn, boolean returnedToCoordination
+        int pendingNews, String state, String assignmentStatus, boolean canAssign, boolean canReturn, boolean returnedToCoordination,
+        boolean atsLoaded
     ) {}
 
     public record AssignmentDestinationDto(UUID companyId,String code,String name,UUID zoneId,List<UUID> regionIds) {}
@@ -97,6 +99,9 @@ public class ServiceOverviewResource {
         Map<UUID,PointEntity> pointMap = points.stream().collect(Collectors.toMap(x -> x.id, Function.identity()));
         List<PostEntity> posts = PostEntity.list("instanceCountryId=?1 and pointId in ?2 order by code", tenant.instanceCountryId(), pointIds);
         Set<UUID> postIds = posts.stream().map(p -> p.id).collect(Collectors.toSet());
+        Set<UUID> atsLoadedPointIds = AtsPointPackage.<AtsPointPackage>list(
+                "instanceCountryId=?1 and pointId in ?2 and current=true", tenant.instanceCountryId(), pointIds)
+            .stream().map(p -> p.pointId).collect(Collectors.toSet());
 
         Map<UUID,WeightedMetric> idMetrics = new HashMap<>();
         Map<UUID,WeightedMetric> icMetrics = new HashMap<>();
@@ -137,14 +142,15 @@ public class ServiceOverviewResource {
                 service.id, point.id, post.id, point.companyId,
                 pendingAssignment ? (kaibil == null ? "Kaibil" : kaibil.name) : (company == null ? "—" : company.name),
                 pendingAssignment ? (kaibil == null ? null : kaibil.logoDataUrl) : (company == null ? null : company.logoDataUrl),
-                service.code, service.name, point.clientName,
+                service.code, service.name, service.clientId, point.clientName,
                 point.code, point.name, post.code, post.name,
                 post.tier,
                 metricValue(idMetrics.get(post.id)), metricValue(icMetrics.get(post.id)),
                 pendingNews, state, pendingAssignment ? "PENDING" : "ASSIGNED",
                 pendingAssignment && canAssignServices() && "ACTIVE".equalsIgnoreCase(service.commercialStatus) && "ACTIVE".equalsIgnoreCase(point.status),
                 !pendingAssignment && canAssignServices() && canManagePoint(point),
-                pendingAssignment && wasReturnedToCoordination(point.id)
+                pendingAssignment && wasReturnedToCoordination(point.id),
+                atsLoadedPointIds.contains(point.id)
             ));
         }
         rows.sort(Comparator.comparing(OverviewRow::companyName).thenComparing(OverviewRow::clientName).thenComparing(OverviewRow::pointName).thenComparing(OverviewRow::postCode));
@@ -159,7 +165,7 @@ public class ServiceOverviewResource {
     }
 
     private String state(ServiceEntity service, PointEntity point, PostEntity post) {
-        if (!"ACTIVE".equalsIgnoreCase(service.commercialStatus) || !"ACTIVE".equalsIgnoreCase(point.status)) return "INACTIVE";
+        if (!"ACTIVE".equalsIgnoreCase(service.commercialStatus) || !"ACTIVE".equalsIgnoreCase(point.status) || !"ACTIVE".equalsIgnoreCase(post.commercialStatus)) return "INACTIVE";
         if ("PENDING".equalsIgnoreCase(point.operationalAssignmentStatus) || point.companyId == null) return "PENDING_ASSIGNMENT";
         if (!"CONFIGURED".equalsIgnoreCase(service.configStatus) || !"CONFIGURED".equalsIgnoreCase(post.configStatus)) return "TO_CONFIGURE";
         return "ACTIVE";

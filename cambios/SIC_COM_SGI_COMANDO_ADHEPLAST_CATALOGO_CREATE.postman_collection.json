@@ -1,0 +1,39 @@
+{
+  "info": {
+    "_postman_id": "4a1e0d2a-5c5a-4b76-8c1a-0f2e2e3ad001",
+    "name": "SIC COM a SGI Comando - Adheplast - Crear catalogo",
+    "description": "Carga de prueba del catalogo comercial de Adheplast. service.clientCode se conserva porque es obligatorio en el contrato vigente. Configure serviceToken solamente en Postman.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {"key": "baseUrl", "value": "http://localhost:8080", "type": "string"},
+    {"key": "instanceCountryId", "value": "11111111-1111-1111-1111-111111111111", "type": "string"},
+    {"key": "interconnectionId", "value": "SIC_COM__SGI_COM__00001__V0001", "type": "string"},
+    {"key": "contractVersion", "value": "v1", "type": "string"},
+    {"key": "serviceToken", "value": "", "type": "string"}
+  ],
+  "item": [
+    {
+      "name": "Crear catalogo Adheplast",
+      "request": {
+        "method": "POST",
+        "header": [
+          {"key": "Content-Type", "value": "application/json"},
+          {"key": "Authorization", "value": "Bearer {{serviceToken}}"},
+          {"key": "X-Correlation-Id", "value": "siccom-adheplast-create-001"},
+          {"key": "X-Interconnection-Id", "value": "{{interconnectionId}}"},
+          {"key": "X-Contract-Version", "value": "{{contractVersion}}"},
+          {"key": "Idempotency-Key", "value": "siccom-adheplast-create-001"}
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"eventId\": \"siccom-adheplast-create-001\",\n  \"eventType\": \"COMMERCIAL_CATALOG_CREATED\",\n  \"instanceCountryId\": \"{{instanceCountryId}}\",\n  \"commercialVersion\": \"SIC-COM-ADHEPLAST-001-v1\",\n  \"occurredAt\": \"2026-09-24T10:00:00-05:00\",\n  \"client\": {\n    \"code\": \"0190099725001\",\n    \"name\": \"Adheplast S.A.\",\n    \"commercialStatus\": \"ACTIVE\"\n  },\n  \"service\": {\n    \"code\": \"SER-003467\",\n    \"name\": \"Servicio de Vigilancia Armada Fija\",\n    \"clientCode\": \"0190099725001\",\n    \"commercialStatus\": \"ACTIVE\"\n  },\n  \"points\": [\n    {\n      \"code\": \"PTO-2339\",\n      \"name\": \"Bodega del Inca\",\n      \"province\": \"Pichincha\",\n      \"city\": \"Quito\",\n      \"status\": \"ACTIVE\",\n      \"posts\": [\n        {\n          \"code\": \"CCT-122\",\n          \"name\": \"ADS-1\",\n          \"format\": \"24/7\",\n          \"fhe\": 3,\n          \"tier\": \"III\",\n          \"rotation\": {\n            \"code\": \"6-2\",\n            \"cycleLengthDays\": 8\n          },\n          \"shifts\": [\n            {\"code\": \"D08\", \"name\": \"Diurno\", \"startTime\": \"06:00\", \"endTime\": \"14:00\", \"dayMask\": 127, \"active\": true},\n            {\"code\": \"T08\", \"name\": \"Tarde\", \"startTime\": \"14:00\", \"endTime\": \"22:00\", \"dayMask\": 127, \"active\": true},\n            {\"code\": \"N08\", \"name\": \"Nocturno\", \"startTime\": \"22:00\", \"endTime\": \"06:00\", \"dayMask\": 127, \"active\": true}\n          ]\n        },\n        {\n          \"code\": \"CTT-123\",\n          \"name\": \"ADS-2\",\n          \"format\": \"24/7\",\n          \"fhe\": 3,\n          \"tier\": \"III\",\n          \"rotation\": {\n            \"code\": \"7X0\",\n            \"cycleLengthDays\": 7\n          },\n          \"shifts\": [\n            {\"code\": \"D08\", \"name\": \"Diurno\", \"startTime\": \"06:00\", \"endTime\": \"14:00\", \"dayMask\": 127, \"active\": true},\n            {\"code\": \"T08\", \"name\": \"Tarde\", \"startTime\": \"14:00\", \"endTime\": \"22:00\", \"dayMask\": 127, \"active\": true},\n            {\"code\": \"N08\", \"name\": \"Nocturno\", \"startTime\": \"22:00\", \"endTime\": \"06:00\", \"dayMask\": 127, \"active\": true}\n          ]\n        }\n      ]\n    }\n  ]\n}",
+          "options": {"raw": {"language": "json"}}
+        },
+        "url": "{{baseUrl}}/api/v1/inbound/sic-com/commercial-events",
+        "description": "Ejecute esta solicitud una sola vez con este eventId. La respuesta debe incluir los UUID SGI de cliente, servicio, punto y puestos."
+      },
+      "response": []
+    }
+  ]
+}
