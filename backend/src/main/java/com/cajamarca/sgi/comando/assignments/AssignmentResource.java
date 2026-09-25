@@ -36,6 +36,7 @@ public class AssignmentResource {
     @Inject SecurityIdentity identity;
     @Inject ObjectMapper mapper;
     @Inject AssignmentScopeService scope;
+    @Inject AssignmentRolePolicy rolePolicy;
 
     public record EnsurePlanRequest(UUID companyId, LocalDate weekStart) {}
     public record AssignRequest(UUID planId, UUID shiftOccurrenceId, UUID employeeId, UUID sourceAssignmentId, String reason) {}
@@ -54,11 +55,12 @@ public class AssignmentResource {
     public record UnavailabilityDto(String type, Instant startsAt, Instant endsAt, String sourceRef) {}
     public record TransferMiniDto(UUID id,String direction,String status,UUID originCompanyId,String originCompanyName,UUID destinationCompanyId,String destinationCompanyName,String reasonCode,String reasonLabel,String observations,String initiatedBy,Instant initiatedAt,Instant effectiveAt,int releasedFutureAssignments) {}
     public record PersonnelDto(UUID employeeId, String fullName, String roleCode, String employmentStatus, BigDecimal idScore, String preferredShift,
-                               boolean requiredChange, double assignedHours, List<UnavailabilityDto> unavailability, TransferMiniDto transfer) {}
+                               String photoKey, boolean requiredChange, double assignedHours, List<UnavailabilityDto> unavailability, TransferMiniDto transfer) {}
     public record PersonnelPage(List<PersonnelDto> items, long total, int page, int size) {}
+    public record PersonnelRoleDto(String code, String label) {}
     public record SkillDto(String code, String label, BigDecimal level) {}
     public record EmployeeDetails(UUID employeeId, String fullName, String roleCode, String employmentStatus, BigDecimal idScore, String preferredShift,
-                                  boolean requiredChange, UUID companyId, String companyName, List<SkillDto> skills, List<UnavailabilityDto> unavailability, List<AssignmentAuditDto> recentAssignments, TransferMiniDto transfer) {}
+                                  String photoKey, boolean requiredChange, UUID companyId, String companyName, List<SkillDto> skills, List<UnavailabilityDto> unavailability, List<AssignmentAuditDto> recentAssignments, TransferMiniDto transfer) {}
     public record TransferReasonDto(String code,String label) {}
     public record TransferDestinationDto(UUID id,String code,String name,String companyType,boolean alwaysActive) {}
     public record TransferRequest(UUID employeeId,UUID destinationCompanyId,String reasonCode,String observations) {}
@@ -175,11 +177,15 @@ public class AssignmentResource {
         if(viewingCompany.alwaysActive||"COORDINATION".equals(viewingCompany.companyType)) incoming=incoming.stream().filter(t->scope.canManageKaibilTransferAgainst(t.originCompanyId)).toList();
         Set<UUID> incomingIds=incoming.stream().map(t->t.employeeId).collect(Collectors.toSet());
 
-        StringBuilder hql=new StringBuilder("instanceCountryId=:tenant and ");
+        StringBuilder hql=new StringBuilder("instanceCountryId=:tenant and employmentStatus='ACTIVE' and roleCode in :assignableRoles and ");
         Map<String,Object> params=new HashMap<>();params.put("tenant",tenant.instanceCountryId());params.put("companyId",companyId);
+        params.put("assignableRoles",rolePolicy.assignableRoleCodes());
         if(incomingIds.isEmpty()) hql.append("companyId=:companyId"); else {hql.append("(companyId=:companyId or employeeId in :incomingIds)");params.put("incomingIds",incomingIds);}
         if(q!=null&&!q.isBlank()){hql.append(" and lower(fullName) like :q");params.put("q","%"+q.trim().toLowerCase(Locale.ROOT)+"%");}
-        if(role!=null&&!role.isBlank()){hql.append(" and roleCode=:role");params.put("role",role);}
+        if(role!=null&&!role.isBlank()){
+            if(!rolePolicy.isAssignable(role)) throw new BadRequestException("El cargo seleccionado no participa en Asignaciones.");
+            hql.append(" and roleCode=:role");params.put("role",role);
+        }
         String availabilityKey=availability==null?"":availability.trim().toUpperCase(Locale.ROOT);
         if("REQUIRED_CHANGE".equals(availabilityKey))hql.append(" and requiredChange=true");
         else if("MEDICAL_LEAVE".equals(availabilityKey)||"VACATION".equals(availabilityKey)){
@@ -214,8 +220,21 @@ public class AssignmentResource {
         for(EmployeeCompanyTransfer t:open)openByEmployee.put(t.employeeId,t);
         Set<UUID> transferCompanyIds=open.stream().flatMap(t->java.util.stream.Stream.of(t.originCompanyId,t.destinationCompanyId)).filter(Objects::nonNull).collect(Collectors.toSet());
         Map<UUID,Company> transferCompanies=companyMap(transferCompanyIds);
-        List<PersonnelDto> items=pageRows.stream().map(e->{EmployeeCompanyTransfer t=openByEmployee.get(e.employeeId);TransferMiniDto mini=t==null?null:transferMini(t,Objects.equals(t.destinationCompanyId,companyId)?"INCOMING":"OUTGOING",transferCompanies);return new PersonnelDto(e.employeeId,e.fullName,e.roleCode,e.employmentStatus,e.idScore,e.preferredShift,e.requiredChange,roundOne(assignedHours.getOrDefault(e.employeeId,0d)),unavByEmployee.getOrDefault(e.employeeId,List.of()).stream().map(this::unavailabilityDto).toList(),mini);}).toList();
+        List<PersonnelDto> items=pageRows.stream().map(e->{EmployeeCompanyTransfer t=openByEmployee.get(e.employeeId);TransferMiniDto mini=t==null?null:transferMini(t,Objects.equals(t.destinationCompanyId,companyId)?"INCOMING":"OUTGOING",transferCompanies);return new PersonnelDto(e.employeeId,e.fullName,e.roleCode,e.employmentStatus,e.idScore,e.preferredShift,e.photoKey,e.requiredChange,roundOne(assignedHours.getOrDefault(e.employeeId,0d)),unavByEmployee.getOrDefault(e.employeeId,List.of()).stream().map(this::unavailabilityDto).toList(),mini);}).toList();
         return new PersonnelPage(items,total,safePage,safeSize);
+    }
+
+    @GET
+    @Path("/personnel-roles")
+    @Transactional
+    public List<PersonnelRoleDto> personnelRoles(@QueryParam("companyId") UUID companyId) {
+        if(companyId==null) throw new BadRequestException("companyId obligatorio");
+        scope.requireCompany(companyId);
+        List<EmployeeOperationalSnapshot> rows=EmployeeOperationalSnapshot.list(
+            "instanceCountryId=?1 and companyId=?2 and employmentStatus='ACTIVE' and roleCode in ?3 order by roleCode",
+            tenant.instanceCountryId(),companyId,rolePolicy.assignableRoleCodes());
+        return rows.stream().map(e->e.roleCode).filter(Objects::nonNull).distinct()
+            .map(code->new PersonnelRoleDto(code,roleLabel(code))).toList();
     }
 
     @GET
@@ -231,7 +250,7 @@ public class AssignmentResource {
         Map<UUID,ShiftOccurrenceEntity> shifts=shiftMap(recent.stream().map(a->a.shiftOccurrenceId).collect(Collectors.toSet()));Set<UUID> postIds=shifts.values().stream().map(s->s.postId).collect(Collectors.toSet());Map<UUID,PostEntity> posts=postIds.isEmpty()?Map.of():PostEntity.<PostEntity>list("instanceCountryId=?1 and id in ?2",tenant.instanceCountryId(),postIds).stream().collect(Collectors.toMap(x->x.id,x->x));
         List<AssignmentAuditDto> audits=recent.stream().map(a->{ShiftOccurrenceEntity sh=shifts.get(a.shiftOccurrenceId);PostEntity post=sh==null?null:posts.get(sh.postId);return new AssignmentAuditDto(post==null?"—":post.code,post==null?"—":post.name,sh==null?"—":sh.shiftName,sh==null?null:sh.startsAt,a.status,a.actualAssignedByUsername!=null?a.actualAssignedByUsername:a.assignedByUsername);}).toList();
         Company company=Company.find("id=?1 and instanceCountryId=?2",e.companyId,tenant.instanceCountryId()).firstResult();String direction=transfer==null?null:(viewingCompanyId!=null&&Objects.equals(transfer.destinationCompanyId,viewingCompanyId)?"INCOMING":"OUTGOING");
-        return new EmployeeDetails(e.employeeId,e.fullName,e.roleCode,e.employmentStatus,e.idScore,e.preferredShift,e.requiredChange,e.companyId,company==null?"—":company.name,skillDtos,unavs.stream().map(this::unavailabilityDto).toList(),audits,transfer==null?null:transferMini(transfer,direction));
+        return new EmployeeDetails(e.employeeId,e.fullName,e.roleCode,e.employmentStatus,e.idScore,e.preferredShift,e.photoKey,e.requiredChange,e.companyId,company==null?"—":company.name,skillDtos,unavs.stream().map(this::unavailabilityDto).toList(),audits,transfer==null?null:transferMini(transfer,direction));
     }
 
     @GET @Path("/transfer-reasons")
@@ -333,6 +352,7 @@ public class AssignmentResource {
         Set<UUID> assignedShiftIds=nearbyShiftIds.isEmpty()?Set.of():OperationalAssignmentEntity.<OperationalAssignmentEntity>list("instanceCountryId=?1 and status<>'REMOVED' and shiftOccurrenceId in ?2 and (employeeId=?3 or actualEmployeeId=?3)",tenant.instanceCountryId(),nearbyShiftIds,employeeId).stream().map(a->a.shiftOccurrenceId).collect(Collectors.toSet());
         List<ShiftOccurrenceEntity> assignedShifts=assignedShiftIds.isEmpty()?List.of():nearbyShifts.stream().filter(s->assignedShiftIds.contains(s.id)).toList();
         boolean companyMismatch=!Objects.equals(employee.companyId,plan.companyId),inactive=!"ACTIVE".equals(employee.employmentStatus);
+        boolean unassignableRole=!rolePolicy.isAssignable(employee.roleCode);
 
         List<EvaluationDto> out=new ArrayList<>(shifts.size());
         for(ShiftOccurrenceEntity shift:shifts){
@@ -340,6 +360,7 @@ public class AssignmentResource {
             List<ValidationProblem> hard=new ArrayList<>();
             if(companyMismatch)hard.add(new ValidationProblem("COMPANY","El colaborador no pertenece a la Compañía del plan."));
             if(inactive)hard.add(new ValidationProblem("EMPLOYMENT_STATUS","El colaborador no está activo en SIC: RRHH."));
+            if(unassignableRole)hard.add(new ValidationProblem("ROLE_NOT_ASSIGNABLE","El cargo del colaborador no está habilitado para Asignaciones."));
             if(transferPending)hard.add(new ValidationProblem("TRANSFER_PENDING","El colaborador tiene una transferencia de Compañía pendiente y no admite nuevas asignaciones futuras."));
             if(unavailability.stream().anyMatch(u->u.startsAt.isBefore(shift.endsAt)&&u.endsAt.isAfter(shift.startsAt)))hard.add(new ValidationProblem("UNAVAILABLE","SIC: RRHH reporta vacaciones, permiso médico u otra indisponibilidad para este intervalo."));
             for(ShiftOccurrenceEntity other:assignedShifts){
@@ -407,12 +428,12 @@ public class AssignmentResource {
                 UUID before=existing.effectiveEmployeeId();
                 existing.actualEmployeeId=employee.employeeId; existing.status="REASSIGNED"; existing.actualAssignedByUsername=actor; existing.actualAssignedAt=now; existing.reassignmentReason=blankToDefault(req.reason(),"Reasignación posterior a publicación");
                 eventType="REASSIGNMENT_CREATED";
-                recordEvent(plan,existing,shift,eventType,before,employee.employeeId,actor,existing.reassignmentReason,Map.of("warnings",warnings,"ic",ic,"idScore",employee.idScore));
+                recordEvent(plan,existing,shift,eventType,before,employee.employeeId,actor,existing.reassignmentReason,assignmentPayload(warnings,ic,employee.idScore));
             }
         }
         existing.compatibilityIndex=ic; existing.idScore=employee.idScore; existing.warningJson=json(warnings);
         if(!"REASSIGNMENT_CREATED".equals(eventType))
-            recordEvent(plan,existing,shift,eventType,existing.employeeId,employee.employeeId,actor,req.reason(),Map.of("warnings",warnings,"ic",ic,"idScore",employee.idScore));
+            recordEvent(plan,existing,shift,eventType,existing.employeeId,employee.employeeId,actor,req.reason(),assignmentPayload(warnings,ic,employee.idScore));
         return Response.ok(toAssignmentDto(existing,employee)).build();
     }
 
@@ -521,6 +542,7 @@ public class AssignmentResource {
         List<ValidationProblem> problems=new ArrayList<>();
         if(!Objects.equals(employee.companyId,plan.companyId)) problems.add(new ValidationProblem("COMPANY","El colaborador no pertenece a la Compañía del plan."));
         if(!"ACTIVE".equals(employee.employmentStatus)) problems.add(new ValidationProblem("EMPLOYMENT_STATUS","El colaborador no está activo en SIC: RRHH."));
+        if(!rolePolicy.isAssignable(employee.roleCode)) problems.add(new ValidationProblem("ROLE_NOT_ASSIGNABLE","El cargo del colaborador no está habilitado para Asignaciones."));
         if(openTransfer(employee.employeeId)!=null) problems.add(new ValidationProblem("TRANSFER_PENDING","El colaborador tiene una transferencia de Compañía pendiente y no admite nuevas asignaciones futuras."));
         long unav=EmployeeUnavailabilitySnapshot.count("instanceCountryId=?1 and employeeId=?2 and sourceStatus='ACTIVE' and startsAt<?3 and endsAt>?4",tenant.instanceCountryId(),employee.employeeId,shift.endsAt,shift.startsAt);
         if(unav>0) problems.add(new ValidationProblem("UNAVAILABLE","SIC: RRHH reporta vacaciones, permiso médico u otra indisponibilidad para este intervalo."));
@@ -555,7 +577,7 @@ public class AssignmentResource {
     }
     private List<String> warnings(PostEntity post, EmployeeOperationalSnapshot employee, PostSkillRequirement req){
         List<String> warnings=new ArrayList<>();
-        if(req!=null&&!Objects.equals(req.requiredRoleCode,employee.roleCode)) warnings.add("Rol distinto al perfil preferido del Puesto: alerta de compatibilidad, no bloqueo.");
+        if(req!=null&&!rolePolicy.matchesRequiredRole(req.requiredRoleCode,employee.roleCode)) warnings.add("Rol distinto al perfil preferido del Puesto: alerta de compatibilidad, no bloqueo.");
         if(employee.requiredChange) warnings.add("Colaborador marcado Cambio Requerido: alerta, no bloqueo mientras siga activo.");
         double min=tierMinimum(post.tier);
         if(employee.idScore!=null&&employee.idScore.doubleValue()<min) warnings.add("ID "+employee.idScore.stripTrailingZeros().toPlainString()+" menor al mínimo TIER "+post.tier+" ("+min+"): alerta, no bloqueo.");
@@ -706,6 +728,8 @@ public class AssignmentResource {
     private static double roundPct(double v){return Math.round(v*10d)/10d;}
     private static double roundOne(double v){return Math.round(v*10d)/10d;}
     private static String blankToDefault(String v,String d){return v==null||v.isBlank()?d:v.trim();}
+    private static String roleLabel(String code){return switch(code){case "AGENTE_SEGURIDAD"->"Agente de Seguridad";case "SUPERVISOR_SEGURIDAD"->"Supervisor de Seguridad";case "ESCOLTA_SEGURIDAD"->"Escolta";default->code;};}
+    private static Map<String,Object> assignmentPayload(List<String> warnings,BigDecimal ic,BigDecimal idScore){Map<String,Object> payload=new LinkedHashMap<>();payload.put("warnings",warnings);payload.put("ic",ic);payload.put("idScore",idScore);return payload;}
 
     private String json(Object value){try{return mapper.writeValueAsString(value);}catch(JsonProcessingException e){throw new InternalServerErrorException("No se pudo serializar auditoría",e);}}
     private List<String> parseWarnings(String value){if(value==null||value.isBlank())return List.of();try{return mapper.readValue(value,mapper.getTypeFactory().constructCollectionType(List.class,String.class));}catch(Exception e){return List.of();}}

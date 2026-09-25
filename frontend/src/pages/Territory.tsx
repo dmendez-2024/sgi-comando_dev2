@@ -111,7 +111,7 @@ function TerritoryOperationalMap({tree}:{tree:Tree}){
     <div className="ter-map-legend">
       {activeZones.map(zone=><div key={zone.id}><i className="zone-dot" style={{background:zoneColor(zone)}}/><span>{zone.name} ({zone.code})</span></div>)}
       {!activeZones.length&&<div className="ter-map-empty">Sin Zonas y Regiones activas para representar.</div>}
-      <div className="ter-map-note"><MapIcon size={14}/>El mapa solo refleja Zonas y Regiones activas.</div>
+      <div className="ter-map-note"><MapIcon size={14}/>Mapa base Ecuador; la estructura inferior es la configuración vigente.</div>
     </div>
   </div>
 }

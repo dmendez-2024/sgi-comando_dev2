@@ -10,6 +10,7 @@ import java.util.UUID;
 @Table(name="employee_operational_snapshot")
 public class EmployeeOperationalSnapshot extends BaseEntity {
     @Column(name="employee_id", nullable=false) public UUID employeeId;
+    @Column(name="persona_id") public Long personaId;
     @Column(name="company_id", nullable=false) public UUID companyId;
     @Column(name="full_name", nullable=false) public String fullName;
     @Column(name="role_code", nullable=false) public String roleCode;

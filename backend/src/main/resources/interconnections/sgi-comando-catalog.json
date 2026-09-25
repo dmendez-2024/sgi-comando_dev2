@@ -347,36 +347,36 @@
     ]
   },
   {
-    "interconnectionRef": "SIC_RRHH__SGI_COM__00001",
-    "interconnectionId": "SIC_RRHH__SGI_COM__00001__V0001",
+    "interconnectionRef": "SIC_RRHH_SGI_COM_0001",
+    "interconnectionId": "SIC_RRHH_SGI_COM_0001_v001",
     "sourceProgramId": "SIC_RRHH",
     "targetProgramId": "SGI_COM",
-    "purpose": "Notify changes to employee/company/status/skills/unavailability used operationally by SGI.",
-    "interactionType": "WEBHOOK",
-    "mode": "ASYNC",
+    "purpose": "Synchronize active Seguridad Física employees into the SGI operational snapshot.",
+    "interactionType": "REST_API",
+    "mode": "SYNC",
     "protocol": "HTTPS",
     "contractVersion": "v1",
     "dataOwnerProgramId": "SIC_RRHH",
     "criticality": "HIGH",
-    "status": "DESIGN",
+    "status": "UAT",
     "legacyTarget": false,
-    "targetImplementationStatus": "BLOCKED",
+    "targetImplementationStatus": "IMPLEMENTED",
     "interfaces": [
       {
-        "interfaceId": "SIC_RRHH__SGI_COM__00001__IF01",
+        "interfaceId": "SIC_RRHH_SGI_COM_0001_IF01",
         "method": "POST",
         "path": "/api/v1/inbound/sic-rrhh/employee-events",
         "purpose": "Employee operational master event",
         "contentType": "application/json",
         "request": {
           "fields": [
-            "eventId",
-            "eventType",
             "employeeId",
-            "companyId",
-            "effectiveAt",
-            "sourceVersion",
-            "payload"
+            "personaId",
+            "canonicalEmployeeId",
+            "fullName",
+            "roleCode",
+            "employmentStatus",
+            "updatedFromSourceAt"
           ]
         },
         "response": {

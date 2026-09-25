@@ -61,7 +61,12 @@ public class TerritoryResource {
         List<Company> allCompanies=scope.countryWide()?Company.list("instanceCountryId=?1",tenant.instanceCountryId()):List.of();
         Set<UUID> companyIds=scope.countryWide()?allCompanies.stream().map(c->c.id).collect(Collectors.toSet()):scope.allowedCompanyIds();
         if(companyIds.isEmpty()) return List.of();
-        List<EmployeeOperationalSnapshot> people=EmployeeOperationalSnapshot.list("instanceCountryId=?1 and companyId in ?2 and employmentStatus='ACTIVE' order by fullName",tenant.instanceCountryId(),companyIds);
+        List<EmployeeOperationalSnapshot> people=EmployeeOperationalSnapshot.list(
+            "instanceCountryId=?1 and companyId in ?2 and employmentStatus='ACTIVE' " +
+                "and (lower(roleCode) like ?3 or lower(roleCode) like ?4 or lower(roleCode) like ?5 or lower(roleCode) like ?6) " +
+                "order by fullName",
+            tenant.instanceCountryId(),companyIds,"%coordinador%","%jefe%","%director%","%presidente%"
+        );
         return people.stream().map(e->new ResponsibleDto(e.employeeId,e.fullName,e.roleCode)).toList();
     }
 

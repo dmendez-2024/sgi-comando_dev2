@@ -1,7 +1,8 @@
 package com.cajamarca.sgi.comando.interconnections;
 
 /**
- * Canonical SITC-NOM-001 v3.0 interconnection identifiers for SGI: Comando.
+ * Interconnection identifiers for SGI: Comando. New/updated contracts use
+ * SITC-NOM-001 v4.1; unchanged legacy identifiers remain until their own CR.
  *
  * The stable reference (without __V0001) is the identity in CORE. The full ID
  * identifies the current master revision. Business code must use these constants
@@ -19,7 +20,7 @@ public final class InterconnectionIds {
 
     public static final String RRHH_EMPLOYEE_CONTEXT = "SGI_COM__SIC_RRHH__00001__V0001";
     public static final String RRHH_OPERATIONAL_LABOR_EVENTS = "SGI_COM__SIC_RRHH__00002__V0001";
-    public static final String RRHH_MASTER_EVENTS = "SIC_RRHH__SGI_COM__00001__V0001";
+    public static final String RRHH_MASTER_EVENTS = "SIC_RRHH_SGI_COM_0001_v001";
 
     public static final String RRMM_EXPECTED_ASSETS = "SGI_COM__SIC_RRMM__00001__V0001";
     public static final String RRMM_POINT_POST_CATALOG = "SIC_RRMM__SGI_COM__00001__V0001";
