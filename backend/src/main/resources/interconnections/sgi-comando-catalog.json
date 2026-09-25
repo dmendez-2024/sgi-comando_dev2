@@ -922,7 +922,7 @@
         "request": {
           "fields": [
             "batchId",
-            "events[]",
+            "events[RELIEF_SUBMITTED]",
             "employeeId",
             "deviceId",
             "instanceCountryId",
@@ -937,6 +937,20 @@
             "serverVersion",
             "pendingMessages"
           ]
+        }
+      },
+      {
+        "interfaceId": "SGI_OPR__SGI_COM__00002__IF02",
+        "method": "PUT",
+        "path": "/api/v1/operator/relief-evidence/{eventId}/{purpose}",
+        "purpose": "Upload one authorized JPEG evidence for a pending relief event",
+        "contentType": "image/jpeg",
+        "request": {
+          "query": ["assignmentId"],
+          "path": ["eventId", "purpose"]
+        },
+        "response": {
+          "fields": ["evidenceId", "sha256"]
         }
       }
     ]
