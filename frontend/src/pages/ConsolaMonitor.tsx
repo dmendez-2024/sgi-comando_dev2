@@ -1,8 +1,8 @@
 import {useMemo, useState, type ReactNode} from 'react';
 import {
-  AlertTriangle, BellRing, Building2, CheckCircle2, ClipboardList,
-  Download, Eye, FileWarning, FilterX, MapPin, Monitor,
-  RefreshCw, Search, ShieldAlert, ShieldCheck, UserRound, Zap, CircleAlert
+  AlertTriangle, BellRing, Building2, CalendarDays, CheckCircle2, ClipboardList, Clock3,
+  Download, FileWarning, FilterX, MapPin, Monitor,
+  RefreshCw, Search, ShieldAlert, ShieldCheck, UserRound, Zap, CircleAlert, X, ChevronRight
 } from 'lucide-react';
 import {getUser, type UatUser} from '../api';
 
@@ -103,6 +103,7 @@ export default function ConsolaMonitor(){
   const scope=scopeByUser[user];
   const [filters,setFilters]=useState<Filters>(EMPTY_FILTERS);
   const [selectedId,setSelectedId]=useState('');
+  const [viewedId,setViewedId]=useState('');
 
   const scoped=useMemo(()=>DATA.filter(x=>withinScope(x,scope)),[scope]);
   const cities=useMemo(()=>unique(scoped.map(x=>x.city)),[scoped]);
@@ -132,6 +133,7 @@ export default function ConsolaMonitor(){
   },[scoped,filters,dateError]);
 
   const selected=rows.find(x=>x.id===selectedId) ?? rows[0] ?? null;
+  const viewed=scoped.find(x=>x.id===viewedId) ?? null;
   const metrics=useMemo(()=>({
     attention: scoped.filter(x=>['PENDING','OVERDUE','NEW','CRITICAL','ESCALATED'].includes(x.status)).length,
     reassign: scoped.filter(x=>x.subtype==='Reasignación' && !['COMPLETED','RESOLVED','APPROVED','DISCARDED'].includes(x.status)).length,
@@ -153,13 +155,13 @@ export default function ConsolaMonitor(){
     const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='consola_operativa.csv'; a.click(); URL.revokeObjectURL(url);
   }
 
-  return <div className="csl-page">
-    <div className="csl-topbar">
+  return <div className="csl-page nov-page">
+    <div className="csl-topbar nov-topbar">
       <div><div className="page-backline">Operaciones / Consola</div><h2>Consola</h2><p>Workspace operativo para Monitores: consignas, novedades, reasignaciones y alarmas electrónicas.</p></div>
-      <div className="csl-scope"><Monitor size={16}/>{scope.label}</div>
+      <div className="csl-scope nov-scope"><Monitor size={16}/>{scope.label}</div>
     </div>
 
-    <div className="csl-kpis">
+    <div className="csl-kpis coord-kpis nov-kpis">
       <Metric icon={<CircleAlert size={20}/>} label="Atención requerida" value={metrics.attention} subtitle="Casos priorizados" tone="red"/>
       <Metric icon={<RefreshCw size={20}/>} label="Reasignaciones activas" value={metrics.reassign} subtitle="Cobertura a resolver" tone="orange"/>
       <Metric icon={<ClipboardList size={20}/>} label="Consignas abiertas" value={metrics.consignas} subtitle="Relevos / patrullas / ad-hoc" tone="blue"/>
@@ -169,7 +171,7 @@ export default function ConsolaMonitor(){
     </div>
 
     <div className="csl-workspace">
-      <section className="csl-main-card">
+      <section className="csl-main-card nov-main-card">
         <div className="csl-card-head">
           <div className="csl-title"><Search size={20}/><h3>Bandeja operativa unificada</h3></div>
           <div className="csl-tabs">
@@ -179,7 +181,7 @@ export default function ConsolaMonitor(){
             <button className={filters.category==='ALARMAS'?'active':''} onClick={()=>set('category','ALARMAS')}><BellRing size={14}/>Alarmas electrónicas</button>
           </div>
         </div>
-        <label className="csl-main-search"><Search size={18}/><input value={filters.query} onChange={e=>set('query',e.target.value)} placeholder="Buscar por código, título, cliente, punto, puesto o responsable…"/></label>
+        <label className="csl-main-search nov-main-search"><Search size={18}/><input value={filters.query} onChange={e=>set('query',e.target.value)} placeholder="Buscar por código, título, cliente, punto, puesto o responsable…"/></label>
 
         <div className="csl-filter-grid">
           <Field label="Ciudad"><select value={filters.city} onChange={e=>set('city',e.target.value)}><option value="">Todas</option>{cities.map(x=><option key={x}>{x}</option>)}</select></Field>
@@ -196,13 +198,13 @@ export default function ConsolaMonitor(){
         {dateError && <div className="csl-validation-error"><AlertTriangle size={16}/><span>{dateError}</span></div>}
         <div className="csl-search-actions"><button className="primary" disabled={!!dateError}><Search size={16}/>Buscar</button><button onClick={clear}><FilterX size={16}/>Limpiar filtros</button><button className="export" onClick={exportCsv} disabled={!!dateError || !rows.length}><Download size={16}/>Exportar</button></div>
 
-        <div className="csl-results-card">
-          <div className="csl-results-head"><h3>Casos operativos ({rows.length})</h3><div>Ordenar por: <strong>Última actualización</strong></div></div>
-          <div className="csl-table-wrap">
-            <table className="csl-table">
+        <div className="csl-results-card nov-results-card">
+          <div className="csl-results-head nov-results-head"><h3>Casos operativos ({rows.length})</h3><div>Ordenado por <strong>Última actualización</strong></div></div>
+          <div className="csl-table-wrap nov-table-wrap">
+            <table className="csl-table nov-table">
               <thead><tr><th>Categoría</th><th>Subtipo</th><th>Código</th><th>Título</th><th>Cliente</th><th>Punto / Puesto</th><th>Responsable</th><th>Estado</th><th>Prioridad</th><th>Última actualización</th><th></th></tr></thead>
               <tbody>
-                {rows.map(row=><tr key={row.id} className={selected?.id===row.id?'selected':''} onClick={()=>setSelectedId(row.id)}>
+                {rows.map(row=><tr key={row.id} className={selected?.id===row.id?'selected':''} onClick={()=>{setSelectedId(row.id);setViewedId(row.id)}}>
                   <td><span className={`csl-category ${categoryClass(row.category)}`}>{categoryIcon(row.category)}{categoryLabel(row.category)}</span></td>
                   <td>{row.subtype}</td>
                   <td>{row.code}</td>
@@ -213,53 +215,21 @@ export default function ConsolaMonitor(){
                   <td><span className={`csl-status ${statusClass(row.status)}`}>{statusLabel(row.status)}</span></td>
                   <td><span className={`csl-priority ${priorityClass(row.priority)}`}>{priorityLabel(row.priority)}</span></td>
                   <td>{formatDateTime(row.updatedAt)}</td>
-                  <td><button>Ver</button></td>
+                  <td><button className="csl-view-action" onClick={e=>{e.stopPropagation();setSelectedId(row.id);setViewedId(row.id)}}>Ver <ChevronRight size={13}/></button></td>
                 </tr>)}
                 {!rows.length && <tr><td className="empty" colSpan={11}>{dateError?'Corrija el rango de fechas para consultar resultados.':'No se encontraron casos con los filtros aplicados.'}</td></tr>}
               </tbody>
             </table>
           </div>
-          <div className="csl-results-footer">Mostrando {rows.length?1:0} a {rows.length} de {rows.length} resultados</div>
+          <div className="csl-results-footer nov-results-footer">Mostrando {rows.length?1:0} a {rows.length} de {rows.length} resultados</div>
         </div>
       </section>
 
-      <aside className="csl-detail-card">
-        <div className="csl-title"><Eye size={19}/><h3>Detalle</h3></div>
-        {selected ? <>
-          <div className="csl-detail-head">
-            <span className={`csl-category ${categoryClass(selected.category)}`}>{categoryIcon(selected.category)}{categoryLabel(selected.category)}</span>
-            <div><strong>{selected.code}</strong><h4>{selected.title}</h4></div>
-            <span className={`csl-status ${statusClass(selected.status)}`}>{statusLabel(selected.status)}</span>
-          </div>
-          <dl className="csl-detail-list">
-            <Detail icon={<Building2 size={14}/>} label="Compañía" value={selected.company}/>
-            <Detail icon={<Building2 size={14}/>} label="Cliente" value={selected.client}/>
-            <Detail icon={<MapPin size={14}/>} label="Ciudad" value={selected.city}/>
-            <Detail icon={<MapPin size={14}/>} label="Punto" value={selected.point}/>
-            <Detail icon={<MapPin size={14}/>} label="Puesto" value={selected.post}/>
-            <Detail icon={<UserRound size={14}/>} label="Responsable" value={selected.responsible}/>
-            <Detail icon={<ShieldCheck size={14}/>} label="Subtipo" value={selected.subtype}/>
-            <Detail icon={<ShieldAlert size={14}/>} label="Prioridad" value={priorityLabel(selected.priority)}/>
-            <Detail icon={<Zap size={14}/>} label="Origen" value={selected.originLabel}/>
-            <Detail icon={<CheckCircle2 size={14}/>} label="Estado" value={statusLabel(selected.status)}/>
-          </dl>
-          <div className="csl-detail-text"><h4>Resumen operativo</h4><p>{selected.summary}</p></div>
-          <div className="csl-detail-text"><h4>Acción recomendada</h4><p>{selected.recommendedAction}</p></div>
-          <div className="csl-detail-meta">
-            <div><span>Creado</span><strong>{formatDateTime(selected.createdAt)}</strong></div>
-            <div><span>Última actualización</span><strong>{formatDateTime(selected.updatedAt)}</strong></div>
-          </div>
-          <div className="csl-actions">
-            {selected.category==='CONSIGNAS' && <><button className="primary">Abrir Consignas</button><button>Ver ejecución</button></>}
-            {selected.category==='NOVEDADES' && <><button className="primary">Abrir Novedades</button><button>{selected.subtype==='Reasignación'?'Gestionar reasignación':'Revisar novedad'}</button></>}
-            {selected.category==='ALARMAS' && <><button className="primary">Reconocer alarma</button><button>Escalar</button><button>Cerrar</button></>}
-          </div>
-        </> : <div className="csl-empty">Seleccione un caso para ver su detalle.</div>}
-      </aside>
     </div>
+    {viewed&&<div className="nov-modal-backdrop csl-view-backdrop" onClick={()=>setViewedId('')}><aside className="nov-modal csl-view-modal" role="dialog" aria-modal="true" aria-labelledby="csl-view-title" onClick={e=>e.stopPropagation()}><header><div><h3 id="csl-view-title">Detalle del caso operativo</h3><span>{viewed.code} · {categoryLabel(viewed.category)} · Solo lectura</span></div><button aria-label="Cerrar detalle" onClick={()=>setViewedId('')}><X size={19}/></button></header><div className="nov-modal-body csl-view-body"><div className="csl-view-summary"><span className={`csl-category ${categoryClass(viewed.category)}`}>{categoryIcon(viewed.category)}{categoryLabel(viewed.category)}</span><strong>{viewed.title}</strong><span className={`csl-status ${statusClass(viewed.status)}`}>{statusLabel(viewed.status)}</span></div><dl className="csl-detail-list csl-view-details"><Detail icon={<Building2 size={14}/>} label="Compañía" value={viewed.company}/><Detail icon={<Building2 size={14}/>} label="Cliente" value={viewed.client}/><Detail icon={<MapPin size={14}/>} label="Ciudad" value={viewed.city}/><Detail icon={<MapPin size={14}/>} label="Punto" value={viewed.point}/><Detail icon={<MapPin size={14}/>} label="Puesto" value={viewed.post}/><Detail icon={<UserRound size={14}/>} label="Responsable" value={viewed.responsible}/><Detail icon={<ShieldCheck size={14}/>} label="Subtipo" value={viewed.subtype}/><Detail icon={<ShieldAlert size={14}/>} label="Prioridad" value={priorityLabel(viewed.priority)}/><Detail icon={<Zap size={14}/>} label="Origen" value={viewed.originLabel}/><Detail icon={<CheckCircle2 size={14}/>} label="Estado" value={statusLabel(viewed.status)}/><Detail icon={<CalendarDays size={14}/>} label="Creado" value={formatDateTime(viewed.createdAt)}/><Detail icon={<Clock3 size={14}/>} label="Última actualización" value={formatDateTime(viewed.updatedAt)}/></dl><section className="csl-view-note"><h4>Resumen operativo</h4><p>{viewed.summary}</p></section><section className="csl-view-note"><h4>Acción recomendada</h4><p>{viewed.recommendedAction}</p></section></div><footer><button type="button" className="csl-view-full-detail"><Search size={16}/>Ver detalle completo</button></footer></aside></div>}
   </div>
 }
 
-function Metric({icon,label,value,subtitle,tone}:{icon:ReactNode;label:string;value:string|number;subtitle:string;tone:'blue'|'green'|'purple'|'red'|'orange'}){return <article className={`csl-metric ${tone}`}><span>{icon}</span><div><small>{label}</small><strong>{value}</strong><p>{subtitle}</p></div></article>}
+function Metric({icon,label,value,subtitle,tone}:{icon:ReactNode;label:string;value:string|number;subtitle:string;tone:'blue'|'green'|'purple'|'red'|'orange'}){return <article><span className={tone}>{icon}</span><div><small>{label}</small><strong>{value}</strong><em>{subtitle}</em></div></article>}
 function Field({label,children}:{label:string;children:ReactNode}){return <label className="csl-field"><span>{label}</span>{children}</label>}
 function Detail({icon,label,value}:{icon:ReactNode;label:string;value:string}){return <div><dt>{icon}{label}</dt><dd>{value}</dd></div>}

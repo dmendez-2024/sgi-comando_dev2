@@ -266,13 +266,13 @@ export default function NovedadesExecution(){
   return <div className="nov-page">
     <div className="nov-topbar"><div><div className="page-backline">Operaciones / Novedades</div><h2>Novedades</h2><p>Revisión y aprobación de novedades reportadas desde SGI: Operador</p></div><div className="nov-scope"><ShieldCheck size={16}/>{scope.label}</div></div>
 
-    <div className="nov-kpis">
-      <Metric icon={<ClipboardCheck size={21}/>} label="Pendientes" value={metrics.pending} tone="blue"/>
-      <Metric icon={<Eye size={21}/>} label="Hallazgos pendientes" value={metrics.findings} tone="teal"/>
-      <Metric icon={<ShieldCheck size={21}/>} label="Vulnerabilidades pendientes" value={metrics.vulnerabilities} tone="amber"/>
-      <Metric icon={<AlertTriangle size={21}/>} label="Incidentes pendientes" value={metrics.incidents} tone="red"/>
-      <Metric icon={<CheckCircle2 size={21}/>} label="Aprobadas hoy" value={metrics.approvedToday} tone="green"/>
-      <Metric icon={<CircleAlert size={21}/>} label="Críticas" value={metrics.critical} tone="red"/>
+    <div className="coord-kpis nov-kpis">
+      <Metric icon={<ClipboardCheck size={21}/>} label="Pendientes" detail="por revisar" value={metrics.pending} tone="blue"/>
+      <Metric icon={<Eye size={21}/>} label="Hallazgos pendientes" detail="en revisión" value={metrics.findings} tone="teal"/>
+      <Metric icon={<ShieldCheck size={21}/>} label="Vulnerabilidades pendientes" detail="en revisión" value={metrics.vulnerabilities} tone="amber"/>
+      <Metric icon={<AlertTriangle size={21}/>} label="Incidentes pendientes" detail="en revisión" value={metrics.incidents} tone="red"/>
+      <Metric icon={<CheckCircle2 size={21}/>} label="Aprobadas hoy" detail="aprobaciones" value={metrics.approvedToday} tone="green"/>
+      <Metric icon={<CircleAlert size={21}/>} label="Críticas" detail="pendientes" value={metrics.critical} tone="red"/>
     </div>
 
     <section className="nov-main-card">
@@ -367,6 +367,6 @@ export default function NovedadesExecution(){
 }
 
 function userLabel(user:UatUser){return ({presidente:'Presidencia UAT',dlatam:'Director Operaciones LATAM UAT',don:'Director Operaciones Nacional UAT',dnacional:'Director Nacional UAT',dzonal:'Director Zonal UAT',jregional:'Jefe Regional UAT',coord:'Coordinador UAT',asistente:'Asistente de Coordinación UAT',supervisor:'Supervisor UAT',agente:'Agente UAT',cliente:'Cliente UAT'}[user])}
-function Metric({icon,label,value,tone}:{icon:ReactNode;label:string;value:number;tone:'blue'|'teal'|'amber'|'red'|'green'}){return <article className={`nov-metric ${tone}`}><span>{icon}</span><div><small>{label}</small><strong>{value}</strong></div></article>}
+function Metric({icon,label,detail,value,tone}:{icon:ReactNode;label:string;detail:string;value:number;tone:'blue'|'teal'|'amber'|'red'|'green'}){return <article><span className={tone}>{icon}</span><div><small>{label}</small><strong>{value}</strong><em>{detail}</em></div></article>}
 function Field({label,children}:{label:string;children:ReactNode}){return <label className="nov-field"><span>{label}</span>{children}</label>}
 function ModalField({label,children}:{label:string;children:ReactNode}){return <label className="nov-modal-field"><span>{label}</span>{children}</label>}
