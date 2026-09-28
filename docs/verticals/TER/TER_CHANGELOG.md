@@ -20,3 +20,12 @@
 - Responsables desde SIC: RRHH LOCAL.
 - Historial/auditoría consultable.
 - Selector UAT reducido a seis perfiles acordados.
+
+## v1.0.1 — UAT_CANDIDATE — 2026-09-22
+
+La bitácora `cambios/CHANGELOG_DM.md` registra criterios adicionales de filtrado/validación y un cambio de persistencia para separar asignaciones territoriales en borrador de las efectivas. El código fuente contiene `V27__territory_draft_assignments.sql`, que agrega `draft_zone_id` y `draft_region_id` a `country_subdivision`.
+
+- Estado reportado: implementado; revalidación funcional UAT pendiente.
+- Esta entrada no cambia ni sustituye TER v1.0 congelada.
+- El registro de trabajo afirma que el contrato CORE no cambió, pero el modelo de datos y el comportamiento local sí evolucionaron. Requiere CR/aprobación y RC documentados según SITC-NOM-001 v4.1 antes de considerarlo cerrado.
+- Criterios nuevos: ver TER-AC-023..027 en `cambios/CHANGELOG_DM.md`; no se marcan PASS en esta documentación.

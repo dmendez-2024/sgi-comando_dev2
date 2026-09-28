@@ -67,3 +67,16 @@ El backend valida:
 ## Producción
 
 El campo `logoDataUrl` del contrato UAT deberá sustituirse por un flujo de archivo/MinIO o referencia de objeto antes del despliegue productivo final.
+
+## Extensión operacional observada después de COM v1.1.3 — pendiente de RC
+
+La nota de implementación DME describe:
+
+```http
+GET /api/companies/responsibles
+PUT /api/companies/{id}
+```
+
+El `PUT` admite `responsibleEmployeeId` como UUID o `null`; la respuesta incorpora `responsibleEmployeeId`, `responsibleName` y `responsibleRoleCode`. El catálogo devuelve candidatos según la regla de cargo implementada en el backend.
+
+Esta extensión cambia modelo/API y no se considera aprobada por esta documentación. Confirmar CR, permisos, regla de elegibilidad y versión objetivo antes de cerrar contrato.

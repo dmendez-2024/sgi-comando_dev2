@@ -9,6 +9,8 @@ Base: `/api`
 - `GET /api/companies?page=0&size=50`
 - `POST /api/companies`
 - `PUT /api/companies/{id}`
+- `GET /api/companies/responsibles` — candidatos para Responsable operacional (extensión observada, RC/CR por confirmar).
+- `PUT /api/companies/{id}` admite `responsibleEmployeeId` UUID o `null`; respuesta reporta ID, nombre y código de rol del responsable (extensión observada, pendiente de contrato/versionado formal).
 
 ## Operación comercial local/mock
 - `GET /api/services`

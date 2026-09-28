@@ -1,5 +1,17 @@
 # SER v0.6 — UAT
 
+## Catálogo SIC:COM entrante — V33 — pendiente de UAT end-to-end
+
+- Alta/actualización/inactivación lógica procesa eventos comerciales con idempotencia por `instance_country_id + eventId`.
+- Reintento idéntico devuelve la respuesta ya registrada; mismo `eventId` con payload distinto produce conflicto.
+- Cliente legado de Servicio se conserva mediante backfill y todo Servicio termina con `client_id` válido antes de la restricción NOT NULL.
+- `post.commercial_status` inicia ACTIVE; inactivaciones no eliminan historial/configuración de SGI.
+- La réplica comercial no sobrescribe la Compañía operativa ni la configuración propia de SER.
+- Validar auth Bearer, `credential_ref`, tenant, correlación, errores/reintentos y estados de CORE/IDENT conforme al contrato acordado.
+- Validar alta/edición/inactivación con SIC:COM en ambos lados antes de marcar READY.
+
+**Estado:** criterios añadidos desde la implementación V33; no se certifican aquí como ejecutados/aprobados.
+
 ## Servicios
 1. El listado opera a nivel Cliente · Punto.
 2. Cada fila mantiene Operación (stand by) y Configuración.

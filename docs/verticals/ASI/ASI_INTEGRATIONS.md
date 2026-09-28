@@ -50,3 +50,13 @@ No se modifica el modelo congelado de COM.
 
 ### Contrato de ingreso de personal desde SIC: RRHH — 2026-09-19
 SIC: RRHH debe entregar cada colaborador visible en SGI con adscripción explícita a **Seguridad Física (SF) + Compañía**. SIC: RRHH es SoR de esa relación inicial. SGI no crea ni infiere la membresía laboral; las transferencias operacionales posteriores se orquestan en ASI y se sincronizan de vuelta a SIC: RRHH.
+
+### Puente de identidad DHO → SGI: Comando — V29 observado en código
+
+La migración V29 agrega `employee_operational_snapshot.persona_id bigint` y un índice único parcial por `instance_country_id` cuando el valor no es NULL. El adaptador acepta `personaId` y `canonicalEmployeeId` como extensiones; `employeeId` numérico se conserva como alias legacy de `personas.id` conforme a la bitácora DME.
+
+- La columna no se backfillea en bloque; históricos mantienen `persona_id = NULL` hasta sincronización válida.
+- SGI conserva su UUID operacional; el SoR de la relación persona–Compañía permanece en SIC: RRHH.
+- La opción de UUID canónico depende de una migración controlada de todas las referencias y no debe activarse solo mediante configuración.
+- La nota DME reporta redespliegue DHO pendiente; el estado end-to-end requiere UAT de ambas puntas.
+- ASI-DEC-059 se cita como excepción de asignación inicial a Kaibil en otra nota, pero no se encontró en el Decision Log disponible. No tratar esa excepción como decisión aprobada hasta ubicarla.

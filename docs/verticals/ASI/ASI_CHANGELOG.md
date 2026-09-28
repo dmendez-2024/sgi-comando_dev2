@@ -1,5 +1,12 @@
 # ASI — Changelog
 
+## Extensión de identidad recibida de RRHH — V29 — 2026-09-24
+
+- La capa operacional conserva `employee_id` UUID estable y agrega `persona_id` nullable como referencia numérica de DHO/SIC:RRHH.
+- Se documentó en `ASI_INTEGRATIONS.md` y `ASI_UAT.md`; el backfill histórico no se realiza automáticamente.
+- Estado citado por la nota DME: SGI implementado/verificado; redespliegue local DHO y UAT integrada pendientes.
+- CR/aprobación formal y compatibilidad del contrato bajo v4.1 aún deben localizarse; esta entrada no declara una nueva baseline congelada.
+
 ## v0.5 — 2026-09-09
 - Resumen semanal reordenado: ID promedio, IC promedio, turnos asignados, turnos sin asignar, porcentaje de turnos asignados.
 - Etiquetas `sin asignar` → `turnos sin asignar` y `cobertura` → `de turnos asignados`.

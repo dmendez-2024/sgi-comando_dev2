@@ -289,3 +289,31 @@
 - Se agrega COMPONENT_DELTA versionado y SCENARIO_SNAPSHOT acumulativo para CORE.
 - No se modifica UI ni lógica funcional de verticales congeladas.
 - Sin migración de base de datos.
+
+## SGI_COM — Documentación de cambios y tablas — revisión v4.1 — 2026-09-25
+
+Baseline: código y migraciones presentes en el workspace; snapshot CORE v4.1 no disponible para comparación.
+Responsable/aprobación: pendiente de confirmar.
+
+### Cambios documentales
+
+- `DOC-001 | PERMITIDO |` Se incorporó el handoff general, resumen UAT, limitaciones, impacto al ecosistema, siguientes acciones e impacto de base de datos, marcando los estados no confirmados como pendientes.
+- `DOC-002 | PERMITIDO |` Se alinearon notas de las verticales COM, TER, ASI y SER con las migraciones/cambios observados; no se alteraron decisiones congeladas ni se declaró aprobación de RC.
+- `DOC-003 | PERMITIDO |` Se documentaron las brechas de SITC v3.0→v4.1 y los CR/aprobaciones faltantes.
+
+### Archivos / migraciones
+
+- Nuevos docs: `docs/00_HANDOFF.md`, `docs/UAT.md`, `docs/KNOWN_LIMITATIONS.md`, `docs/ECOSYSTEM_IMPACT.md`, `docs/NEXT_ACTIONS.md`, `docs/DATABASE_IMPACT.md`.
+- Vertical docs actualizados: COM, TER, ASI y SER bajo `docs/verticals/`.
+- No se modificó ni ejecutó migración SQL; el inventario de V27–V33 se basa en lectura de archivos.
+- Se observó que V30/V31 cargan/eliminan datos de empleados y `quarkus.flyway.migrate-at-start=true`; queda como gate de entorno.
+
+### Integraciones / SITC
+
+- Sin nuevo delta SITC generado. El snapshot vigente v4.1 de CORE no estuvo disponible para comparar; los IDs locales siguen pendientes de reconciliación.
+
+### Validación
+
+- Documentación contrastada contra el inventario de los 40 Markdown de `cambios/`, migraciones V27–V33 y rutas API citadas.
+- No se ejecutaron build, tests, UAT, migraciones ni restauraciones de base de datos.
+- Estado del resultado: revisión documental con acciones/CRs pendientes; no es cierre de RC ni gate de producción.

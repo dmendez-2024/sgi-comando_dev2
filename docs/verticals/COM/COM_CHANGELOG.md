@@ -18,3 +18,9 @@
 - Bloqueo de inactivación con Servicios activos.
 - Reactivación.
 - Historial y versionamiento.
+
+## Extensiones posteriores descritas en el código — estado por formalizar
+
+- **V28 / responsable operacional:** `cambios/CHANGELOG_DME_COM_RESPONSABLE_2026-09-24.md` describe columna nullable, API y pruebas; el comentario de V28 denomina el cambio COM v1.1.4. CR-ID/aprobación y release formal no constan en esta matriz documental.
+- **V33 / catálogo comercial entrante:** `cambios/CHANGELOG_JTO_IMPLEMENTACION_CATALOGO_SIC_COM.md` describe Cliente, referencia desde Servicio, estado comercial de Puesto y recibo idempotente. El changelog citado dice V27, pero el código actual lo contiene como V33.
+- Estos registros documentan extensiones detectadas; no alteran ni sustituyen retroactivamente la baseline COM v1.1.3 FROZEN. UAT y estado de aprobación deben anotarse en una RC autorizada.

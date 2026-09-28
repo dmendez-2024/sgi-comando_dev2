@@ -78,3 +78,32 @@ logo_version
 ```
 
 El objeto binario vive en MinIO.
+
+## Extensiones observadas en el código — candidatas de evolución posterior a v1.1.3
+
+El código fuente contiene las siguientes extensiones. Se registran aquí para que el modelo de tablas no quede desactualizado; esta nota no aprueba la reapertura de COM ni declara una nueva baseline congelada.
+
+### `company` — migración V28
+
+```text
+responsible_employee_id UUID NULL
+```
+
+Campo opcional para la persona responsable operacional. La bitácora DME indica que no se realizó backfill; las Compañías existentes quedan sin responsable hasta edición autorizada.
+
+### Catálogo comercial replicado — migración V33
+
+```text
+client(id, instance_country_id, code, name, commercial_status,
+       source_system, source_version, created_at, updated_at)
+service.client_id UUID NOT NULL REFERENCES client(id)
+post.commercial_status varchar(32) NOT NULL DEFAULT 'ACTIVE'
+sic_com_commercial_event_receipt(... event_id, content_hash,
+                                 commercial_version, processing_status, response_json ...)
+```
+
+`client` y los atributos comerciales recibidos son una réplica operacional local; SIC:COM permanece SoR comercial según el contrato. V33 genera referencias LEGACY desde el nombre comercial existente antes de establecer `service.client_id` como obligatorio. Confirmar la correspondencia con el contrato SIC:COM aprobado y la RC aplicable.
+
+## Gobierno pendiente
+
+COM-DEC-023 congela COM v1.1.3. La migración V28 identifica COM v1.1.4 en su comentario, pero no se encontró una aprobación/RC formal que cierre esa evolución. Mantener esta extensión en estado candidato hasta localizar el CR y completar UAT.

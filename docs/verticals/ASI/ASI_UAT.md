@@ -44,3 +44,14 @@ Usar el flujo UAT estándar del repositorio. v0.5 no agrega migraciones ni cambi
 - Turnos dinámicos por Puesto.
 - Panel de Personal disponible compacto/colapsable.
 - Publicación, filtros, permisos por rol, ficha de persona y detalle de Puesto.
+
+## Puente de identidad SIC:RRHH/DHO — V29, pendiente de cierre end-to-end
+
+- Evento legacy con `employeeId` numérico conserva compatibilidad y deriva el UUID operacional esperado.
+- Evento con `personaId` registra `employee_operational_snapshot.persona_id` sin cambiar el UUID existente.
+- Si `employeeId` y `personaId` discrepan, el evento se rechaza sin modificar referencias.
+- Persona ya vinculada a otro UUID se rechaza hasta una migración controlada.
+- Históricos permanecen con `persona_id=NULL` hasta sincronización válida; no se backfillean por defecto.
+- Solo probar `canonicalEmployeeId` con autorización, migración de referencias y entorno de prueba identificados.
+
+**Estado:** casos añadidos a partir de `cambios/CHANGELOG_DME_RRHH_IDENTIDAD_2026-09-24.md`; el registro indica que falta redesplegar DHO para probar el flujo desde la pantalla. No marcar end-to-end PASS todavía.

@@ -1,6 +1,6 @@
 # SGI: Comando — API / Interface Catalog (INT v0.1)
 
-Todos los IDs siguen SITC-NOM-001 v3.0. Paths son contratos lógicos; host/basePath/auth efectivos los resuelve CORE por Instancia PE + ambiente.
+Este catálogo se originó bajo SITC-NOM-001 v3.0 y el snapshot del 2026-09-21. Se conserva como evidencia histórica; antes de una nueva modificación debe reconciliarse con SITC-NOM-001 v4.1 y el SCENARIO_SNAPSHOT VIGENTE de CORE. Paths son contratos lógicos; host/basePath/auth efectivos los resuelve CORE por Instancia PE + ambiente.
 
 ## `SGI_COM__CORE__00001__V0001` — Resolve transversal Instance/Country context and master catalogs required by SGI: Comando.
 - Origen técnico: `SGI_COM`
@@ -66,6 +66,8 @@ Todos los IDs siguen SITC-NOM-001 v3.0. Paths son contratos lógicos; host/baseP
 ### `SIC_COM__SGI_COM__00001__IF01`
 `POST /api/v1/inbound/sic-com/commercial-events` — Versioned commercial lifecycle event
 
+**Estado de SGI:Comando:** receptor implementado en código y migración V33; contrato/contraparte permanece `DESIGN/BLOCKED` en el registro local hasta aprobar CR, actualizar CORE y completar UAT end-to-end. La especificación más reciente localizada es V3.1; las colecciones Postman son ejemplos, no evidencia de pruebas ejecutadas.
+
 ## `SGI_COM__SIC_RRHH__00001__V0001` — Read employee operational context for territory, assignments and supervision.
 - Origen técnico: `SGI_COM`
 - Destino: `SIC_RRHH`
@@ -101,6 +103,8 @@ Todos los IDs siguen SITC-NOM-001 v3.0. Paths son contratos lógicos; host/baseP
 
 ### `SIC_RRHH__SGI_COM__00001__IF01`
 `POST /api/v1/inbound/sic-rrhh/employee-events` — Employee operational master event
+
+El receptor implementado admite las extensiones opcionales `personaId` y `canonicalEmployeeId`; `employeeId` numérico se mantiene como alias legacy de `personas.id`. La migración V29 agrega `employee_operational_snapshot.persona_id` sin backfill masivo. El contrato y su ID histórico requieren reconciliación formal con la referencia v4.1; la recepción del evento no demuestra UAT end-to-end.
 
 ## `SGI_COM__SIC_RRMM__00001__V0001` — Read expected material resources/inventory for Point/Post operational configuration and Relevo.
 - Origen técnico: `SGI_COM`
