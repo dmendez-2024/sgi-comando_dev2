@@ -1,0 +1,5 @@
+TER v1.0 FROZEN compared with TER v0.1 candidate:
+- Functional application code: UNCHANGED.
+- Other vertical application code: UNCHANGED.
+- Changes are freeze documentation, CORE territorial geometry contract, SITC delta, release/version manifests.
+- Production dynamic map behavior is a frozen integration contract dependent on CORE geometry availability; no functional changes to other verticals were introduced.

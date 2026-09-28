@@ -1,0 +1,44 @@
+{
+  "format": "cajamarca.sitcpack",
+  "formatVersion": "0.2",
+  "packageType": "vertical-delta",
+  "system": "SGI: Comando",
+  "vertical": "SER",
+  "version": "0.7.3",
+  "status": "UAT_CANDIDATE",
+  "asOf": "2026-09-12",
+  "baseFrozen": [
+    {"code":"TER","version":"1.0","status":"FROZEN"},
+    {"code":"COM","version":"1.0","status":"FROZEN"},
+    {"code":"ASI","version":"0.6.5","status":"FROZEN"}
+  ],
+  "changes": [
+    {
+      "type": "fix",
+      "component": "Patrol persistence",
+      "item": "Use canonical patrol_definition/patrol_checkpoint entities and populate required baseline columns point_id, status, version and validation_rule_json during SER CRUD; no parallel patrol_config_* model."
+    },
+    {
+      "type": "migration",
+      "component": "Flyway V16",
+      "item": "Add compatibility defaults and partial unique indexes to canonical patrol tables without changing already-applied V14/V15 checksums."
+    },
+    {
+      "type": "ui",
+      "component": "Configuración > Patrullas",
+      "item": "Rebuild protocol/patrol header hierarchy, co-locate version actions, add explicit immutable/read-only banner and materially increase typography/spacing."
+    },
+    {
+      "type": "decision-preserved",
+      "component": "Versioning",
+      "item": "Published protocol versions remain immutable snapshots; editing creates a new draft version."
+    }
+  ],
+  "externalConnectionsChanged": false,
+  "databaseChanged": true,
+  "backendChanged": true,
+  "frontendChanged": true,
+  "frozenVerticalsChanged": false,
+  "decisionLog": "docs/verticals/SER/SER_DECISIONS.md",
+  "uat": "docs/verticals/SER/SER_UAT.md"
+}

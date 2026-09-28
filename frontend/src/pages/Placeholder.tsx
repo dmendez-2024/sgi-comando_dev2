@@ -1,0 +1,1 @@
+export default function Placeholder({name}:{name:string}){return <div className="panel empty"><div className="emptyicon">✓</div><h2>{name}</h2><p>Contrato funcional definido. Esta vertical se implementa en el siguiente incremento del baseline sin reabrir las decisiones congeladas.</p></div>}

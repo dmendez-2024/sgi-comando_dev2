@@ -1,0 +1,89 @@
+{
+  "product": "SGI: Comando",
+  "programId": "SGI_COM",
+  "release": "CSL v0.2.1 UAT",
+  "date": "2026-09-27",
+  "baseline": "SGI_Comando_CSL_v0.2_Incidentes_UAT.zip",
+  "status": "UAT_CANDIDATE",
+  "standard": "SITC-NOM-001 v4.1",
+  "vertical": {
+    "id": "CSL",
+    "name": "Consola",
+    "previous": "v0.2 UAT_CANDIDATE",
+    "current": "v0.2.1 UAT_CANDIDATE"
+  },
+  "change": {
+    "type": "FUNCTIONAL_UI_UAT",
+    "summary": "Taxonomía de Incidentes sincronizada con Excel 2026-09-27 y jerarquía Categoría → Subcategoría → Incidente"
+  },
+  "scope": {
+    "frontendChanged": true,
+    "backendChanged": false,
+    "databaseChanged": false,
+    "sitcChanged": false,
+    "interconnectionsChanged": false,
+    "evcImplemented": false
+  },
+  "incidentNotification": {
+    "taxonomySource": "docs/reference/Incidentes_2026-09-27.xlsx",
+    "taxonomy": {
+      "categories": 3,
+      "subcategories": 20,
+      "incidentTypes": 90
+    },
+    "hierarchy": [
+      "Categoría",
+      "Subcategoría",
+      "Incidente"
+    ],
+    "specialAbsenceIncidentTypes": [
+      "Inasistencia programada",
+      "Inasistencia efectiva"
+    ],
+    "maxDescriptionImages": 5,
+    "maxResolutionImages": 5,
+    "draftEditable": true,
+    "finalizedEditable": true,
+    "collaboratorLookbackDays": 14,
+    "reassignmentPrecedence": [
+      "Mismo Puesto",
+      "Mismo Punto",
+      "Misma Compañía por cercanía geográfica"
+    ],
+    "uatDataMode": "FRONTEND_DEMO_LOCAL"
+  },
+  "architectureInherited": {
+    "coreScope": "UNIVERSAL",
+    "sgiComScope": "PE_SPECIFIC",
+    "interconnections": 25,
+    "interfaces": 31,
+    "impulseRulesSystemOfRecord": "CORE",
+    "impulseLedgerSystemOfRecord": "SGI_COM_PE"
+  },
+  "validation": {
+    "tsxSyntaxParse": "PASS (23 TS/TSX files, 0 syntax errors)",
+    "taxonomy": "PASS (3 categories / 20 subcategories / 90 incident types)",
+    "backendTree": "BYTE_IDENTICAL",
+    "databaseTree": "BYTE_IDENTICAL",
+    "scriptsTree": "BYTE_IDENTICAL",
+    "sitcTree": "BYTE_IDENTICAL",
+    "viteBuild": "NOT_RUN_NO_NODE_MODULES"
+  },
+  "changeInventory": {
+    "frontendModified": [
+      "frontend/src/components/IncidentNotificationPanel.tsx",
+      "frontend/src/pages/ConsolaMonitor.tsx"
+    ],
+    "frontendAdded": [
+      "frontend/src/data/incidentTaxonomy.ts"
+    ],
+    "documentationAdded": [
+      "README_CSL_v0.2.1.md",
+      "docs/00_HANDOFF_CSL_v0.2.1.md",
+      "docs/CHANGELOG_CSL_v0.2.1_2026-09-27.md",
+      "docs/VALIDATION_CSL_v0.2.1_2026-09-27.md",
+      "docs/spec/REFERENCE_INCIDENT_TAXONOMY.json",
+      "docs/reference/Incidentes_2026-09-27.xlsx"
+    ]
+  }
+}

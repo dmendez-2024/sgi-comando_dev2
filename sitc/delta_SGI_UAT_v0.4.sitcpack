@@ -1,0 +1,13 @@
+{
+  "format": "sitcpack",
+  "version": "0.4",
+  "scenario": "SGI-Comando-UAT-v0.4",
+  "changes": [
+    {"type":"component_update","component":"SGI-00T Territorio","version":"0.2","adds":["Zona","Region","CountrySubdivision","TerritoryAuditEvent","Responsable RRHH","territorial RBAC"]},
+    {"type":"component_update","component":"SGI-06 Asignaciones","version":"0.4","adds":["Draft checkpoint","15m autosave","multi-cell copy/paste/delete","compatibility detail","employee modal","post modal","shift label derivation"]},
+    {"type":"connection","from":"SIC: RRHH","to":"SGI-00T Territorio","contract":"active personnel for Zone/Region responsible selection","sor":"SIC: RRHH"},
+    {"type":"connection","from":"SIC: COM","to":"SGI-06 Asignaciones","contract":"Post + exact Shift definitions + TIER/FHE","sor":"SIC: COM"},
+    {"type":"connection","from":"SMC","to":"SGI-06 Asignaciones","contract":"ID","sor":"SMC"},
+    {"type":"connection","from":"SGI-06 Asignaciones","to":"SGI-07 Relevos","contract":"published plan / ShiftOccurrence / planned employee","sor":"SGI: Comando"}
+  ]
+}

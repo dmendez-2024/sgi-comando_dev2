@@ -1,0 +1,44 @@
+{
+  "format": "sitcpack",
+  "version": "0.1",
+  "project": "SGI: Comando",
+  "vertical": "COM",
+  "verticalVersion": "0.1",
+  "status": "UAT_CANDIDATE",
+  "base": "TER v1.0 FROZEN",
+  "changes": [
+    {
+      "type": "DOMAIN_MODEL",
+      "component": "COM",
+      "description": "Compañía pertenece exactamente a una Zona y puede operar en una o más Regiones de esa Zona."
+    },
+    {
+      "type": "PERSISTENCE",
+      "component": "COM",
+      "description": "company_region + company_version; logo/reseña/version en company."
+    }
+  ],
+  "integrations": [
+    {
+      "source": "SGI: Comando / TER",
+      "target": "SGI: Comando / COM",
+      "data": ["zone_id", "region_id", "Region->Zone"],
+      "sor": "TER"
+    },
+    {
+      "source": "SGI: Comando / SER",
+      "target": "SGI: Comando / COM",
+      "data": ["Servicios activos por Compañía/Región"],
+      "sor": "SER",
+      "implementation": "UAT bridge through ACTIVE Points + CORE/TER subdivision mapping; SER code unchanged"
+    },
+    {
+      "source": "MinIO",
+      "target": "SGI: Comando / COM",
+      "data": ["Company logo"],
+      "status": "TARGET_ARCHITECTURE",
+      "implementation": "COM v0.1 uses isolated LOCAL Data URL adapter to avoid shared-storage changes"
+    }
+  ],
+  "frozenDependencies": ["TER v1.0"]
+}

@@ -1,0 +1,85 @@
+{
+  "format": "cajamarca.sitcpack",
+  "formatVersion": "0.2",
+  "packageType": "vertical-delta",
+  "system": "SGI: Comando",
+  "vertical": "SER",
+  "version": "0.7",
+  "status": "UAT_CANDIDATE",
+  "asOf": "2026-09-12",
+  "baseFrozen": [
+    {
+      "code": "TER",
+      "version": "1.0",
+      "status": "FROZEN"
+    },
+    {
+      "code": "COM",
+      "version": "1.0",
+      "status": "FROZEN"
+    },
+    {
+      "code": "ASI",
+      "version": "0.6.5",
+      "status": "FROZEN"
+    }
+  ],
+  "changes": [
+    {
+      "type": "decision",
+      "component": "Configuración versionable",
+      "item": "Toda configuración publicada es un snapshot inmutable; editar una versión publicada crea un nuevo BORRADOR y el REGESEP vigente solo cambia al publicar."
+    },
+    {
+      "type": "database",
+      "component": "Bitácora versioning",
+      "item": "logbook_protocol becomes a versioned series using series_id and based_on_protocol_id; prior published snapshots remain immutable."
+    },
+    {
+      "type": "frontend",
+      "component": "Configuración > Bitácora",
+      "item": "Published protocols are read-only and expose Crear nueva versión + Historial."
+    },
+    {
+      "type": "database",
+      "component": "Patrullas",
+      "item": "Add patrol_protocol plus configuration-specific patrol_config_definition, patrol_config_checkpoint and patrol_config_checkpoint_rule (physical naming corrected by v0.7.1 to avoid baseline collision)."
+    },
+    {
+      "type": "api",
+      "component": "Patrullas",
+      "item": "CRUD de borradores, fork/versionado, publicación, historial, Patrullas, Hitos, Reglas y Foto estándar."
+    },
+    {
+      "type": "frontend",
+      "component": "Configuración > Patrullas",
+      "item": "Implement hierarchy Punto > Puesto > Protocolo > Patrulla > Reglas using the established light SGI: Comando visual language."
+    },
+    {
+      "type": "decision",
+      "component": "Patrullas matrix",
+      "item": "Support Cerrada/Abierta × Programada/No Programada; Programada has a maximum 1-hour window and Cerrada supports up to 25 Hitos with strict/flexible sequence."
+    },
+    {
+      "type": "decision",
+      "component": "Mixed checkpoint setup",
+      "item": "A closed patrol can mix Hitos created with + Agregar hito en plano and + Agregar hito en campo; each Hito preserves ATS, FIELD or MIXED origin metadata."
+    },
+    {
+      "type": "integration",
+      "component": "ATS",
+      "item": "Office configuration stores normalized plan coordinates bound to the current ATS package/revision; no WGS84 conversion is inferred when the ATS package has no calibration."
+    },
+    {
+      "type": "future-integration",
+      "component": "VISINT",
+      "item": "Checkpoint Foto estándar is versioned and retained as the future comparison reference for Visual Intelligence."
+    }
+  ],
+  "externalConnectionsChanged": false,
+  "databaseChanged": true,
+  "backendChanged": true,
+  "frozenVerticalsChanged": false,
+  "decisionLog": "docs/verticals/SER/SER_DECISIONS.md",
+  "uat": "docs/verticals/SER/SER_UAT.md"
+}

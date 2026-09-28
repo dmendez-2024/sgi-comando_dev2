@@ -1,0 +1,70 @@
+{
+  "format": "cajamarca.sitcpack",
+  "formatVersion": "0.2",
+  "packageType": "vertical-delta",
+  "system": "SGI: Comando",
+  "vertical": "SER",
+  "version": "0.5",
+  "status": "UAT_CANDIDATE",
+  "asOf": "2026-09-10",
+  "baseFrozen": [
+    {
+      "code": "TER",
+      "version": "1.0",
+      "status": "FROZEN"
+    },
+    {
+      "code": "COM",
+      "version": "1.0",
+      "status": "FROZEN"
+    },
+    {
+      "code": "ASI",
+      "version": "0.6.5",
+      "status": "FROZEN"
+    }
+  ],
+  "changes": [
+    {
+      "type": "backend",
+      "component": "ATS package import",
+      "item": "Store and version .ats packages per Point; parse manifest/model/plan and materialize plan image"
+    },
+    {
+      "type": "api",
+      "component": "ATS endpoints",
+      "item": "GET current/history/plan/download and POST binary upload per Point"
+    },
+    {
+      "type": "database",
+      "component": "ats_point_package",
+      "item": "Persist package metadata, original .ats, plan image and revision history"
+    },
+    {
+      "type": "database",
+      "component": "post_operational_config",
+      "item": "Add ats_package_id plus normalized ats_location_x/y"
+    },
+    {
+      "type": "frontend",
+      "component": "Configuración > ATS",
+      "item": "Real .ats file picker, upload, metadata, plan viewer, history and download"
+    },
+    {
+      "type": "frontend",
+      "component": "Configuración > Puestos",
+      "item": "Select Puesto coordinates directly on real plan imported from current .ats"
+    },
+    {
+      "type": "decision",
+      "component": "Índice de Riesgo de Punto",
+      "item": "Imported only when explicitly present in .ats; SGI never infers it"
+    }
+  ],
+  "externalConnectionsChanged": true,
+  "databaseChanged": true,
+  "backendChanged": true,
+  "frozenVerticalsChanged": false,
+  "decisionLog": "docs/verticals/SER/SER_DECISIONS.md",
+  "uat": "docs/verticals/SER/SER_UAT.md"
+}

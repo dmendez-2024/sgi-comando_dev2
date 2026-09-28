@@ -1,0 +1,53 @@
+{
+  "format": "sitcpack",
+  "version": "TER-v1.0-FROZEN",
+  "scenario": "SGI-Comando-TER-v1.0",
+  "scope": "TER only",
+  "status": "FROZEN",
+  "changes": [
+    {
+      "type": "component_update",
+      "component": "TER - Territorio",
+      "version": "1.0",
+      "state": "FROZEN",
+      "adds": [
+        "Zone/Region operational hierarchy",
+        "territorial audit and operational scopes",
+        "dynamic administrative subdivision terminology from CORE",
+        "dynamic country map from CORE subdivision geometries and TER assignments"
+      ]
+    },
+    {
+      "type": "connection",
+      "from": "CORE",
+      "to": "TER - Territorio",
+      "contract": "country metadata + subdivision type/labels + official subdivision catalog + geometry/polygons + territorial dataset version by instance_country_id",
+      "sor": "CORE"
+    },
+    {
+      "type": "connection",
+      "from": "SIC: RRHH",
+      "to": "TER - Territorio",
+      "contract": "active personnel candidates for Zone/Region responsible",
+      "sor": "SIC: RRHH"
+    },
+    {
+      "type": "connection",
+      "from": "TER - Territorio",
+      "to": "SGI Operational RBAC",
+      "contract": "Zone/Region/Company hierarchy and territorial scopes",
+      "sor": "TER"
+    },
+    {
+      "type": "boundary",
+      "component": "COM - Compañías",
+      "rule": "TER reads Companies by Region; Company creation/editing and Region assignment remain COM"
+    },
+    {
+      "type": "decision",
+      "id": "TER-DEC-CORE-GEO-001",
+      "state": "FROZEN",
+      "rule": "CORE owns official territorial type, catalog, geometry and versioning; TER assigns official subdivisions to operational Zones/Regions and renders map dynamically"
+    }
+  ]
+}

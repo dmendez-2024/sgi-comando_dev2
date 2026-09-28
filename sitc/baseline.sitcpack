@@ -1,0 +1,36 @@
+{
+  "format": "cajamarca.sitcpack",
+  "formatVersion": "0.1",
+  "packageType": "baseline",
+  "system": "SGI: Comando",
+  "uatVersion": "0.2.2",
+  "architecture": {
+    "style": "modular-monolith",
+    "frontend": "React 19.2 + TypeScript 6",
+    "backend": "Java 25 + Quarkus",
+    "database": "PostgreSQL 17",
+    "objectStorage": "MinIO",
+    "deployment": "Docker Compose"
+  },
+  "components": [
+    "SGI: Comando Web",
+    "SGI: Comando API",
+    "PostgreSQL",
+    "MinIO",
+    "Transactional Outbox"
+  ],
+  "externalSystems": [
+    "CORE",
+    "SIC: COM",
+    "SIC: RRHH",
+    "SIC: RRMM",
+    "ATS",
+    "STC",
+    "SMC",
+    "SGI: Cliente",
+    "SGI: Monitoreo",
+    "SGI: Agente",
+    "SGI: Operador"
+  ],
+  "isolationBoundary": "instance_country_id"
+}

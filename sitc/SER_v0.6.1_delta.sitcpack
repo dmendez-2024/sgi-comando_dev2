@@ -1,0 +1,70 @@
+{
+  "format": "cajamarca.sitcpack",
+  "formatVersion": "0.2",
+  "packageType": "vertical-delta",
+  "system": "SGI: Comando",
+  "vertical": "SER",
+  "version": "0.6.1",
+  "status": "UAT_CANDIDATE",
+  "asOf": "2026-09-12",
+  "baseFrozen": [
+    {
+      "code": "TER",
+      "version": "1.0",
+      "status": "FROZEN"
+    },
+    {
+      "code": "COM",
+      "version": "1.0",
+      "status": "FROZEN"
+    },
+    {
+      "code": "ASI",
+      "version": "0.6.5",
+      "status": "FROZEN"
+    }
+  ],
+  "changes": [
+    {
+      "type": "database",
+      "component": "logbook_accreditation",
+      "item": "Persist explicit Acreditaciones under each Bitácora protocol, owning identification/verification logic, authorization, capture and list rules"
+    },
+    {
+      "type": "database",
+      "component": "logbook_protocol_field",
+      "item": "Add accreditation_id so Identification/Verification fields and standard images belong to one Acreditación"
+    },
+    {
+      "type": "api",
+      "component": "Bitácora Acreditaciones",
+      "item": "Create/save/delete Acreditaciones and create fields under selected Acreditación"
+    },
+    {
+      "type": "frontend",
+      "component": "Configuración > Bitácora",
+      "item": "Expose Acreditaciones explicitly between Protocolo and the rule editor; allow multiple Acreditaciones per Protocolo"
+    },
+    {
+      "type": "decision",
+      "component": "Bitácora hierarchy",
+      "item": "Canonical hierarchy becomes Punto > Puesto > Protocolo > Acreditación > Reglas/Campos"
+    },
+    {
+      "type": "decision",
+      "component": "Evidencias",
+      "item": "Evidencias remains a derived summary of Identification/Verification evidence requirements inside the selected Acreditación"
+    },
+    {
+      "type": "decision",
+      "component": "Trazabilidad",
+      "item": "Future execution must record protocol/version and accreditation_id"
+    }
+  ],
+  "externalConnectionsChanged": false,
+  "databaseChanged": true,
+  "backendChanged": true,
+  "frozenVerticalsChanged": false,
+  "decisionLog": "docs/verticals/SER/SER_DECISIONS.md",
+  "uat": "docs/verticals/SER/SER_UAT.md"
+}

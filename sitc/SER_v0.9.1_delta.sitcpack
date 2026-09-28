@@ -1,0 +1,33 @@
+{
+  "format": "cajamarca.sitcpack",
+  "formatVersion": "0.2",
+  "packageType": "vertical-delta",
+  "system": "SGI: Comando",
+  "vertical": "SER",
+  "version": "0.9.1",
+  "status": "UAT_CANDIDATE",
+  "asOf": "2026-09-19",
+  "baseFrozen": [
+    {"code":"TER","version":"1.0","status":"FROZEN"},
+    {"code":"COM","version":"1.1.3","status":"FROZEN"}
+  ],
+  "changes": [
+    {"type":"workflow","component":"Servicios / Coordinación","item":"Authorized coordination roles can pull an assigned Service back to logical Kaibil for reassignment; Kaibil remains a coordination inbox, never the operating Company."},
+    {"type":"ownership","component":"Service configuration","item":"ATS, Posts, Bitácora, Patrullas, Consignas and all Point configuration remain bound to the same point_id and survive Company reassignment unchanged."},
+    {"type":"assignment-impact","component":"ASI","item":"Future personnel assignments for the Service are removed from active planning but preserved historically; current in-progress shifts are retained until completion."},
+    {"type":"transition-guard","component":"ASI","item":"point.operational_transition_until prevents the destination Company from assigning coverage before the inherited current shift ends."},
+    {"type":"authorization","component":"Service return/reassignment","item":"Presidencia/Director Nacional national; Director Zonal by Zone; Jefe Regional by Region. Reassignment from Kaibil does not require destination Coordinator approval."},
+    {"type":"audit","component":"service_company_assignment_event","item":"Audit RETURN_TO_COORDINATION and REASSIGNMENT_FROM_COORDINATION including released future assignments and retained active assignments."},
+    {"type":"migration","component":"Flyway V20","item":"Add operational transition timestamp and extend service Company assignment event audit for return-to-coordination."}
+  ],
+  "connections": [
+    {"from":"SIC: COM","to":"SGI: Comando / SER","direction":"inbound","data":["service","client","point","posts","commercial status"],"sor":"SIC: COM"},
+    {"from":"SER","to":"ASI","direction":"internal","data":["operating Company changes","service transition cutoff","future assignment release"],"sor":"SER for operating Company; ASI for assignment history"}
+  ],
+  "databaseChanged": true,
+  "backendChanged": true,
+  "frontendChanged": true,
+  "frozenVerticalsChanged": false,
+  "decisionLog": "docs/verticals/SER/SER_DECISIONS.md",
+  "uat": "docs/CHANGELOG_UAT_SER_v0.9.1.md"
+}

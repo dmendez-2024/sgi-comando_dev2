@@ -1,0 +1,2249 @@
+[
+  {
+    "interconnectionRef": "SGI_COM__CORE__00001",
+    "interconnectionId": "SGI_COM__CORE__00001__V0001",
+    "sourceProgramId": "SGI_COM",
+    "targetProgramId": "CORE",
+    "purpose": "Resolve transversal Instance/Country context and master catalogs required by SGI: Comando.",
+    "trigger": "Application startup, context refresh, territorial/company/calendar lookup.",
+    "interactionType": "REST_API",
+    "mode": "SYNC",
+    "protocol": "HTTPS",
+    "contractVersion": "v1",
+    "request": {},
+    "response": {},
+    "dataOwnerProgramId": "CORE",
+    "authentication": "SERVICE_TOKEN",
+    "authorizationScope": "service-to-service",
+    "timeoutPolicy": {
+      "timeout": "5s"
+    },
+    "retryPolicy": {
+      "policy": "2 attempts; exponential backoff on transport/5xx when idempotent"
+    },
+    "idempotency": "NO",
+    "criticality": "CRITICAL",
+    "observability": {
+      "correlationId": true,
+      "structuredLogs": true,
+      "latencyMetric": true,
+      "resultMetric": true,
+      "interconnectionIdHeader": true
+    },
+    "errorModel": [
+      "VALIDATION_ERROR",
+      "AUTHENTICATION_ERROR",
+      "AUTHORIZATION_ERROR",
+      "TIMEOUT",
+      "DEPENDENCY_UNAVAILABLE",
+      "CONTRACT_MISMATCH",
+      "TECHNICAL_ERROR"
+    ],
+    "legacyTarget": false,
+    "targetImplementationStatus": "BLOCKED",
+    "status": "UAT",
+    "businessDataFlow": "CORE master data -> SGI_COM (SGI_COM initiates reads)",
+    "interfaces": [
+      {
+        "interfaceId": "SGI_COM__CORE__00001__IF01",
+        "method": "GET",
+        "path": "/api/v1/instance-countries/{instanceCountryId}/context",
+        "purpose": "Instance/Country, locale, language, timezone, currency, units and formats",
+        "contentType": "application/json",
+        "request": {},
+        "response": {}
+      },
+      {
+        "interfaceId": "SGI_COM__CORE__00001__IF02",
+        "method": "GET",
+        "path": "/api/v1/instance-countries/{instanceCountryId}/territorial-structure",
+        "purpose": "Official subdivision type/catalog/geometries/dataset version",
+        "contentType": "application/json",
+        "request": {},
+        "response": {}
+      },
+      {
+        "interfaceId": "SGI_COM__CORE__00001__IF03",
+        "method": "GET",
+        "path": "/api/v1/instance-countries/{instanceCountryId}/companies",
+        "purpose": "Canonical Company catalog/identity/logo/status/source version",
+        "contentType": "application/json",
+        "request": {},
+        "response": {}
+      },
+      {
+        "interfaceId": "SGI_COM__CORE__00001__IF04",
+        "method": "GET",
+        "path": "/api/v1/instance-countries/{instanceCountryId}/calendar-regulatory-profile",
+        "purpose": "Calendar/holidays and regulatory profile/version/effective dates",
+        "contentType": "application/json",
+        "request": {},
+        "response": {}
+      }
+    ],
+    "bindingTemplate": {
+      "scope": "INSTANCE_PE_ENVIRONMENT",
+      "requiredEffectiveFields": [
+        "baseUrl",
+        "authentication.authType",
+        "authentication.credentialRef",
+        "timeoutMs",
+        "maxRetries",
+        "configurationVersion"
+      ],
+      "secretsInSitcpack": false,
+      "activationOnImport": false,
+      "cachePolicy": {
+        "defaultTtlSeconds": 300,
+        "allowStaleSeconds": 3600
+      }
+    },
+    "notes": "CORE is SoR. SGI_COM stores references/snapshots only where operational traceability requires it."
+  },
+  {
+    "interconnectionRef": "SGI_COM__CORE__00002",
+    "interconnectionId": "SGI_COM__CORE__00002__V0001",
+    "sourceProgramId": "SGI_COM",
+    "targetProgramId": "CORE",
+    "purpose": "Resolve the effective binding of any interconnection by interconnectionId + Instancia PE + environment.",
+    "trigger": "Generic interconnection module cache miss/expiry/invalidation.",
+    "interactionType": "REST_API",
+    "mode": "SYNC",
+    "protocol": "HTTPS",
+    "contractVersion": "v1",
+    "request": {},
+    "response": {},
+    "dataOwnerProgramId": "CORE",
+    "authentication": "SERVICE_TOKEN",
+    "authorizationScope": "service-to-service",
+    "timeoutPolicy": {
+      "timeout": "5s"
+    },
+    "retryPolicy": {
+      "policy": "2 attempts; exponential backoff on transport/5xx when idempotent"
+    },
+    "idempotency": "NO",
+    "criticality": "CRITICAL",
+    "observability": {
+      "correlationId": true,
+      "structuredLogs": true,
+      "latencyMetric": true,
+      "resultMetric": true,
+      "interconnectionIdHeader": true
+    },
+    "errorModel": [
+      "VALIDATION_ERROR",
+      "AUTHENTICATION_ERROR",
+      "AUTHORIZATION_ERROR",
+      "TIMEOUT",
+      "DEPENDENCY_UNAVAILABLE",
+      "CONTRACT_MISMATCH",
+      "TECHNICAL_ERROR"
+    ],
+    "legacyTarget": false,
+    "targetImplementationStatus": "BLOCKED",
+    "status": "UAT",
+    "businessDataFlow": "SGI_COM -> CORE resolver; CORE returns effective non-secret binding",
+    "interfaces": [
+      {
+        "interfaceId": "SGI_COM__CORE__00002__IF01",
+        "method": "GET",
+        "path": "/api/v1/interconnections/{interconnectionId}/resolve",
+        "purpose": "Return target binding for one interface and context",
+        "contentType": "application/json",
+        "request": {
+          "query": [
+            "instanceCountryId",
+            "environment",
+            "interfaceId"
+          ]
+        },
+        "response": {
+          "fields": [
+            "targetProgramId",
+            "interactionType",
+            "mode",
+            "protocol",
+            "baseUrl",
+            "method",
+            "path",
+            "authType",
+            "credentialRef",
+            "timeoutMs",
+            "maxRetries",
+            "contractVersion",
+            "configurationVersion",
+            "cacheTtlSeconds",
+            "allowStaleSeconds",
+            "status"
+          ]
+        }
+      }
+    ],
+    "bindingTemplate": {
+      "scope": "INSTANCE_PE_ENVIRONMENT",
+      "requiredEffectiveFields": [
+        "baseUrl",
+        "authentication.authType",
+        "authentication.credentialRef",
+        "timeoutMs",
+        "maxRetries",
+        "configurationVersion"
+      ],
+      "secretsInSitcpack": false,
+      "activationOnImport": false,
+      "cachePolicy": {
+        "defaultTtlSeconds": 300,
+        "allowStaleSeconds": 3600
+      }
+    },
+    "notes": "Bootstrap exception: CORE resolver base URL is supplied by runtime configuration. CORE is not a proxy for functional traffic."
+  },
+  {
+    "interconnectionRef": "SGI_COM__IDENT__00001",
+    "interconnectionId": "SGI_COM__IDENT__00001__V0001",
+    "sourceProgramId": "SGI_COM",
+    "targetProgramId": "IDENT",
+    "purpose": "Validate service/user identity and obtain authorization context for SGI: Comando.",
+    "trigger": "Authenticated request/session establishment or authorization refresh.",
+    "interactionType": "REST_API",
+    "mode": "SYNC",
+    "protocol": "HTTPS",
+    "contractVersion": "v1",
+    "request": {},
+    "response": {},
+    "dataOwnerProgramId": "IDENT",
+    "authentication": "SERVICE_TOKEN",
+    "authorizationScope": "service-to-service",
+    "timeoutPolicy": {
+      "timeout": "5s"
+    },
+    "retryPolicy": {
+      "policy": "2 attempts; exponential backoff on transport/5xx when idempotent"
+    },
+    "idempotency": "NO",
+    "criticality": "CRITICAL",
+    "observability": {
+      "correlationId": true,
+      "structuredLogs": true,
+      "latencyMetric": true,
+      "resultMetric": true,
+      "interconnectionIdHeader": true
+    },
+    "errorModel": [
+      "VALIDATION_ERROR",
+      "AUTHENTICATION_ERROR",
+      "AUTHORIZATION_ERROR",
+      "TIMEOUT",
+      "DEPENDENCY_UNAVAILABLE",
+      "CONTRACT_MISMATCH",
+      "TECHNICAL_ERROR"
+    ],
+    "legacyTarget": false,
+    "targetImplementationStatus": "BLOCKED",
+    "status": "DESIGN",
+    "businessDataFlow": "IDENT identity/authorization data -> SGI_COM (SGI_COM initiates validation)",
+    "interfaces": [
+      {
+        "interfaceId": "SGI_COM__IDENT__00001__IF01",
+        "method": "POST",
+        "path": "/api/v1/identity/context",
+        "purpose": "Token introspection / identity and authorization context",
+        "contentType": "application/json",
+        "request": {
+          "fields": [
+            "accessToken or token reference"
+          ]
+        },
+        "response": {
+          "fields": [
+            "subject",
+            "roles",
+            "permissions",
+            "instanceCountryId",
+            "scopes",
+            "expiresAt"
+          ]
+        }
+      }
+    ],
+    "bindingTemplate": {
+      "scope": "INSTANCE_PE_ENVIRONMENT",
+      "requiredEffectiveFields": [
+        "baseUrl",
+        "authentication.authType",
+        "authentication.credentialRef",
+        "timeoutMs",
+        "maxRetries",
+        "configurationVersion"
+      ],
+      "secretsInSitcpack": false,
+      "activationOnImport": false,
+      "cachePolicy": {
+        "defaultTtlSeconds": 300,
+        "allowStaleSeconds": 3600
+      }
+    },
+    "notes": "IDENT is master of credentials/MFA/roles/permissions; SIC_RRHH remains SoR of labor identity."
+  },
+  {
+    "interconnectionRef": "SGI_COM__SIC_COM__00001",
+    "interconnectionId": "SGI_COM__SIC_COM__00001__V0001",
+    "sourceProgramId": "SGI_COM",
+    "targetProgramId": "SIC_COM",
+    "purpose": "Reconcile the commercial master required for physical-security operation.",
+    "trigger": "Startup/reconciliation window or detected gap in commercial event sequence.",
+    "interactionType": "REST_API",
+    "mode": "SYNC",
+    "protocol": "HTTPS",
+    "contractVersion": "v1",
+    "request": {},
+    "response": {},
+    "dataOwnerProgramId": "SIC_COM",
+    "authentication": "SERVICE_TOKEN",
+    "authorizationScope": "service-to-service",
+    "timeoutPolicy": {
+      "timeout": "5s"
+    },
+    "retryPolicy": {
+      "policy": "2 attempts; exponential backoff on transport/5xx when idempotent"
+    },
+    "idempotency": "NO",
+    "criticality": "HIGH",
+    "observability": {
+      "correlationId": true,
+      "structuredLogs": true,
+      "latencyMetric": true,
+      "resultMetric": true,
+      "interconnectionIdHeader": true
+    },
+    "errorModel": [
+      "VALIDATION_ERROR",
+      "AUTHENTICATION_ERROR",
+      "AUTHORIZATION_ERROR",
+      "TIMEOUT",
+      "DEPENDENCY_UNAVAILABLE",
+      "CONTRACT_MISMATCH",
+      "TECHNICAL_ERROR"
+    ],
+    "legacyTarget": true,
+    "targetImplementationStatus": "MANUAL_PENDING",
+    "status": "DESIGN",
+    "businessDataFlow": "SIC_COM master data -> SGI_COM (SGI_COM initiates reconciliation)",
+    "interfaces": [
+      {
+        "interfaceId": "SGI_COM__SIC_COM__00001__IF01",
+        "method": "GET",
+        "path": "/api/v1/sgi-export/services",
+        "purpose": "Paged/versioned Client, Service, Point, Post, shifts, FHE and TIER snapshot",
+        "contentType": "application/json",
+        "request": {
+          "query": [
+            "instanceCountryId",
+            "updatedSince",
+            "page",
+            "size"
+          ]
+        },
+        "response": {
+          "entities": [
+            "Client",
+            "Service",
+            "Point",
+            "Post",
+            "ShiftTemplate",
+            "FHE",
+            "TIER",
+            "commercialVersion"
+          ]
+        }
+      }
+    ],
+    "bindingTemplate": {
+      "scope": "INSTANCE_PE_ENVIRONMENT",
+      "requiredEffectiveFields": [
+        "baseUrl",
+        "authentication.authType",
+        "authentication.credentialRef",
+        "timeoutMs",
+        "maxRetries",
+        "configurationVersion"
+      ],
+      "secretsInSitcpack": false,
+      "activationOnImport": false,
+      "cachePolicy": {
+        "defaultTtlSeconds": 300,
+        "allowStaleSeconds": 3600
+      }
+    },
+    "notes": "SIC_COM does not assign operating Company. Legacy endpoint must be implemented manually by DEV."
+  },
+  {
+    "interconnectionRef": "SIC_COM__SGI_COM__00001",
+    "interconnectionId": "SIC_COM__SGI_COM__00001__V0001",
+    "sourceProgramId": "SIC_COM",
+    "targetProgramId": "SGI_COM",
+    "purpose": "Apply SIC_COM commercial Client/Service/Point/Post lifecycle changes in SGI: Comando.",
+    "trigger": "CLIENT/SERVICE/POINT/POST created, updated, suspended or terminated in SIC_COM.",
+    "interactionType": "WEBHOOK",
+    "mode": "ASYNC",
+    "protocol": "HTTPS",
+    "contractVersion": "v1",
+    "request": {},
+    "response": {},
+    "dataOwnerProgramId": "SIC_COM",
+    "authentication": "SERVICE_TOKEN",
+    "authorizationScope": "service-to-service",
+    "timeoutPolicy": {
+      "timeout": "5s"
+    },
+    "retryPolicy": {
+      "policy": "2 attempts; exponential backoff on transport/5xx when idempotent"
+    },
+    "idempotency": "KEY:eventId",
+    "criticality": "HIGH",
+    "observability": {
+      "correlationId": true,
+      "structuredLogs": true,
+      "latencyMetric": true,
+      "resultMetric": true,
+      "interconnectionIdHeader": true
+    },
+    "errorModel": [
+      "VALIDATION_ERROR",
+      "AUTHENTICATION_ERROR",
+      "AUTHORIZATION_ERROR",
+      "TIMEOUT",
+      "DEPENDENCY_UNAVAILABLE",
+      "CONTRACT_MISMATCH",
+      "TECHNICAL_ERROR"
+    ],
+    "legacyTarget": false,
+    "targetImplementationStatus": "BLOCKED",
+    "status": "DESIGN",
+    "businessDataFlow": "SIC_COM -> SGI_COM",
+    "interfaces": [
+      {
+        "interfaceId": "SIC_COM__SGI_COM__00001__IF01",
+        "method": "POST",
+        "path": "/api/v1/inbound/sic-com/commercial-events",
+        "purpose": "Versioned commercial lifecycle event",
+        "contentType": "application/json",
+        "request": {
+          "fields": [
+            "eventId",
+            "eventType",
+            "instanceCountryId",
+            "commercialVersion",
+            "occurredAt",
+            "payload",
+            "client.code",
+            "client.name",
+            "service.code",
+            "service.name",
+            "service.clientCode",
+            "points[].code",
+            "points[].posts[].code",
+            "points[].posts[].rotation.code",
+            "points[].posts[].rotation.cycleLengthDays",
+            "points[].posts[].shifts[].code",
+            "points[].posts[].shifts[].name",
+            "points[].posts[].shifts[].startTime",
+            "points[].posts[].shifts[].endTime",
+            "points[].posts[].shifts[].dayMask",
+            "points[].posts[].shifts[].active"
+          ]
+        },
+        "response": {
+          "fields": [
+            "status",
+            "eventId",
+            "commercialVersion",
+            "client.sgiId",
+            "service.sgiId",
+            "points[].sgiId",
+            "points[].posts[].sgiId",
+            "correlationId"
+          ]
+        }
+      }
+    ],
+    "bindingTemplate": {
+      "scope": "INSTANCE_PE_ENVIRONMENT",
+      "requiredEffectiveFields": [
+        "baseUrl",
+        "authentication.authType",
+        "authentication.credentialRef",
+        "timeoutMs",
+        "maxRetries",
+        "configurationVersion"
+      ],
+      "secretsInSitcpack": false,
+      "activationOnImport": false,
+      "cachePolicy": {
+        "defaultTtlSeconds": 300,
+        "allowStaleSeconds": 3600
+      }
+    },
+    "notes": "SGI_COM has a local inbound adapter for the complete commercial catalog event. SIC_COM orders are outside this contract. The local UAT adapter validates Bearer SERVICE_TOKEN through a runtime credential_ref and does not persist secrets. Activation remains pending the effective CORE binding and service identity for UAT.",
+    "legacySource": true,
+    "sourceImplementationStatus": "MANUAL_PENDING"
+  },
+  {
+    "interconnectionRef": "SGI_COM__SIC_RRHH__00001",
+    "interconnectionId": "SGI_COM__SIC_RRHH__00001__V0001",
+    "sourceProgramId": "SGI_COM",
+    "targetProgramId": "SIC_RRHH",
+    "purpose": "Read employee operational context for territory, assignments and supervision.",
+    "trigger": "Personnel list/detail/elegibility evaluation or reconciliation.",
+    "interactionType": "REST_API",
+    "mode": "SYNC",
+    "protocol": "HTTPS",
+    "contractVersion": "v1",
+    "request": {},
+    "response": {},
+    "dataOwnerProgramId": "SIC_RRHH",
+    "authentication": "SERVICE_TOKEN",
+    "authorizationScope": "service-to-service",
+    "timeoutPolicy": {
+      "timeout": "5s"
+    },
+    "retryPolicy": {
+      "policy": "2 attempts; exponential backoff on transport/5xx when idempotent"
+    },
+    "idempotency": "NO",
+    "criticality": "HIGH",
+    "observability": {
+      "correlationId": true,
+      "structuredLogs": true,
+      "latencyMetric": true,
+      "resultMetric": true,
+      "interconnectionIdHeader": true
+    },
+    "errorModel": [
+      "VALIDATION_ERROR",
+      "AUTHENTICATION_ERROR",
+      "AUTHORIZATION_ERROR",
+      "TIMEOUT",
+      "DEPENDENCY_UNAVAILABLE",
+      "CONTRACT_MISMATCH",
+      "TECHNICAL_ERROR"
+    ],
+    "legacyTarget": true,
+    "targetImplementationStatus": "MANUAL_PENDING",
+    "status": "DESIGN",
+    "businessDataFlow": "SIC_RRHH master data -> SGI_COM (SGI_COM initiates reads)",
+    "interfaces": [
+      {
+        "interfaceId": "SGI_COM__SIC_RRHH__00001__IF01",
+        "method": "GET",
+        "path": "/api/v1/employees",
+        "purpose": "Personnel by company/domain with employment state and pagination",
+        "contentType": "application/json",
+        "request": {
+          "query": [
+            "instanceCountryId",
+            "companyId",
+            "domain=SF",
+            "q",
+            "page",
+            "size"
+          ]
+        },
+        "response": {
+          "fields": [
+            "employeeId",
+            "identity",
+            "role",
+            "companyId",
+            "employmentStatus",
+            "skills",
+            "sourceVersion"
+          ]
+        }
+      },
+      {
+        "interfaceId": "SGI_COM__SIC_RRHH__00001__IF02",
+        "method": "GET",
+        "path": "/api/v1/employees/{employeeId}/work-context",
+        "purpose": "Skills, certifications and unavailability intervals",
+        "contentType": "application/json",
+        "request": {},
+        "response": {
+          "fields": [
+            "employeeId",
+            "companyId",
+            "role",
+            "skills",
+            "vacations",
+            "medicalLeave",
+            "unavailability",
+            "sourceVersion"
+          ]
+        }
+      }
+    ],
+    "bindingTemplate": {
+      "scope": "INSTANCE_PE_ENVIRONMENT",
+      "requiredEffectiveFields": [
+        "baseUrl",
+        "authentication.authType",
+        "authentication.credentialRef",
+        "timeoutMs",
+        "maxRetries",
+        "configurationVersion"
+      ],
+      "secretsInSitcpack": false,
+      "activationOnImport": false,
+      "cachePolicy": {
+        "defaultTtlSeconds": 300,
+        "allowStaleSeconds": 3600
+      }
+    },
+    "notes": "Legacy RRHH endpoints require manual DEV implementation. SGI_COM must not query RRHH DB directly."
+  },
+  {
+    "interconnectionRef": "SGI_COM__SIC_RRHH__00002",
+    "interconnectionId": "SGI_COM__SIC_RRHH__00002__V0001",
+    "sourceProgramId": "SGI_COM",
+    "targetProgramId": "SIC_RRHH",
+    "purpose": "Submit auditable operational labor events produced by SGI.",
+    "trigger": "Confirmed absence/tardiness/extra coverage/company transfer/change-required event.",
+    "interactionType": "REST_API",
+    "mode": "ASYNC",
+    "protocol": "HTTPS",
+    "contractVersion": "v1",
+    "request": {},
+    "response": {},
+    "dataOwnerProgramId": "SGI_COM",
+    "authentication": "SERVICE_TOKEN",
+    "authorizationScope": "service-to-service",
+    "timeoutPolicy": {
+      "timeout": "5s"
+    },
+    "retryPolicy": {
+      "policy": "2 attempts; exponential backoff on transport/5xx when idempotent"
+    },
+    "idempotency": "KEY:eventId",
+    "criticality": "HIGH",
+    "observability": {
+      "correlationId": true,
+      "structuredLogs": true,
+      "latencyMetric": true,
+      "resultMetric": true,
+      "interconnectionIdHeader": true
+    },
+    "errorModel": [
+      "VALIDATION_ERROR",
+      "AUTHENTICATION_ERROR",
+      "AUTHORIZATION_ERROR",
+      "TIMEOUT",
+      "DEPENDENCY_UNAVAILABLE",
+      "CONTRACT_MISMATCH",
+      "TECHNICAL_ERROR"
+    ],
+    "legacyTarget": true,
+    "targetImplementationStatus": "MANUAL_PENDING",
+    "status": "DESIGN",
+    "businessDataFlow": "SGI_COM operational fact -> SIC_RRHH labor processing",
+    "interfaces": [
+      {
+        "interfaceId": "SGI_COM__SIC_RRHH__00002__IF01",
+        "method": "POST",
+        "path": "/api/v1/sgi-operational-events",
+        "purpose": "Idempotent labor consequence/request event",
+        "contentType": "application/json",
+        "request": {
+          "fields": [
+            "eventId",
+            "instanceCountryId",
+            "employeeId",
+            "eventType",
+            "effectiveAt",
+            "companyId",
+            "pointId",
+            "postId",
+            "shiftOccurrenceId",
+            "evidenceRefs",
+            "correlationId"
+          ]
+        },
+        "response": {
+          "fields": [
+            "accepted",
+            "rrhhReferenceId",
+            "status"
+          ]
+        }
+      }
+    ],
+    "bindingTemplate": {
+      "scope": "INSTANCE_PE_ENVIRONMENT",
+      "requiredEffectiveFields": [
+        "baseUrl",
+        "authentication.authType",
+        "authentication.credentialRef",
+        "timeoutMs",
+        "maxRetries",
+        "configurationVersion"
+      ],
+      "secretsInSitcpack": false,
+      "activationOnImport": false,
+      "cachePolicy": {
+        "defaultTtlSeconds": 300,
+        "allowStaleSeconds": 3600
+      }
+    },
+    "notes": "SGI_COM reports fact/request; RRHH owns labor/payroll consequence."
+  },
+  {
+    "interconnectionRef": "SIC_RRHH__SGI_COM__00001",
+    "interconnectionId": "SIC_RRHH__SGI_COM__00001__V0001",
+    "sourceProgramId": "SIC_RRHH",
+    "targetProgramId": "SGI_COM",
+    "purpose": "Notify changes to employee/company/status/skills/unavailability used operationally by SGI.",
+    "trigger": "Labor master data changes in SIC_RRHH.",
+    "interactionType": "WEBHOOK",
+    "mode": "ASYNC",
+    "protocol": "HTTPS",
+    "contractVersion": "v1",
+    "request": {},
+    "response": {},
+    "dataOwnerProgramId": "SIC_RRHH",
+    "authentication": "SERVICE_TOKEN",
+    "authorizationScope": "service-to-service",
+    "timeoutPolicy": {
+      "timeout": "5s"
+    },
+    "retryPolicy": {
+      "policy": "2 attempts; exponential backoff on transport/5xx when idempotent"
+    },
+    "idempotency": "KEY:eventId",
+    "criticality": "HIGH",
+    "observability": {
+      "correlationId": true,
+      "structuredLogs": true,
+      "latencyMetric": true,
+      "resultMetric": true,
+      "interconnectionIdHeader": true
+    },
+    "errorModel": [
+      "VALIDATION_ERROR",
+      "AUTHENTICATION_ERROR",
+      "AUTHORIZATION_ERROR",
+      "TIMEOUT",
+      "DEPENDENCY_UNAVAILABLE",
+      "CONTRACT_MISMATCH",
+      "TECHNICAL_ERROR"
+    ],
+    "legacyTarget": false,
+    "targetImplementationStatus": "BLOCKED",
+    "status": "DESIGN",
+    "businessDataFlow": "SIC_RRHH -> SGI_COM",
+    "interfaces": [
+      {
+        "interfaceId": "SIC_RRHH__SGI_COM__00001__IF01",
+        "method": "POST",
+        "path": "/api/v1/inbound/sic-rrhh/employee-events",
+        "purpose": "Employee operational master event",
+        "contentType": "application/json",
+        "request": {
+          "fields": [
+            "eventId",
+            "eventType",
+            "employeeId",
+            "companyId",
+            "effectiveAt",
+            "sourceVersion",
+            "payload"
+          ]
+        },
+        "response": {
+          "fields": [
+            "accepted",
+            "correlationId"
+          ]
+        }
+      }
+    ],
+    "bindingTemplate": {
+      "scope": "INSTANCE_PE_ENVIRONMENT",
+      "requiredEffectiveFields": [
+        "baseUrl",
+        "authentication.authType",
+        "authentication.credentialRef",
+        "timeoutMs",
+        "maxRetries",
+        "configurationVersion"
+      ],
+      "secretsInSitcpack": false,
+      "activationOnImport": false,
+      "cachePolicy": {
+        "defaultTtlSeconds": 300,
+        "allowStaleSeconds": 3600
+      }
+    },
+    "notes": "Optional event acceleration; SGI_COM reconciliation contract remains authoritative recovery path.",
+    "legacySource": true,
+    "sourceImplementationStatus": "MANUAL_PENDING"
+  },
+  {
+    "interconnectionRef": "SGI_COM__SIC_RRMM__00001",
+    "interconnectionId": "SGI_COM__SIC_RRMM__00001__V0001",
+    "sourceProgramId": "SGI_COM",
+    "targetProgramId": "SIC_RRMM",
+    "purpose": "Read expected material resources/inventory for Point/Post operational configuration and Relevo.",
+    "trigger": "Point configuration or Relevo inventory comparison.",
+    "interactionType": "REST_API",
+    "mode": "SYNC",
+    "protocol": "HTTPS",
+    "contractVersion": "v1",
+    "request": {},
+    "response": {},
+    "dataOwnerProgramId": "SIC_RRMM",
+    "authentication": "SERVICE_TOKEN",
+    "authorizationScope": "service-to-service",
+    "timeoutPolicy": {
+      "timeout": "5s"
+    },
+    "retryPolicy": {
+      "policy": "2 attempts; exponential backoff on transport/5xx when idempotent"
+    },
+    "idempotency": "NO",
+    "criticality": "HIGH",
+    "observability": {
+      "correlationId": true,
+      "structuredLogs": true,
+      "latencyMetric": true,
+      "resultMetric": true,
+      "interconnectionIdHeader": true
+    },
+    "errorModel": [
+      "VALIDATION_ERROR",
+      "AUTHENTICATION_ERROR",
+      "AUTHORIZATION_ERROR",
+      "TIMEOUT",
+      "DEPENDENCY_UNAVAILABLE",
+      "CONTRACT_MISMATCH",
+      "TECHNICAL_ERROR"
+    ],
+    "legacyTarget": false,
+    "targetImplementationStatus": "BLOCKED",
+    "status": "DESIGN",
+    "businessDataFlow": "SIC_RRMM material master -> SGI_COM (SGI_COM initiates reads)",
+    "interfaces": [
+      {
+        "interfaceId": "SGI_COM__SIC_RRMM__00001__IF01",
+        "method": "GET",
+        "path": "/api/v1/operational-assets/posts/{postId}/expected",
+        "purpose": "Expected assets/materials assigned to Post",
+        "contentType": "application/json",
+        "request": {},
+        "response": {
+          "fields": [
+            "assetId",
+            "productId",
+            "code",
+            "description",
+            "condition",
+            "assignmentStatus",
+            "sourceVersion"
+          ]
+        }
+      },
+      {
+        "interfaceId": "SGI_COM__SIC_RRMM__00001__IF02",
+        "method": "GET",
+        "path": "/api/v1/operational-assets/points/{pointId}",
+        "purpose": "Material resources visible for Point configuration",
+        "contentType": "application/json",
+        "request": {},
+        "response": {
+          "fields": [
+            "assetId",
+            "postId",
+            "productId",
+            "condition",
+            "status",
+            "sourceVersion"
+          ]
+        }
+      }
+    ],
+    "bindingTemplate": {
+      "scope": "INSTANCE_PE_ENVIRONMENT",
+      "requiredEffectiveFields": [
+        "baseUrl",
+        "authentication.authType",
+        "authentication.credentialRef",
+        "timeoutMs",
+        "maxRetries",
+        "configurationVersion"
+      ],
+      "secretsInSitcpack": false,
+      "activationOnImport": false,
+      "cachePolicy": {
+        "defaultTtlSeconds": 300,
+        "allowStaleSeconds": 3600
+      }
+    },
+    "notes": "SIC_RRMM generic/interconnection side to be implemented in its own program chat."
+  },
+  {
+    "interconnectionRef": "SIC_RRMM__SGI_COM__00001",
+    "interconnectionId": "SIC_RRMM__SGI_COM__00001__V0001",
+    "sourceProgramId": "SIC_RRMM",
+    "targetProgramId": "SGI_COM",
+    "purpose": "Provide SIC_RRMM with operational Company Point/Post catalog for MARE requirements.",
+    "trigger": "REQ-01 requester selects MARE and needs valid SGI Company Point/Post.",
+    "interactionType": "REST_API",
+    "mode": "SYNC",
+    "protocol": "HTTPS",
+    "contractVersion": "v1",
+    "request": {},
+    "response": {},
+    "dataOwnerProgramId": "SGI_COM",
+    "authentication": "SERVICE_TOKEN",
+    "authorizationScope": "service-to-service",
+    "timeoutPolicy": {
+      "timeout": "5s"
+    },
+    "retryPolicy": {
+      "policy": "2 attempts; exponential backoff on transport/5xx when idempotent"
+    },
+    "idempotency": "NO",
+    "criticality": "HIGH",
+    "observability": {
+      "correlationId": true,
+      "structuredLogs": true,
+      "latencyMetric": true,
+      "resultMetric": true,
+      "interconnectionIdHeader": true
+    },
+    "errorModel": [
+      "VALIDATION_ERROR",
+      "AUTHENTICATION_ERROR",
+      "AUTHORIZATION_ERROR",
+      "TIMEOUT",
+      "DEPENDENCY_UNAVAILABLE",
+      "CONTRACT_MISMATCH",
+      "TECHNICAL_ERROR"
+    ],
+    "legacyTarget": false,
+    "targetImplementationStatus": "BLOCKED",
+    "status": "UAT",
+    "businessDataFlow": "SGI_COM operational catalog -> SIC_RRMM (SIC_RRMM initiates reads)",
+    "interfaces": [
+      {
+        "interfaceId": "SIC_RRMM__SGI_COM__00001__IF01",
+        "method": "GET",
+        "path": "/api/v1/integration/rrmm/companies/{companyId}/points",
+        "purpose": "Points currently operated by Company",
+        "contentType": "application/json",
+        "request": {},
+        "response": {
+          "fields": [
+            "pointId",
+            "code",
+            "name",
+            "clientName",
+            "city",
+            "operationalStatus",
+            "snapshotVersion"
+          ]
+        }
+      },
+      {
+        "interfaceId": "SIC_RRMM__SGI_COM__00001__IF02",
+        "method": "GET",
+        "path": "/api/v1/integration/rrmm/points/{pointId}/posts",
+        "purpose": "Posts under selected Point",
+        "contentType": "application/json",
+        "request": {},
+        "response": {
+          "fields": [
+            "postId",
+            "code",
+            "name",
+            "format",
+            "tier",
+            "configStatus",
+            "snapshotVersion"
+          ]
+        }
+      }
+    ],
+    "bindingTemplate": {
+      "scope": "INSTANCE_PE_ENVIRONMENT",
+      "requiredEffectiveFields": [
+        "baseUrl",
+        "authentication.authType",
+        "authentication.credentialRef",
+        "timeoutMs",
+        "maxRetries",
+        "configurationVersion"
+      ],
+      "secretsInSitcpack": false,
+      "activationOnImport": false,
+      "cachePolicy": {
+        "defaultTtlSeconds": 300,
+        "allowStaleSeconds": 3600
+      }
+    },
+    "notes": "Target provider belongs to SGI_COM; source-side generic module will be added later in SIC_RRMM."
+  },
+  {
+    "interconnectionRef": "ATS__SGI_COM__00001",
+    "interconnectionId": "ATS__SGI_COM__00001__V0001",
+    "sourceProgramId": "ATS",
+    "targetProgramId": "SGI_COM",
+    "purpose": "Deliver a published .ats security architecture package to SGI: Comando/REGESEP.",
+    "trigger": "ATS publishes a design revision selected for a Point.",
+    "interactionType": "FILE",
+    "mode": "ASYNC",
+    "protocol": "HTTPS",
+    "contractVersion": "v1",
+    "request": {},
+    "response": {},
+    "dataOwnerProgramId": "ATS",
+    "authentication": "SERVICE_TOKEN",
+    "authorizationScope": "service-to-service",
+    "timeoutPolicy": {
+      "timeout": "5s"
+    },
+    "retryPolicy": {
+      "policy": "2 attempts; exponential backoff on transport/5xx when idempotent"
+    },
+    "idempotency": "KEY:pointId+atsRevision+checksum",
+    "criticality": "HIGH",
+    "observability": {
+      "correlationId": true,
+      "structuredLogs": true,
+      "latencyMetric": true,
+      "resultMetric": true,
+      "interconnectionIdHeader": true
+    },
+    "errorModel": [
+      "VALIDATION_ERROR",
+      "AUTHENTICATION_ERROR",
+      "AUTHORIZATION_ERROR",
+      "TIMEOUT",
+      "DEPENDENCY_UNAVAILABLE",
+      "CONTRACT_MISMATCH",
+      "TECHNICAL_ERROR"
+    ],
+    "legacyTarget": false,
+    "targetImplementationStatus": "READY",
+    "status": "UAT",
+    "businessDataFlow": "ATS published design -> SGI_COM",
+    "interfaces": [
+      {
+        "interfaceId": "ATS__SGI_COM__00001__IF01",
+        "method": "POST",
+        "path": "/api/v1/inbound/ats/packages",
+        "purpose": "Upload versioned .ats package and manifest",
+        "contentType": "application/octet-stream",
+        "request": {
+          "contentType": "application/octet-stream",
+          "metadata": [
+            "pointId",
+            "atsRevision",
+            "checksum",
+            "publishedAt"
+          ]
+        },
+        "response": {
+          "fields": [
+            "accepted",
+            "sgiPackageId",
+            "checksumVerified"
+          ]
+        }
+      }
+    ],
+    "bindingTemplate": {
+      "scope": "INSTANCE_PE_ENVIRONMENT",
+      "requiredEffectiveFields": [
+        "baseUrl",
+        "authentication.authType",
+        "authentication.credentialRef",
+        "timeoutMs",
+        "maxRetries",
+        "configurationVersion"
+      ],
+      "secretsInSitcpack": false,
+      "activationOnImport": false,
+      "cachePolicy": {
+        "defaultTtlSeconds": 300,
+        "allowStaleSeconds": 3600
+      }
+    },
+    "notes": "Existing file-based ATS import is normalized under a canonical interconnection ID."
+  },
+  {
+    "interconnectionRef": "SGI_COM__ATS__00001",
+    "interconnectionId": "SGI_COM__ATS__00001__V0001",
+    "sourceProgramId": "SGI_COM",
+    "targetProgramId": "ATS",
+    "purpose": "Reconcile operational observations about security components/vulnerabilities with ATS design.",
+    "trigger": "Approved component-security finding or vulnerability requires technical reconciliation.",
+    "interactionType": "REST_API",
+    "mode": "ASYNC",
+    "protocol": "HTTPS",
+    "contractVersion": "v1",
+    "request": {},
+    "response": {},
+    "dataOwnerProgramId": "SGI_COM",
+    "authentication": "SERVICE_TOKEN",
+    "authorizationScope": "service-to-service",
+    "timeoutPolicy": {
+      "timeout": "5s"
+    },
+    "retryPolicy": {
+      "policy": "2 attempts; exponential backoff on transport/5xx when idempotent"
+    },
+    "idempotency": "KEY:eventId",
+    "criticality": "MEDIUM",
+    "observability": {
+      "correlationId": true,
+      "structuredLogs": true,
+      "latencyMetric": true,
+      "resultMetric": true,
+      "interconnectionIdHeader": true
+    },
+    "errorModel": [
+      "VALIDATION_ERROR",
+      "AUTHENTICATION_ERROR",
+      "AUTHORIZATION_ERROR",
+      "TIMEOUT",
+      "DEPENDENCY_UNAVAILABLE",
+      "CONTRACT_MISMATCH",
+      "TECHNICAL_ERROR"
+    ],
+    "legacyTarget": false,
+    "targetImplementationStatus": "BLOCKED",
+    "status": "DESIGN",
+    "businessDataFlow": "SGI_COM operational observation -> ATS",
+    "interfaces": [
+      {
+        "interfaceId": "SGI_COM__ATS__00001__IF01",
+        "method": "POST",
+        "path": "/api/v1/sgi-operational-observations",
+        "purpose": "Operational observation linked to ATS component/location",
+        "contentType": "application/json",
+        "request": {
+          "fields": [
+            "eventId",
+            "pointId",
+            "atsRevision",
+            "componentId",
+            "observationType",
+            "description",
+            "evidenceRefs",
+            "occurredAt"
+          ]
+        },
+        "response": {
+          "fields": [
+            "accepted",
+            "atsReferenceId"
+          ]
+        }
+      }
+    ],
+    "bindingTemplate": {
+      "scope": "INSTANCE_PE_ENVIRONMENT",
+      "requiredEffectiveFields": [
+        "baseUrl",
+        "authentication.authType",
+        "authentication.credentialRef",
+        "timeoutMs",
+        "maxRetries",
+        "configurationVersion"
+      ],
+      "secretsInSitcpack": false,
+      "activationOnImport": false,
+      "cachePolicy": {
+        "defaultTtlSeconds": 300,
+        "allowStaleSeconds": 3600
+      }
+    },
+    "notes": "Future contract; no effect on current ATS/SGI frozen behavior until reopened and tested."
+  },
+  {
+    "interconnectionRef": "SGI_COM__SMC__00001",
+    "interconnectionId": "SGI_COM__SMC__00001__V0001",
+    "sourceProgramId": "SGI_COM",
+    "targetProgramId": "SMC",
+    "purpose": "Publish normalized operational facts used by SMC to calculate ID/KPIs.",
+    "trigger": "Relevant Relevo/Patrulla/Consigna/Bitácora/coverage fact is confirmed.",
+    "interactionType": "EVENT",
+    "mode": "ASYNC",
+    "protocol": "HTTPS",
+    "contractVersion": "v1",
+    "request": {},
+    "response": {},
+    "dataOwnerProgramId": "SGI_COM",
+    "authentication": "SERVICE_TOKEN",
+    "authorizationScope": "service-to-service",
+    "timeoutPolicy": {
+      "timeout": "5s"
+    },
+    "retryPolicy": {
+      "policy": "2 attempts; exponential backoff on transport/5xx when idempotent"
+    },
+    "idempotency": "KEY:eventId",
+    "criticality": "HIGH",
+    "observability": {
+      "correlationId": true,
+      "structuredLogs": true,
+      "latencyMetric": true,
+      "resultMetric": true,
+      "interconnectionIdHeader": true
+    },
+    "errorModel": [
+      "VALIDATION_ERROR",
+      "AUTHENTICATION_ERROR",
+      "AUTHORIZATION_ERROR",
+      "TIMEOUT",
+      "DEPENDENCY_UNAVAILABLE",
+      "CONTRACT_MISMATCH",
+      "TECHNICAL_ERROR"
+    ],
+    "legacyTarget": true,
+    "targetImplementationStatus": "MANUAL_PENDING",
+    "status": "DESIGN",
+    "businessDataFlow": "SGI_COM operational facts -> SMC",
+    "interfaces": [
+      {
+        "interfaceId": "SGI_COM__SMC__00001__IF01",
+        "method": "POST",
+        "path": "/api/v1/operational-facts",
+        "purpose": "Idempotent normalized KPI fact",
+        "contentType": "application/json",
+        "request": {
+          "fields": [
+            "eventId",
+            "instanceCountryId",
+            "employeeId",
+            "factType",
+            "occurredAt",
+            "pointId",
+            "postId",
+            "shiftId",
+            "value",
+            "metadata",
+            "correlationId"
+          ]
+        },
+        "response": {
+          "fields": [
+            "accepted",
+            "smcFactId"
+          ]
+        }
+      }
+    ],
+    "bindingTemplate": {
+      "scope": "INSTANCE_PE_ENVIRONMENT",
+      "requiredEffectiveFields": [
+        "baseUrl",
+        "authentication.authType",
+        "authentication.credentialRef",
+        "timeoutMs",
+        "maxRetries",
+        "configurationVersion"
+      ],
+      "secretsInSitcpack": false,
+      "activationOnImport": false,
+      "cachePolicy": {
+        "defaultTtlSeconds": 300,
+        "allowStaleSeconds": 3600
+      }
+    },
+    "notes": "SMC legacy adapter requires manual DEV implementation."
+  },
+  {
+    "interconnectionRef": "SGI_COM__SMC__00002",
+    "interconnectionId": "SGI_COM__SMC__00002__V0001",
+    "sourceProgramId": "SGI_COM",
+    "targetProgramId": "SMC",
+    "purpose": "Read current employee ID/KPIs used by Assignments and operational views.",
+    "trigger": "Assignment eligibility/detail or KPI refresh.",
+    "interactionType": "REST_API",
+    "mode": "SYNC",
+    "protocol": "HTTPS",
+    "contractVersion": "v1",
+    "request": {},
+    "response": {},
+    "dataOwnerProgramId": "SMC",
+    "authentication": "SERVICE_TOKEN",
+    "authorizationScope": "service-to-service",
+    "timeoutPolicy": {
+      "timeout": "5s"
+    },
+    "retryPolicy": {
+      "policy": "2 attempts; exponential backoff on transport/5xx when idempotent"
+    },
+    "idempotency": "NO",
+    "criticality": "HIGH",
+    "observability": {
+      "correlationId": true,
+      "structuredLogs": true,
+      "latencyMetric": true,
+      "resultMetric": true,
+      "interconnectionIdHeader": true
+    },
+    "errorModel": [
+      "VALIDATION_ERROR",
+      "AUTHENTICATION_ERROR",
+      "AUTHORIZATION_ERROR",
+      "TIMEOUT",
+      "DEPENDENCY_UNAVAILABLE",
+      "CONTRACT_MISMATCH",
+      "TECHNICAL_ERROR"
+    ],
+    "legacyTarget": true,
+    "targetImplementationStatus": "MANUAL_PENDING",
+    "status": "DESIGN",
+    "businessDataFlow": "SMC KPI result -> SGI_COM (SGI_COM initiates read)",
+    "interfaces": [
+      {
+        "interfaceId": "SGI_COM__SMC__00002__IF01",
+        "method": "GET",
+        "path": "/api/v1/employees/{employeeId}/kpis/current",
+        "purpose": "Current ID and consumable KPI snapshot",
+        "contentType": "application/json",
+        "request": {},
+        "response": {
+          "fields": [
+            "employeeId",
+            "idScore",
+            "kpis",
+            "calculatedAt",
+            "sourceVersion"
+          ]
+        }
+      }
+    ],
+    "bindingTemplate": {
+      "scope": "INSTANCE_PE_ENVIRONMENT",
+      "requiredEffectiveFields": [
+        "baseUrl",
+        "authentication.authType",
+        "authentication.credentialRef",
+        "timeoutMs",
+        "maxRetries",
+        "configurationVersion"
+      ],
+      "secretsInSitcpack": false,
+      "activationOnImport": false,
+      "cachePolicy": {
+        "defaultTtlSeconds": 300,
+        "allowStaleSeconds": 3600
+      }
+    },
+    "notes": "ID below TIER is warning, not assignment blocker."
+  },
+  {
+    "interconnectionRef": "SGI_COM__STC__00001",
+    "interconnectionId": "SGI_COM__STC__00001__V0001",
+    "sourceProgramId": "SGI_COM",
+    "targetProgramId": "STC",
+    "purpose": "Create a work/case in STC for Incidents, Requirements and Activities while preserving SGI origin.",
+    "trigger": "SGI record requires workflow resolution outside SGI.",
+    "interactionType": "REST_API",
+    "mode": "ASYNC",
+    "protocol": "HTTPS",
+    "contractVersion": "v1",
+    "request": {},
+    "response": {},
+    "dataOwnerProgramId": "SGI_COM",
+    "authentication": "SERVICE_TOKEN",
+    "authorizationScope": "service-to-service",
+    "timeoutPolicy": {
+      "timeout": "5s"
+    },
+    "retryPolicy": {
+      "policy": "2 attempts; exponential backoff on transport/5xx when idempotent"
+    },
+    "idempotency": "KEY:eventId",
+    "criticality": "HIGH",
+    "observability": {
+      "correlationId": true,
+      "structuredLogs": true,
+      "latencyMetric": true,
+      "resultMetric": true,
+      "interconnectionIdHeader": true
+    },
+    "errorModel": [
+      "VALIDATION_ERROR",
+      "AUTHENTICATION_ERROR",
+      "AUTHORIZATION_ERROR",
+      "TIMEOUT",
+      "DEPENDENCY_UNAVAILABLE",
+      "CONTRACT_MISMATCH",
+      "TECHNICAL_ERROR"
+    ],
+    "legacyTarget": true,
+    "targetImplementationStatus": "MANUAL_PENDING",
+    "status": "DESIGN",
+    "businessDataFlow": "SGI_COM origin -> STC workflow",
+    "interfaces": [
+      {
+        "interfaceId": "SGI_COM__STC__00001__IF01",
+        "method": "POST",
+        "path": "/api/v1/tasks",
+        "purpose": "Create idempotent STC work case from SGI origin",
+        "contentType": "application/json",
+        "request": {
+          "fields": [
+            "eventId",
+            "instanceCountryId",
+            "originType",
+            "originId",
+            "author",
+            "clientId",
+            "serviceId",
+            "pointId",
+            "postId",
+            "description",
+            "priority",
+            "evidenceRefs",
+            "occurredAt"
+          ]
+        },
+        "response": {
+          "fields": [
+            "stcTaskId",
+            "status"
+          ]
+        }
+      }
+    ],
+    "bindingTemplate": {
+      "scope": "INSTANCE_PE_ENVIRONMENT",
+      "requiredEffectiveFields": [
+        "baseUrl",
+        "authentication.authType",
+        "authentication.credentialRef",
+        "timeoutMs",
+        "maxRetries",
+        "configurationVersion"
+      ],
+      "secretsInSitcpack": false,
+      "activationOnImport": false,
+      "cachePolicy": {
+        "defaultTtlSeconds": 300,
+        "allowStaleSeconds": 3600
+      }
+    },
+    "notes": "STC is SoR of resolution workflow; SGI preserves operational origin and correlation."
+  },
+  {
+    "interconnectionRef": "SGI_COM__STC__00002",
+    "interconnectionId": "SGI_COM__STC__00002__V0001",
+    "sourceProgramId": "SGI_COM",
+    "targetProgramId": "STC",
+    "purpose": "Read workflow status/progress/closure for an SGI-originated STC case.",
+    "trigger": "SGI/Client read model refresh or monitoring.",
+    "interactionType": "REST_API",
+    "mode": "SYNC",
+    "protocol": "HTTPS",
+    "contractVersion": "v1",
+    "request": {},
+    "response": {},
+    "dataOwnerProgramId": "STC",
+    "authentication": "SERVICE_TOKEN",
+    "authorizationScope": "service-to-service",
+    "timeoutPolicy": {
+      "timeout": "5s"
+    },
+    "retryPolicy": {
+      "policy": "2 attempts; exponential backoff on transport/5xx when idempotent"
+    },
+    "idempotency": "NO",
+    "criticality": "MEDIUM",
+    "observability": {
+      "correlationId": true,
+      "structuredLogs": true,
+      "latencyMetric": true,
+      "resultMetric": true,
+      "interconnectionIdHeader": true
+    },
+    "errorModel": [
+      "VALIDATION_ERROR",
+      "AUTHENTICATION_ERROR",
+      "AUTHORIZATION_ERROR",
+      "TIMEOUT",
+      "DEPENDENCY_UNAVAILABLE",
+      "CONTRACT_MISMATCH",
+      "TECHNICAL_ERROR"
+    ],
+    "legacyTarget": true,
+    "targetImplementationStatus": "MANUAL_PENDING",
+    "status": "DESIGN",
+    "businessDataFlow": "STC workflow state -> SGI_COM (SGI_COM initiates read)",
+    "interfaces": [
+      {
+        "interfaceId": "SGI_COM__STC__00002__IF01",
+        "method": "GET",
+        "path": "/api/v1/tasks/{taskId}",
+        "purpose": "Current STC task status/result",
+        "contentType": "application/json",
+        "request": {},
+        "response": {
+          "fields": [
+            "stcTaskId",
+            "status",
+            "responsible",
+            "progress",
+            "closedAt",
+            "result",
+            "sourceVersion"
+          ]
+        }
+      }
+    ],
+    "bindingTemplate": {
+      "scope": "INSTANCE_PE_ENVIRONMENT",
+      "requiredEffectiveFields": [
+        "baseUrl",
+        "authentication.authType",
+        "authentication.credentialRef",
+        "timeoutMs",
+        "maxRetries",
+        "configurationVersion"
+      ],
+      "secretsInSitcpack": false,
+      "activationOnImport": false,
+      "cachePolicy": {
+        "defaultTtlSeconds": 300,
+        "allowStaleSeconds": 3600
+      }
+    },
+    "notes": "Polling contract avoids requiring an inbound callback from legacy STC; a future event contract may be added if chosen."
+  },
+  {
+    "interconnectionRef": "SGI_COM__VISINT__00001",
+    "interconnectionId": "SGI_COM__VISINT__00001__V0001",
+    "sourceProgramId": "SGI_COM",
+    "targetProgramId": "VISINT",
+    "purpose": "Submit task evidence/photos for visual validation by VISINT.",
+    "trigger": "SGI_OPR task evidence is received and correlated in SGI_COM.",
+    "interactionType": "REST_API",
+    "mode": "ASYNC",
+    "protocol": "HTTPS",
+    "contractVersion": "v1",
+    "request": {},
+    "response": {},
+    "dataOwnerProgramId": "SGI_COM",
+    "authentication": "SERVICE_TOKEN",
+    "authorizationScope": "service-to-service",
+    "timeoutPolicy": {
+      "timeout": "5s"
+    },
+    "retryPolicy": {
+      "policy": "2 attempts; exponential backoff on transport/5xx when idempotent"
+    },
+    "idempotency": "KEY:visintReviewId",
+    "criticality": "HIGH",
+    "observability": {
+      "correlationId": true,
+      "structuredLogs": true,
+      "latencyMetric": true,
+      "resultMetric": true,
+      "interconnectionIdHeader": true
+    },
+    "errorModel": [
+      "VALIDATION_ERROR",
+      "AUTHENTICATION_ERROR",
+      "AUTHORIZATION_ERROR",
+      "TIMEOUT",
+      "DEPENDENCY_UNAVAILABLE",
+      "CONTRACT_MISMATCH",
+      "TECHNICAL_ERROR"
+    ],
+    "legacyTarget": true,
+    "targetImplementationStatus": "MANUAL_PENDING",
+    "status": "DESIGN",
+    "businessDataFlow": "SGI_COM evidence/context -> VISINT",
+    "interfaces": [
+      {
+        "interfaceId": "SGI_COM__VISINT__00001__IF01",
+        "method": "POST",
+        "path": "/api/v1/visual-reviews",
+        "purpose": "Create VISINT review",
+        "contentType": "application/json",
+        "request": {
+          "fields": [
+            "visintReviewId",
+            "taskExecutionId",
+            "taskType",
+            "employeeId",
+            "pointId",
+            "postId",
+            "evidenceRefs",
+            "standardReference",
+            "correlationId"
+          ]
+        },
+        "response": {
+          "fields": [
+            "reviewId",
+            "accepted",
+            "status"
+          ]
+        }
+      }
+    ],
+    "bindingTemplate": {
+      "scope": "INSTANCE_PE_ENVIRONMENT",
+      "requiredEffectiveFields": [
+        "baseUrl",
+        "authentication.authType",
+        "authentication.credentialRef",
+        "timeoutMs",
+        "maxRetries",
+        "configurationVersion"
+      ],
+      "secretsInSitcpack": false,
+      "activationOnImport": false,
+      "cachePolicy": {
+        "defaultTtlSeconds": 300,
+        "allowStaleSeconds": 3600
+      }
+    },
+    "notes": "No direct SGI_OPR->VISINT. VISINT does not award Impulsos."
+  },
+  {
+    "interconnectionRef": "SGI_COM__VISINT__00002",
+    "interconnectionId": "SGI_COM__VISINT__00002__V0001",
+    "sourceProgramId": "SGI_COM",
+    "targetProgramId": "VISINT",
+    "purpose": "Read VISINT review result for Impulse eligibility and audit.",
+    "trigger": "Pending visual review is polled/reconciled until terminal result.",
+    "interactionType": "REST_API",
+    "mode": "SYNC",
+    "protocol": "HTTPS",
+    "contractVersion": "v1",
+    "request": {},
+    "response": {},
+    "dataOwnerProgramId": "VISINT",
+    "authentication": "SERVICE_TOKEN",
+    "authorizationScope": "service-to-service",
+    "timeoutPolicy": {
+      "timeout": "5s"
+    },
+    "retryPolicy": {
+      "policy": "2 attempts; exponential backoff on transport/5xx when idempotent"
+    },
+    "idempotency": "NO",
+    "criticality": "HIGH",
+    "observability": {
+      "correlationId": true,
+      "structuredLogs": true,
+      "latencyMetric": true,
+      "resultMetric": true,
+      "interconnectionIdHeader": true
+    },
+    "errorModel": [
+      "VALIDATION_ERROR",
+      "AUTHENTICATION_ERROR",
+      "AUTHORIZATION_ERROR",
+      "TIMEOUT",
+      "DEPENDENCY_UNAVAILABLE",
+      "CONTRACT_MISMATCH",
+      "TECHNICAL_ERROR"
+    ],
+    "legacyTarget": true,
+    "targetImplementationStatus": "MANUAL_PENDING",
+    "status": "DESIGN",
+    "businessDataFlow": "VISINT assessment -> SGI_COM (SGI_COM initiates read)",
+    "interfaces": [
+      {
+        "interfaceId": "SGI_COM__VISINT__00002__IF01",
+        "method": "GET",
+        "path": "/api/v1/visual-reviews/{reviewId}",
+        "purpose": "PASS/FAIL/ERROR result and technical metadata",
+        "contentType": "application/json",
+        "request": {},
+        "response": {
+          "fields": [
+            "reviewId",
+            "status",
+            "result",
+            "score",
+            "confidence",
+            "technicalFindings",
+            "reviewedAt",
+            "correlationId"
+          ]
+        }
+      }
+    ],
+    "bindingTemplate": {
+      "scope": "INSTANCE_PE_ENVIRONMENT",
+      "requiredEffectiveFields": [
+        "baseUrl",
+        "authentication.authType",
+        "authentication.credentialRef",
+        "timeoutMs",
+        "maxRetries",
+        "configurationVersion"
+      ],
+      "secretsInSitcpack": false,
+      "activationOnImport": false,
+      "cachePolicy": {
+        "defaultTtlSeconds": 300,
+        "allowStaleSeconds": 3600
+      }
+    },
+    "notes": "PASS enables SGI_COM probabilistic Impulse evaluation; PASS does not guarantee an award."
+  },
+  {
+    "interconnectionRef": "SGI_OPR__SGI_COM__00001",
+    "interconnectionId": "SGI_OPR__SGI_COM__00001__V0001",
+    "sourceProgramId": "SGI_OPR",
+    "targetProgramId": "SGI_COM",
+    "purpose": "Synchronize the mobile operator runtime context/configuration required for the active assignment.",
+    "trigger": "Login, Relevo completion, context refresh, reconnect or offline cache refresh.",
+    "interactionType": "REST_API",
+    "mode": "SYNC",
+    "protocol": "HTTPS",
+    "contractVersion": "v1",
+    "request": {},
+    "response": {},
+    "dataOwnerProgramId": "SGI_COM",
+    "authentication": "SERVICE_TOKEN",
+    "authorizationScope": "service-to-service",
+    "timeoutPolicy": {
+      "timeout": "5s"
+    },
+    "retryPolicy": {
+      "policy": "2 attempts; exponential backoff on transport/5xx when idempotent"
+    },
+    "idempotency": "NO",
+    "criticality": "CRITICAL",
+    "observability": {
+      "correlationId": true,
+      "structuredLogs": true,
+      "latencyMetric": true,
+      "resultMetric": true,
+      "interconnectionIdHeader": true
+    },
+    "errorModel": [
+      "VALIDATION_ERROR",
+      "AUTHENTICATION_ERROR",
+      "AUTHORIZATION_ERROR",
+      "TIMEOUT",
+      "DEPENDENCY_UNAVAILABLE",
+      "CONTRACT_MISMATCH",
+      "TECHNICAL_ERROR"
+    ],
+    "legacyTarget": false,
+    "targetImplementationStatus": "BLOCKED",
+    "status": "DESIGN",
+    "businessDataFlow": "SGI_COM operational config -> SGI_OPR (SGI_OPR initiates sync)",
+    "interfaces": [
+      {
+        "interfaceId": "SGI_OPR__SGI_COM__00001__IF01",
+        "method": "GET",
+        "path": "/api/v1/operator/runtime",
+        "purpose": "Assignment, Point/Post, protocols, consignments, patrols, bitacora and pending messages",
+        "contentType": "application/json",
+        "request": {
+          "query": [
+            "employeeId",
+            "sinceVersion"
+          ]
+        },
+        "response": {
+          "fields": [
+            "assignment",
+            "point",
+            "post",
+            "schedule",
+            "bitacoraProtocols",
+            "patrols",
+            "consignments",
+            "regesepVersion",
+            "pendingMessages",
+            "configurationVersion"
+          ]
+        }
+      }
+    ],
+    "bindingTemplate": {
+      "scope": "INSTANCE_PE_ENVIRONMENT",
+      "requiredEffectiveFields": [
+        "baseUrl",
+        "authentication.authType",
+        "authentication.credentialRef",
+        "timeoutMs",
+        "maxRetries",
+        "configurationVersion"
+      ],
+      "secretsInSitcpack": false,
+      "activationOnImport": false,
+      "cachePolicy": {
+        "defaultTtlSeconds": 300,
+        "allowStaleSeconds": 3600
+      }
+    },
+    "notes": "SGI_OPR source-side generic module will be implemented separately. Response can carry VISINT/Impulse notifications without a reverse HTTP interconnection.",
+    "sourceImplementationStatus": "BLOCKED"
+  },
+  {
+    "interconnectionRef": "SGI_OPR__SGI_COM__00002",
+    "interconnectionId": "SGI_OPR__SGI_COM__00002__V0001",
+    "sourceProgramId": "SGI_OPR",
+    "targetProgramId": "SGI_COM",
+    "purpose": "Submit idempotent operational executions, novelties and evidence captured by SGI: Operador.",
+    "trigger": "Relevo/Bitácora/Patrulla/Consigna/Novedad/Pánico execution or offline synchronization.",
+    "interactionType": "REST_API",
+    "mode": "ASYNC",
+    "protocol": "HTTPS",
+    "contractVersion": "v1",
+    "request": {},
+    "response": {},
+    "dataOwnerProgramId": "SGI_COM",
+    "authentication": "SERVICE_TOKEN",
+    "authorizationScope": "service-to-service",
+    "timeoutPolicy": {
+      "timeout": "5s"
+    },
+    "retryPolicy": {
+      "policy": "2 attempts; exponential backoff on transport/5xx when idempotent"
+    },
+    "idempotency": "KEY:eventId",
+    "criticality": "CRITICAL",
+    "observability": {
+      "correlationId": true,
+      "structuredLogs": true,
+      "latencyMetric": true,
+      "resultMetric": true,
+      "interconnectionIdHeader": true
+    },
+    "errorModel": [
+      "VALIDATION_ERROR",
+      "AUTHENTICATION_ERROR",
+      "AUTHORIZATION_ERROR",
+      "TIMEOUT",
+      "DEPENDENCY_UNAVAILABLE",
+      "CONTRACT_MISMATCH",
+      "TECHNICAL_ERROR"
+    ],
+    "legacyTarget": false,
+    "targetImplementationStatus": "BLOCKED",
+    "status": "DESIGN",
+    "businessDataFlow": "SGI_OPR executions/evidence -> SGI_COM",
+    "interfaces": [
+      {
+        "interfaceId": "SGI_OPR__SGI_COM__00002__IF01",
+        "method": "POST",
+        "path": "/api/v1/operator/executions",
+        "purpose": "Batch/idempotent operational events and evidence references",
+        "contentType": "application/json",
+        "request": {
+          "fields": [
+            "batchId",
+            "events[]",
+            "employeeId",
+            "deviceId",
+            "instanceCountryId",
+            "capturedAt",
+            "correlationId"
+          ]
+        },
+        "response": {
+          "fields": [
+            "acknowledgedEventIds",
+            "rejectedEvents",
+            "serverVersion",
+            "pendingMessages"
+          ]
+        }
+      }
+    ],
+    "bindingTemplate": {
+      "scope": "INSTANCE_PE_ENVIRONMENT",
+      "requiredEffectiveFields": [
+        "baseUrl",
+        "authentication.authType",
+        "authentication.credentialRef",
+        "timeoutMs",
+        "maxRetries",
+        "configurationVersion"
+      ],
+      "secretsInSitcpack": false,
+      "activationOnImport": false,
+      "cachePolicy": {
+        "defaultTtlSeconds": 300,
+        "allowStaleSeconds": 3600
+      }
+    },
+    "notes": "SGI_COM remains orchestration/operational SoR according to domain; offline data is purged only after server ACK.",
+    "sourceImplementationStatus": "BLOCKED"
+  },
+  {
+    "interconnectionRef": "SGI_CLT__SGI_COM__00001",
+    "interconnectionId": "SGI_CLT__SGI_COM__00001__V0001",
+    "sourceProgramId": "SGI_CLT",
+    "targetProgramId": "SGI_COM",
+    "purpose": "Read client-visible operational information after SGI moderation/authorization.",
+    "trigger": "Client opens Novedades/requirements/operational views.",
+    "interactionType": "REST_API",
+    "mode": "SYNC",
+    "protocol": "HTTPS",
+    "contractVersion": "v1",
+    "request": {},
+    "response": {},
+    "dataOwnerProgramId": "SGI_COM",
+    "authentication": "SERVICE_TOKEN",
+    "authorizationScope": "service-to-service",
+    "timeoutPolicy": {
+      "timeout": "5s"
+    },
+    "retryPolicy": {
+      "policy": "2 attempts; exponential backoff on transport/5xx when idempotent"
+    },
+    "idempotency": "NO",
+    "criticality": "HIGH",
+    "observability": {
+      "correlationId": true,
+      "structuredLogs": true,
+      "latencyMetric": true,
+      "resultMetric": true,
+      "interconnectionIdHeader": true
+    },
+    "errorModel": [
+      "VALIDATION_ERROR",
+      "AUTHENTICATION_ERROR",
+      "AUTHORIZATION_ERROR",
+      "TIMEOUT",
+      "DEPENDENCY_UNAVAILABLE",
+      "CONTRACT_MISMATCH",
+      "TECHNICAL_ERROR"
+    ],
+    "legacyTarget": false,
+    "targetImplementationStatus": "BLOCKED",
+    "status": "DESIGN",
+    "businessDataFlow": "SGI_COM approved information -> SGI_CLT (SGI_CLT initiates read)",
+    "interfaces": [
+      {
+        "interfaceId": "SGI_CLT__SGI_COM__00001__IF01",
+        "method": "GET",
+        "path": "/api/v1/client/operational-items",
+        "purpose": "Approved/publishable novelties and client-authorized operational read model",
+        "contentType": "application/json",
+        "request": {
+          "query": [
+            "clientId",
+            "pointId",
+            "type",
+            "status",
+            "from",
+            "to",
+            "page",
+            "size"
+          ]
+        },
+        "response": {
+          "fields": [
+            "items",
+            "page",
+            "total",
+            "configurationVersion"
+          ]
+        }
+      }
+    ],
+    "bindingTemplate": {
+      "scope": "INSTANCE_PE_ENVIRONMENT",
+      "requiredEffectiveFields": [
+        "baseUrl",
+        "authentication.authType",
+        "authentication.credentialRef",
+        "timeoutMs",
+        "maxRetries",
+        "configurationVersion"
+      ],
+      "secretsInSitcpack": false,
+      "activationOnImport": false,
+      "cachePolicy": {
+        "defaultTtlSeconds": 300,
+        "allowStaleSeconds": 3600
+      }
+    },
+    "notes": "SGI_CLT is legacy; consumer changes require manual DEV. Unapproved novelties must never appear.",
+    "legacySource": true,
+    "sourceImplementationStatus": "MANUAL_PENDING"
+  },
+  {
+    "interconnectionRef": "SGI_CLT__SGI_COM__00002",
+    "interconnectionId": "SGI_CLT__SGI_COM__00002__V0001",
+    "sourceProgramId": "SGI_CLT",
+    "targetProgramId": "SGI_COM",
+    "purpose": "Submit client-originated Consigna proposals, incidents or requirements for SGI moderation/routing.",
+    "trigger": "Authorized client user creates a proposal/request in SGI: Cliente.",
+    "interactionType": "REST_API",
+    "mode": "ASYNC",
+    "protocol": "HTTPS",
+    "contractVersion": "v1",
+    "request": {},
+    "response": {},
+    "dataOwnerProgramId": "SGI_COM",
+    "authentication": "SERVICE_TOKEN",
+    "authorizationScope": "service-to-service",
+    "timeoutPolicy": {
+      "timeout": "5s"
+    },
+    "retryPolicy": {
+      "policy": "2 attempts; exponential backoff on transport/5xx when idempotent"
+    },
+    "idempotency": "KEY:eventId",
+    "criticality": "MEDIUM",
+    "observability": {
+      "correlationId": true,
+      "structuredLogs": true,
+      "latencyMetric": true,
+      "resultMetric": true,
+      "interconnectionIdHeader": true
+    },
+    "errorModel": [
+      "VALIDATION_ERROR",
+      "AUTHENTICATION_ERROR",
+      "AUTHORIZATION_ERROR",
+      "TIMEOUT",
+      "DEPENDENCY_UNAVAILABLE",
+      "CONTRACT_MISMATCH",
+      "TECHNICAL_ERROR"
+    ],
+    "legacyTarget": false,
+    "targetImplementationStatus": "BLOCKED",
+    "status": "DESIGN",
+    "businessDataFlow": "SGI_CLT proposal -> SGI_COM",
+    "interfaces": [
+      {
+        "interfaceId": "SGI_CLT__SGI_COM__00002__IF01",
+        "method": "POST",
+        "path": "/api/v1/client/proposals",
+        "purpose": "Client-originated proposal/request",
+        "contentType": "application/json",
+        "request": {
+          "fields": [
+            "eventId",
+            "clientId",
+            "pointId",
+            "postId",
+            "type",
+            "content",
+            "priority",
+            "evidenceRefs",
+            "createdBy",
+            "createdAt"
+          ]
+        },
+        "response": {
+          "fields": [
+            "sgiReferenceId",
+            "status"
+          ]
+        }
+      }
+    ],
+    "bindingTemplate": {
+      "scope": "INSTANCE_PE_ENVIRONMENT",
+      "requiredEffectiveFields": [
+        "baseUrl",
+        "authentication.authType",
+        "authentication.credentialRef",
+        "timeoutMs",
+        "maxRetries",
+        "configurationVersion"
+      ],
+      "secretsInSitcpack": false,
+      "activationOnImport": false,
+      "cachePolicy": {
+        "defaultTtlSeconds": 300,
+        "allowStaleSeconds": 3600
+      }
+    },
+    "notes": "Legacy source implementation pending; SGI approval rules remain authoritative.",
+    "legacySource": true,
+    "sourceImplementationStatus": "MANUAL_PENDING"
+  },
+  {
+    "interconnectionRef": "SGI_COM__CM_CON__00001",
+    "interconnectionId": "SGI_COM__CM_CON__00001__V0001",
+    "sourceProgramId": "SGI_COM",
+    "targetProgramId": "CM_CON",
+    "purpose": "Request pre-shift attendance confirmation through Cajamarca Conmigo/IVR capability.",
+    "trigger": "Scheduled T-90/T-60 attendance confirmation window before a shift.",
+    "interactionType": "REST_API",
+    "mode": "ASYNC",
+    "protocol": "HTTPS",
+    "contractVersion": "v1",
+    "request": {},
+    "response": {},
+    "dataOwnerProgramId": "SGI_COM",
+    "authentication": "SERVICE_TOKEN",
+    "authorizationScope": "service-to-service",
+    "timeoutPolicy": {
+      "timeout": "5s"
+    },
+    "retryPolicy": {
+      "policy": "2 attempts; exponential backoff on transport/5xx when idempotent"
+    },
+    "idempotency": "KEY:requestId",
+    "criticality": "MEDIUM",
+    "observability": {
+      "correlationId": true,
+      "structuredLogs": true,
+      "latencyMetric": true,
+      "resultMetric": true,
+      "interconnectionIdHeader": true
+    },
+    "errorModel": [
+      "VALIDATION_ERROR",
+      "AUTHENTICATION_ERROR",
+      "AUTHORIZATION_ERROR",
+      "TIMEOUT",
+      "DEPENDENCY_UNAVAILABLE",
+      "CONTRACT_MISMATCH",
+      "TECHNICAL_ERROR"
+    ],
+    "legacyTarget": true,
+    "targetImplementationStatus": "MANUAL_PENDING",
+    "status": "DESIGN",
+    "businessDataFlow": "SGI_COM confirmation request -> CM_CON",
+    "interfaces": [
+      {
+        "interfaceId": "SGI_COM__CM_CON__00001__IF01",
+        "method": "POST",
+        "path": "/api/v1/shift-confirmations",
+        "purpose": "Create attendance confirmation request",
+        "contentType": "application/json",
+        "request": {
+          "fields": [
+            "requestId",
+            "employeeId",
+            "shiftOccurrenceId",
+            "pointId",
+            "postId",
+            "shiftStartsAt",
+            "channel",
+            "expiresAt"
+          ]
+        },
+        "response": {
+          "fields": [
+            "accepted",
+            "externalRequestId"
+          ]
+        }
+      }
+    ],
+    "bindingTemplate": {
+      "scope": "INSTANCE_PE_ENVIRONMENT",
+      "requiredEffectiveFields": [
+        "baseUrl",
+        "authentication.authType",
+        "authentication.credentialRef",
+        "timeoutMs",
+        "maxRetries",
+        "configurationVersion"
+      ],
+      "secretsInSitcpack": false,
+      "activationOnImport": false,
+      "cachePolicy": {
+        "defaultTtlSeconds": 300,
+        "allowStaleSeconds": 3600
+      }
+    },
+    "notes": "CM_CON is legacy. If IVR becomes its own Program ID later, a new canonical interconnection must be created; do not invent it now."
+  },
+  {
+    "interconnectionRef": "SGI_COM__CM_CON__00002",
+    "interconnectionId": "SGI_COM__CM_CON__00002__V0001",
+    "sourceProgramId": "SGI_COM",
+    "targetProgramId": "CM_CON",
+    "purpose": "Read the result of a pre-shift attendance confirmation.",
+    "trigger": "Monitor/assignment process reconciles pending confirmation.",
+    "interactionType": "REST_API",
+    "mode": "SYNC",
+    "protocol": "HTTPS",
+    "contractVersion": "v1",
+    "request": {},
+    "response": {},
+    "dataOwnerProgramId": "CM_CON",
+    "authentication": "SERVICE_TOKEN",
+    "authorizationScope": "service-to-service",
+    "timeoutPolicy": {
+      "timeout": "5s"
+    },
+    "retryPolicy": {
+      "policy": "2 attempts; exponential backoff on transport/5xx when idempotent"
+    },
+    "idempotency": "NO",
+    "criticality": "MEDIUM",
+    "observability": {
+      "correlationId": true,
+      "structuredLogs": true,
+      "latencyMetric": true,
+      "resultMetric": true,
+      "interconnectionIdHeader": true
+    },
+    "errorModel": [
+      "VALIDATION_ERROR",
+      "AUTHENTICATION_ERROR",
+      "AUTHORIZATION_ERROR",
+      "TIMEOUT",
+      "DEPENDENCY_UNAVAILABLE",
+      "CONTRACT_MISMATCH",
+      "TECHNICAL_ERROR"
+    ],
+    "legacyTarget": true,
+    "targetImplementationStatus": "MANUAL_PENDING",
+    "status": "DESIGN",
+    "businessDataFlow": "CM_CON confirmation result -> SGI_COM (SGI_COM initiates read)",
+    "interfaces": [
+      {
+        "interfaceId": "SGI_COM__CM_CON__00002__IF01",
+        "method": "GET",
+        "path": "/api/v1/shift-confirmations/{requestId}",
+        "purpose": "Confirmation result",
+        "contentType": "application/json",
+        "request": {},
+        "response": {
+          "fields": [
+            "requestId",
+            "status",
+            "responseAt",
+            "channel",
+            "reason"
+          ]
+        }
+      }
+    ],
+    "bindingTemplate": {
+      "scope": "INSTANCE_PE_ENVIRONMENT",
+      "requiredEffectiveFields": [
+        "baseUrl",
+        "authentication.authType",
+        "authentication.credentialRef",
+        "timeoutMs",
+        "maxRetries",
+        "configurationVersion"
+      ],
+      "secretsInSitcpack": false,
+      "activationOnImport": false,
+      "cachePolicy": {
+        "defaultTtlSeconds": 300,
+        "allowStaleSeconds": 3600
+      }
+    },
+    "notes": "Confirmation expresses intent and never substitutes the Relevo."
+  }
+]

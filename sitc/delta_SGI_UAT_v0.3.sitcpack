@@ -1,0 +1,31 @@
+{
+  "format": "cajamarca.sitcpack",
+  "formatVersion": "0.1",
+  "packageType": "delta",
+  "system": "SGI: Comando",
+  "modules": [
+    {"code":"SGI-00T","name":"Territorio","version":"0.1"},
+    {"code":"SGI-06","name":"Asignaciones","version":"0.3"}
+  ],
+  "baseUatVersion": "0.2.2.2",
+  "targetUatVersion": "0.3",
+  "entities": [
+    "TerritoryZone","TerritoryRegion","UserOperationalScope","Company.regionId",
+    "AssignmentPlan","ShiftOccurrence","OperationalAssignment"
+  ],
+  "connections": [
+    {"from":"CORE","to":"SGI-00T","direction":"inbound","type":"context","data":["instance_country_id","country"],"sor":"CORE"},
+    {"from":"SIC: RRHH / Identity","to":"SGI: Comando","direction":"inbound","type":"identity/role adapter","data":["employee/user","operational role"],"sor":"SIC: RRHH / identity provider"},
+    {"from":"SGI-00T","to":"SGI operational modules","direction":"internal","type":"authorization scope","data":["zone","region","company","scope_type","scope_id"],"sor":"SGI-00T"},
+    {"from":"SIC: COM","to":"SGI-06","direction":"inbound","type":"API/event adapter","data":["Puesto","N Turnos","start_time","end_time","TIER","FHE","commercial_version"],"sor":"SIC: COM"},
+    {"from":"SIC: RRHH","to":"SGI-06","direction":"inbound","type":"API/event adapter","data":["CompanyMembership","role","employmentStatus","skills","vacation","medicalLeave"],"sor":"SIC: RRHH"},
+    {"from":"SMC","to":"SGI-06","direction":"inbound","type":"API/event adapter","data":["ID"],"sor":"SMC"}
+  ],
+  "rules": [
+    "company must belong to region",
+    "region must belong to zone",
+    "authorization is functional role plus territorial scope",
+    "compatibility and performance are warnings, not blockers",
+    "SIC COM may define any number of shifts per post"
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "package": "PERF v0.1",
+  "product": "SGI: Comando",
+  "base_ui": "CSL v0.1 FROZEN",
+  "business_baselines_unchanged": true,
+  "ui_changed": false,
+  "focus": "Asignaciones with 2,000+ personnel",
+  "database_migration": "V26__assignment_performance_indexes.sql",
+  "notes": "Index-only migration plus application query/render optimizations.",
+  "documentation_addendum": "VISINT/Impulsos v0.1: SGI_OPR→SGI_COM→VISINT→SGI_COM contract; SGI_COM owns reward rules/ledger. No performance/UI behavior change.",
+  "documentation": "docs/SGI_OPR_VISINT_IMPULSOS.md",
+  "sitc_delta": "sitc/IMP_v0.1_delta.sitcpack"
+}
