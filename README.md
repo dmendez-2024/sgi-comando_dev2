@@ -1,8 +1,39 @@
-# SGI: Comando — INT v0.1 UAT (2026-09-21)
+# SGI: Comando — ENTREGA SISTEMAS 2026-09-28 — FROZEN
 
-**Cambio activo:** módulo genérico de interconexiones + catálogo/IDs SITC-NOM-001 v3.0. **Sin cambios de UI.** Todas las verticales funcionales permanecen FROZEN.
+**Freeze:** 2026-09-27. **Estado:** CLOSED / FROZEN.  
+Baseline acumulativa final: **CSL v0.2.5 FROZEN + NEX v0.1 FROZEN**, preservando las verticales históricas congeladas.
 
-Ver `README_INT_v0.1.md` y `docs/INTERCONNECTIONS.md`.
+Leer primero `docs/SYSTEMS_HANDOFF_2026-09-28.md` y `FINAL_RELEASE_MANIFEST_2026-09-27.json`.
+
+> NEX v0.1 está congelado como modelo funcional/UI UAT; su runtime EVC/BPM y persistencia backend productivos quedan explícitamente pendientes. CSL v0.2.5 conserva datos/flujo DEMO-local donde la documentación lo indica.
+
+---
+
+# SGI: Comando — CSL v0.1.1 UAT — Filtros colapsables
+
+**Baseline inmediata:** `SGI_Comando_P0P1_RC_2026-09-27.zip`.  
+**Baseline SISTEMAS preservada:** `sgi-comando_dev.zip`, commit `8c528e8` del 2026-09-25.  
+**Alcance de esta versión:** cambio UX acotado exclusivamente a `Operaciones > Consola`: el área completa de filtros de búsqueda queda dentro de un accordion/collapsible cerrado por defecto. **Sin cambios de backend, BD, interconexiones/SITC ni EVC/Eventos de Cumplimiento.**
+
+Cambio CSL v0.1.1:
+- Al abrir Consola, los filtros aparecen colapsados en una sola fila `Filtros de búsqueda`.
+- Al pulsar la fila, se despliegan hacia abajo la búsqueda general, filtros, reglas, validaciones y acciones existentes.
+- Un segundo clic vuelve a colapsar el panel sin borrar los valores seleccionados.
+- La tabla `Casos operativos` permanece visible debajo del accordion.
+- Se agregan `aria-expanded` y `aria-controls` para accesibilidad.
+- No se modifica la lógica de filtrado ni el dataset de Consola.
+
+Correcciones P0/P1 heredadas de la baseline:
+- V30/V31 destructivos de UAT retirados del camino automático de Flyway y convertidos en fixtures explícitos.
+- SITC/CURRENT/handoff sincronizados a **SITC-NOM-001 v4.1**.
+- `CORE` queda **UNIVERSAL**; `SGI_COM` permanece `PE_SPECIFIC`.
+- IDs de interconexión migrados al formato v4.1 `ORIGEN_DESTINO_NNNN_vNNN`, preservando aliases v3 solo para transición.
+- `CORE` es SoR de las **reglas versionadas de Impulsos**; cada Instancia PE de `SGI_COM` aplica las reglas y es SoR de su ledger/saldo de Impulsos por Operador.
+- SIC:RRHH inbound usa `credential_ref`, idempotencia persistente (V34) y Compañía fuente autoritativa; no existe token portable ni fallback automático a Kaibil para altas nuevas.
+- `.env` deja de formar parte del entregable; usar `.env.example`.
+- Dependencias frontend top-level quedan fijadas a versiones exactas.
+
+Leer primero `docs/00_HANDOFF.md`, `docs/CHANGELOG_CSL_v0.1.1_2026-09-27.md` y luego `docs/CHANGELOG_P0P1_2026-09-27.md`.
 
 ---
 

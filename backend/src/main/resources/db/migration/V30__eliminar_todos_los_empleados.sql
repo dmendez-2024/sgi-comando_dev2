@@ -1,10 +1,15 @@
--- DME | SGI:Comando | Eliminación controlada del catálogo operativo de empleados
--- Fecha: 2026-09-24
--- Alcance: Instancia-País Ecuador (11111111-1111-1111-1111-111111111111).
--- Ejecutar este archivo antes de DME_02_insertar_200_empleados_con_avatares.txt.
--- Las eliminaciones son masivas por tabla y cubren todo el catálogo de empleados de la instancia.
--- No elimina compañías, territorios, servicios ni planes operacionales.
--- Si existen asignaciones o evidencias históricas asociadas, aborta sin modificar datos.
+-- SGI: Comando | Flyway V30 quarantine tombstone
+-- P0 safety correction 2026-09-27.
+--
+-- The original V30 was a DESTRUCTIVE UAT data-reset script and MUST NOT run
+-- automatically as a schema migration. Its exact historical SQL is preserved at:
+--   database/uat-fixtures/legacy-original-flyway/V30__eliminar_todos_los_empleados.sql
+-- and the explicit UAT fixture is:
+--   database/uat-fixtures/DME_01_eliminar_todos_los_empleados_UAT.sql
+--
+-- Fresh databases safely record V30 as applied without deleting any business data.
+-- Existing databases that already applied the former V30 will have a checksum
+-- mismatch: follow docs/MIGRATION_SAFETY_V30_V31.md before starting this RC.
 
 BEGIN;
 

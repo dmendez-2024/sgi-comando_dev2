@@ -27,7 +27,11 @@ public class InterconnectionCatalogService {
 
     public List<InterconnectionCatalogEntry> all() { return entries; }
     public InterconnectionCatalogEntry byId(String id) {
-        return entries.stream().filter(e -> id.equals(e.interconnectionId) || id.equals(e.interconnectionRef)).findFirst()
+        return entries.stream().filter(e ->
+                id.equals(e.interconnectionId)
+                || id.equals(e.interconnectionRef)
+                || (e.legacyConnectionIds != null && e.legacyConnectionIds.contains(id))
+            ).findFirst()
             .orElseThrow(() -> new InterconnectionException("UNKNOWN_INTERCONNECTION", "Interconnection ID is not registered in SGI: Comando"));
     }
 }

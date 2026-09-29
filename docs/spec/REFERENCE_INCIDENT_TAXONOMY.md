@@ -1,16 +1,19 @@
 # Taxonomía de Incidentes — referencia vigente
 
-Fuente: `Incidentes.xlsx` suministrado por el usuario el 2026-09-07.
+Fuente: `Incidentes(1).xlsx` suministrado por el usuario el 2026-09-27, hoja `Incidentes`.
 
-La hoja contiene 3 categorías, 20 subcategorías y 90 tipos de incidente.
-Se conserva como catálogo de referencia para SGI ↔ STC. No modifica por sí sola la taxonomía maestra de Tareas/Novedades.
+**Jerarquía canónica para esta UAT:** `Categoría → Subcategoría → Incidente`.
+
+La fuente contiene **3 categorías, 20 subcategorías y 90 tipos de incidente**.
+
+> Corrección respecto de CSL v0.2: `Inasistencia programada` e `Inasistencia efectiva` NO son subcategorías. Son tipos de incidente bajo `Incidentes de Servicio → Asistencia y Puntualidad`.
 
 ## Incidentes de Servicio
 
 ### Asistencia y Puntualidad
-- Atraso
 - Relevo tardío
-- Ausencia
+- Inasistencia programada
+- Inasistencia efectiva
 - Abandono del puesto
 
 ### Presentación Personal
@@ -141,7 +144,9 @@ Se conserva como catálogo de referencia para SGI ↔ STC. No modifica por sí s
 - Facturación
 - Reclamo administrativo
 
-## Observación de modelado
+## Reglas de uso en Consola
 
-El catálogo incluye algunos conceptos que pueden solaparse con otros dominios SGI, por ejemplo `Vulnerabilidad detectada` dentro de Incidentes de Seguridad / Riesgos Operacionales.
-En implementación conviene preservar el catálogo entregado pero revisar después reglas de clasificación para evitar duplicar una Vulnerabilidad como Incidente salvo que exista un hecho distinto que justifique ambas entidades.
+- El usuario selecciona primero Categoría, luego Subcategoría y finalmente Incidente.
+- El flujo especial de reasignación se activa exclusivamente cuando el tipo de incidente es `Inasistencia programada` o `Inasistencia efectiva`.
+- Los textos del catálogo se conservan exactamente como aparecen en el Excel de referencia.
+- Esta versión sigue siendo UAT frontend/local; la persistencia productiva del catálogo requiere su vertical backend correspondiente.

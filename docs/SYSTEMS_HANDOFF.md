@@ -44,7 +44,7 @@ Los adapters UAT/locales que no son productivos se documentan explícitamente co
 - Nueva página `Servicios → Configuración → Bitácora`.
 - Persistencia: `logbook_protocol`, `logbook_protocol_field`.
 - Fotos estándar se almacenan como activo binario UAT en PostgreSQL; producción podrá migrarlas a object storage sin cambiar el contrato funcional.
-- En SER v0.6 la comparación VISINT aún no formaba parte de esa UAT. **Superseding 2026-09-20:** ya está definido el contrato runtime `SGI_OPR → SGI_COM → VISINT → SGI_COM` y el motor de Impulsos reside en SGI: Comando; ver `docs/SGI_OPR_VISINT_IMPULSOS.md`. La definición arquitectónica no implica que el adapter VISINT esté implementado en esta UAT.
+- En SER v0.6 la comparación VISINT aún no formaba parte de esa UAT. **Superseding 2026-09-20:** ya está definido el contrato runtime `SGI_OPR → SGI_COM → VISINT → SGI_COM` y CORE gobierna las reglas versionadas de Impulsos y cada SGI: Comando PE ejecuta el cálculo/adjudicación y mantiene el ledger/saldo; ver `docs/SGI_OPR_VISINT_IMPULSOS.md`. La definición arquitectónica no implica que el adapter VISINT esté implementado en esta UAT.
 - No mezclar esta configuración con registros ejecutados; la ejecución pertenece a Operación.
 
 
@@ -184,7 +184,7 @@ SIC: RRHH debe entregar a SGI cada colaborador ya adscrito a **Seguridad Física
 Sistemas debe preservar la separación de responsabilidades:
 
 - **SGI: Operador:** captura y presenta resultado.
-- **SGI: Comando:** orquesta evidencia, solicita revisión, recibe respuesta, ejecuta reglas probabilísticas y mantiene ledger de Impulsos.
+- **CORE:** SoR de reglas versionadas de Impulsos. **SGI: Comando PE:** orquesta evidencia, consume/aplica la regla CORE, ejecuta la evaluación idempotente y mantiene el ledger/saldo autoritativo.
 - **VISINT:** valida evidencia visual, sin lógica de gamificación.
 
 La adjudicación debe ser idempotente. Un retry de VISINT o del bus de eventos no puede volver a ejecutar el sorteo ni acreditar Impulsos duplicados. Los mockups de Operador viajan como referencia en `docs/assets/impulsos_visint/`.

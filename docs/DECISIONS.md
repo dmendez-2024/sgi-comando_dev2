@@ -456,19 +456,38 @@ SGI-05 se difiere hasta construir ATS. El paquete `.ats` deberá transportar al 
 
 - **SGI-IMP-DEC-001:** la evidencia fotográfica tomada en SGI: Operador para tareas/relevos viaja a VISINT **a través de SGI: Comando**; no se autoriza integración directa SGI_OPR→VISINT.
 - **SGI-IMP-DEC-002:** VISINT es responsable de la validación visual; no es System of Record ni motor de Impulsos.
-- **SGI-IMP-DEC-003:** SGI: Comando es System of Record de reglas, evaluación probabilística, cantidad adjudicada y ledger de Impulsos.
+- **SGI-IMP-DEC-003 (SUPERSEDED 2026-09-27):** la formulación previa ubicaba reglas y ledger en SGI: Comando.
+- **SGI-IMP-DEC-009 (VIGENTE):** CORE es System of Record de las reglas versionadas de Impulsos. Cada Instancia PE de SGI: Comando aplica la regla efectiva y es SoR de la evaluación/adjudicación y del ledger/saldo de Impulsos por Operador.
 - **SGI-IMP-DEC-004:** `VISINT PASS` habilita la evaluación de recompensa, pero no garantiza premio. `PASS + NO_AWARD` es un resultado válido.
 - **SGI-IMP-DEC-005:** un resultado visual no conforme no genera Impulsos mediante este flujo.
 - **SGI-IMP-DEC-006:** la probabilidad se resuelve una sola vez por combinación lógica `(task_execution_id, visint_review_id, impulse_rule_version)`; retries/callbacks duplicados deben devolver el resultado existente.
-- **SGI-IMP-DEC-007:** la cantidad mostrada en mockups (por ejemplo `+5`) es ilustrativa de una ejecución; el valor real proviene de la regla vigente en SGI: Comando.
+- **SGI-IMP-DEC-007:** la cantidad mostrada en mockups (por ejemplo `+5`) es ilustrativa de una ejecución; el valor real proviene de la regla versionada vigente en CORE y es aplicado por la Instancia PE de SGI: Comando.
 - **SGI-IMP-DEC-008:** la evaluación VISINT y la evaluación de Impulsos mantienen estados separados para no confundir cumplimiento de tarea con recompensa.
 
 
-## INT-DEC-001 — Interconexiones genéricas / SITC-NOM-001 v3.0 (2026-09-21)
-- Se adopta `SOURCE__TARGET__NNNNN` como referencia estable y `__VNNNN` como revisión maestra.
-- IDs legacy `INT_SOURCE__TARGET__001` quedan solo como alias histórico; no se crean nuevos IDs en ese formato.
+## INT-DEC-001 — Interconexiones genéricas / SITC-NOM-001 v4.1 (supersesión 2026-09-27)
+- Se adopta `ORIGEN_DESTINO_NNNN` como referencia estable, `ORIGEN_DESTINO_NNNN_vNNN` como ID versionado e `..._IFNN` para interfaces.
+- IDs v3 con `INT_`, doble guion bajo, cinco dígitos o `V0001` quedan solo como `legacyConnectionId`/alias histórico; no se crean nuevos IDs en esos formatos.
 - SGI: Comando usa un único módulo genérico para resolver CORE, caché, transporte, auth, resiliencia y observabilidad.
 - CORE mantiene definiciones y bindings por Instancia PE + ambiente; no transporta el tráfico funcional.
 - La importación del `.sitcpack` acumulativo usa preview/merge y no cambia automáticamente bindings productivos.
 - Sistemas legacy quedan `MANUAL_PENDING` hasta adecuación y prueba por DEV.
 - Todo el resto de verticales SGI: Comando permanece FROZEN.
+
+## CSL v0.2 — decisiones de Notificación de Incidentes — 2026-09-27
+- **CSL-DEC-INC-001:** `Notificar Incidente` se ejecuta desde Consola y abre panel lateral derecho, sin abandonar la bandeja operativa.
+- **CSL-DEC-INC-002:** Categorías: Servicio, Seguridad, Administrativo.
+- **CSL-DEC-INC-003 (SUPERSEDED por CSL-DEC-INC-004):** la UAT v0.2 trató provisionalmente Inasistencia Programada/Efectiva como variantes especiales a nivel de subcategoría.
+- **CSL-DEC-INC-004:** Criticidad: Informativo, Menor, Moderado, Mayor, Crítico.
+- **CSL-DEC-INC-005:** Cliente y Punto obligatorios; Puesto opcional.
+- **CSL-DEC-INC-006:** Colaboradores elegibles: quienes trabajaron en el Punto desde ahora hasta 14 días atrás, sin duplicidad.
+- **CSL-DEC-INC-007:** Descripción y Resolución admiten máximo 5 imágenes cada una.
+- **CSL-DEC-INC-008:** Sanción requiere Sí/No; si Sí, descripción de sanción.
+- **CSL-DEC-INC-009:** Borrador y Finalizado permanecen reeditables desde Casos operativos.
+- **CSL-DEC-INC-010:** Programada: elegir uno de los próximos dos turnos; libre = no trabaja en turno objetivo ni turno previo. Efectiva: turno actual; libre = no trabaja ahora ni turno previo.
+- **CSL-DEC-INC-011:** Reemplazos se ordenan: mismo Puesto, mismo Punto, misma Compañía por cercanía geográfica usando coordenadas del último Punto trabajado.
+- **CSL-DEC-INC-012:** CSL v0.2 UAT implementa la lógica con dataset DEMO/local; no modifica BD, backend ni SITC.
+- **CSL-DEC-INC-013:** EVC/Eventos de Cumplimiento no forma parte de esta versión.
+
+
+- **CSL-DEC-INC-004 (2026-09-27):** el catálogo de Incidentes sigue la jerarquía Categoría → Subcategoría → Incidente del Excel `Incidentes(1).xlsx`. Inasistencia programada/efectiva son tipos de incidente bajo Asistencia y Puntualidad y activan el flujo especial de cobertura.

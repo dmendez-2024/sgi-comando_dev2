@@ -1,0 +1,46 @@
+{
+  "product": "SGI: Comando",
+  "programId": "SGI_COM",
+  "release": "NEX v0.1 FROZEN",
+  "date": "2026-09-27",
+  "baseline": "SGI_Comando_CSL_v0.2.5_Reasignacion_UAT.zip",
+  "status": "FROZEN",
+  "standard": "SITC-NOM-001 v4.1",
+  "vertical": {
+    "id": "NEX",
+    "name": "Nexus — Motor de Eventos y Reglas Operativas",
+    "current": "v0.1 FROZEN"
+  },
+  "location": "Operaciones > Servicios > Configuración del Punto > Checklist de configuración > Nexus",
+  "placement": {
+    "after": "Consignas",
+    "before": "Recursos Humanos"
+  },
+  "views": [
+    "Reglas",
+    "Historial"
+  ],
+  "ruleModel": [
+    "Evento objetivo: Objeto + Evento/Estado",
+    "Relación temporal: ANTES / DURANTE / DESPUÉS",
+    "Ventana temporal opcional",
+    "Evento de referencia: Objeto + Evento/Estado",
+    "Correlación opcional",
+    "Acciones opcionales por cumplimiento/incumplimiento"
+  ],
+  "scope": {
+    "frontendChanged": true,
+    "backendChanged": false,
+    "databaseChanged": false,
+    "sitcChanged": false,
+    "interconnectionsChanged": false,
+    "evcRuntimeImplemented": false,
+    "uatDataMode": "FRONTEND_DEMO_LOCAL_STORAGE"
+  },
+  "freeze": {
+    "date": "2026-09-27",
+    "deliveryToSystems": "2026-09-28",
+    "meaning": "Functional/UAT baseline frozen. Productive EVC runtime, backend persistence and event contracts remain explicitly pending.",
+    "changeRule": "Any later change requires a new version; do not overwrite NEX v0.1."
+  }
+}

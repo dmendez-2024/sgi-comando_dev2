@@ -1,3 +1,5 @@
+> **HISTÓRICO / SUPERSEDED 2026-09-27:** INT v0.1 es histórico. La baseline vigente usa SITC-NOM-001 v4.1, IDs `ORIGEN_DESTINO_NNNN_vNNN` y `sitc/SGI_Comando_CURRENT.sitcpack` del RC P0/P1 2026-09-27.
+
 # 00 HANDOFF — SGI: Comando INT v0.1
 
 ## Lectura recomendada

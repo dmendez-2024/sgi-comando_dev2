@@ -11,7 +11,7 @@ Cuando un Agente de Seguridad o Supervisor completa una tarea en **SGI: Operador
 SGI: Comando tiene dos responsabilidades distintas:
 
 1. **Orquestación de validación visual:** recibe la ejecución/evidencia desde SGI: Operador, la correlaciona con la tarea y la envía a VISINT para evaluación.
-2. **Motor de Impulsos:** una vez recibido el resultado de VISINT, SGI: Comando evalúa las reglas de gamificación aplicables (habilidad, probabilidad y cantidad de Impulsos) y decide si corresponde otorgar una recompensa.
+2. **Motor de Impulsos:** una vez recibido el resultado de VISINT, SGI: Comando obtiene/aplica la versión vigente de las reglas de gamificación definidas por **CORE** (habilidad, elegibilidad, probabilidad, cantidad y vigencia) y decide si corresponde otorgar una recompensa.
 
 VISINT **no decide Impulsos**. VISINT únicamente devuelve la evaluación visual de la evidencia.
 
@@ -88,7 +88,7 @@ Si VISINT devuelve un resultado conforme y el motor de Impulsos de SGI: Comando 
 
 ![Mockup SGI Operador — Impulsos otorgados](assets/impulsos_visint/02_impulsos_otorgados.png)
 
-El ejemplo visual muestra `+5 Impulsos en Asistencia`. **La cantidad del mockup es un ejemplo de ejecución**; el valor real debe provenir de la regla vigente en SGI: Comando.
+El ejemplo visual muestra `+5 Impulsos en Asistencia`. **La cantidad del mockup es un ejemplo de ejecución**; el valor real debe provenir de la regla CORE vigente aplicada por SGI: Comando.
 
 ---
 
@@ -125,7 +125,7 @@ Responsable de:
 - registrar el movimiento en un ledger auditable;
 - devolver el resultado a SGI: Operador.
 
-**SGI: Comando es el System of Record de la lógica y adjudicación de Impulsos.**
+**CORE es el System of Record de las reglas versionadas de Impulsos. Cada Instancia PE de SGI: Comando es System of Record del resultado de aplicación de esas reglas y del ledger/saldo de Impulsos de sus Operadores.**
 
 ### VISINT
 
@@ -141,7 +141,7 @@ VISINT no debe conocer ni ejecutar probabilidades económicas/gamificadas de Imp
 
 ## 5. Regla de evaluación de Impulsos
 
-La regla de Impulsos debe ser parametrizable en SGI: Comando. Como mínimo debe poder resolver:
+La regla de Impulsos se define y versiona en CORE. SGI: Comando debe importar/consultar la regla efectiva aplicable a su Instancia PE y, como mínimo, poder resolver:
 
 - tipo de acción/tarea elegible;
 - habilidad a la que se acredita el Impulso;
@@ -155,7 +155,7 @@ La regla de Impulsos debe ser parametrizable en SGI: Comando. Como mínimo debe 
 ```text
 VISINT = PASS
    ↓
-buscar regla vigente para la acción
+obtener/aplicar regla CORE vigente para la acción
    ↓
 ¿acción elegible?
    ├─ no → 0 Impulsos
@@ -166,7 +166,7 @@ buscar regla vigente para la acción
        └─ gana → calcular cantidad → registrar premio
 ```
 
-La cantidad puede ser fija o derivada de la configuración aprobada de la regla. Esta definición arquitectónica **no redefine la economía de Impulsos ya aprobada**; establece dónde vive y cómo se ejecuta.
+La cantidad puede ser fija o derivada de la regla aprobada. Esta definición arquitectónica **no redefine la economía de Impulsos**: establece que la definición/versionado vive en CORE y la evaluación/adjudicación/ledger vive en la Instancia PE de SGI: Comando.
 
 ---
 
@@ -293,3 +293,15 @@ No mezclar el score técnico de VISINT con el saldo de Impulsos del colaborador.
 Esta decisión **no cambia la UI congelada de SGI: Comando**. Es lógica transversal/backend e integración que debe quedar documentada para Sistemas y SITC.
 
 Los mockups adjuntos pertenecen a **SGI: Operador** y se incluyen aquí únicamente como referencia del contrato de respuesta que SGI: Comando debe soportar.
+
+
+---
+
+## 13. Separación de SoR — definición vigente 2026-09-27
+
+- **CORE:** SoR de las reglas versionadas de Impulsos: elegibilidad, habilidad, condiciones, probabilidad, cantidad, vigencia y versión.
+- **SGI: Operador:** productor de hechos/ejecuciones de Agentes, Supervisores, Escoltas y otros Operadores; no es SoR del saldo.
+- **SGI: Comando PE:** aplica las reglas CORE a los hechos recibidos, ejecuta la evaluación idempotente, adjudica/reversa movimientos y es SoR del ledger y saldo de Impulsos por Operador.
+- **Otros sistemas:** consultan a SGI: Comando PE el saldo/ledger; no reconstruyen el saldo desde eventos ni consultan CORE para conocer cuántos Impulsos tiene un Operador.
+
+Interconexión canónica de reglas: `SGI_COM_CORE_0001_v001`.

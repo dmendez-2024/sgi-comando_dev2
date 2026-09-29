@@ -1,6 +1,8 @@
 package com.cajamarca.sgi.comando.rrhh;
 
 import com.cajamarca.sgi.comando.interconnections.InterconnectionIds;
+import com.cajamarca.sgi.comando.interconnections.CredentialRefResolver;
+import com.cajamarca.sgi.comando.interconnections.InterconnectionException;
 import jakarta.annotation.security.PermitAll;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.BadRequestException;
@@ -29,9 +31,10 @@ public class RrhhEmployeeEventResource {
     private static final String CONTRACT_VERSION = "v1";
 
     @Inject RrhhEmployeeSyncService syncService;
+    @Inject CredentialRefResolver credentials;
 
-    @ConfigProperty(name = "sgi.integrations.rrhh.inbound-token", defaultValue = "")
-    Optional<String> inboundToken;
+    @ConfigProperty(name = "sgi.rrhh.inbound.credential-ref", defaultValue = "")
+    Optional<String> credentialRef;
 
     public record EmployeeEventRequest(
         Long employeeId,
@@ -40,7 +43,9 @@ public class RrhhEmployeeEventResource {
         String fullName,
         String roleCode,
         String employmentStatus,
-        Instant updatedFromSourceAt
+        Instant updatedFromSourceAt,
+        UUID companyCoreCatalogId,
+        String companyCode
     ) {}
 
     public record EmployeeEventResponse(boolean accepted, String correlationId) {}
@@ -55,7 +60,7 @@ public class RrhhEmployeeEventResource {
         EmployeeEventRequest request
     ) {
         requireServiceCredential(authorization);
-        if (!InterconnectionIds.RRHH_MASTER_EVENTS.equals(interconnectionId)) {
+        if (!InterconnectionIds.matches(interconnectionId, InterconnectionIds.RRHH_MASTER_EVENTS, InterconnectionIds.LEGACY_RRHH_MASTER_EVENTS)) {
             throw new BadRequestException("X-Interconnection-Id no corresponde al contrato SIC:RRHH → SGI:Comando.");
         }
         if (!CONTRACT_VERSION.equalsIgnoreCase(trim(contractVersion))) {
@@ -68,15 +73,23 @@ public class RrhhEmployeeEventResource {
         if (trim(idempotencyKey).isEmpty()) {
             throw new BadRequestException("Idempotency-Key es obligatorio.");
         }
-        syncService.synchronize(request);
+        syncService.synchronize(request, idempotencyKey);
         return new EmployeeEventResponse(true, effectiveCorrelationId);
     }
 
     private void requireServiceCredential(String authorization) {
-        String configured = trim(inboundToken.orElse(""));
-        if (configured.isEmpty()) {
-            throw new ServiceUnavailableException("La credencial de integración SIC:RRHH no está configurada.");
+        String ref = trim(credentialRef.orElse(""));
+        if (ref.isEmpty()) {
+            throw new ServiceUnavailableException("La credential_ref de integración SIC:RRHH no está configurada.");
         }
+
+        final String configured;
+        try {
+            configured = credentials.resolve(ref);
+        } catch (InterconnectionException e) {
+            throw new ServiceUnavailableException("La credencial de integración SIC:RRHH no está disponible.");
+        }
+
         String prefix = "Bearer ";
         String provided = authorization != null && authorization.startsWith(prefix)
             ? authorization.substring(prefix.length()).trim()

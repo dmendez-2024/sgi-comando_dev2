@@ -1,5 +1,7 @@
 # SGI: Comando — Arquitectura
 
+**Norma de integración vigente:** SITC-NOM-001 v4.1. `CORE` es `UNIVERSAL`; `SGI_COM` es `PE_SPECIFIC`.
+
 ## Contexto raíz
 `CORE → Instancia → Instancia–País → SGI: Comando`
 
@@ -67,15 +69,15 @@ Para tareas ejecutadas desde **SGI: Operador** con evidencia fotográfica, el fl
 - SGI: Operador captura la evidencia y la envía a SGI: Comando.
 - SGI: Comando correlaciona ejecución/evidencia y solicita revisión a VISINT.
 - VISINT devuelve el resultado de validación visual; no adjudica Impulsos.
-- SGI: Comando es SoR de la lógica de Impulsos: resuelve regla vigente, probabilidad, cantidad, habilidad y ledger auditable.
+- CORE es SoR de las reglas versionadas de Impulsos. SGI: Comando PE consume la regla vigente, la aplica a hechos operativos y es SoR del ledger/saldo auditable de Impulsos.
 - La probabilidad se evalúa una sola vez por ejecución/revisión/regla; los reintentos deben ser idempotentes y no pueden duplicar premios.
 - Un resultado VISINT `PASS` habilita la evaluación de premio, pero no garantiza Impulsos.
 
-Ver `docs/SGI_OPR_VISINT_IMPULSOS.md` y `sitc/IMP_v0.1_delta.sitcpack`.
+Ver `docs/SGI_OPR_VISINT_IMPULSOS.md` y `sitc/IMP_v0.2_delta.sitcpack`. `IMP_v0.1` queda únicamente como histórico supersedido.
 
 
 ## INT v0.1 — Módulo genérico de interconexiones (2026-09-21)
-SGI: Comando incorpora un único módulo reusable para integraciones salientes conforme a SITC-NOM-001 v3.0. La lógica de negocio ya no debe crear clientes HTTP ad-hoc ni hardcodear hosts/puertos/credenciales.
+SGI: Comando incorpora un único módulo reusable para integraciones salientes conforme a SITC-NOM-001 v4.1. La lógica de negocio ya no debe crear clientes HTTP ad-hoc ni hardcodear hosts/puertos/credenciales.
 
 Flujo técnico: `Business Adapter → GenericInterconnectionExecutor → CORE resolver/cache → auth/resilience/observability → programa destino`. CORE resuelve configuración por `interconnectionId + instance_country_id + ambiente`, pero no actúa como proxy del tráfico funcional.
 

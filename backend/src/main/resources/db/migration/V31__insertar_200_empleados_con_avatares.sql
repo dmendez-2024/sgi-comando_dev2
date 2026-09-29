@@ -1,3 +1,15 @@
+-- SGI: Comando | Flyway V31 quarantine tombstone
+-- P0 safety correction 2026-09-27.
+--
+-- The original V31 embedded a 200-employee UAT fixture and MUST NOT run
+-- automatically as a schema migration. Its exact historical SQL is preserved at:
+--   database/uat-fixtures/legacy-original-flyway/V31__insertar_200_empleados_con_avatares.sql
+-- and the explicit UAT fixture is:
+--   database/uat-fixtures/DME_02_insertar_200_empleados_con_avatares_UAT.sql
+--
+-- Fresh databases safely record V31 as applied without inserting fixture data.
+-- Existing databases that already applied the former V31 will have a checksum
+-- mismatch: follow docs/MIGRATION_SAFETY_V30_V31.md before starting this RC.
 -- DME | SGI:Comando | Carga de 200 empleados con avatares desde empleados.xlsx
 -- Fecha: 2026-09-24
 -- Origen: Hoja1, columnas id, nombre y cargo o rol.

@@ -111,7 +111,7 @@
 - Sin migraciones nuevas en UAT v0.1.
 ## 2026-09-20 — VISINT / Impulsos v0.1 (documentation/SITC)
 - Flujo aprobado: `SGI_OPR → SGI_COM → VISINT → SGI_COM → SGI_OPR`.
-- SGI: Comando es SoR de reglas, probabilidad, cantidad y ledger de Impulsos.
+- CORE es SoR de reglas versionadas de Impulsos; cada SGI: Comando PE aplica esas reglas y es SoR del ledger/saldo de Impulsos.
 - VISINT valida evidencia visual y no calcula premios.
 - `PASS` habilita evaluación probabilística; no garantiza recompensa.
 - Idempotencia obligatoria para impedir sorteos/premios duplicados ante retries.
@@ -126,3 +126,58 @@ Estado: **CLOSED / FROZEN**.
 Baselines: TER v1.0; COM v1.1.3; SER v0.10.10; ASI v0.7.4; COO v0.1; BIT v0.1; CNS v0.1.2; NOV v0.1; CSL v0.1.
 
 Hardening técnico: PERF v0.1, sin cambios de UI. Documentación final CORE: `CORE_REQUIREMENTS_SGI_COMANDO.md` + `SGI_Comando_Requerimientos_CORE.pdf`. SITC acumulativo final: `SGI_Comando_FINAL_2026-09-20.sitcpack`.
+
+
+## 2026-09-27 — Reapertura acotada CSL
+- `CSL v0.1` permanece como baseline FROZEN histórica.
+- `CSL v0.1.1` = **UAT_CANDIDATE**, cambio UX únicamente: filtros de búsqueda colapsables, cerrados por defecto.
+- Resto de verticales: sin cambio de versión/estado por esta entrega.
+- SITC/interconexiones: sin cambios.
+
+## 2026-09-27 — CSL v0.2 — Notificación de Incidentes
+- `CSL v0.2` = **UAT_CANDIDATE** sobre CSL v0.1.1.
+- Botón `Notificar Incidente` + panel lateral editable.
+- Categorías Servicio / Seguridad / Administrativo; subcategorías de la referencia `Incidentes.xlsx`.
+- Criticidad Informativo / Menor / Moderado / Mayor / Crítico.
+- Cliente/Punto obligatorios, Puesto opcional, colaboradores de últimas 2 semanas sin duplicidad.
+- Descripción/Resolución con máximo 5 imágenes por sección; Sanción Sí/No.
+- Estados Borrador / Finalizado reeditables desde Casos operativos.
+- Inasistencia Programada/Efectiva incluye flujo DEMO de reasignación con prelación mismo Puesto → mismo Punto → misma Compañía por cercanía.
+- Backend/BD/SITC: sin cambios en esta UAT.
+- EVC: fuera de alcance.
+
+
+### CSL v0.2.1 — UAT
+- Baseline: CSL v0.2.
+- Taxonomía exacta del Excel 2026-09-27: 3 categorías / 20 subcategorías / 90 incidentes.
+- Sin cambios de backend/SITC.
+
+### CSL v0.2.5 — UAT
+- Baseline: CSL v0.2.4.
+- Incidente: asset limpio, sin texto residual.
+- Reasignación: teléfono + Francos Trabajados (últ. 6 meses) por candidato.
+- Sin cambios de BD/SITC.
+
+### NEX v0.1 — UAT
+- Estado: UAT_CANDIDATE.
+- Baseline: CSL v0.2.5.
+- Alcance: Nexus / Reglas + Historial dentro de Configuración del Punto.
+- Persistencia: DEMO localStorage por Punto.
+- Backend/DB/SITC: sin cambios.
+
+
+## 2026-09-27 — CIERRE / ENTREGA SISTEMAS
+- Estado global de baseline: **CLOSED / FROZEN**.
+- Entrega prevista: 2026-09-28.
+- TER v1.0 — FROZEN.
+- COM v1.1.3 — FROZEN.
+- SER v0.10.10 — FROZEN.
+- ASI v0.7.4 — FROZEN.
+- COO v0.1 — FROZEN.
+- BIT v0.1 — FROZEN.
+- CNS v0.1.2 — FROZEN.
+- NOV v0.1 — FROZEN.
+- CSL v0.2.5 — FROZEN.
+- NEX v0.1 — FROZEN.
+- NEX v0.1 conserva runtime/persistencia productivos como pendiente explícito; CSL v0.2.5 conserva componentes DEMO/local documentados.
+- Regla: cualquier cambio posterior exige nueva versión.
