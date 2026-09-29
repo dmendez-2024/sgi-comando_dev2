@@ -103,3 +103,62 @@ Efecto: `company_id → NULL`, estado `PENDING`, preserva configuración del Pun
 
 ### `POST /api/services/overview/points/{pointId}/assign-company`
 Cuando el Punto proviene de un retiro anterior, la misma operación registra `REASSIGNMENT_FROM_COORDINATION`; no requiere aceptación del Coordinador destino.
+
+
+## SGI_OPR → SGI_COM · Evidencias del agente por multipart (v1, Fase 1)
+
+Habilitado con `SGI_OPERATOR_RELIEF_UAT_ENABLED=true`. Autenticación: usuario con rol `AGENTE_SEGURIDAD` o `SUPERVISOR_SEGURIDAD` vinculado a un empleado (`operator_employee_binding`).
+Flujo en dos pasos: (1) subir las fotos, (2) confirmar la ejecución referenciando los `evidenceId` devueltos. Los errores 400/403/409 de `/api/v1/operator` traen el motivo en texto plano.
+
+### `GET /api/v1/operator/runtime?assignmentId={id}`
+Además de `relief`, devuelve `patrols[]`: solo protocolos de Patrullas **publicados y activos** en el Puesto de la asignación.
+```json
+"patrols":[{"protocolId":"…","protocolCode":"PRO-PAT-0004","protocolVersion":1,"patrolId":"…","code":"PAT-001","name":"…",
+  "structureType":"CLOSED","scheduleType":"PROGRAMMED","sequenceType":"STRICT","windowStart":"22:00","windowEnd":"22:45",
+  "checkpoints":[{"checkpointId":"…","code":"H01","name":"Portón trasero","description":"…","sortOrder":1,"requiresEvidence":true,
+    "evidenceMinCount":2,"evidenceMaxCount":3,"hasStandardImage":true,"standardImageVersion":1,"standardImageNotes":"…",
+    "latitude":-2.17,"longitude":-79.92,"radiusM":50}]}]
+```
+
+### `GET /api/v1/operator/checkpoints/{checkpointId}/standard-image?assignmentId={id}`
+Foto estándar del Hito como guía para el agente (binario de la imagen).
+
+### `POST /api/v1/operator/evidences` — `multipart/form-data`
+| Parte | Tipo | Contenido |
+|---|---|---|
+| `metadata` | texto (JSON) | Metadatos. Se envía como **texto**, nunca como `Blob` con nombre de archivo. |
+| `files` | archivo, 1..5 | Cada archivo se llama `<clientEvidenceId>.<ext>`; se empareja con su ítem por nombre. |
+
+Cabecera opcional `Idempotency-Key: <uploadBatchId>`. El cliente **no** fija `Content-Type` (lo pone el navegador/HTTP client con el `boundary`).
+
+```json
+{"uploadBatchId":"uuid","eventId":"uuid","assignmentId":"uuid","targetType":"PATROL_CHECKPOINT","targetId":"uuid-del-hito",
+ "items":[{"clientEvidenceId":"uuid","capturedAt":"2026-09-29T22:14:03Z","latitude":-2.170998,"longitude":-79.922359,
+   "accuracyM":8,"source":"CAMERA","sha256":"<64 hex minúsculas>"}]}
+```
+Respuesta `200` (un resultado por foto; puede haber éxito parcial):
+```json
+{"results":[{"clientEvidenceId":"…","evidenceId":"…","status":"STORED","reason":null,"flags":[]},
+            {"clientEvidenceId":"…","evidenceId":"…","status":"ALREADY_STORED","reason":null,"flags":["GALLERY"]},
+            {"clientEvidenceId":"…","evidenceId":null,"status":"REJECTED","reason":"UNSUPPORTED_FORMAT","flags":[]}]}
+```
+- `reason`: `FILE_TOO_LARGE` (> 5 MB), `UNSUPPORTED_FORMAT` (no es JPEG/PNG/WebP por contenido), `CHECKSUM_MISMATCH`, `TOO_MANY_PHOTOS` (supera `evidenceMaxCount` del Hito).
+- `flags`: `GALLERY`, `OUT_OF_RANGE` (fuera de `radiusM` del Hito), `SUSPECTED_REUSE` (el mismo archivo ya se usó en otra ejecución).
+- Idempotencia: reenviar el mismo `clientEvidenceId` con el mismo archivo → `ALREADY_STORED`; con otro archivo → `409`.
+- Errores: `400` forma inválida o Hito no activo en el Puesto; `403` asignación ajena; `413` petición demasiado grande; `503` almacenamiento no disponible.
+- Límites: 5 MB por foto, 5 fotos por petición, 30 MB por petición. Las fotos se guardan en MinIO (`sgi-evidence/evidence/{yyyy}/{MM}/{eventId}/{evidenceId}.{ext}`).
+
+### `POST /api/v1/operator/executions` — evento `PATROL_CHECKPOINT_COMPLETED`
+```json
+{"batchId":"uuid","correlationId":"uuid","employeeId":"uuid","instanceCountryId":"uuid","deviceId":"…","capturedAt":"…",
+ "events":[{"type":"PATROL_CHECKPOINT_COMPLETED","eventId":"uuid (el mismo de /evidences)","assignmentId":"uuid",
+   "patrolRunId":"uuid de la ronda","patrolId":"uuid","checkpointId":"uuid","executedAt":"…",
+   "latitude":-2.17,"longitude":-79.92,"accuracyM":8,"observation":"opcional (≤1000)","evidenceIds":["…","…"]}]}
+```
+Respuesta: `{"serverVersion":"operator-v1","acknowledgedEventIds":["…"],"rejectedEvents":[],"results":[{"eventId":"…","status":"RECEIVED","evidenceCount":2,"validationStatus":"NOT_REQUESTED"}]}`.
+- Valida: fotos del mismo `eventId`, asignación, usuario y Hito; cantidad entre `evidenceMinCount` y `evidenceMaxCount`; fecha dentro del turno (±12 h).
+- Idempotente por `eventId` (mismo contenido → mismo ack; distinto → `409`). Un Hito se registra una vez por `patrolRunId` (segunda vez → `409`).
+- `RELIEF_SUBMITTED` sigue funcionando igual.
+
+### Foto estándar (Patrullas, Consignas, Bitácora)
+`POST …/standard-image` acepta ahora `multipart/form-data` con la parte `file` (además del binario `application/octet-stream` anterior). La imagen se guarda en MinIO (`sgi-standard/standard/{módulo}/{sha256}.{ext}`); las fotos antiguas en `bytea` se migran solas al arrancar.

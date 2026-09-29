@@ -12,6 +12,7 @@ import ConsolaMonitor from './pages/ConsolaMonitor';
 import ConsignasExecution from './pages/ConsignasExecution';
 import NovedadesExecution from './pages/NovedadesExecution';
 import Placeholder from './pages/Placeholder';
+import AgentSimulator from './pages/AgentSimulator';
 
 export default function App() {
   const [active, setActive] = useState('Dashboard');
@@ -37,6 +38,8 @@ export default function App() {
         ? <ConsignasExecution />
       : active === 'Novedades'
         ? <NovedadesExecution />
+      : active === 'Simulador Agente (UAT)'
+        ? <AgentSimulator />
         : <Placeholder name={active} />;
 
   const title = active === 'Dashboard' ? 'Comando Operacional' : active;

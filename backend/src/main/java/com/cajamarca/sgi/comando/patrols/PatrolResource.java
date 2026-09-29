@@ -4,6 +4,7 @@ import com.cajamarca.sgi.comando.ats.AtsPointPackage;
 import com.cajamarca.sgi.comando.common.TenantContext;
 import com.cajamarca.sgi.comando.operations.PointEntity;
 import com.cajamarca.sgi.comando.operations.PostEntity;
+import com.cajamarca.sgi.comando.storage.StandardImageStore;
 import com.cajamarca.sgi.comando.territory.OperationalScopeService;
 import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.annotation.security.RolesAllowed;
@@ -13,6 +14,8 @@ import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.HttpHeaders;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
+import org.jboss.resteasy.reactive.RestForm;
+import org.jboss.resteasy.reactive.multipart.FileUpload;
 
 import java.time.*;
 import java.util.*;
@@ -32,9 +35,10 @@ public class PatrolResource {
     @Inject TenantContext tenant;
     @Inject OperationalScopeService scope;
     @Inject SecurityIdentity identity;
+    @Inject StandardImageStore standardImages;
 
     public record RuleDto(UUID id,UUID checkpointId,int sortOrder,String ruleType,boolean required,boolean evidenceRequired) {}
-    public record CheckpointDto(UUID id,UUID patrolId,int sortOrder,String code,String name,String description,String originMode,UUID atsPackageId,Double atsX,Double atsY,Double latitude,Double longitude,Double gpsAccuracyM,Instant locationCapturedAt,String locationCapturedBy,String controlType,boolean requiresEvidence,boolean hasStandardImage,String standardImageOriginalName,int standardImageVersion,String standardImageNotes,boolean visintEnabled,List<RuleDto> rules) {}
+    public record CheckpointDto(UUID id,UUID patrolId,int sortOrder,String code,String name,String description,String originMode,UUID atsPackageId,Double atsX,Double atsY,Double latitude,Double longitude,Double gpsAccuracyM,Instant locationCapturedAt,String locationCapturedBy,String controlType,boolean requiresEvidence,boolean hasStandardImage,String standardImageOriginalName,int standardImageVersion,String standardImageNotes,boolean visintEnabled,List<RuleDto> rules,int evidenceMinCount,int evidenceMaxCount) {}
     public record PatrolDto(UUID id,UUID protocolId,String code,String name,String description,String structureType,String scheduleType,String sequenceType,String windowStart,String windowEnd,int repetitions,int versionNo,String updatedBy,List<CheckpointDto> checkpoints) {}
     public record ProtocolDto(UUID id,UUID seriesId,UUID basedOnProtocolId,UUID postId,String code,String name,String description,String status,int versionNo,Instant lastPublishedAt,String updatedBy,List<UUID> applicablePostIds,List<PatrolDto> patrols) {}
     public record CreateProtocolRequest(UUID postId,String name) {}
@@ -43,7 +47,7 @@ public class PatrolResource {
     public record CreatePatrolRequest(String name,String structureType,String scheduleType) {}
     public record SavePatrolRequest(String name,String description,String structureType,String scheduleType,String sequenceType,String windowStart,String windowEnd,Integer repetitions) {}
     public record CreateCheckpointRequest(String name,String description,String originMode,UUID atsPackageId,Double atsX,Double atsY,Double latitude,Double longitude,Double gpsAccuracyM,String controlType,Boolean requiresEvidence) {}
-    public record SaveCheckpointRequest(String name,String description,String originMode,UUID atsPackageId,Double atsX,Double atsY,Double latitude,Double longitude,Double gpsAccuracyM,String controlType,boolean requiresEvidence,String standardImageNotes) {}
+    public record SaveCheckpointRequest(String name,String description,String originMode,UUID atsPackageId,Double atsX,Double atsY,Double latitude,Double longitude,Double gpsAccuracyM,String controlType,boolean requiresEvidence,String standardImageNotes,Integer evidenceMinCount,Integer evidenceMaxCount) {}
     public record SaveRulesRequest(List<RuleInput> rules) {}
     public record RuleInput(String ruleType,boolean required,boolean evidenceRequired) {}
 
@@ -213,6 +217,9 @@ public class PatrolResource {
     public CheckpointDto saveCheckpoint(@PathParam("checkpointId") UUID checkpointId,SaveCheckpointRequest req){
         PatrolCheckpoint cp=checkpoint(checkpointId);PatrolDefinition pat=patrol(cp.patrolId);PatrolProtocol p=protocol(pat.protocolId);authorize(p);requireDraft(p);if(req==null)throw new BadRequestException("Solicitud obligatoria");
         cp.name=clean(req.name(),cp.name);cp.description=req.description()==null?"":req.description().trim();String oldOrigin=cp.originMode;cp.originMode=normalize(req.originMode(),ORIGINS,cp.originMode,"Origen inválido");cp.atsPackageId=req.atsPackageId();cp.atsX=req.atsX();cp.atsY=req.atsY();cp.latitude=req.latitude();cp.longitude=req.longitude();cp.gpsAccuracyM=req.gpsAccuracyM();cp.controlType=normalize(req.controlType(),CONTROL_TYPES,cp.controlType,"Tipo de control inválido");cp.requiresEvidence=req.requiresEvidence();cp.standardImageNotes=req.standardImageNotes()==null?"":req.standardImageNotes().trim();validateOrigin(cp,p);
+        int minPhotos=req.evidenceMinCount()==null?cp.evidenceMinCount:req.evidenceMinCount(),maxPhotos=req.evidenceMaxCount()==null?cp.evidenceMaxCount:req.evidenceMaxCount();
+        if(minPhotos<1||minPhotos>5||maxPhotos<minPhotos||maxPhotos>5)throw new BadRequestException("Las fotos por Hito deben cumplir 1 ≤ mínimo ≤ máximo ≤ 5");
+        cp.evidenceMinCount=minPhotos;cp.evidenceMaxCount=maxPhotos;
         if(("FIELD".equals(cp.originMode)||"MIXED".equals(cp.originMode))&&(!Objects.equals(oldOrigin,cp.originMode)||cp.locationCapturedAt==null)){cp.locationCapturedAt=Instant.now();cp.locationCapturedBy=user();}
         pat.versionNo++;pat.legacyVersion=pat.versionNo;pat.updatedByUsername=user();return checkpointDto(cp);
     }
@@ -240,25 +247,36 @@ public class PatrolResource {
     @Transactional
     @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
     public CheckpointDto uploadImage(@PathParam("checkpointId") UUID checkpointId,@QueryParam("filename") String filename,@QueryParam("contentType") String contentType,byte[] bytes){
-        PatrolCheckpoint cp=checkpoint(checkpointId);PatrolDefinition pat=patrol(cp.patrolId);PatrolProtocol p=protocol(pat.protocolId);authorize(p);requireDraft(p);if(bytes==null||bytes.length==0)throw new BadRequestException("Imagen obligatoria");if(bytes.length>MAX_IMAGE)throw new BadRequestException("La foto estándar no puede superar 5 MB");String ct=contentType==null?"":contentType.toLowerCase(Locale.ROOT);if(!IMAGE_TYPES.contains(ct))throw new BadRequestException("Formato de imagen no permitido");cp.standardImageData=bytes;cp.standardImageOriginalName=clean(filename,"foto-estandar");cp.standardImageContentType=ct;cp.standardImageVersion=Math.max(1,cp.standardImageVersion+1);cp.visintEnabled=false;pat.versionNo++;pat.legacyVersion=pat.versionNo;pat.updatedByUsername=user();return checkpointDto(cp);
+        PatrolCheckpoint cp=checkpoint(checkpointId);PatrolDefinition pat=patrol(cp.patrolId);PatrolProtocol p=protocol(pat.protocolId);authorize(p);requireDraft(p);StandardImageStore.Stored s=standardImages.save("patrol",bytes);cp.standardImageObjectKey=s.objectKey();cp.standardImageSha256=s.sha256();cp.standardImageSize=s.size();cp.standardImageContentType=s.contentType();cp.standardImageData=null;cp.standardImageOriginalName=clean(filename,"foto-estandar");cp.standardImageVersion=Math.max(1,cp.standardImageVersion+1);cp.visintEnabled=false;pat.versionNo++;pat.legacyVersion=pat.versionNo;pat.updatedByUsername=user();return checkpointDto(cp);
+    }
+
+    @POST
+    @Path("/checkpoints/{checkpointId}/standard-image")
+    @Consumes(MediaType.MULTIPART_FORM_DATA)
+    @Transactional
+    @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
+    public CheckpointDto uploadImageForm(@PathParam("checkpointId") UUID checkpointId,@RestForm("file") FileUpload file) throws java.io.IOException{
+        if(file==null)throw new BadRequestException("Imagen obligatoria");
+        if(file.size()>StandardImageStore.MAX_BYTES)throw new BadRequestException("La foto estándar no puede superar 5 MB");
+        return uploadImage(checkpointId,file.fileName(),file.contentType(),java.nio.file.Files.readAllBytes(file.uploadedFile()));
     }
 
     @GET
     @Path("/checkpoints/{checkpointId}/standard-image")
     @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION","SUPERVISOR_SEGURIDAD","AGENTE_SEGURIDAD","CLIENTE"})
-    public Response image(@PathParam("checkpointId") UUID checkpointId){PatrolCheckpoint cp=checkpoint(checkpointId);PatrolDefinition pat=patrol(cp.patrolId);PatrolProtocol p=protocol(pat.protocolId);authorize(p);if(cp.standardImageData==null)throw new NotFoundException("El Hito no tiene foto estándar");return Response.ok(cp.standardImageData).type(cp.standardImageContentType).header(HttpHeaders.CACHE_CONTROL,"no-store").build();}
+    public Response image(@PathParam("checkpointId") UUID checkpointId){PatrolCheckpoint cp=checkpoint(checkpointId);PatrolDefinition pat=patrol(cp.patrolId);PatrolProtocol p=protocol(pat.protocolId);authorize(p);return Response.ok(standardImages.read(cp.standardImageObjectKey,cp.standardImageData)).type(cp.standardImageContentType).header(HttpHeaders.CACHE_CONTROL,"no-store").build();}
 
     @DELETE
     @Path("/checkpoints/{checkpointId}/standard-image")
     @Transactional
     @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
-    public CheckpointDto deleteImage(@PathParam("checkpointId") UUID checkpointId){PatrolCheckpoint cp=checkpoint(checkpointId);PatrolDefinition pat=patrol(cp.patrolId);PatrolProtocol p=protocol(pat.protocolId);authorize(p);requireDraft(p);cp.standardImageData=null;cp.standardImageOriginalName=null;cp.standardImageContentType=null;cp.visintEnabled=false;pat.versionNo++;pat.legacyVersion=pat.versionNo;pat.updatedByUsername=user();return checkpointDto(cp);}
+    public CheckpointDto deleteImage(@PathParam("checkpointId") UUID checkpointId){PatrolCheckpoint cp=checkpoint(checkpointId);PatrolDefinition pat=patrol(cp.patrolId);PatrolProtocol p=protocol(pat.protocolId);authorize(p);requireDraft(p);cp.standardImageData=null;cp.standardImageObjectKey=null;cp.standardImageSha256=null;cp.standardImageSize=null;cp.standardImageOriginalName=null;cp.standardImageContentType=null;cp.visintEnabled=false;pat.versionNo++;pat.legacyVersion=pat.versionNo;pat.updatedByUsername=user();return checkpointDto(cp);}
 
     private void validatePatrolForPublish(PatrolDefinition p){validateWindow(p);if("CLOSED".equals(p.structureType)){List<PatrolCheckpoint> items=checkpoints(p.id);long count=items.size();if(count<1)throw new BadRequestException(p.code+" debe tener al menos un Hito");if(count>25)throw new BadRequestException(p.code+" supera el máximo de 25 Hitos");PatrolProtocol protocol=protocol(p.protocolId);for(PatrolCheckpoint checkpoint:items)validateOrigin(checkpoint,protocol);}}
     private void validateWindow(PatrolDefinition p){if(!"PROGRAMMED".equals(p.scheduleType))return;if(p.windowStart==null||p.windowEnd==null)throw new BadRequestException("La Patrulla Programada requiere hora Desde y Hasta");long start=p.windowStart.toSecondOfDay()/60,end=p.windowEnd.toSecondOfDay()/60,diff=end-start;if(diff<=0)diff+=1440;if(diff>60)throw new BadRequestException("La ventana de una Patrulla Programada no puede superar 1 hora");}
     private void validateOrigin(PatrolCheckpoint cp,PatrolProtocol protocol){if("ATS".equals(cp.originMode)){if(cp.atsX==null||cp.atsY==null)throw new BadRequestException("El Hito de Plano ATS requiere coordenadas del plano");if(cp.atsX<0||cp.atsX>1||cp.atsY<0||cp.atsY>1)throw new BadRequestException("Coordenadas ATS fuera de rango");if(cp.atsPackageId==null){PostEntity post=post(protocol.postId);AtsPointPackage pkg=AtsPointPackage.find("instanceCountryId=?1 and pointId=?2 and current=true",tenant.instanceCountryId(),post.pointId).firstResult();if(pkg==null)throw new BadRequestException("El Punto no tiene un plano ATS vigente");cp.atsPackageId=pkg.id;}}else if("FIELD".equals(cp.originMode)){if(cp.latitude==null||cp.longitude==null)throw new BadRequestException("El Hito levantado en campo requiere coordenadas GPS");}else if("MIXED".equals(cp.originMode)){if((cp.latitude==null||cp.longitude==null)&&(cp.atsX==null||cp.atsY==null))throw new BadRequestException("El Hito mixto requiere una ubicación ATS o GPS");}}
     private void seedRules(PatrolCheckpoint cp){String[] kinds={"INSPECCION_VISUAL","FOTOGRAFIA","CONFIRMACION"};for(int i=0;i<kinds.length;i++){PatrolCheckpointRule r=new PatrolCheckpointRule();r.instanceCountryId=tenant.instanceCountryId();r.checkpointId=cp.id;r.sortOrder=i+1;r.ruleType=kinds[i];r.required=true;r.evidenceRequired="FOTOGRAFIA".equals(kinds[i]);r.persist();}}
-    private PatrolCheckpoint cloneCheckpoint(PatrolCheckpoint old,UUID newPatrolId){PatrolCheckpoint cp=new PatrolCheckpoint();cp.id=UUID.randomUUID();cp.instanceCountryId=tenant.instanceCountryId();cp.patrolId=newPatrolId;cp.sortOrder=old.sortOrder;cp.radiusM=old.radiusM;cp.validationRuleJson=old.validationRuleJson==null?"{}":old.validationRuleJson;cp.code=old.code;cp.name=old.name;cp.description=old.description;cp.originMode=old.originMode;cp.atsPackageId=old.atsPackageId;cp.atsX=old.atsX;cp.atsY=old.atsY;cp.latitude=old.latitude;cp.longitude=old.longitude;cp.gpsAccuracyM=old.gpsAccuracyM;cp.locationCapturedAt=old.locationCapturedAt;cp.locationCapturedBy=old.locationCapturedBy;cp.controlType=old.controlType;cp.requiresEvidence=old.requiresEvidence;cp.standardImageOriginalName=old.standardImageOriginalName;cp.standardImageContentType=old.standardImageContentType;cp.standardImageData=old.standardImageData==null?null:Arrays.copyOf(old.standardImageData,old.standardImageData.length);cp.standardImageVersion=old.standardImageVersion;cp.standardImageNotes=old.standardImageNotes;cp.visintEnabled=old.visintEnabled;cp.persist();for(PatrolCheckpointRule oldRule:rules(old.id)){PatrolCheckpointRule r=new PatrolCheckpointRule();r.instanceCountryId=tenant.instanceCountryId();r.checkpointId=cp.id;r.sortOrder=oldRule.sortOrder;r.ruleType=oldRule.ruleType;r.required=oldRule.required;r.evidenceRequired=oldRule.evidenceRequired;r.persist();}return cp;}
+    private PatrolCheckpoint cloneCheckpoint(PatrolCheckpoint old,UUID newPatrolId){PatrolCheckpoint cp=new PatrolCheckpoint();cp.id=UUID.randomUUID();cp.instanceCountryId=tenant.instanceCountryId();cp.patrolId=newPatrolId;cp.sortOrder=old.sortOrder;cp.radiusM=old.radiusM;cp.validationRuleJson=old.validationRuleJson==null?"{}":old.validationRuleJson;cp.code=old.code;cp.name=old.name;cp.description=old.description;cp.originMode=old.originMode;cp.atsPackageId=old.atsPackageId;cp.atsX=old.atsX;cp.atsY=old.atsY;cp.latitude=old.latitude;cp.longitude=old.longitude;cp.gpsAccuracyM=old.gpsAccuracyM;cp.locationCapturedAt=old.locationCapturedAt;cp.locationCapturedBy=old.locationCapturedBy;cp.controlType=old.controlType;cp.requiresEvidence=old.requiresEvidence;cp.evidenceMinCount=old.evidenceMinCount;cp.evidenceMaxCount=old.evidenceMaxCount;cp.standardImageOriginalName=old.standardImageOriginalName;cp.standardImageContentType=old.standardImageContentType;cp.standardImageData=old.standardImageData==null?null:Arrays.copyOf(old.standardImageData,old.standardImageData.length);cp.standardImageObjectKey=old.standardImageObjectKey;cp.standardImageSha256=old.standardImageSha256;cp.standardImageSize=old.standardImageSize;cp.standardImageVersion=old.standardImageVersion;cp.standardImageNotes=old.standardImageNotes;cp.visintEnabled=old.visintEnabled;cp.persist();for(PatrolCheckpointRule oldRule:rules(old.id)){PatrolCheckpointRule r=new PatrolCheckpointRule();r.instanceCountryId=tenant.instanceCountryId();r.checkpointId=cp.id;r.sortOrder=oldRule.sortOrder;r.ruleType=oldRule.ruleType;r.required=oldRule.required;r.evidenceRequired=oldRule.evidenceRequired;r.persist();}return cp;}
 
     private void activateVersion(PatrolProtocol p){
         List<PatrolProtocol> active=PatrolProtocol.list("instanceCountryId=?1 and seriesId=?2 and status='ACTIVO' and id<>?3",tenant.instanceCountryId(),p.seriesId,p.id);
@@ -294,7 +312,7 @@ public class PatrolResource {
     private List<PatrolCheckpointRule> rules(UUID checkpointId){return PatrolCheckpointRule.list("checkpointId=?1 and instanceCountryId=?2 order by sortOrder",checkpointId,tenant.instanceCountryId());}
     private ProtocolDto dto(PatrolProtocol p){return new ProtocolDto(p.id,p.seriesId,p.basedOnProtocolId,p.postId,p.code,p.name,p.description,p.status,p.versionNo,p.lastPublishedAt,p.updatedByUsername,scopeIds(p),patrols(p.id).stream().map(this::patrolDto).toList());}
     private PatrolDto patrolDto(PatrolDefinition p){return new PatrolDto(p.id,p.protocolId,p.code,p.name,p.description,p.structureType,p.scheduleType,p.sequenceType,p.windowStart==null?null:p.windowStart.toString(),p.windowEnd==null?null:p.windowEnd.toString(),p.repetitions,p.versionNo,p.updatedByUsername,checkpoints(p.id).stream().map(this::checkpointDto).toList());}
-    private CheckpointDto checkpointDto(PatrolCheckpoint c){return new CheckpointDto(c.id,c.patrolId,c.sortOrder,c.code,c.name,c.description,c.originMode,c.atsPackageId,c.atsX,c.atsY,c.latitude,c.longitude,c.gpsAccuracyM,c.locationCapturedAt,c.locationCapturedBy,c.controlType,c.requiresEvidence,c.standardImageData!=null&&c.standardImageData.length>0,c.standardImageOriginalName,c.standardImageVersion,c.standardImageNotes,c.visintEnabled,rules(c.id).stream().map(r->new RuleDto(r.id,r.checkpointId,r.sortOrder,r.ruleType,r.required,r.evidenceRequired)).toList());}
+    private CheckpointDto checkpointDto(PatrolCheckpoint c){return new CheckpointDto(c.id,c.patrolId,c.sortOrder,c.code,c.name,c.description,c.originMode,c.atsPackageId,c.atsX,c.atsY,c.latitude,c.longitude,c.gpsAccuracyM,c.locationCapturedAt,c.locationCapturedBy,c.controlType,c.requiresEvidence,StandardImageStore.has(c.standardImageObjectKey,c.standardImageData),c.standardImageOriginalName,c.standardImageVersion,c.standardImageNotes,c.visintEnabled,rules(c.id).stream().map(r->new RuleDto(r.id,r.checkpointId,r.sortOrder,r.ruleType,r.required,r.evidenceRequired)).toList(),c.evidenceMinCount,c.evidenceMaxCount);}
     private void requireDraft(PatrolProtocol p){if(!"BORRADOR".equals(p.status))throw new ClientErrorException("La versión publicada es inmutable. Cree una nueva versión en borrador para editar.",409);}
     private void authorize(PatrolProtocol p){PostEntity post=post(p.postId);PointEntity point=point(post.pointId);scope.requireCompany(point.companyId);}
     private PointEntity point(UUID id){if(id==null)throw new BadRequestException("pointId obligatorio");PointEntity p=PointEntity.find("id=?1 and instanceCountryId=?2",id,tenant.instanceCountryId()).firstResult();if(p==null)throw new NotFoundException("Punto no encontrado");return p;}

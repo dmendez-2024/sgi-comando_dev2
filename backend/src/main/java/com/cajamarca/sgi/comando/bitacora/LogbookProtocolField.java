@@ -22,6 +22,9 @@ public class LogbookProtocolField extends BaseEntity {
     @Column(name="standard_image_original_name", length=255) public String standardImageOriginalName;
     @Column(name="standard_image_content_type", length=100) public String standardImageContentType;
     @Column(name="standard_image_data", columnDefinition="bytea") public byte[] standardImageData;
+    @Column(name="standard_image_object_key", length=300) public String standardImageObjectKey;
+    @Column(name="standard_image_sha256", length=64) public String standardImageSha256;
+    @Column(name="standard_image_size") public Long standardImageSize;
     @Column(name="standard_image_version", nullable=false) public int standardImageVersion;
     @Column(name="standard_image_notes", length=1000) public String standardImageNotes;
     @Column(name="visint_enabled", nullable=false) public boolean visintEnabled;

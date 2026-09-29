@@ -1,5 +1,5 @@
 import {useEffect,useState} from 'react';
-import {BarChart3,Bell,Building2,ChevronDown,ClipboardList,FileSearch,FileText,Gauge,MapPinned,MessageSquareText,Radio,Settings,ShieldCheck,Users,Warehouse,Map,Network} from 'lucide-react';
+import {BarChart3,Bell,Building2,ChevronDown,ClipboardList,FileSearch,FileText,Gauge,MapPinned,MessageSquareText,Radio,Settings,ShieldCheck,Users,Warehouse,Map,Network,Smartphone} from 'lucide-react';
 
 type NavItem={name:string;icon:any};
 type NavGroup={name:string;icon:any;children:NavItem[]};
@@ -14,6 +14,7 @@ const operations:NavGroup={
     {name:'Consola',icon:Bell},
     {name:'Bitácora',icon:FileText},
     {name:'Consignas',icon:ClipboardList},
+    {name:'Simulador Agente (UAT)',icon:Smartphone},
     {name:'Novedades',icon:ShieldCheck},
     {name:'Requerimientos',icon:MessageSquareText},
     {name:'Comunicación',icon:Radio},

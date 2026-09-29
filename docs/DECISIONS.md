@@ -491,3 +491,10 @@ SGI-05 se difiere hasta construir ATS. El paquete `.ats` deberá transportar al 
 
 
 - **CSL-DEC-INC-004 (2026-09-27):** el catálogo de Incidentes sigue la jerarquía Categoría → Subcategoría → Incidente del Excel `Incidentes(1).xlsx`. Inasistencia programada/efectiva son tipos de incidente bajo Asistencia y Puntualidad y activan el flujo especial de cobertura.
+
+## Evidencias del agente — Fase 1 (2026-09-29)
+- **SGI-EVI-DEC-001:** Las fotos del agente se envían por `multipart/form-data`: campo `metadata` (JSON como texto) y 1..5 partes `files`, cada una nombrada `<clientEvidenceId>.<ext>`.
+- **SGI-EVI-DEC-002:** Un Hito admite entre `evidence_min_count` y `evidence_max_count` fotos (1..5, por defecto 1..5).
+- **SGI-EVI-DEC-003:** Fotos estándar y del agente se almacenan en MinIO; Postgres guarda solo la referencia (clave, sha256, tamaño). El `bytea` anterior se migra en segundo plano y se eliminará en una versión posterior.
+- **SGI-EVI-DEC-004:** Carga en dos pasos (evidencias → ejecución), idempotente por `clientEvidenceId` y por `eventId`.
+- **SGI-EVI-DEC-005:** MinIO local usa `bitnamilegacy/minio` (edición comunitaria): la edición AIStor requiere licencia comercial y las imágenes `minio/minio` ya no se publican. Esta versión no incluye consola web.

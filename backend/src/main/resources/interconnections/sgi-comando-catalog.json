@@ -1045,6 +1045,24 @@
             "pendingMessages"
           ]
         }
+      },
+      {
+        "interfaceId": "SGI_OPR_SGI_COM_0002_IF02",
+        "method": "POST",
+        "path": "/api/v1/operator/evidences",
+        "purpose": "Multipart upload of 1..5 task photos with JSON metadata (idempotent by clientEvidenceId)",
+        "contentType": "multipart/form-data",
+        "request": {
+          "fields": [
+            "metadata",
+            "files[]"
+          ]
+        },
+        "response": {
+          "fields": [
+            "results[]"
+          ]
+        }
       }
     ],
     "legacyConnectionIds": [
