@@ -147,29 +147,71 @@
       {
         "interfaceId": "SGI_COM_CORE_0002_IF01",
         "method": "GET",
-        "path": "/api/v1/instance-countries/{instanceCountryId}/context",
+        "path": "/api/v1/catalog/instance-countries?countryId={countryId}",
         "purpose": "Instance/Country, locale, language, timezone, currency, units and formats",
         "contentType": "application/json",
-        "request": {},
-        "response": {}
+        "request": {"query": ["countryId"]},
+        "response": {
+          "fields": [
+            "id",
+            "code",
+            "name",
+            "countryId",
+            "countryCode",
+            "countryName",
+            "locale",
+            "timezone",
+            "currency"
+          ]
+        }
       },
       {
         "interfaceId": "SGI_COM_CORE_0002_IF02",
         "method": "GET",
-        "path": "/api/v1/instance-countries/{instanceCountryId}/territorial-structure",
-        "purpose": "Official subdivision type/catalog/geometries/dataset version",
+        "path": "/api/v1/catalog/subdivisions?countryId={countryId}",
+        "purpose": "Official subdivision catalog/type/dataset version; geometries from companion GeoJSON endpoint",
         "contentType": "application/json",
-        "request": {},
-        "response": {}
+        "request": {"query": ["countryId"]},
+        "response": {
+          "fields": [
+            "countryId",
+            "countryCode",
+            "countryName",
+            "subdivisionType",
+            "subdivisionSingular",
+            "subdivisionPlural",
+            "datasetVersion",
+            "subdivisions[].id",
+            "subdivisions[].code",
+            "subdivisions[].name",
+            "subdivisions[].officialCode",
+            "subdivisions[].type",
+            "subdivisions[].typeLabel",
+            "geojson.features[].id",
+            "geojson.features[].geometry"
+          ]
+        }
       },
       {
         "interfaceId": "SGI_COM_CORE_0002_IF03",
         "method": "GET",
-        "path": "/api/v1/instance-countries/{instanceCountryId}/companies",
+        "path": "/api/v1/catalog/companies",
         "purpose": "Canonical Company catalog/identity/logo/status/source version",
         "contentType": "application/json",
         "request": {},
-        "response": {}
+        "response": {
+          "fields": [
+            "instanceCountryId",
+            "companies[].id",
+            "companies[].code",
+            "companies[].name",
+            "companies[].description",
+            "companies[].logoUrl",
+            "companies[].companyType",
+            "companies[].sourceVersion",
+            "companies[].status"
+          ]
+        }
       },
       {
         "interfaceId": "SGI_COM_CORE_0002_IF04",

@@ -2,7 +2,8 @@ const API=import.meta.env.VITE_API_URL ?? 'http://localhost:8080';
 export type UatUser='presidente'|'dlatam'|'don'|'dnacional'|'dzonal'|'jregional'|'coord'|'asistente'|'supervisor'|'agente'|'cliente';
 let currentUser:UatUser=(localStorage.getItem('sgi-uat-user') as UatUser)||'coord';
 const PASSWORD='CajamarcaUAT!2026';
-export const setUser=(u:UatUser)=>{currentUser=u;localStorage.setItem('sgi-uat-user',u)};
+const contextCache=new Map<UatUser,Promise<any>>();
+export const setUser=(u:UatUser)=>{currentUser=u;contextCache.clear();localStorage.setItem('sgi-uat-user',u)};
 export const getUser=()=>currentUser;
 export class ApiError extends Error{status:number;body:string;constructor(status:number,body:string){super(`${status} ${body}`);this.status=status;this.body=body}}
 async function request<T>(path:string,init?:RequestInit):Promise<T>{
@@ -16,6 +17,13 @@ async function binaryRequest(path:string,init?:RequestInit):Promise<Blob>{
 }
 async function atsCurrentOrNull(pointId:string):Promise<any|null>{
  try{return await request<any>(`/api/points/${encodeURIComponent(pointId)}/ats`)}catch(error){if(error instanceof ApiError&&error.status===404)return null;throw error}
+}
+function loadCoreContext(force=false):Promise<any>{
+ if(force)contextCache.delete(currentUser);
+ const cached=contextCache.get(currentUser);if(cached)return cached;
+ const user=currentUser;
+ const pending=request<any>('/api/context').catch(error=>{if(contextCache.get(user)===pending)contextCache.delete(user);throw error});
+ contextCache.set(user,pending);return pending;
 }
 
 async function bitacoraImageUpload(fieldId:string,file:File):Promise<any>{
@@ -40,7 +48,7 @@ async function atsUpload(pointId:string,file:File):Promise<any>{
  if(!res.ok){const body=await res.text();throw new ApiError(res.status,body)} return res.json();
 }
 export const api={
- context:()=>request<any>('/api/context'),
+ context:(force=false)=>loadCoreContext(force),
  companies:(page=0,size=50)=>request<any>(`/api/companies?page=${page}&size=${size}`),
  companyCoreCatalog:()=>request<any[]>('/api/companies/core-catalog'),
  companyResponsibles:()=>request<any[]>('/api/companies/responsibles'),
@@ -124,7 +132,7 @@ export const api={
  consignments:(pointId:string)=>request<any[]>(`/api/consignments?pointId=${encodeURIComponent(pointId)}`),
  currentRegesep:(pointId:string)=>request<any>(`/api/points/${pointId}/regesep/current`),
  assignmentWeek:(companyId:string,weekStart:string,pointId?:string)=>request<any>(`/api/assignments/week?companyId=${encodeURIComponent(companyId)}&weekStart=${weekStart}${pointId?`&pointId=${encodeURIComponent(pointId)}`:''}`),
- assignmentPersonnel:(companyId:string,weekStart:string,q='',role='',availability='',page=0,size=50)=>request<any>(`/api/assignments/personnel?companyId=${encodeURIComponent(companyId)}&weekStart=${weekStart}&q=${encodeURIComponent(q)}&role=${encodeURIComponent(role)}&availability=${encodeURIComponent(availability)}&page=${page}&size=${size}`),
+ assignmentPersonnel:(companyId:string,weekStart:string,q='',role='',availability='',page=0,size=50,sort='PERSON',direction='ASC')=>request<any>(`/api/assignments/personnel?companyId=${encodeURIComponent(companyId)}&weekStart=${weekStart}&q=${encodeURIComponent(q)}&role=${encodeURIComponent(role)}&availability=${encodeURIComponent(availability)}&page=${page}&size=${size}&sort=${encodeURIComponent(sort)}&direction=${encodeURIComponent(direction)}`),
  assignmentPersonnelRoles:(companyId:string)=>request<any[]>(`/api/assignments/personnel-roles?companyId=${encodeURIComponent(companyId)}`),
  assignmentEmployee:(employeeId:string,weekStart:string,companyId:string)=>request<any>(`/api/assignments/employees/${encodeURIComponent(employeeId)}?weekStart=${weekStart}&companyId=${encodeURIComponent(companyId)}`),
  transferReasons:()=>request<any[]>('/api/assignments/transfer-reasons'),

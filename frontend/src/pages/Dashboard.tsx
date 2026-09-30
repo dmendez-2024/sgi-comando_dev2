@@ -1,6 +1,7 @@
 import {useEffect,useMemo,useState} from 'react';
 import {Activity,AlertTriangle,CalendarDays,CheckCircle2,ChevronDown,ClipboardCheck,FileText,MapPin,Search,ShieldAlert} from 'lucide-react';
 import {api,getUser,type UatUser} from '../api';
+import {DashboardProvinceMap,type DashboardProvinceCount,type DashboardProvinceSubdivision} from './Territory';
 
 type Company={id:string;name:string};
 type ServiceRow={
@@ -9,9 +10,11 @@ type ServiceRow={
   idAverage:number|null;icAverage:number|null;pendingNews:number;
   state:'ACTIVE'|'INACTIVE'|'TO_CONFIGURE'|'PENDING_ASSIGNMENT';assignmentStatus:string;atsLoaded:boolean;
 };
-type CoverageCompany={companyId:string;companyName:string;posts:number;requiredShifts:number;assignedShifts:number;unassignedShifts:number;coveragePct:number};
+type CoverageCompany={companyId:string;companyName:string;posts:number;uncoveredPoints:number;requiredShifts:number;assignedShifts:number;unassignedShifts:number;coveragePct:number};
+type Coverage={companies:CoverageCompany[];totalUnassignedShifts:number;totalUncoveredPoints:number;overallCoveragePct:number};
 type PointLocation={id:string;province?:string;city?:string};
-type DashboardData={companies:Company[];rows:ServiceRow[];coverage:any|null;locations:PointLocation[];errors:string[]};
+type Province={code:string;name:string;status?:string;geometryJson?:string;coreSubdivisionId?:string;coreDatasetVersion?:string};
+type DashboardData={companies:Company[];rows:ServiceRow[];coverage:Coverage|null;locations:PointLocation[];provinces:Province[];errors:string[]};
 
 function dateAtLocalNoon(value:Date){return new Date(value.getFullYear(),value.getMonth(),value.getDate(),12)}
 function weekStartIso(offset=0){
@@ -24,6 +27,7 @@ function shiftDate(value:string,days:number){const [year,month,day]=value.split(
 function dateLabel(date:Date){return new Intl.DateTimeFormat('es-EC',{day:'numeric',month:'short'}).format(date)}
 function weekLabel(value:string){return `${dateLabel(shiftDate(value,0))} – ${dateLabel(shiftDate(value,6))}`}
 function average(values:(number|null|undefined)[]){const available=values.filter((value):value is number=>typeof value==='number'&&Number.isFinite(value));return available.length?available.reduce((sum,value)=>sum+value,0)/available.length:null}
+function normalize(value:string){return value.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLocaleLowerCase('es').trim()}
 function statusLabel(row:ServiceRow){
   if(row.state==='PENDING_ASSIGNMENT')return 'Pendiente de asignación';
   if(row.state==='TO_CONFIGURE')return 'Por configurar';
@@ -31,23 +35,22 @@ function statusLabel(row:ServiceRow){
   return row.pendingNews>0?'Novedad pendiente':'Activo';
 }
 
-const unavailableMetrics=[
-  'Faltos registrados','Relevos tardíos','Incumplimiento de consignas','Incidentes críticos abiertos',
-  'Incumplimiento de ruta de supervisión','Factor hombre','Rotación de personal','Experiencia del cliente','Índice de riesgo operacional'
+const visibleMetricsWithoutSource=[
+  'Faltos registrados','Relevos tardíos','Incumplimiento de consignas',
+  'Incidentes críticos abiertos','Incumplimiento de ruta de supervisión'
 ];
+const provinceAliases:Record<string,string>={
+  'azuay':'AZU','bolivar':'BOL','canar':'CAN','carchi':'CAR','chimborazo':'CHI','cotopaxi':'COT',
+  'el oro':'EOR','esmeraldas':'ESM','galapagos':'GAL','guayas':'GUA','imbabura':'IMB','loja':'LOJ',
+  'los rios':'LRI','manabi':'MAN','morona santiago':'MOS','napo':'NAP','orellana':'ORE','pastaza':'PAS',
+  'pichincha':'PIC','santa elena':'SEL','santo domingo de los tsachilas':'SDE','sucumbios':'SUC',
+  'tungurahua':'TUN','zamora chinchipe':'ZCH'
+};
 
 const dashboardTitleByUser:Record<UatUser,string>={
-  presidente:'Dashboard Nacional',
-  dlatam:'Dashboard LATAM',
-  don:'Dashboard Nacional',
-  dnacional:'Dashboard Nacional',
-  dzonal:'Dashboard Zonal',
-  jregional:'Dashboard Regional',
-  coord:'Dashboard de Compañía',
-  asistente:'Dashboard de Compañía',
-  supervisor:'Dashboard de Supervisión',
-  agente:'Dashboard de Puesto',
-  cliente:'Dashboard Cliente',
+  presidente:'Dashboard Nacional',dlatam:'Dashboard LATAM',don:'Dashboard Nacional',dnacional:'Dashboard Nacional',
+  dzonal:'Dashboard Zonal',jregional:'Dashboard Regional',coord:'Dashboard de Compañía',asistente:'Dashboard de Compañía',
+  supervisor:'Dashboard de Supervisión',agente:'Dashboard de Puesto',cliente:'Dashboard Cliente',
 };
 
 export default function Dashboard(){
@@ -56,22 +59,21 @@ export default function Dashboard(){
   const [clientId,setClientId]=useState('');
   const [clientSearch,setClientSearch]=useState('');
   const [clientMenuOpen,setClientMenuOpen]=useState(false);
-  const [period,setPeriod]=useState('30d');
-  const [activeMetric,setActiveMetric]=useState('coverage');
   const [loading,setLoading]=useState(true);
-  const [data,setData]=useState<DashboardData>({companies:[],rows:[],coverage:null,locations:[],errors:[]});
+  const [data,setData]=useState<DashboardData>({companies:[],rows:[],coverage:null,locations:[],provinces:[],errors:[]});
 
   useEffect(()=>{
     let cancelled=false;
     setLoading(true);
     void (async()=>{
-      const [companiesResult,overviewResult,coverageResult]=await Promise.allSettled([
-        api.companies(0,100),api.serviceOverview(),api.assignmentCoverage(weekStart)
+      const [companiesResult,overviewResult,coverageResult,territoryResult]=await Promise.allSettled([
+        api.companies(0,100),api.serviceOverview(),api.assignmentCoverage(weekStart),api.territory()
       ]);
       const errors:string[]=[];
       const companies=companiesResult.status==='fulfilled'?(companiesResult.value.items??[]) as Company[]:[];
       const rows=overviewResult.status==='fulfilled'?((overviewResult.value.rows??[]) as ServiceRow[]):[];
-      const coverage=coverageResult.status==='fulfilled'?coverageResult.value:null;
+      const coverage=coverageResult.status==='fulfilled'?coverageResult.value as Coverage:null;
+      const provinces=territoryResult.status==='fulfilled'?((territoryResult.value.provinces??[]) as Province[]):[];
       if(companiesResult.status==='rejected')errors.push('No se pudieron cargar las compañías.');
       if(overviewResult.status==='rejected')errors.push('No se pudo cargar el resumen de Servicios.');
       if(coverageResult.status==='rejected')errors.push('No se pudo cargar la cobertura de la semana.');
@@ -79,7 +81,7 @@ export default function Dashboard(){
       const serviceIds=Array.from(new Set(rows.map(row=>row.serviceId).filter(Boolean)));
       const locationGroups=await Promise.allSettled(serviceIds.map(id=>api.points(id)));
       const locations=locationGroups.flatMap(result=>result.status==='fulfilled'?result.value as PointLocation[]:[]);
-      if(!cancelled){setData({companies,rows,coverage,locations,errors});setLoading(false)}
+      if(!cancelled){setData({companies,rows,coverage,locations,provinces,errors});setLoading(false)}
     })();
     return()=>{cancelled=true};
   },[weekStart]);
@@ -94,10 +96,10 @@ export default function Dashboard(){
   const filteredRows=useMemo(()=>data.rows.filter(row=>(!companyId||row.companyId===companyId)&&(!clientId||row.clientId===clientId)),[data.rows,companyId,clientId]);
   const pointIds=useMemo(()=>new Set(filteredRows.map(row=>row.pointId)),[filteredRows]);
   const companyOptions=useMemo(()=>data.companies.filter(company=>!clientId||filteredRows.some(row=>row.companyId===company.id)),[data.companies,filteredRows,clientId]);
-  const coverageCompanies=(data.coverage?.companies??[]) as CoverageCompany[];
+  const coverageCompanies=data.coverage?.companies??[];
   const selectedCoverage=companyId?coverageCompanies.find(company=>company.companyId===companyId):null;
-  const unassignedShifts=clientId?null:(selectedCoverage?.unassignedShifts??data.coverage?.totalUnassignedShifts??null);
-  const matchingCoveragePct=clientId?null:(selectedCoverage?.coveragePct??data.coverage?.overallCoveragePct??null);
+  const uncoveredPoints=clientId?null:(selectedCoverage?.uncoveredPoints??data.coverage?.totalUncoveredPoints??null);
+  const coveragePct=clientId?null:(selectedCoverage?.coveragePct??data.coverage?.overallCoveragePct??null);
   const idAverage=average(filteredRows.map(row=>row.idAverage));
   const icAverage=average(filteredRows.map(row=>row.icAverage));
   const attentionRows=useMemo(()=>filteredRows.filter(row=>row.state!=='ACTIVE'||row.pendingNews>0)
@@ -105,18 +107,33 @@ export default function Dashboard(){
       const rank=(row:ServiceRow)=>row.state==='PENDING_ASSIGNMENT'?0:row.state==='TO_CONFIGURE'?1:row.state==='INACTIVE'?2:3;
       return rank(a)-rank(b)||b.pendingNews-a.pendingNews||a.clientName.localeCompare(b.clientName,'es');
     }).slice(0,12),[filteredRows]);
-  const provinceCounts=useMemo(()=>{
+  const provinceCounts=useMemo<DashboardProvinceCount[]>(()=>{
+    const provinceByName=new Map<string,Province>();
+    data.provinces.forEach(province=>{provinceByName.set(normalize(province.name),province);provinceByName.set(normalize(province.code),province)});
     const byPoint=new Map(data.locations.map(point=>[point.id,point]));
-    const counts=new Map<string,number>();
-    pointIds.forEach(id=>{const province=byPoint.get(id)?.province;if(province)counts.set(province,(counts.get(province)??0)+1)});
-    return Array.from(counts.entries()).sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0],'es')).slice(0,6);
-  },[data.locations,pointIds]);
+    const counts=new Map<string,DashboardProvinceCount>();
+    pointIds.forEach(id=>{
+      const provinceName=byPoint.get(id)?.province?.trim();if(!provinceName)return;
+      const normalized=normalize(provinceName);
+      const province=provinceByName.get(normalized);
+      const code=province?.code??provinceAliases[normalized];if(!code)return;
+      const name=province?.name??provinceName;
+      const current=counts.get(code)??{code,name,points:0,status:province?.status,geometryJson:province?.geometryJson};
+      counts.set(code,{...current,points:current.points+1});
+    });
+    return Array.from(counts.values());
+  },[data.locations,data.provinces,pointIds]);
+  const chartCompanies=useMemo(()=>coverageCompanies
+    .filter(company=>!companyId||company.companyId===companyId)
+    .sort((a,b)=>b.uncoveredPoints-a.uncoveredPoints||a.companyName.localeCompare(b.companyName,'es')),[coverageCompanies,companyId]);
+  const chartMax=Math.max(1,...chartCompanies.map(company=>company.uncoveredPoints));
+  const companyName=companyOptions.find(company=>company.id===companyId)?.name;
   const today=new Intl.DateTimeFormat('es-EC',{weekday:'long',day:'numeric',month:'long',year:'numeric'}).format(new Date());
   const metrics=[
-    {id:'coverage',label:'Turnos sin asignar',value:unassignedShifts==null?'N/D':unassignedShifts.toLocaleString('es-EC'),note:clientId?'La cobertura no tiene desglose por cliente':matchingCoveragePct==null?'Sin datos de cobertura':`${matchingCoveragePct}% de cobertura`,available:unassignedShifts!=null},
-    {id:'id',label:'Índice de desempeño promedio',value:idAverage==null?'N/D':idAverage.toFixed(1),note:idAverage==null?'Sin evaluaciones disponibles':'Asignaciones cerradas · resumen actual',available:idAverage!=null},
-    {id:'ic',label:'Índice de compatibilidad promedio',value:icAverage==null?'N/D':`${icAverage.toFixed(1)}%`,note:icAverage==null?'Sin evaluaciones disponibles':'Asignaciones cerradas · resumen actual',available:icAverage!=null},
-    ...unavailableMetrics.map((label,index)=>({id:`pending-${index}`,label,value:'N/D',note:'Fuente o histórico no disponible en esta UAT',available:false}))
+    {id:'uncovered',label:'Puntos sin cobertura',value:uncoveredPoints==null?'N/D':uncoveredPoints.toLocaleString('es-EC'),note:coveragePct==null?'La cobertura no tiene desglose por cliente':`${coveragePct}% de cobertura semanal`,available:uncoveredPoints!=null},
+    {id:'id',label:'Índice de desempeño promedio',value:idAverage==null?'N/D':idAverage.toFixed(1),note:idAverage==null?'Sin evaluaciones disponibles':'Asignaciones cerradas · últimos 14 días',available:idAverage!=null},
+    {id:'ic',label:'Índice de compatibilidad promedio',value:icAverage==null?'N/D':`${icAverage.toFixed(1)}%`,note:icAverage==null?'Sin evaluaciones disponibles':'Asignaciones cerradas · últimos 14 días',available:icAverage!=null},
+    ...visibleMetricsWithoutSource.map((label,index)=>({id:`pending-${index}`,label,value:'N/D',note:'La UAT no expone una fuente para este indicador',available:false}))
   ];
   const dateOptions=Array.from({length:10},(_,index)=>{const value=weekStartIso(-index);return {value,label:index===0?`Semana actual · ${weekLabel(value)}`:weekLabel(value)}});
 
@@ -127,42 +144,40 @@ export default function Dashboard(){
       <div className="dash-v6-filters">
         <div className="dash-v6-client-filter"><span className="sr-only">Buscar cliente</span><Search size={16}/><input value={clientSearch} placeholder="Buscar cliente" aria-label="Buscar cliente" aria-expanded={clientMenuOpen} onFocus={()=>setClientMenuOpen(true)} onBlur={()=>window.setTimeout(()=>setClientMenuOpen(false),120)} onChange={event=>{setClientSearch(event.target.value);setClientId('');setCompanyId('');setClientMenuOpen(true)}} onKeyDown={event=>{if(event.key==='Escape')setClientMenuOpen(false)}}/>{clientSearch&&<button type="button" aria-label="Limpiar cliente" onMouseDown={event=>event.preventDefault()} onClick={()=>{setClientId('');setCompanyId('');setClientSearch('');setClientMenuOpen(false)}}>×</button>}{clientMenuOpen&&<div className="dash-v6-client-menu" role="listbox"><button type="button" role="option" aria-selected={!clientId} onMouseDown={event=>event.preventDefault()} onClick={()=>{setClientId('');setCompanyId('');setClientSearch('');setClientMenuOpen(false)}}>Todos los clientes</button>{visibleClients.map(client=><button type="button" role="option" aria-selected={clientId===client.id} key={client.id} onMouseDown={event=>event.preventDefault()} onClick={()=>{setClientId(client.id);setCompanyId('');setClientSearch(client.name);setClientMenuOpen(false)}}>{client.name}</button>)}{visibleClients.length===0&&<span>No hay clientes coincidentes</span>}</div>}</div>
         <label className="dash-v6-select"><MapPin size={15}/><select value={companyId} aria-label="Filtrar por compañía" onChange={event=>setCompanyId(event.target.value)}><option value="">Todas las compañías</option>{companyOptions.map(company=><option key={company.id} value={company.id}>{company.name}</option>)}</select><ChevronDown size={14}/></label>
-        <label className="dash-v6-select"><CalendarDays size={15}/><select value={weekStart} aria-label="Filtrar por semana" onChange={event=>setWeekStart(event.target.value)}>{dateOptions.map(option=><option key={option.value} value={option.value}>{option.label}</option>)}</select><ChevronDown size={14}/></label>
-        <label className="dash-v6-select dash-v6-period"><CalendarDays size={15}/><select value={period} aria-label="Período de tendencia" onChange={event=>setPeriod(event.target.value)}><option value="7d">Últimos 7 días</option><option value="30d">Últimos 30 días</option><option value="6m">Últimos 6 meses</option></select><ChevronDown size={14}/></label>
+        <label className="dash-v6-select"><CalendarDays size={15}/><select value={weekStart} aria-label="Semana de cobertura" onChange={event=>setWeekStart(event.target.value)}>{dateOptions.map(option=><option key={option.value} value={option.value}>{option.label}</option>)}</select><ChevronDown size={14}/></label>
       </div>
     </div>
 
     <div className="dash-v6-kpis" aria-label="Indicadores operativos">
-      {metrics.map(metric=><button key={metric.id} type="button" className={`dash-v6-kpi ${activeMetric===metric.id?'selected':''} ${metric.available?'':'unavailable'}`} onClick={()=>setActiveMetric(metric.id)} aria-pressed={activeMetric===metric.id}>
-        <span className="dash-v6-kpi-mark">{metric.id==='coverage'?<ShieldAlert size={19}/>:metric.id==='id'?<ClipboardCheck size={19}/>:metric.id==='ic'?<CheckCircle2 size={19}/>:<Activity size={19}/>}</span>
+      {metrics.map(metric=><article key={metric.id} className={`dash-v6-kpi ${metric.available?'':'unavailable'}`}>
+        <span className="dash-v6-kpi-mark">{metric.id==='uncovered'?<ShieldAlert size={19}/>:metric.id==='id'?<ClipboardCheck size={19}/>:metric.id==='ic'?<CheckCircle2 size={19}/>:<Activity size={19}/>}</span>
         <span className="dash-v6-kpi-copy"><strong>{metric.label}</strong><b>{loading?'…':metric.value}</b><small>{metric.note}</small></span>
-      </button>)}
+      </article>)}
     </div>
 
     <div className="dash-v6-lower">
       <section className="dash-v6-panel dash-v6-attention">
-        <div className="dash-v6-panel-title"><span className="attention-icon"><AlertTriangle size={19}/></span><div><h3>Atención requerida</h3><small>{loading?'Cargando actividad…':`${attentionRows.length} registros con pendientes de operación`}</small></div><b>{loading?'…':attentionRows.length}</b></div>
+        <div className="dash-v6-panel-title"><span className="attention-icon"><AlertTriangle size={19}/></span><div><h3>Atención requerida</h3><small>{loading?'Cargando actividad…':`${attentionRows.length} registros con pendientes de operación${companyName?` · ${companyName}`:''}`}</small></div><b>{loading?'…':attentionRows.length}</b></div>
         <div className="dash-v6-table-wrap"><table><thead><tr><th>Cliente / Punto</th><th>Compañía</th><th>Puesto</th><th>ID</th><th>IC</th><th>Estado</th></tr></thead><tbody>
           {!loading&&attentionRows.map(row=><tr key={row.postId}><td><strong>{row.clientName}</strong><small>{row.pointName}</small></td><td>{row.companyName||'—'}</td><td><strong>{row.postCode}</strong><small>{row.postName}</small></td><td>{row.idAverage==null?'—':row.idAverage.toFixed(1)}</td><td>{row.icAverage==null?'—':`${row.icAverage.toFixed(1)}%`}</td><td><span className={`dash-v6-state state-${row.state.toLowerCase()}`}>{statusLabel(row)}</span>{row.pendingNews>0&&<small className="dash-v6-news">{row.pendingNews} novedad{row.pendingNews===1?'':'es'}</small>}</td></tr>)}
-          {!loading&&attentionRows.length===0&&<tr><td colSpan={6} className="dash-v6-empty">No hay pendientes para los filtros seleccionados.</td></tr>}
+          {!loading&&attentionRows.length===0&&<tr><td colSpan={6} className="dash-v6-empty">No hay pendientes para la compañía seleccionada.</td></tr>}
           {loading&&<tr><td colSpan={6} className="dash-v6-empty">Cargando datos operativos…</td></tr>}
         </tbody></table></div>
       </section>
 
       <div className="dash-v6-side-stack">
         <section className="dash-v6-panel dash-v6-trend">
-          <div className="dash-v6-panel-title"><span className="blue-icon"><Activity size={18}/></span><div><h3>Tendencia operacional</h3><small>{period==='7d'?'Últimos 7 días':period==='6m'?'Últimos 6 meses':'Últimos 30 días'} · {metrics.find(metric=>metric.id===activeMetric)?.label}</small></div></div>
-          <div className="dash-v6-no-history"><Activity size={24}/><strong>Histórico no disponible</strong><span>La API entrega el resumen actual, sin series históricas para graficar.</span></div>
+          <div className="dash-v6-panel-title"><span className="blue-icon"><Activity size={18}/></span><div><h3>Puntos sin cobertura por compañía</h3><small>Al menos un turno requerido sin asignar · semana {weekLabel(weekStart)}</small></div></div>
+          {loading?<div className="dash-v6-no-history">Cargando cobertura semanal…</div>:!data.coverage?<div className="dash-v6-no-history"><Activity size={24}/><strong>Datos no disponibles</strong><span>No se pudo cargar la cobertura semanal desde SGI Comando.</span></div>:chartCompanies.length===0?<div className="dash-v6-no-history"><Activity size={24}/><strong>Sin puntos para graficar</strong><span>No hay compañías con datos de cobertura en este alcance.</span></div>:<div className="dash-v6-bars" role="img" aria-label="Puntos sin cobertura por compañía">
+            {chartCompanies.map(company=><div className="dash-v6-bar-row" key={company.companyId} title={`${company.companyName}: ${company.uncoveredPoints} puntos sin cobertura`}><span>{company.companyName}</span><i><b style={{width:`${company.uncoveredPoints===0?0:Math.max(3,(company.uncoveredPoints/chartMax)*100)}%`}}/></i><strong>{company.uncoveredPoints}</strong></div>)}
+          </div>}
         </section>
         <section className="dash-v6-panel dash-v6-geography">
-          <div className="dash-v6-panel-title"><span className="blue-icon"><MapPin size={18}/></span><div><h3>Distribución operacional</h3><small>{pointIds.size} puntos en el alcance seleccionado</small></div></div>
-          <div className="dash-v6-provinces">
-            {provinceCounts.length?provinceCounts.map(([province,count])=><div className="dash-v6-province" key={province}><span>{province}</span><i><b style={{width:`${Math.max(8,(count/Math.max(...provinceCounts.map(item=>item[1])))*100)}%`}}/></i><strong>{count}</strong></div>):<div className="dash-v6-no-history"><MapPin size={23}/><strong>Ubicación detallada no disponible</strong><span>Los puntos no tienen coordenadas geográficas en este conjunto de datos.</span></div>}
-          </div>
-          {provinceCounts.length>0&&<small className="dash-v6-map-note">Agrupación por provincia; el sistema no proporciona coordenadas del Punto.</small>}
+          <div className="dash-v6-panel-title"><span className="blue-icon"><MapPin size={18}/></span><div><h3>Mapa operacional por provincia</h3><small>{pointIds.size} puntos en el alcance seleccionado</small></div></div>
+          <DashboardProvinceMap provinces={provinceCounts} subdivisions={data.provinces as DashboardProvinceSubdivision[]}/>
         </section>
       </div>
     </div>
-    <div className="dash-v6-footnote"><FileText size={14}/><span>Los indicadores marcados N/D requieren una fuente de datos o una serie histórica que esta UAT todavía no expone.</span></div>
+    <div className="dash-v6-footnote"><FileText size={14}/><span>Solo se muestran como disponibles los indicadores con fuente real. Los indicadores en N/D requieren una fuente operativa que esta UAT no expone. Gráfico y mapa no tienen filtros propios; siguen el alcance global de compañía.</span></div>
   </div>;
 }

@@ -1,10 +1,11 @@
 import {useEffect, useMemo, useState, type ReactNode} from 'react';
 import {
   AlertTriangle, ClipboardList, Clock3, Download,
-  FileText, FilterX, RefreshCw, Search, ShieldCheck,
+  FileText, RefreshCw, Search, ShieldCheck,
   CarFront, AlertCircle, X
 } from 'lucide-react';
 import {getUser, type UatUser} from '../api';
+import {OperationalDrawer} from '../components/OperationalDrawer';
 
 type ExecutionType='RELIEF'|'PATROL'|'ADHOC';
 type ExecutionStatus='IN_PROGRESS'|'COMPLETED'|'OVERDUE'|'PENDING'|'CRITICAL';
@@ -209,17 +210,17 @@ export default function ConsignasExecution(){
     <div className="cns-topbar"><div><div className="page-backline">Operaciones / Consignas</div><h2>Consignas</h2><p>Estado de ejecución de relevos, patrullas y consignas ad-hoc</p></div><div className="cns-scope"><ShieldCheck size={16}/>{scope.label}</div></div>
 
     <div className="cns-kpis">
-      <Metric icon={<ShieldCheck size={21}/>} label="Puestos monitoreados" value={scope.monitoredPosts} subtitle="Puntos activos hoy" tone="blue"/>
+      <Metric icon={<ShieldCheck size={21}/>} label="Puestos monitoreados" value={scope.monitoredPosts} subtitle="Activos hoy" tone="blue"/>
       <Metric icon={<RefreshCw size={21}/>} label="Relevos en curso" value={metrics.reliefRunning} subtitle="En ejecución" tone="blue"/>
       <Metric icon={<Clock3 size={21}/>} label="Relevos vencidos" value={metrics.reliefOverdue} subtitle="Requieren atención" tone="red"/>
       <Metric icon={<CarFront size={21}/>} label="Patrullas en curso" value={metrics.patrolRunning} subtitle="En ejecución" tone="green"/>
-      <Metric icon={<ClipboardList size={21}/>} label="Consignas ad-hoc activas" value={metrics.adhocActive} subtitle="Pendientes / en curso" tone="purple"/>
-      <Metric icon={<AlertTriangle size={21}/>} label="Alertas críticas" value={metrics.critical} subtitle="Requieren acción inmediata" tone="red"/>
+      <Metric icon={<ClipboardList size={21}/>} label="Ad-hoc activas" value={metrics.adhocActive} subtitle="Pendientes / en curso" tone="purple"/>
+      <Metric icon={<AlertTriangle size={21}/>} label="Alertas críticas" value={metrics.critical} subtitle="Acción inmediata" tone="red"/>
     </div>
 
     <div className="cns-layout">
       <section className="cns-main-card">
-        <div className="cns-card-head"><div className="cns-title"><Search size={20}/><h3>Búsqueda de consignas</h3></div><div className="cns-tabs"><button className={filters.type==='ALL'?'active':''} onClick={()=>set('type','ALL')}>Todos</button><button className={filters.type==='RELIEF'?'active':''} onClick={()=>set('type','RELIEF')}><RefreshCw size={14}/>Relevos</button><button className={filters.type==='PATROL'?'active':''} onClick={()=>set('type','PATROL')}><CarFront size={14}/>Patrullas</button><button className={filters.type==='ADHOC'?'active':''} onClick={()=>set('type','ADHOC')}><FileText size={14}/>Consignas ad-hoc</button></div></div>
+        <div className="cns-card-head"><div className="cns-title"><Search size={18}/><h3>Búsqueda de consignas</h3></div><div className="cns-tabs"><button className={filters.type==='ALL'?'active':''} onClick={()=>set('type','ALL')}>Todos</button><button className={filters.type==='RELIEF'?'active':''} onClick={()=>set('type','RELIEF')}>Relevos</button><button className={filters.type==='PATROL'?'active':''} onClick={()=>set('type','PATROL')}>Patrullas</button><button className={filters.type==='ADHOC'?'active':''} onClick={()=>set('type','ADHOC')}>Consignas ad-hoc</button></div></div>
         <label className="cns-main-search"><Search size={18}/><input value={filters.query} onChange={e=>set('query',e.target.value)} placeholder="Buscar por código, nombre, cliente, punto, responsable…"/></label>
         <div className="cns-filter-grid row-2">
           <Field label="Ciudad"><select value={filters.city} onChange={e=>set('city',e.target.value)}><option value="">Todas</option>{cities.map(x=><option key={x}>{x}</option>)}</select></Field>
@@ -235,9 +236,8 @@ export default function ConsignasExecution(){
           <Field label="Fecha inicio"><input type="date" value={filters.dateFrom} onChange={e=>set('dateFrom',e.target.value)}/></Field>
           <Field label="Fecha fin"><input type="date" value={filters.dateTo} onChange={e=>set('dateTo',e.target.value)}/></Field>
         </div>
-        <div className="cns-rules-note"><AlertCircle size={15}/><span>Las fechas son obligatorias. El rango consultado puede ser máximo de 1 año.</span></div>
         {dateError && <div className="cns-validation-error"><AlertTriangle size={16}/><span>{dateError}</span></div>}
-        <div className="cns-search-actions"><button className="primary" disabled={!!dateError}><Search size={16}/>Buscar</button><button onClick={clear}><FilterX size={16}/>Limpiar filtros</button><button className="export" onClick={exportCsv} disabled={!!dateError || !rows.length}><Download size={16}/>Exportar</button></div>
+        <div className="cns-search-actions"><button className="primary" disabled={!!dateError}><Search size={16}/>Buscar</button><button onClick={clear}>Limpiar filtros</button><div className="cns-rules-note"><AlertCircle size={15}/><span>Las fechas son obligatorias. El rango consultado puede ser máximo de 1 año.</span></div><button className="export" onClick={exportCsv} disabled={!!dateError || !rows.length}><Download size={16}/>Exportar</button></div>
 
         <div className="cns-results-card"><div className="cns-results-head"><h3>Ejecuciones ({rows.length})</h3><div>Ordenar por: <strong>Fecha más reciente</strong></div></div><div className="cns-table-wrap"><table className="cns-table"><thead><tr><th>Tipo</th><th>Código</th><th>Nombre / Descripción</th><th>Cliente</th><th>Punto / Puesto</th><th>Responsable</th><th>Ventana / Hora</th><th>Estado de ejecución</th><th>Resultado / Progreso</th><th></th></tr></thead><tbody>{rows.map(row=>{
           const pct=Math.round((row.progressCurrent/Math.max(row.progressTotal,1))*100);
@@ -247,10 +247,7 @@ export default function ConsignasExecution(){
 
     </div>
 
-    {inspected&&<div className="nov-modal-backdrop" onClick={closeInspector}>
-      <aside className="nov-modal cns-inspector" role="dialog" aria-modal="true" aria-labelledby="cns-inspector-title" onClick={e=>e.stopPropagation()}>
-        <header><div><h3 id="cns-inspector-title">Detalle de ejecución</h3><span>{inspected.code} · {typeLabel(inspected.type)} · Solo lectura</span></div><button aria-label="Cerrar detalle" onClick={closeInspector}><X size={19}/></button></header>
-        <div className="nov-modal-body cns-inspector-body">
+    {inspected&&<OperationalDrawer title="Detalle de ejecución" subtitle={`${inspected.code} · ${typeLabel(inspected.type)} · Solo lectura`} onClose={closeInspector} className="cns-inspector" bodyClassName="cns-inspector-body" footer={<button type="button" className="close" onClick={closeInspector}><X size={15}/>Cerrar</button>}>
           <div className="cns-inspector-summary"><span className={`cns-type ${typeClass(inspected.type)}`}>{typeIcon(inspected.type)}{typeLabel(inspected.type)}</span><strong>{inspected.name}</strong><span className={`cns-status ${statusClass(inspected.status)}`}>{statusLabel(inspected.status)}</span></div>
           <div className="nov-edit-grid three">
             <ModalReadField label="Cliente" value={inspected.client}/><ModalReadField label="Compañía" value={inspected.company}/><ModalReadField label="Ciudad" value={inspected.city}/>
@@ -269,10 +266,7 @@ export default function ConsignasExecution(){
           </div>
           <section className="cns-detail-progress"><div><strong>Progreso {inspected.type==='RELIEF'?'del relevo':inspected.type==='PATROL'?'de hitos':'de acciones'}</strong><b>{inspected.progressCurrent}/{inspected.progressTotal}</b></div><div className="bar"><i style={{width:`${Math.round(inspected.progressCurrent/Math.max(inspected.progressTotal,1)*100)}%`}}/></div><span>{Math.round(inspected.progressCurrent/Math.max(inspected.progressTotal,1)*100)}% completado</span></section>
           <section className="cns-timeline"><div className="cns-timeline-head"><h4>{inspected.type==='RELIEF'?'Hitos del relevo':'Últimos eventos'}</h4></div>{inspected.timeline.map(event=><article key={event.id}><i className={event.state.toLowerCase()}/><div><span>{formatDateTime(event.at)}</span><strong>{event.title}</strong><small>{event.detail}</small></div></article>)}</section>
-        </div>
-        <footer><button type="button" className="cns-inspector-full-detail"><Search size={16}/>Ver detalle completo</button></footer>
-      </aside>
-    </div>}
+    </OperationalDrawer>}
   </div>
 }
 

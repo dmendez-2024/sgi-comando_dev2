@@ -1,8 +1,9 @@
-import {useEffect,useMemo,useState} from 'react';
+import {useEffect,useMemo,useState,type MouseEvent} from 'react';
+import {createPortal} from 'react-dom';
 import {
-  AlertTriangle, ArrowLeft, Building2, CheckCircle2, ChevronRight, ClipboardList,
-  Clock3, Eye, GripVertical, History, Info, MapPin, Monitor, MoreVertical, Plus,
-  RefreshCw, Route, Save, Search, ShieldCheck, Users, X
+  AlertTriangle, ArrowLeft, Building2, ChevronRight, ClipboardList,
+  Clock3, Copy, Eye, GripVertical, History, Info, MapPin, Monitor, MoreVertical, Plus,
+  Power, RefreshCw, Route, Save, Search, ShieldCheck, Users, X
 } from 'lucide-react';
 import {api} from '../api';
 
@@ -54,6 +55,8 @@ export default function Coordination(){
   const [notice,setNotice]=useState('');
   const [busy,setBusy]=useState(false);
   const [dragId,setDragId]=useState<string|null>(null);
+  const [actionMenu,setActionMenu]=useState<{postId:string;top:number;left:number}|null>(null);
+  const [pendingStatusChange,setPendingStatusChange]=useState<CoordinationPost|null>(null);
 
   const selected=posts.find(p=>p.id===selectedId)??null;
   const company=companies.find(c=>c.id===companyId)??null;
@@ -125,9 +128,37 @@ export default function Coordination(){
       else saved=await api.createCoordinationPost({companyId,postType:form.postType,name:form.name,format:form.format,shiftStartTime:form.shiftStartTime,dayMask:form.dayMask}) as CoordinationPost;
       setSelectedId(saved.id);setForm({id:saved.id,code:saved.code,postType:saved.postType,name:saved.name,format:saved.format,shiftStartTime:saved.shiftStartTime,dayMask:saved.dayMask,status:saved.status});
       await loadCompany(companyId);
-      if(saved.postType==='SUPERVISION')await loadRoute(saved.id);
+      setQuery('');setTypeFilter('ALL');setStatusFilter('ALL');setFormatFilter('ALL');setMode('LIST');
       setNotice(`${saved.code} guardado correctamente.`);
     }catch(e){setError(errorText(e))}finally{setBusy(false)}
+  }
+
+  async function duplicatePost(post:CoordinationPost){
+    setBusy(true);setError('');setActionMenu(null);
+    try{
+      const copy=await api.createCoordinationPost({companyId:post.companyId,postType:post.postType,name:`Copia de ${post.name}`.slice(0,160),format:post.format,shiftStartTime:post.shiftStartTime,dayMask:post.dayMask}) as CoordinationPost;
+      await loadCompany(companyId);
+      setQuery('');setTypeFilter('ALL');setStatusFilter('ALL');setFormatFilter('ALL');setSelectedId(copy.id);setMode('LIST');
+      setNotice(`${copy.code} creado como borrador a partir de ${post.code}.`);
+    }catch(e){setError(errorText(e))}finally{setBusy(false)}
+  }
+
+  async function confirmPostStatusChange(){
+    if(!pendingStatusChange)return;
+    const post=pendingStatusChange;const nextStatus=post.status==='ACTIVE'?'INACTIVE':'ACTIVE';
+    setBusy(true);setError('');
+    try{
+      const updated=await api.saveCoordinationPost(post.id,{name:post.name,format:post.format,shiftStartTime:post.shiftStartTime,dayMask:post.dayMask,status:nextStatus}) as CoordinationPost;
+      await loadCompany(companyId);setSelectedId(updated.id);setPendingStatusChange(null);setNotice(`${updated.code} ahora está ${statusLabel(updated.status).toLowerCase()}.`);
+    }catch(e){setError(errorText(e))}finally{setBusy(false)}
+  }
+
+  function openPostActions(event:MouseEvent<HTMLButtonElement>,postId:string){
+    if(actionMenu?.postId===postId){setActionMenu(null);return}
+    const rect=event.currentTarget.getBoundingClientRect();const menuHeight=96;const menuWidth=196;
+    const top=rect.bottom+menuHeight+10>window.innerHeight?Math.max(8,rect.top-menuHeight-8):rect.bottom+8;
+    const left=Math.max(8,Math.min(rect.right-menuWidth,window.innerWidth-menuWidth-8));
+    setActionMenu({postId,top,left});
   }
 
   async function createRoute(){
@@ -169,6 +200,7 @@ export default function Coordination(){
   const availablePoints=useMemo(()=>points.filter(p=>!pointQuery.trim()||`${p.code} ${p.name} ${p.clientName}`.toLowerCase().includes(pointQuery.trim().toLowerCase())),[points,pointQuery]);
   const routePoints=routePointIds.map(id=>points.find(p=>p.id===id)).filter(Boolean) as Point[];
   const previewCurrent=preview?.shifts[Math.min(previewShift,(preview?.shifts.length??1)-1)]??null;
+  const actionMenuPost=actionMenu?posts.find(post=>post.id===actionMenu.postId)??null:null;
 
   return <div className="coord-page">
     {mode==='LIST'?<>
@@ -183,8 +215,10 @@ export default function Coordination(){
 
       <div className="coord-list-card">
         <div className="coord-filters"><label className="coord-search"><Search size={16}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar por código o nombre…"/></label><label><span>Tipo</span><select value={typeFilter} onChange={e=>setTypeFilter(e.target.value)}><option value="ALL">Todos</option><option value="MONITORING">Monitoreo</option><option value="SUPERVISION">Supervisión</option></select></label><label><span>Estado</span><select value={statusFilter} onChange={e=>setStatusFilter(e.target.value)}><option value="ALL">Todos</option><option value="DRAFT">Borrador</option><option value="ACTIVE">Activo</option><option value="INACTIVE">Inactivo</option></select></label><label><span>Formato</span><select value={formatFilter} onChange={e=>setFormatFilter(e.target.value)}><option value="ALL">Todos</option><option>24/7</option><option>12/7</option><option>12/5</option></select></label><button onClick={()=>{setQuery('');setTypeFilter('ALL');setStatusFilter('ALL');setFormatFilter('ALL')}}><RefreshCw size={14}/>Limpiar filtros</button></div>
-        <div className="coord-table-wrap"><table className="coord-table"><thead><tr><th>Código</th><th>Nombre</th><th>Tipo</th><th>Formato</th><th>Rotación</th><th>Horario</th><th>Ruta</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>{filteredPosts.map(p=><tr key={p.id}><td><strong>{p.code}</strong></td><td>{p.name}</td><td><span className="coord-type">{p.postType==='MONITORING'?<Monitor size={15}/>:<Users size={15}/>} {typeLabel(p.postType)}</span></td><td>{p.format}</td><td>{p.rotation}</td><td>{p.shifts.map((s,i)=><span key={s.code} className="coord-shift-line">{s.start}–{s.end}{i<p.shifts.length-1?<br/>:null}</span>)}</td><td>{p.route?<button className="linklike" onClick={()=>void viewPost(p)}>{p.route.name} v{p.route.versionNo}</button>:'—'}</td><td><span className={`coord-status ${stateClass(p.status)}`}>{statusLabel(p.status)}</span></td><td><div className="coord-row-actions"><button title="Ver" aria-label={`Ver ${p.code}`} onClick={()=>void viewPost(p)}><Eye size={15}/></button><button title="Editar" aria-label={`Editar ${p.code}`} onClick={()=>void editPost(p)}><Save size={15}/></button><button disabled><MoreVertical size={15}/></button></div></td></tr>)}{!filteredPosts.length&&<tr><td colSpan={9} className="coord-empty">No hay Puestos con estos filtros.</td></tr>}</tbody></table></div>
+        <div className="coord-table-wrap"><table className="coord-table"><thead><tr><th>Código</th><th>Nombre</th><th>Tipo</th><th>Formato</th><th>Rotación</th><th>Horario</th><th>Ruta</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>{filteredPosts.map(p=><tr key={p.id}><td><strong>{p.code}</strong></td><td>{p.name}</td><td><span className="coord-type">{p.postType==='MONITORING'?<Monitor size={15}/>:<Users size={15}/>} {typeLabel(p.postType)}</span></td><td>{p.format}</td><td>{p.rotation}</td><td>{p.shifts.map((s,i)=><span key={s.code} className="coord-shift-line">{s.start}–{s.end}{i<p.shifts.length-1?<br/>:null}</span>)}</td><td>{p.route?<button className="linklike" onClick={()=>void viewPost(p)}>{p.route.name} v{p.route.versionNo}</button>:'—'}</td><td><span className={`coord-status ${stateClass(p.status)}`}>{statusLabel(p.status)}</span></td><td><div className="coord-row-actions"><button title="Ver" aria-label={`Ver ${p.code}`} onClick={()=>void viewPost(p)}><Eye size={15}/></button><button title="Editar" aria-label={`Editar ${p.code}`} onClick={()=>void editPost(p)}><Save size={15}/></button><button title="Más acciones" aria-label={`Más acciones para ${p.code}`} aria-haspopup="menu" aria-expanded={actionMenu?.postId===p.id} onClick={event=>openPostActions(event,p.id)}><MoreVertical size={15}/></button></div></td></tr>)}{!filteredPosts.length&&<tr><td colSpan={9} className="coord-empty">No hay Puestos con estos filtros.</td></tr>}</tbody></table></div>
       </div>
+      {actionMenu&&actionMenuPost&&createPortal(<div className="coord-action-menu-veil" onMouseDown={()=>setActionMenu(null)} onKeyDown={event=>{if(event.key==='Escape')setActionMenu(null)}}><div className="coord-action-menu" role="menu" aria-label={`Acciones para ${actionMenuPost.code}`} style={{top:actionMenu.top,left:actionMenu.left}} onMouseDown={event=>event.stopPropagation()}><button type="button" role="menuitem" autoFocus onClick={()=>{setPendingStatusChange(actionMenuPost);setActionMenu(null)}}><Power size={15}/>{actionMenuPost.status==='ACTIVE'?'Inactivar puesto':'Activar puesto'}</button><button type="button" role="menuitem" onClick={()=>void duplicatePost(actionMenuPost)}><Copy size={15}/>Duplicar como borrador</button></div></div>,document.body)}
+      {pendingStatusChange&&<div className="coord-confirm-backdrop" onMouseDown={event=>{if(event.target===event.currentTarget)setPendingStatusChange(null)}} onKeyDown={event=>{if(event.key==='Escape'&&!busy)setPendingStatusChange(null)}}><section className="coord-confirm" role="alertdialog" aria-modal="true" aria-labelledby="coord-status-confirm-title"><span className={`coord-status ${stateClass(pendingStatusChange.status==='ACTIVE'?'INACTIVE':'ACTIVE')}`}>{pendingStatusChange.status==='ACTIVE'?'Inactivar':'Activar'}</span><h3 id="coord-status-confirm-title">¿{pendingStatusChange.status==='ACTIVE'?'Inactivar':'Activar'} {pendingStatusChange.code}?</h3><p>{pendingStatusChange.status==='ACTIVE'?'El puesto dejará de contar como activo en la cobertura operativa.':'El puesto quedará disponible como activo. En Supervisión, la cobertura requiere además una Ruta activa.'}</p><div><button type="button" autoFocus onClick={()=>setPendingStatusChange(null)} disabled={busy}>Cancelar</button><button type="button" className="coord-primary" onClick={()=>void confirmPostStatusChange()} disabled={busy}>{busy?'Actualizando…':'Confirmar cambio'}</button></div></section></div>}
     </>:<>
       <div className="coord-titlebar"><div><button className="coord-back" onClick={()=>{setMode('LIST');setError('');setNotice('')}}><ArrowLeft size={15}/>Volver al listado</button><div className="ser-title-row"><h2>Puesto de Coordinación</h2><span>{mode==='VIEW'?'Ver puesto':form.id?'Editar puesto':'Crear nuevo puesto'}</span></div><small>{mode==='VIEW'?'Consulte la información del Puesto y su Ruta.':'Configure la información, jornada y —para Supervisión— su Ruta.'}</small></div>{mode==='EDIT'&&<div className="coord-edit-actions"><button onClick={()=>setMode('LIST')}>Cancelar</button><button className="coord-primary" onClick={()=>void savePost()} disabled={busy}><Save size={15}/>{busy?'Guardando…':'Guardar Puesto'}</button></div>}</div>
       {error&&<Message tone="error" text={error} onClose={()=>setError('')}/>} {notice&&<Message tone="notice" text={notice} onClose={()=>setNotice('')}/>} 
