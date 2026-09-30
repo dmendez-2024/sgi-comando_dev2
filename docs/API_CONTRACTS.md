@@ -267,3 +267,33 @@ Se envía como un Hito normal (`POST /evidences` + `POST /executions`) con un **
 - Si la anterior aún se valida → `409` "La foto anterior de este Hito aún se está validando".
 - Si la anterior cumplió, no tiene VISINT o tuvo error técnico → `409` "Este Hito ya fue registrado en la ronda".
 - Sin tope de capturas por ahora (pendiente decisión de Gerencia). Operación muestra "Captura N".
+
+## Fase 4 · Consignas y Bitácora (fotos del agente + VISINT)
+
+### Fotos estándar (1 a 5) — mismo esquema en los tres módulos
+| Módulo | Endpoints |
+|---|---|
+| Patrullas | `POST /api/patrols/checkpoints/{id}/standard-images`, `GET|DELETE …/standard-images/{imageId}` |
+| Consignas | `POST /api/consignments/evidences/{id}/standard-images`, `GET|DELETE …/standard-images/{imageId}` |
+| Bitácora | `POST /api/bitacora/fields/{id}/standard-images`, `GET|DELETE …/standard-images/{imageId}` |
+
+`multipart/form-data` (parte `file`), hasta 5; quitar una reordena. Las respuestas traen `standardImages:[{id,position,originalName,contentType}]`. Se retiraron los endpoints de foto única (`…/standard-image`) de Consignas y Bitácora.
+- **VISINT activo por defecto, sin opción en pantalla:** Consignas → evidencia tipo `PHOTO`; Bitácora → campo con evidencia y tipo `DOCUMENTO` (Cédula, Pasaporte, Credencial). **Rostro** (tipo `IMAGEN`) no va a VISINT: reconocimiento facial fuera de alcance.
+- Publicar exige ≥1 foto estándar en cada evidencia/campo con VISINT (400 con el nombre).
+
+### Agente
+- `GET /api/v1/operator/runtime?assignmentId=` agrega `consignmentTasks` (consignas **vigentes** del Puesto con sus evidencias tipo Foto) y `logbookTasks` (bitácoras **activas** del Puesto con sus campos con evidencia), cada uno con `visintEnabled` y `standardImages`.
+- `GET /api/v1/operator/standard-images/{imageId}?assignmentId=` — foto estándar de cualquier tarea del Puesto (guía).
+- `POST /api/v1/operator/evidences` acepta `targetType` `CONSIGNMENT_EVIDENCE` y `LOGBOOK_FIELD`.
+- `POST /api/v1/operator/executions` con el evento **`TASK_EVIDENCE_SUBMITTED`**:
+```json
+{"type":"TASK_EVIDENCE_SUBMITTED","eventId":"uuid","assignmentId":"uuid","targetType":"CONSIGNMENT_EVIDENCE|LOGBOOK_FIELD",
+ "targetId":"uuid","groupId":"uuid (solo Bitácora: id del registro del visitante)","executedAt":"…","evidenceIds":["…"]}
+```
+  - **Consigna:** una foto por evidencia y **turno**; otra → `409` "Esta evidencia ya fue registrada en el turno" (salvo "no cumple": nueva captura).
+  - **Bitácora:** `groupId` obligatorio (400 si falta); una foto por campo y **registro de visitante**; otro visitante = otro `groupId`.
+- Resultado: `GET /api/v1/operator/executions/{eventId}` (igual que Fase 3) y `GET /api/v1/operator/executions?groupId=` (registro de Bitácora o turno de Consigna).
+
+### VISINT y Operación
+- `serviceType`: `CONSIGNA` / `BITACORA`; `serviceId`: consigna / registro del visitante; `activityId`: evidencia / campo.
+- `GET /api/operation/executions` lista las tres: `module` (`PATRULLA|CONSIGNA|BITACORA`), `groupCode/groupName` (patrulla, consigna o acreditación), `taskCode/taskName` (Hito, evidencia o campo). Reemplaza `patrolCode/patrolName/checkpointCode/checkpointName`.

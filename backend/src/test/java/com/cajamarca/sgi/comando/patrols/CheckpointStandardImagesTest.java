@@ -67,7 +67,7 @@ class CheckpointStandardImagesTest {
         as("coord").post("/api/patrols/protocols/" + ids.get("protocolId") + "/publish").then().statusCode(200);
         String fork = as("coord").post("/api/patrols/protocols/" + ids.get("protocolId") + "/fork").then().statusCode(200).extract().path("id");
         Number n = (Number) em.createNativeQuery("""
-            select count(*) from patrol_checkpoint_standard_image s join patrol_checkpoint c on c.id=s.checkpoint_id
+            select count(*) from standard_reference_image s join patrol_checkpoint c on c.id=s.target_id and s.target_type='PATROL_CHECKPOINT'
             join patrol_definition d on d.id=c.patrol_definition_id where d.protocol_id=:p""").setParameter("p", UUID.fromString(fork)).getSingleResult();
         assertEquals(2, n.intValue());
     }

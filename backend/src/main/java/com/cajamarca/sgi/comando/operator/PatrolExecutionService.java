@@ -3,6 +3,7 @@ package com.cajamarca.sgi.comando.operator;
 import com.cajamarca.sgi.comando.common.TenantContext;
 import com.cajamarca.sgi.comando.execution.*;
 import com.cajamarca.sgi.comando.patrols.PatrolCheckpoint;
+import com.cajamarca.sgi.comando.storage.StandardReferenceImage;
 import com.fasterxml.jackson.databind.*;
 import com.fasterxml.jackson.databind.node.*;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -84,7 +85,7 @@ public class PatrolExecutionService {
                 .setParameter("t", eventId).setParameter("e", evidences.get(i).id).setParameter("o", i + 1).executeUpdate();
             evidences.get(i).status = "ATTACHED";
         }
-        String validation = cp.visintEnabled ? reviews.enqueue(x, cp).status : "NOT_REQUESTED";
+        String validation = cp.visintEnabled ? reviews.enqueue(x, StandardReferenceImage.PATROL_CHECKPOINT, cp.id, cp.standardImageVersion).status : "NOT_REQUESTED";
         return ack(eventId, evidences.size(), validation);
     }
 

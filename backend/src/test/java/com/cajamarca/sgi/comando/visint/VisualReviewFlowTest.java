@@ -40,7 +40,7 @@ class VisualReviewFlowTest {
         assertEquals("PASS", r[1]);
         assertEquals(true, r[3]);
         assertTrue(r[4].toString().contains("simulado"));
-        Object second = em.createNativeQuery("select id from patrol_checkpoint_standard_image where checkpoint_id=:c and position=2")
+        Object second = em.createNativeQuery("select id from standard_reference_image where target_type='PATROL_CHECKPOINT' and target_id=:c and position=2")
             .setParameter("c", UUID.fromString(ids.get("checkpointId").toString())).getSingleResult();
         assertEquals(second, em.createNativeQuery("select matched_standard_image_id from visual_review where task_execution_id=:e").setParameter("e", event).getSingleResult(),
             "coincide la foto estándar n.º 2, idéntica a la del agente");
@@ -48,7 +48,7 @@ class VisualReviewFlowTest {
 
     @Test void checkpointWithoutStandardImagesCannotBeReviewed() throws Exception {
         Map<String,Object> ids = VisintFixtures.publishVisintPatrol();
-        QuarkusTransaction.requiringNew().run(() -> em.createNativeQuery("delete from patrol_checkpoint_standard_image where checkpoint_id=:c")
+        QuarkusTransaction.requiringNew().run(() -> em.createNativeQuery("delete from standard_reference_image where target_type='PATROL_CHECKPOINT' and target_id=:c")
             .setParameter("c", UUID.fromString(ids.get("checkpointId").toString())).executeUpdate());
         UUID event = VisintFixtures.executeWithPhoto(em, ids, SAME);
         assertEquals("ERROR_FINAL", review(event)[0]);

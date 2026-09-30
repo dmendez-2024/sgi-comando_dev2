@@ -36,23 +36,23 @@ public class StandardImageMigrator {
     public int migrateAll() {
         int total = 0;
         for (var t : TABLES.entrySet()) total += migrate(t.getKey(), t.getValue());
-        promotePatrolStandardImages();
+        promote("patrol_checkpoint", StandardReferenceImage.PATROL_CHECKPOINT);
+        promote("consignment_evidence", StandardReferenceImage.CONSIGNMENT_EVIDENCE);
+        promote("logbook_protocol_field", StandardReferenceImage.LOGBOOK_FIELD);
         return total;
     }
 
-    /** Los Hitos de patrulla guardan sus fotos estándar (hasta 5) en patrol_checkpoint_standard_image: la foto antigua pasa a ser la n.º 1. */
-    void promotePatrolStandardImages() {
+    /** Las fotos estándar (hasta 5) viven en standard_reference_image: la foto antigua ya subida a MinIO pasa a ser la n.º 1. */
+    void promote(String table, String targetType) {
         QuarkusTransaction.requiringNew().run(() -> {
-            em.createNativeQuery("""
-                insert into patrol_checkpoint_standard_image(id, instance_country_id, checkpoint_id, position, original_name, content_type, object_key, sha256, size_bytes)
-                select gen_random_uuid(), c.instance_country_id, c.id, 1, c.standard_image_original_name, coalesce(c.standard_image_content_type, 'image/jpeg'),
-                       c.standard_image_object_key, c.standard_image_sha256, coalesce(c.standard_image_size, 0)
-                from patrol_checkpoint c where c.standard_image_object_key is not null and c.standard_image_sha256 is not null
-                  and not exists (select 1 from patrol_checkpoint_standard_image s where s.checkpoint_id = c.id)""").executeUpdate();
-            em.createNativeQuery("""
-                update patrol_checkpoint set standard_image_object_key=null, standard_image_sha256=null, standard_image_size=null,
-                       standard_image_original_name=null, standard_image_content_type=null
-                where standard_image_object_key is not null""").executeUpdate();
+            em.createNativeQuery("insert into standard_reference_image(id, instance_country_id, target_type, target_id, position, original_name, content_type, object_key, sha256, size_bytes)"
+                + " select gen_random_uuid(), c.instance_country_id, :type, c.id, 1, c.standard_image_original_name, coalesce(c.standard_image_content_type, 'image/jpeg'),"
+                + " c.standard_image_object_key, c.standard_image_sha256, coalesce(c.standard_image_size, 0) from " + table + " c"
+                + " where c.standard_image_object_key is not null and c.standard_image_sha256 is not null"
+                + " and not exists (select 1 from standard_reference_image s where s.target_type = :type and s.target_id = c.id)")
+                .setParameter("type", targetType).executeUpdate();
+            em.createNativeQuery("update " + table + " set standard_image_object_key=null, standard_image_sha256=null, standard_image_size=null,"
+                + " standard_image_original_name=null, standard_image_content_type=null where standard_image_object_key is not null").executeUpdate();
         });
     }
 

@@ -24,6 +24,8 @@ public class TaskExecution extends PanacheEntityBase {
     @Column(name="protocol_version_no", nullable=false) public int protocolVersionNo;
     @Column(name="patrol_execution_id") public UUID patrolExecutionId;
     @Column(name="capture_no", nullable=false) public int captureNo = 1;
+    /** Agrupa ejecuciones que no son de patrulla: asignación (turno) en Consignas, registro del visitante en Bitácora. */
+    @Column(name="group_id") public UUID groupId;
     @Column(name="executed_at", nullable=false) public Instant executedAt;
     @Column(name="received_at", nullable=false) public Instant receivedAt;
     @Column(name="latitude") public Double latitude;

@@ -16,12 +16,14 @@ import jakarta.ws.rs.core.*;
 import java.time.Instant;
 import java.util.*;
 
-/** Vista Operación: Hitos ejecutados en el Punto, sus fotos y el veredicto de VISINT. */
+/** Vista Operación: tareas con foto ejecutadas en el Punto (Hitos de patrulla, Consignas, Bitácora), sus fotos y el veredicto de VISINT. */
 @Path("/api/operation") @Produces(MediaType.APPLICATION_JSON)
 public class OperationResource {
     public record ReviewSummary(UUID id, String status, String result, boolean simulated) {}
-    public record ExecutionRow(UUID id, Instant executedAt, String postCode, String postName, String protocolCode, int protocolVersion, String patrolCode, String patrolName,
-                               String checkpointCode, String checkpointName, String employeeName, int captureNo, List<UUID> evidenceIds, List<String> flags, ReviewSummary review) {}
+    /** module: PATRULLA | CONSIGNA | BITACORA. group: patrulla / consigna / acreditación; task: Hito / evidencia / campo. */
+    public record ExecutionRow(UUID id, Instant executedAt, String module, String postCode, String postName, String protocolCode, int protocolVersion,
+                               String groupCode, String groupName, String taskCode, String taskName, String employeeName, int captureNo,
+                               List<UUID> evidenceIds, List<String> flags, ReviewSummary review) {}
     public record EvidenceView(UUID id, Instant capturedAt, Double latitude, Double longitude, String source, List<String> flags) {}
     public record ReviewDetail(UUID id, String status, String result, String findings, UUID matchedStandardImageId, String reasonCode, String modelVersion,
                                int standardImageVersion, boolean simulated, int attempts, String lastError,
@@ -51,10 +53,9 @@ public class OperationResource {
         TaskExecution x = execution(id);
         VisualReview r = VisualReview.find("taskExecutionId", x.id).firstResult();
         List<EvidenceView> photos = photos(x.id).stream().map(o -> new EvidenceView(o.id, o.capturedAt, o.latitude, o.longitude, o.source, flags(o.flags))).toList();
-        PatrolCheckpoint cp = PatrolCheckpoint.findById(x.targetId);
         List<StandardView> standards = r != null ? VisualReviewStandard.of(r.id).stream().map(s -> new StandardView(s.standardImageId, s.position)).toList()
-            : PatrolCheckpointStandardImage.of(x.targetId).stream().map(i -> new StandardView(i.id, i.position)).toList();
-        return new ExecutionDetail(row(x), x.observation, x.latitude, x.longitude, cp == null ? null : cp.standardImageNotes, photos, standards, r == null ? null : detail(r));
+            : StandardReferenceImage.of(x.targetType, x.targetId).stream().map(i -> new StandardView(i.id, i.position)).toList();
+        return new ExecutionDetail(row(x), x.observation, x.latitude, x.longitude, standardNotes(x), photos, standards, r == null ? null : detail(r));
     }
 
     @GET @Path("/evidences/{id}/content")
@@ -79,7 +80,7 @@ public class OperationResource {
             if (s == null) throw new NotFoundException("Foto estándar no encontrada");
             return Response.ok(storage.read(s.bucket, s.objectKey)).type(s.contentType).build();
         }
-        PatrolCheckpointStandardImage i = PatrolCheckpointStandardImage.find("id=?1 and checkpointId=?2", standardId, x.targetId).firstResult();
+        StandardReferenceImage i = StandardReferenceImage.find("id=?1 and targetType=?2 and targetId=?3", standardId, x.targetType, x.targetId).firstResult();
         if (i == null) throw new NotFoundException("Foto estándar no encontrada");
         return Response.ok(standardImages.read(i.objectKey, null)).type(i.contentType).build();
     }
@@ -102,20 +103,50 @@ public class OperationResource {
         return detail(r);
     }
 
+    /** Etiquetas por módulo: protocolo (código, versión), grupo (código, nombre) y tarea (código, nombre). */
+    private static final Map<String,String[]> LABELS = Map.of(
+        StandardReferenceImage.PATROL_CHECKPOINT, new String[]{"PATRULLA", """
+            select pp.code, pp.version_no, pd.code, pd.name, pc.code, pc.name from patrol_checkpoint pc
+            join patrol_definition pd on pd.id=pc.patrol_definition_id join patrol_protocol pp on pp.id=pd.protocol_id where pc.id=:t"""},
+        StandardReferenceImage.CONSIGNMENT_EVIDENCE, new String[]{"CONSIGNA", """
+            select cp.code, cp.version_no, c.code, c.title, 'E' || ce.sort_order, ce.name from consignment_evidence ce
+            join consignment c on c.id=ce.consignment_id join consignment_protocol cp on cp.id=c.protocol_id where ce.id=:t"""},
+        StandardReferenceImage.LOGBOOK_FIELD, new String[]{"BITACORA", """
+            select lp.code, lp.version_no, a.code, lp.name, f.section, f.name from logbook_protocol_field f
+            join logbook_protocol lp on lp.id=f.protocol_id left join logbook_accreditation a on a.id=f.accreditation_id where f.id=:t"""});
+
+    @SuppressWarnings("unchecked")
     private ExecutionRow row(TaskExecution x) {
-        Object[] m = (Object[]) em.createNativeQuery("""
-            select po.code, po.name, pp.code, pp.version_no, pd.code, pd.name, pc.code, pc.name, e.full_name
-            from task_execution t join post po on po.id=t.post_id join patrol_protocol pp on pp.id=t.protocol_id
-            join patrol_checkpoint pc on pc.id=t.target_id join patrol_definition pd on pd.id=pc.patrol_definition_id
-            left join employee_operational_snapshot e on e.employee_id=t.employee_id and e.instance_country_id=t.instance_country_id
-            where t.id=:id""").setParameter("id", x.id).getSingleResult();
+        Object[] who = (Object[]) em.createNativeQuery("""
+            select po.code, po.name, e.full_name from task_execution t join post po on po.id=t.post_id
+            left join employee_operational_snapshot e on e.employee_id=t.employee_id and e.instance_country_id=t.instance_country_id where t.id=:id""")
+            .setParameter("id", x.id).getSingleResult();
+        String[] label = LABELS.get(x.targetType);
+        List<Object[]> found = label == null ? List.of() : em.createNativeQuery(label[1]).setParameter("t", x.targetId).getResultList();
+        Object[] m = found.isEmpty() ? new Object[6] : found.get(0);
         List<EvidenceObject> photos = photos(x.id);
         Set<String> flags = new TreeSet<>();
         photos.forEach(o -> flags.addAll(flags(o.flags)));
         VisualReview r = VisualReview.find("taskExecutionId", x.id).firstResult();
-        return new ExecutionRow(x.id, x.executedAt, (String) m[0], (String) m[1], (String) m[2], ((Number) m[3]).intValue(), (String) m[4], (String) m[5], (String) m[6], (String) m[7],
-            m[8] == null ? x.username : (String) m[8], x.captureNo, photos.stream().map(o -> o.id).toList(), List.copyOf(flags),
+        return new ExecutionRow(x.id, x.executedAt, label == null ? x.targetType : label[0], (String) who[0], (String) who[1],
+            (String) m[0], m[1] == null ? x.protocolVersionNo : ((Number) m[1]).intValue(), (String) m[2], (String) m[3], (String) m[4], (String) m[5],
+            who[2] == null ? x.username : (String) who[2], x.captureNo, photos.stream().map(o -> o.id).toList(), List.copyOf(flags),
             r == null ? null : new ReviewSummary(r.id, r.status, r.result, r.simulated));
+    }
+
+    private static String standardNotes(TaskExecution x) {
+        return switch (x.targetType) {
+            case StandardReferenceImage.PATROL_CHECKPOINT -> { PatrolCheckpoint cp = PatrolCheckpoint.findById(x.targetId); yield cp == null ? null : cp.standardImageNotes; }
+            case StandardReferenceImage.CONSIGNMENT_EVIDENCE -> {
+                com.cajamarca.sgi.comando.consignments.ConsignmentEvidence e = com.cajamarca.sgi.comando.consignments.ConsignmentEvidence.findById(x.targetId);
+                yield e == null ? null : e.standardImageNotes;
+            }
+            case StandardReferenceImage.LOGBOOK_FIELD -> {
+                com.cajamarca.sgi.comando.bitacora.LogbookProtocolField f = com.cajamarca.sgi.comando.bitacora.LogbookProtocolField.findById(x.targetId);
+                yield f == null ? null : f.standardImageNotes;
+            }
+            default -> null;
+        };
     }
 
     private ReviewDetail detail(VisualReview r) {

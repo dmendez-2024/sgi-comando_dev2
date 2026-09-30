@@ -24,7 +24,7 @@ public class OperatorExecutionResource {
 
     public record Validation(String status, String result, String reasonCode, Instant reviewedAt) {}
     /** outcome: NOT_REQUIRED | PENDING | VALIDATED | NOT_VALIDATED | TECHNICAL_ERROR. */
-    public record ExecutionResult(UUID eventId, UUID patrolRunId, UUID checkpointId, int captureNo, Instant executedAt, Instant receivedAt,
+    public record ExecutionResult(UUID eventId, String targetType, UUID targetId, UUID patrolRunId, UUID groupId, UUID checkpointId, int captureNo, Instant executedAt, Instant receivedAt,
                                   Validation validation, String outcome, String message, boolean canRetake) {}
 
     @GET @Path("/executions/{eventId}")
@@ -36,11 +36,12 @@ public class OperatorExecutionResource {
     }
 
     @GET @Path("/executions")
-    public List<ExecutionResult> byRound(@QueryParam("patrolRunId") UUID patrolRunId) {
+    public List<ExecutionResult> byRound(@QueryParam("patrolRunId") UUID patrolRunId, @QueryParam("groupId") UUID groupId) {
         ctx.employee();
-        if (patrolRunId == null) throw new BadRequestException("patrolRunId es obligatorio");
-        return TaskExecution.<TaskExecution>find("instanceCountryId=?1 and patrolExecutionId=?2 and username=?3 order by executedAt, captureNo",
-            tenant.instanceCountryId(), patrolRunId, ctx.username()).list().stream().map(this::result).toList();
+        if (patrolRunId == null && groupId == null) throw new BadRequestException("patrolRunId o groupId es obligatorio");
+        String by = patrolRunId != null ? "patrolExecutionId" : "groupId";
+        return TaskExecution.<TaskExecution>find("instanceCountryId=?1 and " + by + "=?2 and username=?3 order by executedAt, captureNo",
+            tenant.instanceCountryId(), patrolRunId != null ? patrolRunId : groupId, ctx.username()).list().stream().map(this::result).toList();
     }
 
     ExecutionResult result(TaskExecution x) {
@@ -51,20 +52,21 @@ public class OperatorExecutionResource {
             case "ERROR_FINAL" -> "TECHNICAL_ERROR";
             default -> "PENDING";
         };
-        boolean latest = x.patrolExecutionId == null || TaskExecution.count("instanceCountryId=?1 and patrolExecutionId=?2 and targetId=?3 and captureNo>?4",
-            x.instanceCountryId, x.patrolExecutionId, x.targetId, x.captureNo) == 0;
+        boolean latest = x.patrolExecutionId != null
+            ? TaskExecution.count("instanceCountryId=?1 and patrolExecutionId=?2 and targetId=?3 and captureNo>?4", x.instanceCountryId, x.patrolExecutionId, x.targetId, x.captureNo) == 0
+            : x.groupId == null || TaskExecution.count("instanceCountryId=?1 and groupId=?2 and targetId=?3 and captureNo>?4", x.instanceCountryId, x.groupId, x.targetId, x.captureNo) == 0;
         boolean canRetake = "NOT_VALIDATED".equals(outcome) && latest;
         Validation v = r == null ? new Validation("NOT_REQUESTED", null, null, null) : new Validation(r.status, r.result, r.reasonCode, r.reviewedAt);
-        return new ExecutionResult(x.id, x.patrolExecutionId, x.targetId, x.captureNo, x.executedAt, x.receivedAt, v, outcome, message(outcome, r, canRetake), canRetake);
+        return new ExecutionResult(x.id, x.targetType, x.targetId, x.patrolExecutionId, x.groupId, x.targetId, x.captureNo, x.executedAt, x.receivedAt, v, outcome, message(outcome, r, canRetake, "PATROL_CHECKPOINT".equals(x.targetType)), canRetake);
     }
 
     /** Texto para mostrar al agente. Una falla técnica de VISINT no se le atribuye: el Hito queda registrado. */
-    static String message(String outcome, VisualReview r, boolean canRetake) {
+    static String message(String outcome, VisualReview r, boolean canRetake, boolean patrol) {
         return switch (outcome) {
-            case "NOT_REQUIRED" -> "Hito registrado.";
+            case "NOT_REQUIRED" -> patrol ? "Hito registrado." : "Foto registrada.";
             case "PENDING" -> "Validando la foto con VISINT…";
-            case "VALIDATED" -> "Foto validada. Hito cumplido.";
-            case "TECHNICAL_ERROR" -> "No se pudo validar la foto por un problema técnico. El Hito queda registrado.";
+            case "VALIDATED" -> patrol ? "Foto validada. Hito cumplido." : "Foto validada.";
+            case "TECHNICAL_ERROR" -> "No se pudo validar la foto por un problema técnico. " + (patrol ? "El Hito queda registrado." : "La foto queda registrada.");
             default -> "Evidencia no validada: " + reason(r) + (canRetake ? ". Tome una nueva foto." : ".");
         };
     }

@@ -30,6 +30,8 @@ public class OperatorResource {
     @Inject OperatorContext ctx;
     @Inject OperatorPatrols patrols;
     @Inject PatrolExecutionService patrolExecutions;
+    @Inject TaskEvidenceService taskEvidences;
+    @Inject OperatorTasks tasks;
 
     @org.jboss.resteasy.reactive.server.ServerExceptionMapper
     public Response mapError(WebApplicationException e) { return OperatorErrors.withMessage(e); }
@@ -86,6 +88,8 @@ public class OperatorResource {
             AssignmentContext c=assignment(assignmentId,employee);
             response.set("relief",context(c));
             response.set("patrols",patrols.runtime(c.post.id));
+            response.set("consignmentTasks",tasks.consignmentTasks(c.post));
+            response.set("logbookTasks",tasks.logbookTasks(c.post));
             return response;
         }
         ArrayNode choices=response.putArray("assignments");
@@ -116,6 +120,7 @@ public class OperatorResource {
     @POST @Path("/executions") @Consumes(MediaType.APPLICATION_JSON) @Transactional
     public ObjectNode submit(JsonNode batch) {
         if(PatrolExecutionContract.TYPE.equals(batch.path("events").path(0).path("type").asText())) return patrolExecutions.submit(batch);
+        if(TaskEvidenceService.TYPE.equals(batch.path("events").path(0).path("type").asText())) return taskEvidences.submit(batch);
         UUID employee=employee(); validate(batch,employee,tenant.instanceCountryId(),Instant.now());
         JsonNode event=batch.path("events").get(0); UUID eventId=uuid(event,"eventId"), assignmentId=uuid(event,"assignmentId");
         AssignmentContext c=assignment(assignmentId,employee); lock(assignmentId);

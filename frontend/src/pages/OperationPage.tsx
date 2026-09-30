@@ -3,13 +3,16 @@ import {AlertTriangle,ArrowLeft,CheckCircle2,Clock3,RefreshCw,ShieldCheck,X,XCir
 import {api,ApiError} from '../api';
 
 type Review={id:string;status:string;result:string|null;simulated:boolean};
-type Row={id:string;executedAt:string;postCode:string;postName:string;protocolCode:string;protocolVersion:number;patrolCode:string;patrolName:string;checkpointCode:string;checkpointName:string;employeeName:string;captureNo:number;evidenceIds:string[];flags:string[];review:Review|null};
+type Row={id:string;executedAt:string;postCode:string;postName:string;protocolCode:string;protocolVersion:number;module:string;groupCode:string|null;groupName:string|null;taskCode:string|null;taskName:string|null;employeeName:string;captureNo:number;evidenceIds:string[];flags:string[];review:Review|null};
 type Evidence={id:string;capturedAt:string;latitude:number|null;longitude:number|null;source:string;flags:string[]};
 type ReviewDetail=Review&{findings:string|null;matchedStandardImageId:string|null;reasonCode:string|null;modelVersion:string|null;standardImageVersion:number;attempts:number;lastError:string|null;createdAt:string;requestedAt:string|null;reviewedAt:string|null};
 type Standard={id:string;position:number};
 type Detail={row:Row;observation:string|null;standardNotes:string|null;evidences:Evidence[];standards:Standard[];review:ReviewDetail|null};
 type Point={pointId:string;pointName:string;clientName:string;companyName:string};
 
+/** Módulo de la tarea con foto. */
+const MODULES:Record<string,string>={PATRULLA:'Patrulla',CONSIGNA:'Consigna',BITACORA:'Bitácora'};
+const taskLabel=(r:Row)=>[r.taskCode,r.taskName].filter(Boolean).join(' · ');
 const FLAGS:Record<string,string>={OUT_OF_RANGE:'Fuera de GPS'};
 /** Alertas que se registran pero no se muestran: GALLERY (foto elegida de la galería) y SUSPECTED_REUSE (el mismo archivo ya se usó en otra ejecución). */
 const shown=(flags:string[]|undefined)=>(flags??[]).filter(f=>f in FLAGS);
@@ -59,7 +62,7 @@ export default function OperationPage({point,onBack}:{point:Point;onBack:()=>voi
 
  return <div className="services-v01 opr-page">
   <div className="ser-breadcrumbs"><button onClick={onBack}><ArrowLeft size={15}/>Volver a Servicios</button><span>/</span><small>Operación</small></div>
-  <div className="opr-title"><div><h2>Operación · {point.pointName}</h2><span>{point.clientName} · {point.companyName} · Hitos ejecutados y validación visual (VISINT)</span></div><button onClick={()=>void load()}><RefreshCw size={14}/>Actualizar</button></div>
+  <div className="opr-title"><div><h2>Operación · {point.pointName}</h2><span>{point.clientName} · {point.companyName} · Tareas con foto (Patrullas, Consignas, Bitácora) y validación visual (VISINT)</span></div><button onClick={()=>void load()}><RefreshCw size={14}/>Actualizar</button></div>
   <div className="opr-kpis">
    <article><small>Ejecuciones</small><strong>{rows.length}</strong></article>
    <article className="good"><small>Cumplen</small><strong>{count('PASSED')}</strong></article>
@@ -69,11 +72,11 @@ export default function OperationPage({point,onBack}:{point:Point;onBack:()=>voi
    <article><small>Sin VISINT</small><strong>{rows.length-reviewed.length}</strong></article>
   </div>
   {error&&<div className="ser-error"><AlertTriangle size={16}/><span>{error}</span><button onClick={()=>setError('')}>Cerrar</button></div>}
-  <section className="ser-table-card"><table className="opr-table"><thead><tr><th>Fecha</th><th>Hito</th><th>Patrulla</th><th>Agente</th><th>Fotos</th><th>VISINT</th><th>Alertas</th></tr></thead>
+  <section className="ser-table-card"><table className="opr-table"><thead><tr><th>Fecha</th><th>Tarea</th><th>Protocolo</th><th>Agente</th><th>Fotos</th><th>VISINT</th><th>Alertas</th></tr></thead>
    <tbody>{loading?<tr><td colSpan={7}>Cargando…</td></tr>:rows.length?rows.map(r=><tr key={r.id} className={r.id===openId?'selected':''} onClick={()=>open(r.id)}>
     <td>{when(r.executedAt)}</td>
-    <td><strong>{r.checkpointCode} · {r.checkpointName}</strong><small>{r.postCode}{r.captureNo>1&&` · Captura ${r.captureNo}`}</small></td>
-    <td>{r.protocolCode} v{r.protocolVersion}<small>{r.patrolCode} {r.patrolName}</small></td>
+    <td><em className={`opr-module ${r.module.toLowerCase()}`}>{MODULES[r.module]??r.module}</em><strong>{taskLabel(r)}</strong><small>{r.postCode}{r.captureNo>1&&` · Captura ${r.captureNo}`}</small></td>
+    <td>{r.protocolCode} v{r.protocolVersion}<small>{[r.groupCode,r.groupName].filter(Boolean).join(' ')}</small></td>
     <td>{r.employeeName}</td>
     <td><div className="opr-thumbs">{r.evidenceIds.slice(0,3).map(id=><Img key={id} load={()=>api.operationEvidenceImage(id)} alt="" className="opr-thumb"/>)}{r.evidenceIds.length>3&&<span>+{r.evidenceIds.length-3}</span>}</div></td>
     <td><Verdict review={r.review}/></td>
@@ -81,7 +84,7 @@ export default function OperationPage({point,onBack}:{point:Point;onBack:()=>voi
     :<tr><td colSpan={7} className="bit-empty-cell">Todavía no hay Hitos ejecutados en este Punto.</td></tr>}</tbody></table></section>
 
   {openId&&<div className="opr-drawer-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget)close()}}><aside className="opr-drawer">
-   <header><div><h3>{detail?`${detail.row.checkpointCode} · ${detail.row.checkpointName}`:'Cargando…'}</h3>{detail&&<span>{detail.row.employeeName} · {detail.row.postCode} · {when(detail.row.executedAt)}</span>}</div><button onClick={close} aria-label="Cerrar"><X size={18}/></button></header>
+   <header><div><h3>{detail?`${MODULES[detail.row.module]??detail.row.module} · ${taskLabel(detail.row)}`:'Cargando…'}</h3>{detail&&<span>{detail.row.employeeName} · {detail.row.postCode} · {when(detail.row.executedAt)}</span>}</div><button onClick={close} aria-label="Cerrar"><X size={18}/></button></header>
    {detail&&<div className="opr-drawer-body">
     <div className="opr-result"><Verdict review={detail.review}/>
      {detail.review&&<span>Foto estándar v{detail.review.standardImageVersion}{detail.review.simulated&&" · VISINT simulado"}{!detail.review.simulated&&detail.review.modelVersion&&` · modelo ${detail.review.modelVersion}`}</span>}

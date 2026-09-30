@@ -101,7 +101,9 @@ public class HttpVisintAdapter implements VisintPort {
         try { return json != null && !mapper.readTree(json).path("status").asText("").isBlank(); } catch (Exception e) { return false; }
     }
 
-    static String serviceType(String taskType) { return "PATROL_CHECKPOINT".equals(taskType) ? "PATRULLA" : taskType; }
+    static String serviceType(String taskType) {
+        return switch (taskType) { case "PATROL_CHECKPOINT" -> "PATRULLA"; case "CONSIGNMENT_EVIDENCE" -> "CONSIGNA"; case "LOGBOOK_FIELD" -> "BITACORA"; default -> taskType; };
+    }
     private static String text(JsonNode n, String f) { return n.hasNonNull(f) && !n.path(f).asText().isBlank() ? n.path(f).asText() : null; }
     private static UUID uuid(String s) { try { return s == null ? null : UUID.fromString(s); } catch (IllegalArgumentException e) { return null; } }
 

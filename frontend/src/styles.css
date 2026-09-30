@@ -1927,3 +1927,20 @@
 .agent-sim-result.pending{background:#eff6ff;border-color:#bfdbfe;color:#1e40af}
 .agent-sim-result .spin{animation:agent-sim-spin 1s linear infinite}
 @keyframes agent-sim-spin{to{transform:rotate(360deg)}}
+/* Fase 4 · módulo de la tarea en Operación */
+.opr-module{display:inline-block;margin-right:6px;padding:1px 7px;border-radius:99px;font-size:10px;font-weight:700;font-style:normal;background:#eef2ff;color:#3730a3}
+.opr-module.consigna{background:#fef3c7;color:#92400e}
+.opr-module.bitacora{background:#ecfeff;color:#155e75}
+/* Fase 4 · Simulador: tipo de tarea y registro de visitante */
+.agent-sim-kinds{display:flex;gap:6px;margin:8px 0}
+.agent-sim-kinds button{padding:6px 14px;border-radius:99px;border:1px solid #cbd5e1;background:#fff;cursor:pointer;font-weight:600}
+.agent-sim-kinds button.selected{background:#1e3a8a;color:#fff;border-color:#1e3a8a}
+.agent-sim-entry{display:flex;align-items:center;gap:10px;margin:6px 0;font-size:13px}
+.agent-sim-entry button{display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border-radius:8px;border:1px solid #cbd5e1;background:#fff;cursor:pointer}
+.agent-sim-note{font-size:13px;color:#475569;margin:4px 0}
+.bit-standard-hint{font-size:12px;color:#64748b;margin:6px 0}
+/* Fase 4 · galería de fotos estándar dentro de Consignas y Bitácora */
+.consignas-config-page .con-standard-photo>small,.bit-standard-section .bit-standard-title span{display:block;color:#64748b;font-size:11px;font-weight:500;margin:2px 0 6px}
+.consignas-config-page .pat-standard-gallery,.bit-standard-section .pat-standard-gallery{display:grid!important;grid-template-columns:repeat(auto-fill,minmax(92px,1fr))!important;width:100%}
+.consignas-config-page .pat-standard-gallery figure,.bit-standard-section .pat-standard-gallery figure{width:auto!important;height:auto!important;min-width:0;aspect-ratio:1}
+.consignas-config-page .pat-standard-gallery img,.bit-standard-section .pat-standard-gallery img{width:100%!important;height:100%!important;max-width:none!important;max-height:none!important;object-fit:cover}

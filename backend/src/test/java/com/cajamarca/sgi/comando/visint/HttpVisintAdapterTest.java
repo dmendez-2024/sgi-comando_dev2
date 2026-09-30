@@ -152,6 +152,12 @@ class HttpVisintAdapterTest {
         } finally { server.stop(0); }
     }
 
+    @Test void serviceTypePerModule() {
+        assertEquals("PATRULLA", HttpVisintAdapter.serviceType("PATROL_CHECKPOINT"));
+        assertEquals("CONSIGNA", HttpVisintAdapter.serviceType("CONSIGNMENT_EVIDENCE"));
+        assertEquals("BITACORA", HttpVisintAdapter.serviceType("LOGBOOK_FIELD"));
+    }
+
     static int count(String s, String part) { int n = 0, i = 0; while ((i = s.indexOf(part, i)) >= 0) { n++; i += part.length(); } return n; }
 
     HttpVisintAdapter adapter(String url, byte[] photo) {

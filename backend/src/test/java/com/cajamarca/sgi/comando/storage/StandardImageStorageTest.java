@@ -21,7 +21,7 @@ class StandardImageStorageTest {
 
     @SuppressWarnings("unchecked")
     List<Object[]> images(String checkpointId) {
-        return em.createNativeQuery("select id, object_key, sha256, position from patrol_checkpoint_standard_image where checkpoint_id=:c order by position")
+        return em.createNativeQuery("select id, object_key, sha256, position from standard_reference_image where target_type='PATROL_CHECKPOINT' and target_id=:c order by position")
             .setParameter("c", UUID.fromString(checkpointId)).getResultList();
     }
 
@@ -38,6 +38,19 @@ class StandardImageStorageTest {
     @Test void rejectsDisguisedText() {
         String cp = (String) OperatorFixtures.createDraftPatrolWithCheckpoint(-2.17, -79.92).get("checkpointId");
         OperatorFixtures.uploadStandard(cp, Path.of("src/test/resources/fixtures/not-an-image.txt")).statusCode(400);
+    }
+
+    /** Fase 4: la foto estándar antigua de una evidencia de Consigna (bytea) pasa a ser su foto estándar n.º 1. */
+    @Test void legacyConsignmentImageMigratesToFirstStandardImage() throws Exception {
+        String evidence = (String) com.cajamarca.sgi.comando.operator.TaskFixtures.draftConsignmentWithPhoto().get("evidenceId");
+        byte[] bytes = Files.readAllBytes(Path.of("src/test/resources/fixtures/sample.png"));
+        QuarkusTransaction.requiringNew().run(() -> em.createNativeQuery("update consignment_evidence set standard_image_data=:d, standard_image_content_type='image/png', standard_image_object_key=null where id=:id")
+            .setParameter("d", bytes).setParameter("id", UUID.fromString(evidence)).executeUpdate());
+        assertTrue(migrator.migrateAll() >= 1);
+        List<?> rows = em.createNativeQuery("select id from standard_reference_image where target_type='CONSIGNMENT_EVIDENCE' and target_id=:e")
+            .setParameter("e", UUID.fromString(evidence)).getResultList();
+        assertEquals(1, rows.size());
+        assertArrayEquals(bytes, as("coord").get("/api/consignments/evidences/" + evidence + "/standard-images/" + rows.get(0)).then().statusCode(200).extract().asByteArray());
     }
 
     /** Una foto estándar antigua (bytea en patrol_checkpoint) se sube a MinIO y pasa a ser la foto estándar n.º 1 del Hito. */

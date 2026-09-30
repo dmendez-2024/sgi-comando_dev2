@@ -36,9 +36,9 @@ export function multipartRequest<T>(path:string,form:FormData,opts:{onProgress?:
  });
 }
 function standardImageUpload(path:string,file:File){const fd=new FormData();fd.append("file",file,file.name);return multipartRequest<any>(path,fd)}
-const bitacoraImageUpload=(fieldId:string,file:File)=>standardImageUpload(`/api/bitacora/fields/${encodeURIComponent(fieldId)}/standard-image`,file);
+const bitacoraImageUpload=(fieldId:string,file:File)=>standardImageUpload(`/api/bitacora/fields/${encodeURIComponent(fieldId)}/standard-images`,file);
 const patrolImageUpload=(checkpointId:string,file:File)=>standardImageUpload(`/api/patrols/checkpoints/${encodeURIComponent(checkpointId)}/standard-images`,file);
-const consignmentImageUpload=(evidenceId:string,file:File)=>standardImageUpload(`/api/consignments/evidences/${encodeURIComponent(evidenceId)}/standard-image`,file);
+const consignmentImageUpload=(evidenceId:string,file:File)=>standardImageUpload(`/api/consignments/evidences/${encodeURIComponent(evidenceId)}/standard-images`,file);
 async function atsUpload(pointId:string,file:File):Promise<any>{
  const headers=new Headers(); headers.set('Authorization','Basic '+btoa(`${currentUser}:${PASSWORD}`)); headers.set('Content-Type','application/octet-stream');
  const res=await fetch(`${API}/api/points/${encodeURIComponent(pointId)}/ats/upload?filename=${encodeURIComponent(file.name)}`,{method:'POST',headers,body:file});
@@ -54,6 +54,7 @@ export const api={
  operatorRuntime:(assignmentId?:string)=>request<any>(`/api/v1/operator/runtime${assignmentId?`?assignmentId=${encodeURIComponent(assignmentId)}`:""}`,undefined,SIMULATOR_USER),
  uploadEvidences:(form:FormData,opts:{onProgress?:(pct:number)=>void;signal?:AbortSignal;idempotencyKey?:string})=>multipartRequest<any>("/api/v1/operator/evidences",form,{...opts,user:SIMULATOR_USER}),
  submitExecution:(batch:any)=>request<any>("/api/v1/operator/executions",{method:"POST",body:JSON.stringify(batch)},SIMULATOR_USER),
+ operatorStandardImage:(imageId:string,assignmentId:string)=>binaryRequest(`/api/v1/operator/standard-images/${encodeURIComponent(imageId)}?assignmentId=${encodeURIComponent(assignmentId)}`,undefined,SIMULATOR_USER),
  operatorExecution:(eventId:string)=>request<any>(`/api/v1/operator/executions/${encodeURIComponent(eventId)}`,undefined,SIMULATOR_USER),
  operatorCheckpointImage:(checkpointId:string,imageId:string,assignmentId:string)=>binaryRequest(`/api/v1/operator/checkpoints/${encodeURIComponent(checkpointId)}/standard-images/${encodeURIComponent(imageId)}?assignmentId=${encodeURIComponent(assignmentId)}`,undefined,SIMULATOR_USER),
  context:()=>request<any>('/api/context'),
@@ -89,9 +90,9 @@ export const api={
  createBitacoraField:(accreditationId:string,body:any)=>request<any>(`/api/bitacora/accreditations/${encodeURIComponent(accreditationId)}/fields`,{method:'POST',body:JSON.stringify(body)}),
  saveBitacoraField:(fieldId:string,body:any)=>request<any>(`/api/bitacora/fields/${encodeURIComponent(fieldId)}`,{method:'PUT',body:JSON.stringify(body)}),
  deleteBitacoraField:(fieldId:string)=>request<void>(`/api/bitacora/fields/${encodeURIComponent(fieldId)}`,{method:'DELETE'}),
- bitacoraStandardImage:(fieldId:string)=>binaryRequest(`/api/bitacora/fields/${encodeURIComponent(fieldId)}/standard-image`),
+ bitacoraStandardImage:(fieldId:string,imageId:string)=>binaryRequest(`/api/bitacora/fields/${encodeURIComponent(fieldId)}/standard-images/${encodeURIComponent(imageId)}`),
  uploadBitacoraStandardImage:(fieldId:string,file:File)=>bitacoraImageUpload(fieldId,file),
- deleteBitacoraStandardImage:(fieldId:string)=>request<any>(`/api/bitacora/fields/${encodeURIComponent(fieldId)}/standard-image`,{method:'DELETE'}),
+ deleteBitacoraStandardImage:(fieldId:string,imageId:string)=>request<any>(`/api/bitacora/fields/${encodeURIComponent(fieldId)}/standard-images/${encodeURIComponent(imageId)}`,{method:'DELETE'}),
  bitacoraProtocolHistory:(protocolId:string)=>request<any[]>(`/api/bitacora/protocols/${encodeURIComponent(protocolId)}/history`),
  forkBitacoraProtocol:(protocolId:string)=>request<any>(`/api/bitacora/protocols/${encodeURIComponent(protocolId)}/fork`,{method:'POST'}),
 
@@ -134,9 +135,9 @@ export const api={
  createConsignmentEvidence:(itemId:string,body:any)=>request<any>(`/api/consignments/items/${encodeURIComponent(itemId)}/evidences`,{method:'POST',body:JSON.stringify(body)}),
  saveConsignmentEvidence:(evidenceId:string,body:any)=>request<any>(`/api/consignments/evidences/${encodeURIComponent(evidenceId)}`,{method:'PUT',body:JSON.stringify(body)}),
  deleteConsignmentEvidence:(evidenceId:string)=>request<void>(`/api/consignments/evidences/${encodeURIComponent(evidenceId)}`,{method:'DELETE'}),
- consignmentStandardImage:(evidenceId:string)=>binaryRequest(`/api/consignments/evidences/${encodeURIComponent(evidenceId)}/standard-image`),
+ consignmentStandardImage:(evidenceId:string,imageId:string)=>binaryRequest(`/api/consignments/evidences/${encodeURIComponent(evidenceId)}/standard-images/${encodeURIComponent(imageId)}`),
  uploadConsignmentStandardImage:(evidenceId:string,file:File)=>consignmentImageUpload(evidenceId,file),
- deleteConsignmentStandardImage:(evidenceId:string)=>request<any>(`/api/consignments/evidences/${encodeURIComponent(evidenceId)}/standard-image`,{method:'DELETE'}),
+ deleteConsignmentStandardImage:(evidenceId:string,imageId:string)=>request<any>(`/api/consignments/evidences/${encodeURIComponent(evidenceId)}/standard-images/${encodeURIComponent(imageId)}`,{method:'DELETE'}),
  consignments:(pointId:string)=>request<any[]>(`/api/consignments?pointId=${encodeURIComponent(pointId)}`),
  currentRegesep:(pointId:string)=>request<any>(`/api/points/${pointId}/regesep/current`),
  assignmentWeek:(companyId:string,weekStart:string,pointId?:string)=>request<any>(`/api/assignments/week?companyId=${encodeURIComponent(companyId)}&weekStart=${weekStart}${pointId?`&pointId=${encodeURIComponent(pointId)}`:''}`),

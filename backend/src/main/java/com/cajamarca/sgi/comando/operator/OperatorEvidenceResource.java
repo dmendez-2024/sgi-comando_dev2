@@ -2,8 +2,6 @@ package com.cajamarca.sgi.comando.operator;
 
 import com.cajamarca.sgi.comando.common.TenantContext;
 import com.cajamarca.sgi.comando.execution.EvidenceObject;
-import com.cajamarca.sgi.comando.patrols.PatrolCheckpoint;
-import com.cajamarca.sgi.comando.patrols.PatrolCheckpointStandardImage;
 import com.cajamarca.sgi.comando.storage.*;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.quarkus.security.Authenticated;
@@ -30,6 +28,8 @@ public class OperatorEvidenceResource {
 
     @Inject OperatorContext ctx;
     @Inject OperatorPatrols patrols;
+    @Inject OperatorTasks tasks;
+    @Inject StandardReferenceImages references;
     @Inject StorageService storage;
     @Inject StandardImageStore standardImages;
     @Inject TenantContext tenant;
@@ -47,8 +47,8 @@ public class OperatorEvidenceResource {
         List<FileUpload> uploads = files == null ? List.of() : files;
         Map<UUID,Integer> index = EvidenceUploadContract.matchFiles(meta, uploads.stream().map(FileUpload::fileName).toList(), maxFiles, Instant.now());
         OperatorContext.Assignment a = ctx.assignment(meta.assignmentId(), employee);
-        PatrolCheckpoint checkpoint = patrols.requireCheckpoint(meta.targetId(), a.post().id).checkpoint();
-        if (!checkpoint.requiresEvidence) throw new BadRequestException("Este Hito no requiere fotos");
+        OperatorTasks.Target target = tasks.require(meta.targetType(), meta.targetId(), a.post());
+        if (!target.requiresEvidence()) throw new BadRequestException("Este Hito no requiere fotos");
         ctx.lock(meta.assignmentId());
         UUID t = tenant.instanceCountryId();
 
@@ -83,7 +83,7 @@ public class OperatorEvidenceResource {
             e.objectKey = String.format("evidence/%04d/%02d/%s/%s.%s", now.getYear(), now.getMonthValue(), meta.eventId(), e.id, ImageSniffer.extension(ct));
             e.contentType = ct; e.sizeBytes = f.size(); e.sha256 = it.sha256(); e.capturedAt = it.capturedAt();
             e.latitude = it.latitude(); e.longitude = it.longitude(); e.accuracyM = it.accuracyM(); e.source = it.source();
-            e.flags = String.join(",", flagsFor(e, checkpoint)); e.status = "STORED"; e.receivedAt = Instant.now();
+            e.flags = String.join(",", flagsFor(e, target)); e.status = "STORED"; e.receivedAt = Instant.now();
             try (InputStream in = Files.newInputStream(f.uploadedFile())) { storage.put(e.bucket, e.objectKey, in, f.size(), ct); }
             e.persist();
             stored++;
@@ -92,24 +92,28 @@ public class OperatorEvidenceResource {
         return new UploadResponse(results);
     }
 
-    /** Fotos estándar del Hito (hasta 5), para que el agente las use como guía. */
-    @GET @Path("/checkpoints/{checkpointId}/standard-images/{imageId}")
-    public Response standardImage(@PathParam("checkpointId") UUID checkpointId, @PathParam("imageId") UUID imageId, @QueryParam("assignmentId") UUID assignmentId) {
+    /** Foto estándar de un Hito, evidencia de Consigna o campo de Bitácora de su Puesto, para que el agente la use como guía. */
+    @GET @Path("/standard-images/{imageId}")
+    public Response standardImage(@PathParam("imageId") UUID imageId, @QueryParam("assignmentId") UUID assignmentId) {
         if (assignmentId == null) throw new BadRequestException("assignmentId es obligatorio");
         OperatorContext.Assignment a = ctx.assignment(assignmentId, ctx.employee());
-        PatrolCheckpoint cp = patrols.requireCheckpoint(checkpointId, a.post().id).checkpoint();
-        PatrolCheckpointStandardImage img = PatrolCheckpointStandardImage.find("id=?1 and checkpointId=?2", imageId, cp.id).firstResult();
+        StandardReferenceImage img = StandardReferenceImage.find("id=?1 and instanceCountryId=?2", imageId, tenant.instanceCountryId()).firstResult();
         if (img == null) throw new NotFoundException("Foto estándar no encontrada");
-        byte[] data = standardImages.read(img.objectKey, null);
-        return Response.ok(data).type(img.contentType).header(HttpHeaders.CACHE_CONTROL, "no-store").build();
+        tasks.require(img.targetType, img.targetId, a.post());
+        return Response.ok(references.read(img)).type(img.contentType).header(HttpHeaders.CACHE_CONTROL, "no-store").build();
     }
 
-    private List<String> flagsFor(EvidenceObject e, PatrolCheckpoint cp) {
+    /** Compatibilidad: foto estándar de un Hito de patrulla. */
+    @GET @Path("/checkpoints/{checkpointId}/standard-images/{imageId}")
+    public Response checkpointStandardImage(@PathParam("checkpointId") UUID checkpointId, @PathParam("imageId") UUID imageId, @QueryParam("assignmentId") UUID assignmentId) {
+        return standardImage(imageId, assignmentId);
+    }
+
+    private List<String> flagsFor(EvidenceObject e, OperatorTasks.Target t) {
         List<String> f = new ArrayList<>();
         if ("GALLERY".equals(e.source)) f.add("GALLERY");
-        if (e.latitude != null && e.longitude != null && cp.latitude != null && cp.longitude != null) {
-            double radius = cp.radiusM == null ? patrols.defaultRadius() : cp.radiusM;
-            if (GeoDistance.meters(e.latitude, e.longitude, cp.latitude, cp.longitude) > radius) f.add("OUT_OF_RANGE");
+        if (e.latitude != null && e.longitude != null && t.latitude() != null && t.longitude() != null && t.radiusM() != null) {
+            if (GeoDistance.meters(e.latitude, e.longitude, t.latitude(), t.longitude()) > t.radiusM()) f.add("OUT_OF_RANGE");
         }
         if (EvidenceObject.count("instanceCountryId=?1 and sha256=?2 and eventId<>?3", e.instanceCountryId, e.sha256, e.eventId) > 0) f.add("SUSPECTED_REUSE");
         return f;

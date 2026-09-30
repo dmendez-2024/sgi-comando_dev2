@@ -25,7 +25,7 @@ class OperationResourceTest {
         as("coord").queryParam("pointId", POINT).get("/api/operation/executions").then().statusCode(200)
             .body("find{it.id=='" + event + "'}.review.status", is("QUEUED_FOR_VISINT"))
             .body("find{it.id=='" + event + "'}.evidenceIds.size()", is(1))
-            .body("find{it.id=='" + event + "'}.checkpointName", is("Portón prueba"));
+            .body("find{it.id=='" + event + "'}.taskName", is("Portón prueba")).body("find{it.id=='" + event + "'}.module", is("PATRULLA"));
         worker.processDue();
         var detail = as("coord").get("/api/operation/executions/" + event).then().statusCode(200)
             .body("review.status", is("PASSED")).body("review.result", is("PASS")).body("review.simulated", is(true))
@@ -47,7 +47,7 @@ class OperationResourceTest {
     @Test void standardsAreTheSnapshotSent() throws Exception {
         Map<String,Object> ids = VisintFixtures.publishVisintPatrol();
         UUID event = VisintFixtures.executeWithPhoto(em, ids, SAME);
-        QuarkusTransaction.requiringNew().run(() -> em.createNativeQuery("update patrol_checkpoint_standard_image set object_key='standard/patrol/otra.jpg' where checkpoint_id=:id")
+        QuarkusTransaction.requiringNew().run(() -> em.createNativeQuery("update standard_reference_image set object_key='standard/patrol/otra.jpg' where target_type='PATROL_CHECKPOINT' and target_id=:id")
             .setParameter("id", UUID.fromString(ids.get("checkpointId").toString())).executeUpdate());
         String std = as("coord").get("/api/operation/executions/" + event).then().statusCode(200).extract().path("standards[0].id");
         assertArrayEquals(Files.readAllBytes(SAME), as("coord").get("/api/operation/executions/" + event + "/standards/" + std).then().statusCode(200).extract().asByteArray());

@@ -12,6 +12,7 @@ import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.*;
+import com.cajamarca.sgi.comando.storage.*;
 
 import java.time.*;
 import java.util.*;
@@ -34,8 +35,9 @@ public class ConsignmentResource {
  @Inject SecurityIdentity identity;
  @Inject com.cajamarca.sgi.comando.storage.StandardImageStore standardImages;
  @Inject ObjectMapper mapper;
+ @Inject StandardReferenceImages references;
 
- public record EvidenceDto(UUID id,UUID consignmentId,int sortOrder,String name,String description,String evidenceType,boolean required,boolean hasStandardImage,String standardImageOriginalName,int standardImageVersion,String standardImageNotes,boolean visintEnabled){}
+ public record EvidenceDto(UUID id,UUID consignmentId,int sortOrder,String name,String description,String evidenceType,boolean required,boolean hasStandardImage,List<StandardReferenceImages.Dto> standardImages,int standardImageVersion,String standardImageNotes,boolean visintEnabled){}
  public record ConsignmentDto(UUID id,UUID protocolId,String code,String title,String instruction,String priority,String status,String scopeType,List<UUID> postIds,String validityType,Instant validityFrom,Instant validityUntil,String applicationType,String applicationDaysJson,String applicationTimeFrom,String applicationTimeTo,boolean acknowledgmentRequired,boolean confirmationRequired,boolean evidenceRequired,boolean gpsRequired,boolean observationRequired,String expectedLocationMode,UUID atsPackageId,Double atsX,Double atsY,Double expectedLatitude,Double expectedLongitude,Instant publishedAt,String updatedBy,List<EvidenceDto> evidences){}
  public record ProtocolDto(UUID id,UUID seriesId,UUID basedOnProtocolId,UUID pointId,String code,String name,String description,String status,int versionNo,Instant publishedAt,Instant activatedAt,String updatedBy,List<ConsignmentDto> consignments){}
  public record CreateProtocolRequest(UUID pointId,String name){}
@@ -103,7 +105,7 @@ public class ConsignmentResource {
  @Transactional
  @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
  public ProtocolDto publish(@PathParam("id")UUID id) throws Exception{
-   ConsignmentProtocol p=protocol(id);authorize(p);requireDraft(p);List<Consignment> items=consignments(p.id);if(items.isEmpty())throw new BadRequestException("El protocolo debe contener al menos una Consigna");for(Consignment c:items)validate(c);
+   ConsignmentProtocol p=protocol(id);authorize(p);requireDraft(p);List<Consignment> items=consignments(p.id);if(items.isEmpty())throw new BadRequestException("El protocolo debe contener al menos una Consigna");for(Consignment c:items){validate(c);for(ConsignmentEvidence e:evidences(c.id))if(e.visintEnabled&&StandardReferenceImage.countOf(StandardReferenceImage.CONSIGNMENT_EVIDENCE,e.id)==0)throw new BadRequestException(c.code+": la evidencia \""+e.name+"\" requiere al menos una foto estándar (VISINT)");}
    p.publishedAt=Instant.now();p.status="INACTIVO";p.activatedAt=null;p.updatedByUsername=user();for(Consignment c:items){c.status="PUBLICADO";c.publishedAt=p.publishedAt;}
    OutboxEvent.of(tenant.instanceCountryId(),"CONSIGNMENT_PROTOCOL",p.id,"CONSIGNMENT_PROTOCOL_PUBLISHED",mapper.writeValueAsString(Map.of("protocolId",p.id,"pointId",p.pointId,"code",p.code,"version",p.versionNo,"status",p.status))).persist();
    return dto(p);
@@ -116,6 +118,8 @@ public class ConsignmentResource {
  public ProtocolDto activate(@PathParam("id")UUID id){
    ConsignmentProtocol p=protocol(id);authorize(p);if(!"INACTIVO".equals(p.status)&&!"ACTIVO".equals(p.status))throw new ClientErrorException("Solo un Protocolo inactivo puede activarse.",409);if("ACTIVO".equals(p.status))return dto(p);
    List<ConsignmentProtocol> active=ConsignmentProtocol.list("instanceCountryId=?1 and pointId=?2 and status='ACTIVO'",tenant.instanceCountryId(),p.pointId);for(ConsignmentProtocol old:active){old.status="INACTIVO";for(Consignment c:consignments(old.id))c.status="PUBLICADO";}
+   // El índice único admite un solo ACTIVO por Punto: se guarda la desactivación antes de activar el nuevo.
+   ConsignmentProtocol.flush();
    p.status="ACTIVO";p.activatedAt=Instant.now();p.updatedByUsername=user();for(Consignment c:consignments(p.id))c.status="VIGENTE";return dto(p);
  }
 
@@ -151,52 +155,46 @@ public class ConsignmentResource {
  @Path("/items/{id}")
  @Transactional
  @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
- public void deleteConsignment(@PathParam("id")UUID id){Consignment c=item(id);ConsignmentProtocol p=protocol(c.protocolId);authorize(p);requireDraft(p);ConsignmentEvidence.delete("consignmentId=?1 and instanceCountryId=?2",c.id,tenant.instanceCountryId());ConsignmentPostScope.delete("consignmentId=?1 and instanceCountryId=?2",c.id,tenant.instanceCountryId());c.delete();}
+ public void deleteConsignment(@PathParam("id")UUID id){Consignment c=item(id);ConsignmentProtocol p=protocol(c.protocolId);authorize(p);requireDraft(p);for(ConsignmentEvidence e:evidences(c.id))StandardReferenceImage.delete("targetType=?1 and targetId=?2",StandardReferenceImage.CONSIGNMENT_EVIDENCE,e.id);ConsignmentEvidence.delete("consignmentId=?1 and instanceCountryId=?2",c.id,tenant.instanceCountryId());ConsignmentPostScope.delete("consignmentId=?1 and instanceCountryId=?2",c.id,tenant.instanceCountryId());c.delete();}
 
  @POST
  @Path("/items/{id}/evidences")
  @Consumes(MediaType.APPLICATION_JSON)
  @Transactional
  @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
- public EvidenceDto createEvidence(@PathParam("id")UUID id,CreateEvidenceRequest req){Consignment c=item(id);ConsignmentProtocol p=protocol(c.protocolId);authorize(p);requireDraft(p);ConsignmentEvidence e=new ConsignmentEvidence();e.instanceCountryId=tenant.instanceCountryId();e.consignmentId=c.id;e.sortOrder=(int)ConsignmentEvidence.count("consignmentId=?1 and instanceCountryId=?2",c.id,tenant.instanceCountryId())+1;e.name=clean(req==null?null:req.name(),"Nueva evidencia");e.description=req==null||req.description()==null?"":req.description().trim();e.evidenceType=norm(req==null?null:req.evidenceType(),EVIDENCE_TYPES,"PHOTO","Tipo de evidencia inválido");e.required=req==null||req.required()==null||req.required();e.standardImageVersion=0;e.standardImageNotes="";e.visintEnabled=false;e.persist();c.evidenceRequired=true;return evidenceDto(e);}
+ public EvidenceDto createEvidence(@PathParam("id")UUID id,CreateEvidenceRequest req){Consignment c=item(id);ConsignmentProtocol p=protocol(c.protocolId);authorize(p);requireDraft(p);ConsignmentEvidence e=new ConsignmentEvidence();e.instanceCountryId=tenant.instanceCountryId();e.consignmentId=c.id;e.sortOrder=(int)ConsignmentEvidence.count("consignmentId=?1 and instanceCountryId=?2",c.id,tenant.instanceCountryId())+1;e.name=clean(req==null?null:req.name(),"Nueva evidencia");e.description=req==null||req.description()==null?"":req.description().trim();e.evidenceType=norm(req==null?null:req.evidenceType(),EVIDENCE_TYPES,"PHOTO","Tipo de evidencia inválido");e.required=req==null||req.required()==null||req.required();e.standardImageVersion=0;e.standardImageNotes="";e.visintEnabled=visint(e);e.persist();c.evidenceRequired=true;return evidenceDto(e);}
 
  @PUT
  @Path("/evidences/{id}")
  @Consumes(MediaType.APPLICATION_JSON)
  @Transactional
  @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
- public EvidenceDto saveEvidence(@PathParam("id")UUID id,SaveEvidenceRequest req){ConsignmentEvidence e=evidence(id);Consignment c=item(e.consignmentId);ConsignmentProtocol p=protocol(c.protocolId);authorize(p);requireDraft(p);e.name=clean(req.name(),e.name);e.description=req.description()==null?"":req.description().trim();e.evidenceType=norm(req.evidenceType(),EVIDENCE_TYPES,e.evidenceType,"Tipo de evidencia inválido");e.required=req.required();e.standardImageNotes=req.standardImageNotes()==null?"":req.standardImageNotes().trim();return evidenceDto(e);}
+ public EvidenceDto saveEvidence(@PathParam("id")UUID id,SaveEvidenceRequest req){ConsignmentEvidence e=evidence(id);Consignment c=item(e.consignmentId);ConsignmentProtocol p=protocol(c.protocolId);authorize(p);requireDraft(p);e.name=clean(req.name(),e.name);e.description=req.description()==null?"":req.description().trim();e.evidenceType=norm(req.evidenceType(),EVIDENCE_TYPES,e.evidenceType,"Tipo de evidencia inválido");e.required=req.required();e.standardImageNotes=req.standardImageNotes()==null?"":req.standardImageNotes().trim();e.visintEnabled=visint(e);return evidenceDto(e);}
 
  @DELETE
  @Path("/evidences/{id}")
  @Transactional
  @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
- public void deleteEvidence(@PathParam("id")UUID id){ConsignmentEvidence e=evidence(id);Consignment c=item(e.consignmentId);ConsignmentProtocol p=protocol(c.protocolId);authorize(p);requireDraft(p);e.delete();}
+ public void deleteEvidence(@PathParam("id")UUID id){ConsignmentEvidence e=evidence(id);Consignment c=item(e.consignmentId);ConsignmentProtocol p=protocol(c.protocolId);authorize(p);requireDraft(p);StandardReferenceImage.delete("targetType=?1 and targetId=?2",StandardReferenceImage.CONSIGNMENT_EVIDENCE,e.id);e.delete();}
 
+ /** Agrega una foto estándar a la evidencia (hasta 5). VISINT las recibe todas en referenceImages. */
  @POST
- @Path("/evidences/{id}/standard-image")
- @Consumes(MediaType.APPLICATION_OCTET_STREAM)
- @Transactional
- @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
- public EvidenceDto uploadImage(@PathParam("id")UUID id,@QueryParam("filename")String filename,@QueryParam("contentType")String contentType,byte[] bytes){ConsignmentEvidence e=evidence(id);Consignment c=item(e.consignmentId);ConsignmentProtocol p=protocol(c.protocolId);authorize(p);requireDraft(p);com.cajamarca.sgi.comando.storage.StandardImageStore.Stored s=standardImages.save("consignment",bytes);e.standardImageObjectKey=s.objectKey();e.standardImageSha256=s.sha256();e.standardImageSize=s.size();e.standardImageContentType=s.contentType();e.standardImageData=null;e.standardImageOriginalName=clean(filename,"foto-estandar");e.standardImageVersion=Math.max(1,e.standardImageVersion+1);e.visintEnabled=false;return evidenceDto(e);}
-
- @POST
- @Path("/evidences/{id}/standard-image")
+ @Path("/evidences/{id}/standard-images")
  @Consumes(MediaType.MULTIPART_FORM_DATA)
  @Transactional
  @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
- public EvidenceDto uploadImageForm(@PathParam("id")UUID id,@org.jboss.resteasy.reactive.RestForm("file") org.jboss.resteasy.reactive.multipart.FileUpload file) throws java.io.IOException{if(file==null)throw new BadRequestException("Imagen obligatoria");if(file.size()>com.cajamarca.sgi.comando.storage.StandardImageStore.MAX_BYTES)throw new BadRequestException("La foto estándar no puede superar 5 MB");return uploadImage(id,file.fileName(),file.contentType(),java.nio.file.Files.readAllBytes(file.uploadedFile()));}
+ public EvidenceDto addStandardImage(@PathParam("id")UUID id,@org.jboss.resteasy.reactive.RestForm("file") org.jboss.resteasy.reactive.multipart.FileUpload file){ConsignmentEvidence e=evidence(id);Consignment c=item(e.consignmentId);ConsignmentProtocol p=protocol(c.protocolId);authorize(p);requireDraft(p);references.add(tenant.instanceCountryId(),StandardReferenceImage.CONSIGNMENT_EVIDENCE,e.id,"consignment",file);e.standardImageVersion++;return evidenceDto(e);}
 
  @GET
- @Path("/evidences/{id}/standard-image")
+ @Path("/evidences/{id}/standard-images/{imageId}")
  @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION","SUPERVISOR_SEGURIDAD","AGENTE_SEGURIDAD","CLIENTE"})
- public Response image(@PathParam("id")UUID id){ConsignmentEvidence e=evidence(id);Consignment c=item(e.consignmentId);authorize(protocol(c.protocolId));return Response.ok(standardImages.read(e.standardImageObjectKey,e.standardImageData)).type(e.standardImageContentType).header(HttpHeaders.CACHE_CONTROL,"no-store").build();}
+ public Response standardImage(@PathParam("id")UUID id,@PathParam("imageId")UUID imageId){ConsignmentEvidence e=evidence(id);Consignment c=item(e.consignmentId);authorize(protocol(c.protocolId));StandardReferenceImage img=references.get(StandardReferenceImage.CONSIGNMENT_EVIDENCE,e.id,imageId);return Response.ok(references.read(img)).type(img.contentType).header(HttpHeaders.CACHE_CONTROL,"no-store").build();}
 
  @DELETE
- @Path("/evidences/{id}/standard-image")
+ @Path("/evidences/{id}/standard-images/{imageId}")
  @Transactional
  @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
- public EvidenceDto deleteImage(@PathParam("id")UUID id){ConsignmentEvidence e=evidence(id);Consignment c=item(e.consignmentId);ConsignmentProtocol p=protocol(c.protocolId);authorize(p);requireDraft(p);e.standardImageData=null;e.standardImageObjectKey=null;e.standardImageSha256=null;e.standardImageSize=null;e.standardImageOriginalName=null;e.standardImageContentType=null;e.visintEnabled=false;return evidenceDto(e);}
+ public EvidenceDto deleteStandardImage(@PathParam("id")UUID id,@PathParam("imageId")UUID imageId){ConsignmentEvidence e=evidence(id);Consignment c=item(e.consignmentId);ConsignmentProtocol p=protocol(c.protocolId);authorize(p);requireDraft(p);references.delete(StandardReferenceImage.CONSIGNMENT_EVIDENCE,e.id,imageId);e.standardImageVersion++;return evidenceDto(e);}
 
  private void validate(Consignment c){
    if(c.title==null||c.title.isBlank())throw new BadRequestException("Título obligatorio");if(c.instruction==null||c.instruction.isBlank())throw new BadRequestException(c.code+" requiere una instrucción");
@@ -207,10 +205,12 @@ public class ConsignmentResource {
    if(c.evidenceRequired&&evidences(c.id).isEmpty())throw new BadRequestException(c.code+" requiere al menos una Evidencia configurada");
  }
  private void setScope(Consignment c,List<UUID> postIds){ConsignmentPostScope.delete("consignmentId=?1 and instanceCountryId=?2",c.id,tenant.instanceCountryId());c.postId=null;if("POINT".equals(c.scopeType))return;if(postIds==null||postIds.isEmpty())return;for(UUID id:new LinkedHashSet<>(postIds)){PostEntity post=post(id);if(!post.pointId.equals(c.pointId))throw new BadRequestException("El Puesto no pertenece al Punto");ConsignmentPostScope s=new ConsignmentPostScope();s.instanceCountryId=tenant.instanceCountryId();s.consignmentId=c.id;s.postId=id;s.persist();}}
- private Consignment cloneConsignment(Consignment old,UUID protocolId){Consignment c=new Consignment();c.id=UUID.randomUUID();c.instanceCountryId=tenant.instanceCountryId();c.protocolId=protocolId;c.pointId=old.pointId;c.code=old.code;c.title=old.title;c.instruction=old.instruction;c.priority=old.priority;c.status="BORRADOR";c.scopeType=old.scopeType;c.validityType=old.validityType;c.validityFrom=old.validityFrom;c.validityUntil=old.validityUntil;c.applicationType=old.applicationType;c.applicationDaysJson=old.applicationDaysJson;c.applicationTimeFrom=old.applicationTimeFrom;c.applicationTimeTo=old.applicationTimeTo;c.acknowledgmentRequired=old.acknowledgmentRequired;c.confirmationRequired=old.confirmationRequired;c.evidenceRequired=old.evidenceRequired;c.gpsRequired=old.gpsRequired;c.observationRequired=old.observationRequired;c.expectedLocationMode=old.expectedLocationMode;c.atsPackageId=old.atsPackageId;c.atsX=old.atsX;c.atsY=old.atsY;c.expectedLatitude=old.expectedLatitude;c.expectedLongitude=old.expectedLongitude;c.updatedByUsername=user();c.persist();for(ConsignmentPostScope oldScope:scopes(old.id)){ConsignmentPostScope s=new ConsignmentPostScope();s.instanceCountryId=tenant.instanceCountryId();s.consignmentId=c.id;s.postId=oldScope.postId;s.persist();}for(ConsignmentEvidence oldE:evidences(old.id)){ConsignmentEvidence e=new ConsignmentEvidence();e.instanceCountryId=tenant.instanceCountryId();e.consignmentId=c.id;e.sortOrder=oldE.sortOrder;e.name=oldE.name;e.description=oldE.description;e.evidenceType=oldE.evidenceType;e.required=oldE.required;e.standardImageOriginalName=oldE.standardImageOriginalName;e.standardImageContentType=oldE.standardImageContentType;e.standardImageData=oldE.standardImageData==null?null:Arrays.copyOf(oldE.standardImageData,oldE.standardImageData.length);e.standardImageObjectKey=oldE.standardImageObjectKey;e.standardImageSha256=oldE.standardImageSha256;e.standardImageSize=oldE.standardImageSize;e.standardImageVersion=oldE.standardImageVersion;e.standardImageNotes=oldE.standardImageNotes;e.visintEnabled=oldE.visintEnabled;e.persist();}return c;}
+ private Consignment cloneConsignment(Consignment old,UUID protocolId){Consignment c=new Consignment();c.id=UUID.randomUUID();c.instanceCountryId=tenant.instanceCountryId();c.protocolId=protocolId;c.pointId=old.pointId;c.code=old.code;c.title=old.title;c.instruction=old.instruction;c.priority=old.priority;c.status="BORRADOR";c.scopeType=old.scopeType;c.validityType=old.validityType;c.validityFrom=old.validityFrom;c.validityUntil=old.validityUntil;c.applicationType=old.applicationType;c.applicationDaysJson=old.applicationDaysJson;c.applicationTimeFrom=old.applicationTimeFrom;c.applicationTimeTo=old.applicationTimeTo;c.acknowledgmentRequired=old.acknowledgmentRequired;c.confirmationRequired=old.confirmationRequired;c.evidenceRequired=old.evidenceRequired;c.gpsRequired=old.gpsRequired;c.observationRequired=old.observationRequired;c.expectedLocationMode=old.expectedLocationMode;c.atsPackageId=old.atsPackageId;c.atsX=old.atsX;c.atsY=old.atsY;c.expectedLatitude=old.expectedLatitude;c.expectedLongitude=old.expectedLongitude;c.updatedByUsername=user();c.persist();for(ConsignmentPostScope oldScope:scopes(old.id)){ConsignmentPostScope s=new ConsignmentPostScope();s.instanceCountryId=tenant.instanceCountryId();s.consignmentId=c.id;s.postId=oldScope.postId;s.persist();}for(ConsignmentEvidence oldE:evidences(old.id)){ConsignmentEvidence e=new ConsignmentEvidence();e.instanceCountryId=tenant.instanceCountryId();e.consignmentId=c.id;e.sortOrder=oldE.sortOrder;e.name=oldE.name;e.description=oldE.description;e.evidenceType=oldE.evidenceType;e.required=oldE.required;e.standardImageOriginalName=oldE.standardImageOriginalName;e.standardImageContentType=oldE.standardImageContentType;e.standardImageData=oldE.standardImageData==null?null:Arrays.copyOf(oldE.standardImageData,oldE.standardImageData.length);e.standardImageObjectKey=oldE.standardImageObjectKey;e.standardImageSha256=oldE.standardImageSha256;e.standardImageSize=oldE.standardImageSize;e.standardImageVersion=oldE.standardImageVersion;e.standardImageNotes=oldE.standardImageNotes;e.visintEnabled=oldE.visintEnabled;e.persist();references.copy(StandardReferenceImage.CONSIGNMENT_EVIDENCE,oldE.id,e.id);}return c;}
  private ProtocolDto dto(ConsignmentProtocol p){return new ProtocolDto(p.id,p.seriesId,p.basedOnProtocolId,p.pointId,p.code,p.name,p.description,p.status,p.versionNo,p.publishedAt,p.activatedAt,p.updatedByUsername,consignments(p.id).stream().map(this::itemDto).toList());}
  private ConsignmentDto itemDto(Consignment c){return new ConsignmentDto(c.id,c.protocolId,c.code,c.title,c.instruction,c.priority,c.status,c.scopeType,scopes(c.id).stream().map(s->s.postId).toList(),c.validityType,c.validityFrom,c.validityUntil,c.applicationType,c.applicationDaysJson,c.applicationTimeFrom==null?null:c.applicationTimeFrom.toString(),c.applicationTimeTo==null?null:c.applicationTimeTo.toString(),c.acknowledgmentRequired,c.confirmationRequired,c.evidenceRequired,c.gpsRequired,c.observationRequired,c.expectedLocationMode,c.atsPackageId,c.atsX,c.atsY,c.expectedLatitude,c.expectedLongitude,c.publishedAt,c.updatedByUsername,evidences(c.id).stream().map(this::evidenceDto).toList());}
- private EvidenceDto evidenceDto(ConsignmentEvidence e){return new EvidenceDto(e.id,e.consignmentId,e.sortOrder,e.name,e.description,e.evidenceType,e.required,com.cajamarca.sgi.comando.storage.StandardImageStore.has(e.standardImageObjectKey,e.standardImageData),e.standardImageOriginalName,e.standardImageVersion,e.standardImageNotes,e.visintEnabled);}
+ private EvidenceDto evidenceDto(ConsignmentEvidence e){return new EvidenceDto(e.id,e.consignmentId,e.sortOrder,e.name,e.description,e.evidenceType,e.required,StandardReferenceImage.countOf(StandardReferenceImage.CONSIGNMENT_EVIDENCE,e.id)>0,references.dtos(StandardReferenceImage.CONSIGNMENT_EVIDENCE,e.id),e.standardImageVersion,e.standardImageNotes,e.visintEnabled);}
+ /** VISINT valida las evidencias tipo Foto (activo por defecto, sin opción en pantalla). */
+ private static boolean visint(ConsignmentEvidence e){return "PHOTO".equals(e.evidenceType);}
  private List<Consignment> consignments(UUID protocolId){return Consignment.list("protocolId=?1 and instanceCountryId=?2 order by code",protocolId,tenant.instanceCountryId());}
  private List<ConsignmentPostScope> scopes(UUID id){return ConsignmentPostScope.list("consignmentId=?1 and instanceCountryId=?2 order by createdAt",id,tenant.instanceCountryId());}
  private List<ConsignmentEvidence> evidences(UUID id){return ConsignmentEvidence.list("consignmentId=?1 and instanceCountryId=?2 order by sortOrder",id,tenant.instanceCountryId());}

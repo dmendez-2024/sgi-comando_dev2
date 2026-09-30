@@ -62,7 +62,7 @@ public class VisualReviewWorker {
         r.requestedAt = Instant.now();
         try {
             VisintPort.ReviewResult res = visint.review(new VisintPort.ReviewRequest(r.id, r.attempts, x.id, x.targetType, x.employeeId,
-                point == null ? null : point.companyId, x.pointId, x.postId, x.patrolExecutionId, x.targetId, photo, standards, r.correlationId));
+                point == null ? null : point.companyId, x.pointId, x.postId, serviceId(x), x.targetId, photo, standards, r.correlationId));
             r.visintExternalId = cut(res.externalId(), 120);
             r.result = res.result();
             r.findings = cut(res.findings(), 1000);
@@ -79,6 +79,15 @@ public class VisualReviewWorker {
             else { r.status = "ERROR_RETRYABLE"; r.nextAttemptAt = Instant.now().plus(backoff(r.attempts)); }
         }
         return true;
+    }
+
+    /** Servicio que se informa a VISINT: la ronda (Patrullas), la consigna (Consignas) o el registro del visitante (Bitácora). */
+    static UUID serviceId(TaskExecution x) {
+        if ("CONSIGNMENT_EVIDENCE".equals(x.targetType)) {
+            com.cajamarca.sgi.comando.consignments.ConsignmentEvidence e = com.cajamarca.sgi.comando.consignments.ConsignmentEvidence.findById(x.targetId);
+            return e == null ? x.groupId : e.consignmentId;
+        }
+        return x.patrolExecutionId != null ? x.patrolExecutionId : x.groupId;
     }
 
     /** 30 s, 60 s, 120 s, 240 s… con tope de 10 minutos. */

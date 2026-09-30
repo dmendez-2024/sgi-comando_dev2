@@ -27,11 +27,11 @@ export async function pickPhotos(files:FileList|File[],existing:number,max:numbe
 }
 
 /** metadata va como texto (nunca Blob) y cada archivo se llama <clientEvidenceId>.<ext>. */
-export function buildEvidenceForm(meta:{uploadBatchId:string;eventId:string;assignmentId:string;targetId:string},photos:PickedPhoto[],gps?:{latitude:number;longitude:number;accuracyM:number}):FormData{
+export function buildEvidenceForm(meta:{uploadBatchId:string;eventId:string;assignmentId:string;targetId:string;targetType?:string},photos:PickedPhoto[],gps?:{latitude:number;longitude:number;accuracyM:number}):FormData{
  const now=new Date().toISOString();
  const items=photos.map(p=>({clientEvidenceId:p.clientEvidenceId,capturedAt:now,latitude:gps?.latitude??null,longitude:gps?.longitude??null,accuracyM:gps?.accuracyM??null,source:'GALLERY',sha256:p.sha256}));
  const fd=new FormData();
- fd.append('metadata',JSON.stringify({...meta,targetType:'PATROL_CHECKPOINT',items}));
+ fd.append('metadata',JSON.stringify({...meta,targetType:meta.targetType??'PATROL_CHECKPOINT',items}));
  photos.forEach(p=>fd.append('files',p.file,`${p.clientEvidenceId}.${extension(p.file.type)}`));
  return fd;
 }

@@ -1,6 +1,6 @@
 # Fotos del agente + VISINT — estado de implementación
 
-**Actualizado:** 2026-09-30 · **Rama:** `acordova` · **Alcance:** Hitos de Patrullas (Consignas y Bitácora aún no).
+**Actualizado:** 2026-09-30 · **Rama:** `acordova` · **Alcance:** Hitos de Patrullas, evidencias de Consignas y campos de Bitácora.
 Flujo: `SGI: Operador (agente) → SGI: Comando → VISINT → SGI: Comando (Operación)`. Impulsos queda **fuera de alcance** por ahora.
 
 | Fase | Estado | Commit |
@@ -8,7 +8,8 @@ Flujo: `SGI: Operador (agente) → SGI: Comando → VISINT → SGI: Comando (Ope
 | 1 · Fotos del agente por FormData y almacenamiento en MinIO | Hecha | `b5aa37a` |
 | 2 · VISINT para Hitos de patrulla + vista Operación | Hecha, **probada contra el VISINT real** | sin commit |
 | 3 · Devolver el resultado al agente (Operador) + nueva captura tras "No cumple" | Hecha, probada contra el VISINT real | sin commit |
-| 4 · Consignas/Bitácora, revisión manual, alertas, retención | Pendiente | — |
+| 4 · Consignas y Bitácora (fotos estándar 1–5, foto del agente, VISINT, resultado, Operación) | Hecha, probada contra el VISINT real | sin commit |
+| Pendiente | Revisión manual, alertas, retención/purga de fotos | — |
 
 ---
 
@@ -58,6 +59,14 @@ Servicios → Punto → Operación: Cumple / No cumple / Error, foto del agente 
 - Simulador de Agente: muestra el resultado y el botón "Tomar nueva foto". Operación: "Captura N" en la tabla.
 - Verificado con el VISINT real: extintor → "Evidencia no validada" → nueva foto 1b → "Captura 2 · Foto validada". Video: `evidencias_playwright/fase3_resultado_agente/`.
 
+### Fase 4 — Consignas y Bitácora (sin commit)
+- Fotos estándar 1–5 en `standard_reference_image` para los tres módulos (V42 migra las existentes); galería compartida en las tres configuraciones.
+- Consignas: foto por evidencia tipo Foto de consigna **vigente**, una por turno, VISINT activo. Bitácora: foto por campo y **registro de visitante** (`groupId`); VISINT en campos DOCUMENTO (Cédula, Pasaporte, Credencial); **Rostro sin VISINT**.
+- Agente: `consignmentTasks` / `logbookTasks` en el runtime y evento `TASK_EVIDENCE_SUBMITTED`. Simulador con tipo de tarea (Patrulla / Consigna / Bitácora) y "Nuevo visitante".
+- Operación: columna Tarea con módulo (Patrulla / Consigna / Bitácora).
+- Corregido de paso: activar un protocolo de Consignas cuando el Punto ya tenía otro activo fallaba con 500.
+- Verificado con el VISINT real: consigna extintor → no cumple → nueva foto 1b → cumple; cédula 1b → cumple; rostro → guardado. Video: `evidencias_playwright/fase4_consignas_bitacora/`.
+
 ## 3. Contrato con VISINT (vigente)
 
 `POST http://181.39.84.138:8010/v1/evidence/validate` · `multipart/form-data` (archivos, **no** base64) · cabecera `X-API-Key: <token>` · **HTTP/1.1** (con `Upgrade: h2c` el servidor pierde el cuerpo y responde 422).
@@ -99,7 +108,7 @@ Detalle completo: `docs/API_CONTRACTS.md` (Fase 2) y decisiones `SGI-VIS-DEC-001
 
 Para demo sin VISINT real: `SGI_VISINT_MODE=MOCK` y `docker compose up -d backend`.
 
-Migraciones: `V36`–`V37` (fase 1), `V38` `visual_review`, `V39` respuesta de VISINT, `V40` fotos estándar múltiples, snapshot por revisión y eliminación de mínimo/máximo, `V41` número de captura (fase 3).
+Migraciones: `V36`–`V37` (fase 1), `V38` `visual_review`, `V39` respuesta de VISINT, `V40` fotos estándar múltiples, snapshot por revisión y eliminación de mínimo/máximo, `V41` número de captura (fase 3), `V42` fotos estándar comunes y grupo de ejecución, `V43` tipos de destino (fase 4).
 
 ## 5. Verificación
 
