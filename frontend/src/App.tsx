@@ -1,5 +1,6 @@
-import { useState } from 'react';
-import Sidebar from './components/Sidebar';
+import { useEffect, useState } from 'react';
+import Sidebar, { SIMULATOR_MENU } from './components/Sidebar';
+import { api } from './api';
 import Header from './components/Header';
 import Dashboard from './pages/Dashboard';
 import Companies from './pages/Companies';
@@ -17,6 +18,8 @@ import AgentSimulator from './pages/AgentSimulator';
 export default function App() {
   const [active, setActive] = useState('Dashboard');
   const [userRevision, setUserRevision] = useState(0);
+  const [uatTools, setUatTools] = useState(false);
+  useEffect(() => { api.features().then(f => setUatTools(f.uatTools)).catch(() => setUatTools(false)); }, [userRevision]);
 
   const page = active === 'Dashboard'
     ? <Dashboard />
@@ -38,15 +41,15 @@ export default function App() {
         ? <ConsignasExecution />
       : active === 'Novedades'
         ? <NovedadesExecution />
-      : active === 'Simulador Agente (UAT)'
-        ? <AgentSimulator />
+      : active === SIMULATOR_MENU
+        ? (uatTools ? <AgentSimulator /> : <Placeholder name="Herramienta UAT deshabilitada" />)
         : <Placeholder name={active} />;
 
   const title = active === 'Dashboard' ? 'Comando Operacional' : active;
 
   return (
     <div className="app">
-      <Sidebar active={active} onChange={setActive} />
+      <Sidebar active={active} onChange={setActive} uatTools={uatTools} />
       <main>
         <Header title={title} onUserChange={() => setUserRevision((x) => x + 1)} />
         <section key={`${active}-${userRevision}`}>{page}</section>

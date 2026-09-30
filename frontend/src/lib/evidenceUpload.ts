@@ -17,7 +17,7 @@ export async function pickPhotos(files:FileList|File[],existing:number,max:numbe
  const out:PickedPhoto[]=[];
  for(const file of Array.from(files)){
   const p:PickedPhoto={clientEvidenceId:crypto.randomUUID(),file,previewUrl:URL.createObjectURL(file),sha256:''};
-  if(existing+out.filter(x=>!x.problem).length>=max)p.problem=`Máximo ${max} fotos para este Hito`;
+  if(existing+out.filter(x=>!x.problem).length>=max)p.problem=max===1?"Solo se permite 1 foto por Hito":`Máximo ${max} fotos para este Hito`;
   else if(file.size>MAX_BYTES)p.problem='Supera 5 MB';
   else if(!(await sniff(file)))p.problem='Formato no permitido (use JPG, PNG o WebP)';
   else p.sha256=await sha256(file);

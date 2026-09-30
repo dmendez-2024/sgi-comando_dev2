@@ -29,17 +29,20 @@ public final class OperatorFixtures {
         return Map.of("protocolId", protocolId, "patrolId", patrolId, "checkpointId", checkpointId);
     }
 
-    /** Protocolo publicado y ACTIVO en GGTT01, con un Hito que exige entre min y max fotos y tiene foto estándar. */
-    public static Map<String,Object> publishPatrolWithCheckpoint(double lat, double lon, int min, int max) {
+    /** Protocolo publicado y ACTIVO en GGTT01, con un Hito que exige la foto del agente, tiene una foto estándar y VISINT desactivado. */
+    public static Map<String,Object> publishPatrolWithCheckpoint(double lat, double lon) {
         Map<String,Object> ids = createDraftPatrolWithCheckpoint(lat, lon);
         Map<String,Object> save = new HashMap<>(Map.of("name", "Portón prueba", "description", "", "originMode", "FIELD", "latitude", lat, "longitude", lon,
-            "gpsAccuracyM", 5.0, "controlType", "FOTOGRAFIA", "requiresEvidence", true, "standardImageNotes", ""));
-        save.put("evidenceMinCount", min); save.put("evidenceMaxCount", max);
+            "gpsAccuracyM", 5.0, "controlType", "FOTOGRAFIA", "requiresEvidence", true, "standardImageNotes", "", "visintEnabled", false));
         as("coord").contentType(ContentType.JSON).body(save).put("/api/patrols/checkpoints/" + ids.get("checkpointId")).then().statusCode(200);
-        as("coord").multiPart("file", Path.of("src/test/resources/fixtures/sample.jpg").toFile(), "image/jpeg")
-            .post("/api/patrols/checkpoints/" + ids.get("checkpointId") + "/standard-image").then().statusCode(200);
+        uploadStandard(ids.get("checkpointId"), Path.of("src/test/resources/fixtures/sample.jpg"));
         as("coord").post("/api/patrols/protocols/" + ids.get("protocolId") + "/publish").then().statusCode(200).body("status", is("ACTIVO"));
         return ids;
+    }
+
+    /** Agrega una foto estándar al Hito (hasta 5) y devuelve el Hito actualizado. */
+    public static io.restassured.response.ValidatableResponse uploadStandard(Object checkpointId, Path file) {
+        return as("coord").multiPart("file", file.toFile(), "image/jpeg").post("/api/patrols/checkpoints/" + checkpointId + "/standard-images").then();
     }
 
     /** Vincula el usuario "agente" a un empleado de Galvarino y le asigna el turno de GGTT01 más cercano a ahora. */

@@ -2,7 +2,6 @@ package com.cajamarca.sgi.comando.operator;
 
 import com.cajamarca.sgi.comando.common.TenantContext;
 import com.cajamarca.sgi.comando.patrols.*;
-import com.cajamarca.sgi.comando.storage.StandardImageStore;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.*;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -45,12 +44,16 @@ public class OperatorPatrols {
                     .put("windowEnd", d.windowEnd == null ? null : d.windowEnd.toString());
                 ArrayNode cps = n.putArray("checkpoints");
                 for (PatrolCheckpoint c : PatrolCheckpoint.<PatrolCheckpoint>list("patrolId=?1 and instanceCountryId=?2 order by sortOrder", d.id, tenant.instanceCountryId())) {
-                    cps.addObject().put("checkpointId", c.id.toString()).put("code", c.code).put("name", c.name).put("description", c.description)
+                    ObjectNode cn = cps.addObject();
+                    cn.put("checkpointId", c.id.toString()).put("code", c.code).put("name", c.name).put("description", c.description)
                         .put("sortOrder", c.sortOrder).put("requiresEvidence", c.requiresEvidence)
-                        .put("evidenceMinCount", c.evidenceMinCount).put("evidenceMaxCount", c.evidenceMaxCount)
-                        .put("hasStandardImage", StandardImageStore.has(c.standardImageObjectKey, c.standardImageData))
-                        .put("standardImageVersion", c.standardImageVersion).put("standardImageNotes", c.standardImageNotes)
+                        .put("maxPhotos", 1).put("visintEnabled", c.visintEnabled)
+                                                .put("standardImageVersion", c.standardImageVersion).put("standardImageNotes", c.standardImageNotes)
                         .put("latitude", c.latitude).put("longitude", c.longitude).put("radiusM", c.radiusM == null ? defaultRadius : c.radiusM);
+                    List<PatrolCheckpointStandardImage> images = PatrolCheckpointStandardImage.of(c.id);
+                    cn.put("hasStandardImage", !images.isEmpty());
+                    ArrayNode std = cn.putArray("standardImages");
+                    images.forEach(i -> std.addObject().put("id", i.id.toString()).put("position", i.position));
                 }
             }
         }

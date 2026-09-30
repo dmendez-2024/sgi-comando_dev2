@@ -24,7 +24,7 @@ class OperatorEvidenceResourceTest {
 
     @BeforeEach void setUp() {
         assignment = ensureAgentAssignment(em);
-        checkpoint = (String) publishPatrolWithCheckpoint(-2.17, -79.92, 1, 5).get("checkpointId");
+        checkpoint = (String) publishPatrolWithCheckpoint(-2.17, -79.92).get("checkpointId");
     }
 
     ObjectNode meta(UUID eventId, List<UUID> ids, List<Path> files, double lat) throws Exception {
@@ -43,17 +43,26 @@ class OperatorEvidenceResourceTest {
         return r;
     }
 
-    @Test void storesThreePhotosAndIsIdempotent() throws Exception {
+    @Test void storesOnePhotoAndIsIdempotent() throws Exception {
         UUID event = UUID.randomUUID();
-        List<UUID> ids = List.of(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID());
-        List<Path> files = List.of(JPG, JPG2, PNG);
+        List<UUID> ids = List.of(UUID.randomUUID());
+        List<Path> files = List.of(JPG);
         ObjectNode meta = meta(event, ids, files, -2.17);
         form(meta, ids, files).post("/api/v1/operator/evidences").then().statusCode(200)
-            .body("results.size()", is(3)).body("results.status", everyItem(is("STORED")));
+            .body("results.size()", is(1)).body("results[0].status", is("STORED"));
         form(meta, ids, files).post("/api/v1/operator/evidences").then().statusCode(200)
-            .body("results.status", everyItem(is("ALREADY_STORED")));
+            .body("results[0].status", is("ALREADY_STORED"));
         Number count = (Number) em.createNativeQuery("select count(*) from evidence_object where event_id=:e").setParameter("e", event).getSingleResult();
-        Assertions.assertEquals(3, count.intValue());
+        Assertions.assertEquals(1, count.intValue());
+    }
+
+    @Test void onlyOnePhotoPerCheckpointExecution() throws Exception {
+        UUID event = UUID.randomUUID();
+        List<UUID> ids = List.of(UUID.randomUUID(), UUID.randomUUID());
+        List<Path> files = List.of(JPG, JPG2);
+        form(meta(event, ids, files, -2.17), ids, files).post("/api/v1/operator/evidences").then().statusCode(200)
+            .body("results[0].status", is("STORED"))
+            .body("results[1].status", is("REJECTED")).body("results[1].reason", is("TOO_MANY_PHOTOS"));
     }
 
     @Test void acceptsMetadataLargerThanTwoKilobytes() throws Exception {
@@ -71,6 +80,7 @@ class OperatorEvidenceResourceTest {
         UUID event = UUID.randomUUID();
         List<UUID> ids = List.of(UUID.randomUUID(), UUID.randomUUID());
         List<Path> files = List.of(TXT, JPG);
+        // La foto rechazada no cuenta: la segunda (válida) se guarda.
         form(meta(event, ids, files, -2.30), ids, files).post("/api/v1/operator/evidences").then().statusCode(200)
             .body("results.find{it.clientEvidenceId=='" + ids.get(0) + "'}.status", is("REJECTED"))
             .body("results.find{it.clientEvidenceId=='" + ids.get(0) + "'}.reason", is("UNSUPPORTED_FORMAT"))
@@ -90,8 +100,10 @@ class OperatorEvidenceResourceTest {
         form(meta(UUID.randomUUID(), ids, List.of(JPG), -2.17), ids, List.of(JPG)).post("/api/v1/operator/evidences").then().statusCode(400);
     }
 
-    @Test void agentCanSeeStandardImage() {
-        as("agente").queryParam("assignmentId", assignment).get("/api/v1/operator/checkpoints/" + checkpoint + "/standard-image")
+    @Test void agentCanSeeStandardImages() {
+        String image = as("agente").queryParam("assignmentId", assignment).get("/api/v1/operator/runtime").then().statusCode(200)
+            .extract().path("patrols.checkpoints.flatten().find{it.checkpointId=='" + checkpoint + "'}.standardImages[0].id");
+        as("agente").queryParam("assignmentId", assignment).get("/api/v1/operator/checkpoints/" + checkpoint + "/standard-images/" + image)
             .then().statusCode(200).contentType("image/jpeg");
     }
 }

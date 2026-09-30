@@ -17,7 +17,8 @@ import static com.cajamarca.sgi.comando.operator.ReliefContract.*;
 
 /**
  * Registra un Hito de patrulla ejecutado por el agente y le asocia las fotos ya subidas por /evidences.
- * Idempotente por eventId; un Hito se registra una sola vez por ronda (patrolRunId).
+ * Idempotente por eventId. Un Hito se registra una vez por ronda (patrolRunId), salvo que VISINT diga "no cumple":
+ * entonces el agente puede enviar una nueva captura (captureNo 2, 3…).
  */
 @ApplicationScoped
 public class PatrolExecutionService {
@@ -26,6 +27,7 @@ public class PatrolExecutionService {
     @Inject TenantContext tenant;
     @Inject EntityManager em;
     @Inject ObjectMapper mapper;
+    @Inject com.cajamarca.sgi.comando.visint.VisualReviewService reviews;
 
     @Transactional
     public ObjectNode submit(JsonNode batch) {
@@ -41,7 +43,7 @@ public class PatrolExecutionService {
         TaskExecution previous = TaskExecution.find("id=?1 and instanceCountryId=?2", eventId, t).firstResult();
         if (previous != null) {
             if (!previous.payloadHash.equals(digest) || !previous.username.equals(ctx.username())) throw new ClientErrorException("Identificador reutilizado con datos diferentes", 409);
-            return ack(eventId, countEvidence(eventId));
+            return ack(eventId, countEvidence(eventId), reviews.statusFor(eventId));
         }
 
         Instant executed = time(e, "executedAt");
@@ -52,9 +54,8 @@ public class PatrolExecutionService {
 
         List<UUID> evidenceIds = new ArrayList<>();
         e.path("evidenceIds").forEach(x -> evidenceIds.add(UUID.fromString(x.asText())));
-        int min = cp.requiresEvidence ? cp.evidenceMinCount : 0;
-        if (evidenceIds.size() < min || evidenceIds.size() > cp.evidenceMaxCount)
-            throw new BadRequestException("Este Hito requiere entre " + min + " y " + cp.evidenceMaxCount + " fotos; se enviaron " + evidenceIds.size());
+        if (evidenceIds.size() > 1 || (cp.requiresEvidence && evidenceIds.isEmpty()))
+            throw new BadRequestException((cp.requiresEvidence ? "Este Hito requiere 1 foto" : "Este Hito admite como máximo 1 foto") + "; se enviaron " + evidenceIds.size());
         List<EvidenceObject> evidences = new ArrayList<>();
         for (UUID id : evidenceIds) {
             EvidenceObject ev = EvidenceObject.find("id=?1 and instanceCountryId=?2", id, t).firstResult();
@@ -64,14 +65,13 @@ public class PatrolExecutionService {
         }
 
         upsertPatrolRun(runId, target, a, employee, executed);
-        if (TaskExecution.count("instanceCountryId=?1 and patrolExecutionId=?2 and targetId=?3", t, runId, checkpointId) > 0)
-            throw new ClientErrorException("Este Hito ya fue registrado en la ronda", 409);
+        int captureNo = nextCapture(t, runId, checkpointId);
 
         TaskExecution x = new TaskExecution();
         x.id = eventId; x.instanceCountryId = t; x.executionType = PatrolExecutionContract.TYPE; x.assignmentId = assignmentId;
         x.shiftOccurrenceId = a.shift().id; x.pointId = a.point().id; x.postId = a.post().id; x.employeeId = employee; x.username = ctx.username();
         x.targetType = "PATROL_CHECKPOINT"; x.targetId = checkpointId; x.protocolId = target.protocol().id; x.protocolVersionNo = target.protocol().versionNo;
-        x.patrolExecutionId = runId; x.executedAt = executed; x.receivedAt = Instant.now();
+        x.patrolExecutionId = runId; x.captureNo = captureNo; x.executedAt = executed; x.receivedAt = Instant.now();
         x.latitude = e.hasNonNull("latitude") ? e.path("latitude").asDouble() : null;
         x.longitude = e.hasNonNull("longitude") ? e.path("longitude").asDouble() : null;
         x.accuracyM = e.hasNonNull("accuracyM") ? e.path("accuracyM").asDouble() : null;
@@ -84,7 +84,8 @@ public class PatrolExecutionService {
                 .setParameter("t", eventId).setParameter("e", evidences.get(i).id).setParameter("o", i + 1).executeUpdate();
             evidences.get(i).status = "ATTACHED";
         }
-        return ack(eventId, evidences.size());
+        String validation = cp.visintEnabled ? reviews.enqueue(x, cp).status : "NOT_REQUESTED";
+        return ack(eventId, evidences.size(), validation);
     }
 
     private int countEvidence(UUID eventId) {
@@ -106,11 +107,22 @@ public class PatrolExecutionService {
         if (!target.patrol().id.equals(r[0]) || !a.assignment().id.equals(r[1])) throw new ClientErrorException("La ronda indicada pertenece a otra patrulla o asignación", 409);
     }
 
-    private ObjectNode ack(UUID id, int evidenceCount) {
+    /** Número de la nueva captura del Hito en la ronda: 1 si es la primera; la siguiente solo si la última "no cumple". */
+    private int nextCapture(UUID t, UUID runId, UUID checkpointId) {
+        TaskExecution last = TaskExecution.find("instanceCountryId=?1 and patrolExecutionId=?2 and targetId=?3 order by captureNo desc", t, runId, checkpointId).firstResult();
+        if (last == null) return 1;
+        String review = reviews.statusFor(last.id);
+        if ("FAILED".equals(review)) return last.captureNo + 1;
+        if ("QUEUED_FOR_VISINT".equals(review) || "ERROR_RETRYABLE".equals(review))
+            throw new ClientErrorException("La foto anterior de este Hito aún se está validando", 409);
+        throw new ClientErrorException("Este Hito ya fue registrado en la ronda", 409);
+    }
+
+    private ObjectNode ack(UUID id, int evidenceCount, String validationStatus) {
         ObjectNode n = mapper.createObjectNode().put("serverVersion", "operator-v1");
         n.putArray("acknowledgedEventIds").add(id.toString());
         n.putArray("rejectedEvents");
-        n.putArray("results").addObject().put("eventId", id.toString()).put("status", "RECEIVED").put("evidenceCount", evidenceCount).put("validationStatus", "NOT_REQUESTED");
+        n.putArray("results").addObject().put("eventId", id.toString()).put("status", "RECEIVED").put("evidenceCount", evidenceCount).put("validationStatus", validationStatus);
         return n;
     }
 }

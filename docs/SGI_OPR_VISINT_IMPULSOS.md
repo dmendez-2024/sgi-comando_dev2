@@ -1,5 +1,7 @@
 # SGI: Operador → SGI: Comando → VISINT → Impulsos
 
+> **Estado de implementación (2026-09-30):** la validación visual de Hitos de patrulla está implementada y probada contra el VISINT real (foto del agente vs 1–5 fotos estándar, vía `POST /v1/evidence/validate`). Impulsos sigue sin implementar. Ver `docs/VISINT_ESTADO_IMPLEMENTACION.md`.
+
 **Estado:** definición funcional/arquitectónica aprobada para incorporación al handoff de SGI: Comando.  
 **Fecha:** 2026-09-20.  
 **Alcance de este documento:** orquestación de evidencia visual y premiación con Impulsos. No modifica la UI congelada de SGI: Comando.

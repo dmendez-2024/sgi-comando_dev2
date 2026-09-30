@@ -869,9 +869,9 @@
     "interconnectionId": "SGI_COM_VISINT_0001_v001",
     "sourceProgramId": "SGI_COM",
     "targetProgramId": "VISINT",
-    "purpose": "Submit task evidence/photos for visual validation by VISINT.",
+    "purpose": "Submit the agent photo (image) and the 1-5 standard photos (referenceImages) as multipart; VISINT answers synchronously with status PASS/FAIL_*/ERROR_VISINT/TIMEOUT and the matched standard photo. Called directly (SGI_VISINT_URL), not through CORE.",
     "interactionType": "REST_API",
-    "mode": "ASYNC",
+    "mode": "SYNC",
     "protocol": "HTTPS",
     "contractVersion": "v1",
     "dataOwnerProgramId": "SGI_COM",
@@ -883,27 +883,38 @@
       {
         "interfaceId": "SGI_COM_VISINT_0001_IF01",
         "method": "POST",
-        "path": "/api/v1/visual-reviews",
-        "purpose": "Create VISINT review",
-        "contentType": "application/json",
+        "path": "/v1/evidence/validate",
+        "purpose": "Compare the agent photos with the standard photo and get the verdict in the same call",
+        "contentType": "multipart/form-data",
         "request": {
           "fields": [
-            "visintReviewId",
-            "taskExecutionId",
-            "taskType",
-            "employeeId",
+            "requestId",
+            "source",
+            "companyId",
             "pointId",
             "postId",
-            "evidenceRefs",
-            "standardReference",
-            "correlationId"
+            "serviceType",
+            "serviceId",
+            "activityId",
+            "evidenceId",
+            "capturedAt",
+            "latitude",
+            "longitude",
+            "image",
+            "referenceImages",
+            "referenceIds"
           ]
         },
         "response": {
           "fields": [
-            "reviewId",
-            "accepted",
-            "status"
+            "requestId",
+            "status",
+            "quality",
+            "match",
+            "matchedReferenceId",
+            "reasonCode",
+            "processedAt",
+            "modelVersion"
           ]
         }
       }

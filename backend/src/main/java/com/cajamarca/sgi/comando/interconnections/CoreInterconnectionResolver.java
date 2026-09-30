@@ -19,8 +19,9 @@ import java.util.UUID;
 public class CoreInterconnectionResolver {
     private static final Logger LOG = Logger.getLogger(CoreInterconnectionResolver.class);
 
+    // Opcional: sin URL el backend arranca igual y cada llamada falla con CORE_RESOLVER_NOT_CONFIGURED.
     @ConfigProperty(name="sgi.interconnections.core-resolver-url")
-    String coreResolverUrl;
+    java.util.Optional<String> coreResolverUrl;
 
     @ConfigProperty(name="sgi.interconnections.environment")
     String environment;
@@ -35,11 +36,11 @@ public class CoreInterconnectionResolver {
         .build();
 
     public ResolvedInterconnection resolve(String interconnectionId, String interfaceId, UUID instanceCountryId) {
-        if (coreResolverUrl == null || coreResolverUrl.isBlank()) {
+        if (coreResolverUrl.isEmpty() || coreResolverUrl.get().isBlank()) {
             throw new InterconnectionException("CORE_RESOLVER_NOT_CONFIGURED", "CORE resolver bootstrap URL is not configured");
         }
         try {
-            String url = trimSlash(coreResolverUrl)
+            String url = trimSlash(coreResolverUrl.get())
                 + "/api/v1/interconnections/" + enc(interconnectionId)
                 + "/resolve?instanceCountryId=" + enc(instanceCountryId.toString())
                 + "&environment=" + enc(environment)

@@ -14,7 +14,7 @@ const operations:NavGroup={
     {name:'Consola',icon:Bell},
     {name:'Bitácora',icon:FileText},
     {name:'Consignas',icon:ClipboardList},
-    {name:'Simulador Agente (UAT)',icon:Smartphone},
+    {name:'Simulador Agente (UAT)',icon:Smartphone}, // TEMPORAL (demo UAT)
     {name:'Novedades',icon:ShieldCheck},
     {name:'Requerimientos',icon:MessageSquareText},
     {name:'Comunicación',icon:Radio},
@@ -43,12 +43,16 @@ function Group({group,active,onChange}:{group:NavGroup;active:string;onChange:(v
   </div>
 }
 
-export default function Sidebar({active,onChange}:{active:string;onChange:(v:string)=>void}){
+export const SIMULATOR_MENU='Simulador Agente (UAT)';
+
+export default function Sidebar({active,onChange,uatTools}:{active:string;onChange:(v:string)=>void;uatTools:boolean}){
+  // Herramientas UAT (Simulador de Agente) solo visibles con la bandera UAT del backend.
+  const ops={...operations,children:operations.children.filter(c=>uatTools||c.name!==SIMULATOR_MENU)};
   return <aside className="sidebar">
     <div className="brand"><img className="brand-logo" src="/sgi-comando-logo-sidebar.png" alt="SGI Comando"/></div>
     <nav>
       <button onClick={()=>onChange('Dashboard')} className={active==='Dashboard'?'active':''}><Gauge size={18}/><span>Dashboard</span></button>
-      <Group group={operations} active={active} onChange={onChange}/>
+      <Group group={ops} active={active} onChange={onChange}/>
       <button onClick={()=>onChange('Recurso Humano')} className={active==='Recurso Humano'?'active':''}><Users size={18}/><span>Recurso Humano</span></button>
       <button onClick={()=>onChange('Recurso Material')} className={active==='Recurso Material'?'active':''}><Warehouse size={18}/><span>Recurso Material</span></button>
       <Group group={reports} active={active} onChange={onChange}/>

@@ -37,7 +37,7 @@ export function multipartRequest<T>(path:string,form:FormData,opts:{onProgress?:
 }
 function standardImageUpload(path:string,file:File){const fd=new FormData();fd.append("file",file,file.name);return multipartRequest<any>(path,fd)}
 const bitacoraImageUpload=(fieldId:string,file:File)=>standardImageUpload(`/api/bitacora/fields/${encodeURIComponent(fieldId)}/standard-image`,file);
-const patrolImageUpload=(checkpointId:string,file:File)=>standardImageUpload(`/api/patrols/checkpoints/${encodeURIComponent(checkpointId)}/standard-image`,file);
+const patrolImageUpload=(checkpointId:string,file:File)=>standardImageUpload(`/api/patrols/checkpoints/${encodeURIComponent(checkpointId)}/standard-images`,file);
 const consignmentImageUpload=(evidenceId:string,file:File)=>standardImageUpload(`/api/consignments/evidences/${encodeURIComponent(evidenceId)}/standard-image`,file);
 async function atsUpload(pointId:string,file:File):Promise<any>{
  const headers=new Headers(); headers.set('Authorization','Basic '+btoa(`${currentUser}:${PASSWORD}`)); headers.set('Content-Type','application/octet-stream');
@@ -45,10 +45,17 @@ async function atsUpload(pointId:string,file:File):Promise<any>{
  if(!res.ok){const body=await res.text();throw new ApiError(res.status,body)} return res.json();
 }
 export const api={
+ operationExecutions:(pointId:string)=>request<any[]>(`/api/operation/executions?pointId=${encodeURIComponent(pointId)}`),
+ operationExecution:(id:string)=>request<any>(`/api/operation/executions/${encodeURIComponent(id)}`),
+ operationEvidenceImage:(id:string)=>binaryRequest(`/api/operation/evidences/${encodeURIComponent(id)}/content`),
+ operationStandardImage:(executionId:string,standardId:string)=>binaryRequest(`/api/operation/executions/${encodeURIComponent(executionId)}/standards/${encodeURIComponent(standardId)}`),
+ retryVisualReview:(id:string)=>request<any>(`/api/operation/visual-reviews/${encodeURIComponent(id)}/retry`,{method:'POST'}),
+ features:()=>request<{uatTools:boolean;visintMode:string;visintSimulated:boolean}>('/api/features'),
  operatorRuntime:(assignmentId?:string)=>request<any>(`/api/v1/operator/runtime${assignmentId?`?assignmentId=${encodeURIComponent(assignmentId)}`:""}`,undefined,SIMULATOR_USER),
  uploadEvidences:(form:FormData,opts:{onProgress?:(pct:number)=>void;signal?:AbortSignal;idempotencyKey?:string})=>multipartRequest<any>("/api/v1/operator/evidences",form,{...opts,user:SIMULATOR_USER}),
  submitExecution:(batch:any)=>request<any>("/api/v1/operator/executions",{method:"POST",body:JSON.stringify(batch)},SIMULATOR_USER),
- operatorCheckpointImage:(checkpointId:string,assignmentId:string)=>binaryRequest(`/api/v1/operator/checkpoints/${encodeURIComponent(checkpointId)}/standard-image?assignmentId=${encodeURIComponent(assignmentId)}`,undefined,SIMULATOR_USER),
+ operatorExecution:(eventId:string)=>request<any>(`/api/v1/operator/executions/${encodeURIComponent(eventId)}`,undefined,SIMULATOR_USER),
+ operatorCheckpointImage:(checkpointId:string,imageId:string,assignmentId:string)=>binaryRequest(`/api/v1/operator/checkpoints/${encodeURIComponent(checkpointId)}/standard-images/${encodeURIComponent(imageId)}?assignmentId=${encodeURIComponent(assignmentId)}`,undefined,SIMULATOR_USER),
  context:()=>request<any>('/api/context'),
  companies:(page=0,size=50)=>request<any>(`/api/companies?page=${page}&size=${size}`),
  companyCoreCatalog:()=>request<any[]>('/api/companies/core-catalog'),
@@ -104,9 +111,9 @@ export const api={
  savePatrolCheckpoint:(checkpointId:string,body:any)=>request<any>(`/api/patrols/checkpoints/${encodeURIComponent(checkpointId)}`,{method:'PUT',body:JSON.stringify(body)}),
  savePatrolCheckpointRules:(checkpointId:string,body:any)=>request<any>(`/api/patrols/checkpoints/${encodeURIComponent(checkpointId)}/rules`,{method:'PUT',body:JSON.stringify(body)}),
  deletePatrolCheckpoint:(checkpointId:string)=>request<void>(`/api/patrols/checkpoints/${encodeURIComponent(checkpointId)}`,{method:'DELETE'}),
- patrolStandardImage:(checkpointId:string)=>binaryRequest(`/api/patrols/checkpoints/${encodeURIComponent(checkpointId)}/standard-image`),
+ patrolStandardImage:(checkpointId:string,imageId:string)=>binaryRequest(`/api/patrols/checkpoints/${encodeURIComponent(checkpointId)}/standard-images/${encodeURIComponent(imageId)}`),
  uploadPatrolStandardImage:(checkpointId:string,file:File)=>patrolImageUpload(checkpointId,file),
- deletePatrolStandardImage:(checkpointId:string)=>request<any>(`/api/patrols/checkpoints/${encodeURIComponent(checkpointId)}/standard-image`,{method:'DELETE'}),
+ deletePatrolStandardImage:(checkpointId:string,imageId:string)=>request<any>(`/api/patrols/checkpoints/${encodeURIComponent(checkpointId)}/standard-images/${encodeURIComponent(imageId)}`,{method:'DELETE'}),
 
  postConfigurations:(pointId:string)=>request<any[]>(`/api/post-configurations?pointId=${encodeURIComponent(pointId)}`),
  savePostConfiguration:(postId:string,body:any)=>request<any>(`/api/post-configurations/${encodeURIComponent(postId)}`,{method:'PUT',body:JSON.stringify(body)}),

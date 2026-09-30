@@ -41,6 +41,4 @@ public class PatrolCheckpoint extends BaseEntity {
     @Column(name="standard_image_version", nullable=false) public int standardImageVersion;
     @Column(name="standard_image_notes", nullable=false, length=1000) public String standardImageNotes;
     @Column(name="visint_enabled", nullable=false) public boolean visintEnabled;
-    @Column(name="evidence_min_count", nullable=false) public int evidenceMinCount = 1;
-    @Column(name="evidence_max_count", nullable=false) public int evidenceMaxCount = 5;
 }

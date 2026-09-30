@@ -14,13 +14,13 @@ class OperatorRuntimeTest {
 
     @Test void runtimeIncludesActivePatrolCheckpoints() {
         UUID assignment = ensureAgentAssignment(em);
-        Map<String,Object> ids = publishPatrolWithCheckpoint(-2.17, -79.92, 2, 4);
+        Map<String,Object> ids = publishPatrolWithCheckpoint(-2.17, -79.92);
         String cp = "patrols.find{it.protocolId=='" + ids.get("protocolId") + "'}.checkpoints[0]";
         as("agente").queryParam("assignmentId", assignment).get("/api/v1/operator/runtime").then().statusCode(200)
             .body("relief.configurationVersion", notNullValue())
             .body(cp + ".checkpointId", is(ids.get("checkpointId")))
-            .body(cp + ".evidenceMinCount", is(2))
-            .body(cp + ".evidenceMaxCount", is(4))
+            .body(cp + ".maxPhotos", is(1))
+            .body(cp + ".standardImages.size()", is(1))
             .body(cp + ".hasStandardImage", is(true))
             .body(cp + ".radiusM", is(50));
     }

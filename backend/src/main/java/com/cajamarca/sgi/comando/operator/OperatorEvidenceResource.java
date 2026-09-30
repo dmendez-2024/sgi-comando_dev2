@@ -3,6 +3,7 @@ package com.cajamarca.sgi.comando.operator;
 import com.cajamarca.sgi.comando.common.TenantContext;
 import com.cajamarca.sgi.comando.execution.EvidenceObject;
 import com.cajamarca.sgi.comando.patrols.PatrolCheckpoint;
+import com.cajamarca.sgi.comando.patrols.PatrolCheckpointStandardImage;
 import com.cajamarca.sgi.comando.storage.*;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.quarkus.security.Authenticated;
@@ -72,7 +73,7 @@ public class OperatorEvidenceResource {
             String ct = ImageSniffer.detect(f.uploadedFile());
             if (ct == null) { results.add(rejected(it, "UNSUPPORTED_FORMAT")); continue; }
             if (!sha.get(it.clientEvidenceId()).equals(it.sha256())) { results.add(rejected(it, "CHECKSUM_MISMATCH")); continue; }
-            if (stored >= checkpoint.evidenceMaxCount) { results.add(rejected(it, "TOO_MANY_PHOTOS")); continue; }
+            if (stored >= 1) { results.add(rejected(it, "TOO_MANY_PHOTOS")); continue; }
 
             EvidenceObject e = new EvidenceObject();
             e.id = UUID.randomUUID(); e.instanceCountryId = t; e.clientEvidenceId = it.clientEvidenceId(); e.uploadBatchId = meta.uploadBatchId();
@@ -91,14 +92,16 @@ public class OperatorEvidenceResource {
         return new UploadResponse(results);
     }
 
-    /** Foto estándar del Hito, para que el agente la use como guía. */
-    @GET @Path("/checkpoints/{checkpointId}/standard-image")
-    public Response standardImage(@PathParam("checkpointId") UUID checkpointId, @QueryParam("assignmentId") UUID assignmentId) {
+    /** Fotos estándar del Hito (hasta 5), para que el agente las use como guía. */
+    @GET @Path("/checkpoints/{checkpointId}/standard-images/{imageId}")
+    public Response standardImage(@PathParam("checkpointId") UUID checkpointId, @PathParam("imageId") UUID imageId, @QueryParam("assignmentId") UUID assignmentId) {
         if (assignmentId == null) throw new BadRequestException("assignmentId es obligatorio");
         OperatorContext.Assignment a = ctx.assignment(assignmentId, ctx.employee());
         PatrolCheckpoint cp = patrols.requireCheckpoint(checkpointId, a.post().id).checkpoint();
-        byte[] data = standardImages.read(cp.standardImageObjectKey, cp.standardImageData);
-        return Response.ok(data).type(cp.standardImageContentType).header(HttpHeaders.CACHE_CONTROL, "no-store").build();
+        PatrolCheckpointStandardImage img = PatrolCheckpointStandardImage.find("id=?1 and checkpointId=?2", imageId, cp.id).firstResult();
+        if (img == null) throw new NotFoundException("Foto estándar no encontrada");
+        byte[] data = standardImages.read(img.objectKey, null);
+        return Response.ok(data).type(img.contentType).header(HttpHeaders.CACHE_CONTROL, "no-store").build();
     }
 
     private List<String> flagsFor(EvidenceObject e, PatrolCheckpoint cp) {

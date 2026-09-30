@@ -36,7 +36,24 @@ public class StandardImageMigrator {
     public int migrateAll() {
         int total = 0;
         for (var t : TABLES.entrySet()) total += migrate(t.getKey(), t.getValue());
+        promotePatrolStandardImages();
         return total;
+    }
+
+    /** Los Hitos de patrulla guardan sus fotos estándar (hasta 5) en patrol_checkpoint_standard_image: la foto antigua pasa a ser la n.º 1. */
+    void promotePatrolStandardImages() {
+        QuarkusTransaction.requiringNew().run(() -> {
+            em.createNativeQuery("""
+                insert into patrol_checkpoint_standard_image(id, instance_country_id, checkpoint_id, position, original_name, content_type, object_key, sha256, size_bytes)
+                select gen_random_uuid(), c.instance_country_id, c.id, 1, c.standard_image_original_name, coalesce(c.standard_image_content_type, 'image/jpeg'),
+                       c.standard_image_object_key, c.standard_image_sha256, coalesce(c.standard_image_size, 0)
+                from patrol_checkpoint c where c.standard_image_object_key is not null and c.standard_image_sha256 is not null
+                  and not exists (select 1 from patrol_checkpoint_standard_image s where s.checkpoint_id = c.id)""").executeUpdate();
+            em.createNativeQuery("""
+                update patrol_checkpoint set standard_image_object_key=null, standard_image_sha256=null, standard_image_size=null,
+                       standard_image_original_name=null, standard_image_content_type=null
+                where standard_image_object_key is not null""").executeUpdate();
+        });
     }
 
     @SuppressWarnings("unchecked")

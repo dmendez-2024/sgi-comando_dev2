@@ -1865,3 +1865,65 @@
 .agent-sim-actions{display:flex;gap:10px;justify-content:flex-end}
 .agent-sim-empty{display:flex;gap:6px;align-items:center;color:#64748b;font-size:13px;margin:0}
 @media (max-width:640px){.agent-sim-actions{flex-direction:column}}
+
+/* Fase 2 · VISINT opcional por Hito */
+.patrol-config-page .pat-visint{display:flex;gap:10px;align-items:flex-start;padding:12px 14px;border:1px solid #dbe3ee;border-radius:12px;background:#f8fafc;cursor:pointer}
+.patrol-config-page .pat-visint.on{border-color:#93c5fd;background:#eff6ff}
+.patrol-config-page .pat-visint input{margin-top:2px}
+.patrol-config-page .pat-visint span{display:grid;gap:2px}
+.patrol-config-page .pat-visint b{font-size:12px;color:#1e2d42}
+.patrol-config-page .pat-visint small{font-size:11px;color:#64748b;line-height:1.4}
+
+/* Vista Operación (Fase 2) */
+.opr-page{display:grid;gap:14px}
+.opr-title{display:flex;justify-content:space-between;align-items:center;gap:12px}.opr-title h2{margin:0}.opr-title span{color:#64748b;font-size:12px}
+.opr-title>button{display:flex;gap:6px;align-items:center}
+.opr-kpis{display:grid;grid-template-columns:repeat(6,1fr);gap:10px}.opr-kpis article{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:12px}
+.opr-kpis small{color:#64748b;font-size:11px}.opr-kpis strong{display:block;font-size:22px}
+.opr-kpis .good strong{color:#15803d}.opr-kpis .bad strong{color:#b91c1c}.opr-kpis .info strong{color:#1d4ed8}.opr-kpis .warn strong{color:#b45309}
+.opr-table{width:100%;border-collapse:collapse}.opr-table th,.opr-table td{padding:10px;border-bottom:1px solid #eef2f7;text-align:left;font-size:12px;vertical-align:middle}
+.opr-table td small{display:block;color:#64748b;font-size:11px}.opr-table tbody tr{cursor:pointer}.opr-table tbody tr:hover,.opr-table tbody tr.selected{background:#f1f5ff}
+.opr-thumbs{display:flex;gap:4px;align-items:center}.opr-thumb{width:40px;height:40px;object-fit:cover;border-radius:6px;border:1px solid #e5e7eb}
+.opr-pill{display:inline-flex;gap:4px;align-items:center;padding:3px 9px;border-radius:99px;font-size:11px;font-weight:700;white-space:nowrap}
+.opr-pill.good{background:#dcfce7;color:#15803d}.opr-pill.bad{background:#fee2e2;color:#b91c1c}.opr-pill.info{background:#dbeafe;color:#1d4ed8}.opr-pill.warn{background:#fef3c7;color:#92400e}.opr-pill.none{background:#f1f5f9;color:#64748b}
+.opr-flag{display:inline-block;margin:1px 3px 1px 0;padding:1px 6px;border-radius:99px;background:#fff7ed;color:#9a3412;font-size:10px;font-style:normal}
+.opr-match{display:inline-block;margin:1px 3px 1px 6px;padding:1px 7px;border-radius:99px;background:#dcfce7;color:#166534;font-size:10px;font-weight:700;font-style:normal}
+.opr-drawer-backdrop{position:fixed;inset:0;background:rgba(15,23,42,.35);display:flex;justify-content:flex-end;z-index:40}
+.opr-drawer{width:min(980px,100%);height:100%;background:#fff;display:flex;flex-direction:column;box-shadow:-10px 0 40px rgba(0,0,0,.2)}
+.opr-drawer header{display:flex;justify-content:space-between;align-items:flex-start;padding:16px 20px;border-bottom:1px solid #e5e7eb}.opr-drawer header h3{margin:0}.opr-drawer header span{font-size:12px;color:#64748b}
+.opr-drawer-body{padding:16px 20px;overflow:auto;display:grid;gap:14px}
+.opr-result{display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:12px;color:#475569}.opr-result .opr-pill{font-size:13px;padding:5px 12px}
+.opr-result button{display:flex;gap:6px;align-items:center}
+.opr-findings{margin:0;font-size:12px;color:#334155;background:#f8fafc;border-radius:8px;padding:8px 10px}
+.opr-error-note{display:flex;gap:6px;align-items:center;margin:0;color:#92400e;font-size:12px}
+.opr-compare{display:grid;grid-template-columns:1fr 1fr;gap:14px}.opr-compare figure{margin:0;display:grid;gap:6px}
+.opr-compare figcaption{font-size:12px;font-weight:700}.opr-compare small{font-size:11px;color:#64748b}
+.opr-big{width:100%;height:320px;object-fit:contain;background:#0f172a;border-radius:10px}
+.opr-gallery{display:flex;gap:10px;flex-wrap:wrap}.opr-gallery button{display:grid;gap:4px;justify-items:center;padding:6px;border:2px solid #e5e7eb;border-radius:10px;background:#fff;cursor:pointer;font-size:11px}
+.opr-gallery button.selected{border-color:#2563eb}
+.opr-gallery-img{width:110px;height:80px;object-fit:cover;border-radius:6px}
+.opr-img-loading{background:linear-gradient(90deg,#f1f5f9,#e2e8f0,#f1f5f9);border-radius:6px;min-height:40px}
+.opr-timeline{list-style:none;margin:0;padding:0;display:flex;gap:16px;flex-wrap:wrap;font-size:11px;color:#475569}.opr-timeline li{display:flex;gap:4px;align-items:center}
+@media (max-width:760px){.opr-kpis{grid-template-columns:1fr 1fr}.opr-compare{grid-template-columns:1fr}.opr-big{height:220px}}
+
+/* Fotos estándar del Hito (hasta 5) y guías del simulador */
+.pat-standard-gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:8px;margin:8px 0}
+.pat-standard-gallery figure{position:relative;margin:0;border:1px solid #e5e7eb;border-radius:9px;overflow:hidden;background:#f8fafc;aspect-ratio:1}
+.pat-standard-gallery img,.pat-standard-loading{width:100%;height:100%;object-fit:cover;display:block}
+.pat-standard-loading{background:linear-gradient(90deg,#f1f5f9,#e2e8f0,#f1f5f9)}
+.pat-standard-gallery figcaption{position:absolute;inset:auto 0 0 0;display:flex;align-items:center;justify-content:space-between;padding:4px 6px;background:rgba(15,23,42,.62);color:#fff;font-size:11px;font-weight:700}
+.pat-standard-gallery figcaption button{border:0;background:transparent;color:#fff;cursor:pointer;padding:2px;display:flex}
+.pat-standard-gallery .pat-standard-add{aspect-ratio:1;min-height:0!important}
+.agent-sim-guides{display:flex;flex-wrap:wrap;gap:8px}
+.agent-sim-guides .agent-sim-guide{max-width:180px;max-height:140px}
+
+/* Fase 3 · resultado de VISINT para el agente (Simulador) */
+.agent-sim-result{display:flex;align-items:center;gap:12px;padding:12px 16px;border-radius:10px;border:1px solid #e5e7eb;background:#f8fafc;margin:8px 0}
+.agent-sim-result div{display:flex;flex-direction:column;gap:2px;flex:1}
+.agent-sim-result small{color:#64748b;font-size:11px}
+.agent-sim-result.validated,.agent-sim-result.not_required{background:#f0fdf4;border-color:#bbf7d0;color:#166534}
+.agent-sim-result.not_validated{background:#fef2f2;border-color:#fecaca;color:#991b1b}
+.agent-sim-result.technical_error{background:#fffbeb;border-color:#fde68a;color:#92400e}
+.agent-sim-result.pending{background:#eff6ff;border-color:#bfdbfe;color:#1e40af}
+.agent-sim-result .spin{animation:agent-sim-spin 1s linear infinite}
+@keyframes agent-sim-spin{to{transform:rotate(360deg)}}
