@@ -5,6 +5,7 @@ import {
   UserRound, X, Pencil, Save, Clock3, Camera, Navigation, ClipboardCheck
 } from 'lucide-react';
 import {getUser, type UatUser} from '../api';
+import {OperationalDrawer} from '../components/OperationalDrawer';
 
 type NoveltyType='FINDING'|'VULNERABILITY'|'INCIDENT';
 type NoveltyStatus='PENDING'|'APPROVED'|'DISCARDED';
@@ -312,11 +313,14 @@ export default function NovedadesExecution(){
       </div>
     </section>
 
-    {selected&&draft&&<div className="nov-modal-backdrop" onClick={closeModal}>
-      <aside className="nov-modal" onClick={e=>e.stopPropagation()}>
-        <header><div><h3>{selected.code} · {typeLabel(selected.type)}</h3><span>Revisar y editar la novedad antes de aprobar o descartar.</span></div><button onClick={closeModal}><X size={19}/></button></header>
-
-        <div className="nov-modal-body">
+    {selected&&draft&&<OperationalDrawer title={`${selected.code} · ${typeLabel(selected.type)}`} subtitle="Revisar y editar la novedad antes de aprobar o descartar." onClose={closeModal} footer={<>
+      {selected.status==='PENDING'&&canReview(user)&&<>
+        {!editing?<button onClick={()=>setEditing(true)}><Pencil size={15}/>Editar</button>:<button onClick={saveEdit}><Save size={15}/>Guardar cambios</button>}
+        <button className="discard" onClick={discard}><Trash2 size={15}/>Descartar</button>
+        <button className="approve" onClick={approve}><CheckCircle2 size={15}/>Aprobar</button>
+      </>}
+      <button className="close" onClick={closeModal}><X size={15}/>Cerrar</button>
+    </>} footerNote={selected.status==='PENDING'&&<div className="nov-modal-hints"><span className="discard-hint">Al descartar, el comentario de revisión es obligatorio.</span><span className="approve-hint">Al aprobar, la novedad será visible en SGI: Cliente.</span></div>}>
           <div className="nov-edit-grid three">
             <ModalField label="Tipo de novedad"><select value={draft.type} disabled={!editing} onChange={e=>{const next=e.target.value as NoveltyType;updateDraft('type',next);updateDraft('subcategory',subcategories(next)[0])}}>{(['FINDING','VULNERABILITY','INCIDENT'] as NoveltyType[]).map(x=><option key={x} value={x}>{typeLabel(x)}</option>)}</select></ModalField>
             <ModalField label="Subcategoría"><select value={draft.subcategory} disabled={!editing} onChange={e=>updateDraft('subcategory',e.target.value)}>{subcategories(draft.type).map(x=><option key={x}>{x}</option>)}</select></ModalField>
@@ -350,19 +354,7 @@ export default function NovedadesExecution(){
           {selected.status==='APPROVED'&&<div className="nov-publication approved"><CheckCircle2 size={16}/><span>Aprobada: esta novedad está habilitada para SGI: Cliente.</span></div>}
           {selected.status==='DISCARDED'&&<div className="nov-publication discarded"><Trash2 size={16}/><span>Descartada: se conserva en histórico y no se publica a SGI: Cliente.</span></div>}
           {modalError&&<div className="nov-modal-error"><AlertTriangle size={15}/>{modalError}</div>}
-        </div>
-
-        <footer>
-          {selected.status==='PENDING'&&canReview(user)&&<>
-            {!editing?<button onClick={()=>setEditing(true)}><Pencil size={15}/>Editar</button>:<button onClick={saveEdit}><Save size={15}/>Guardar cambios</button>}
-            <button className="discard" onClick={discard}><Trash2 size={15}/>Descartar</button>
-            <button className="approve" onClick={approve}><CheckCircle2 size={15}/>Aprobar</button>
-          </>}
-          <button className="close" onClick={closeModal}><X size={15}/>Cerrar</button>
-        </footer>
-        <div className="nov-modal-hints">{selected.status==='PENDING'&&<><span className="discard-hint">Al descartar, el comentario de revisión es obligatorio.</span><span className="approve-hint">Al aprobar, la novedad será visible en SGI: Cliente.</span></>}</div>
-      </aside>
-    </div>}
+    </OperationalDrawer>}
   </div>
 }
 

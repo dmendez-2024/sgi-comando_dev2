@@ -1,9 +1,10 @@
 import {useEffect, useMemo, useState, type ReactNode} from 'react';
 import {
-  CalendarDays, CarFront, Clock3, Container, Download, FileSearch2,
-  FilterX, MapPin, Search, ShieldCheck, UserRound, Building2, Briefcase, Eye, X, ChevronRight
+  CarFront, Clock3, Container, Download, FileSearch2,
+  FilterX, Search, ShieldCheck, UserRound, X, ChevronRight
 } from 'lucide-react';
 import {getUser, type UatUser} from '../api';
+import {OperationalDrawer} from '../components/OperationalDrawer';
 
 type RecordType='PERSON'|'VEHICLE'|'CONTAINER';
 type RecordStatus='AUTHORIZED'|'REGISTERED'|'RELEASED'|'UNDER_REVIEW'|'RETAINED';
@@ -192,7 +193,6 @@ function formatDateTime(value:string){
   return new Intl.DateTimeFormat('es-EC',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}).format(new Date(value));
 }
 function dateOnly(value:string){return value.slice(0,10)}
-function initials(name:string){return name.split(' ').filter(Boolean).map(x=>x[0]).slice(0,2).join('').toUpperCase()}
 
 function withinScope(record:BitRecord,scope:Scope){
   if(scope.companies && !scope.companies.includes(record.companyCode)) return false;
@@ -204,7 +204,6 @@ function withinScope(record:BitRecord,scope:Scope){
 export default function BitacoraGlobal(){
   const [userRevision,setUserRevision]=useState(0);
   const [filters,setFilters]=useState<Filters>(EMPTY_FILTERS);
-  const [selectedId,setSelectedId]=useState('');
   const [viewedId,setViewedId]=useState('');
 
   useEffect(()=>{
@@ -241,12 +240,6 @@ export default function BitacoraGlobal(){
     return true;
   }).sort((a,b)=>b.at.localeCompare(a.at)),[scopedData,filters]);
 
-  useEffect(()=>{
-    if(rows.length && !rows.some(r=>r.id===selectedId)) setSelectedId(rows[0].id);
-    if(!rows.length) setSelectedId('');
-  },[rows,selectedId]);
-
-  const selected=rows.find(r=>r.id===selectedId) ?? rows[0] ?? null;
   const viewed=scopedData.find(r=>r.id===viewedId) ?? null;
   const metrics=useMemo(()=>({
     total:rows.length,
@@ -287,21 +280,17 @@ export default function BitacoraGlobal(){
       <Metric icon={<Clock3 size={22}/>} label="Última actualización" value={new Intl.DateTimeFormat('es-EC',{hour:'2-digit',minute:'2-digit'}).format(new Date(metrics.lastUpdate))} subtitle={new Intl.DateTimeFormat('es-EC',{weekday:'long',day:'2-digit',month:'short'}).format(new Date(metrics.lastUpdate))} tone="gray"/>
     </div>
 
-    <div className="bit-global-layout">
-      <section className="bit-global-search-card nov-main-card">
-        <div className="bit-global-card-head">
-          <div className="bit-global-card-title"><Search size={20}/><h3>Búsqueda global</h3></div>
-          <div className="bit-global-tabs">
-            <button className={filters.type==='ALL'?'active':''} onClick={()=>set('type','ALL')}>Todos</button>
-            <button className={filters.type==='PERSON'?'active':''} onClick={()=>set('type','PERSON')}>Personas</button>
-            <button className={filters.type==='VEHICLE'?'active':''} onClick={()=>set('type','VEHICLE')}>Vehículos</button>
-            <button className={filters.type==='CONTAINER'?'active':''} onClick={()=>set('type','CONTAINER')}>Contenedores</button>
-          </div>
+    <section className="bit-global-search-card nov-main-card">
+        <div className="nov-tabs">
+          <button className={filters.type==='ALL'?'active':''} onClick={()=>set('type','ALL')}>Todos ({scopedData.length})</button>
+          <button className={filters.type==='PERSON'?'active':''} onClick={()=>set('type','PERSON')}>Personas ({scopedData.filter(r=>r.type==='PERSON').length})</button>
+          <button className={filters.type==='VEHICLE'?'active':''} onClick={()=>set('type','VEHICLE')}>Vehículos ({scopedData.filter(r=>r.type==='VEHICLE').length})</button>
+          <button className={filters.type==='CONTAINER'?'active':''} onClick={()=>set('type','CONTAINER')}>Contenedores ({scopedData.filter(r=>r.type==='CONTAINER').length})</button>
         </div>
 
         <label className="bit-global-main-search nov-main-search"><Search size={18}/><input value={filters.query} onChange={e=>set('query',e.target.value)} placeholder="Buscar por nombre, apellido, identificación, placa, contenedor…"/></label>
 
-        <div className="bit-global-filter-grid">
+        <div className="bit-global-filter-grid nov-filter-grid">
           <Field label="Nombres"><input value={filters.firstName} onChange={e=>set('firstName',e.target.value)} placeholder="Ej. Juan"/></Field>
           <Field label="Apellidos"><input value={filters.lastName} onChange={e=>set('lastName',e.target.value)} placeholder="Ej. Pérez"/></Field>
           <Field label="Identificación"><input value={filters.identifier} onChange={e=>set('identifier',e.target.value)} placeholder="CI / Placa / Contenedor"/></Field>
@@ -314,7 +303,7 @@ export default function BitacoraGlobal(){
           <Field label="Estado / Resultado"><select value={filters.status} onChange={e=>set('status',e.target.value as Filters['status'])}><option value="ALL">Todos</option><option value="AUTHORIZED">Autorizado</option><option value="REGISTERED">Registrado</option><option value="RELEASED">Liberado</option><option value="UNDER_REVIEW">En revisión</option><option value="RETAINED">Retenido</option></select></Field>
         </div>
 
-        <div className="bit-global-search-actions">
+        <div className="bit-global-search-actions nov-actions">
           <button className="primary"><Search size={16}/>Buscar</button>
           <button onClick={clear}><FilterX size={16}/>Limpiar filtros</button>
           <button className="export" onClick={exportCsv}><Download size={16}/>Exportar</button>
@@ -323,13 +312,13 @@ export default function BitacoraGlobal(){
         <div className="bit-global-results-card nov-results-card">
           <div className="bit-global-results-head nov-results-head">
             <h3>Resultados ({rows.length})</h3>
-            <div>Ordenado por <strong>Fecha más reciente</strong></div>
+            <span>Ordenado por <strong>Fecha más reciente</strong></span>
           </div>
           <div className="bit-global-table-wrap nov-table-wrap">
             <table className="bit-global-table nov-table">
               <thead><tr><th>Tipo</th><th>Identificador</th><th>Nombre / Descripción</th><th>Cliente</th><th>Ciudad</th><th>Punto</th><th>Fecha / Hora</th><th>Resultado</th><th></th></tr></thead>
               <tbody>
-                {rows.map(row=><tr key={row.id} className={selectedId===row.id?'selected':''} onClick={()=>setSelectedId(row.id)}>
+                {rows.map(row=><tr key={row.id} onClick={()=>setViewedId(row.id)}>
                   <td><span className={`bit-global-type type-${row.type.toLowerCase()}`}>{iconByType(row.type)} {typeLabel(row.type)}</span></td>
                   <td>{row.identifier}</td>
                   <td><strong>{row.label}</strong><small>{row.company}</small></td>
@@ -338,7 +327,7 @@ export default function BitacoraGlobal(){
                   <td>{row.point}</td>
                   <td>{formatDateTime(row.at)}</td>
                   <td><span className={`bit-global-status ${statusClass(row.status)}`}>{statusLabel(row.status)}</span></td>
-                  <td><button className="ghost" onClick={e=>{e.stopPropagation();setSelectedId(row.id);setViewedId(row.id)}}><Eye size={14}/>Ver <ChevronRight size={13}/></button></td>
+                  <td><button onClick={e=>{e.stopPropagation();setViewedId(row.id)}}>Ver <ChevronRight size={13}/></button></td>
                 </tr>)}
                 {!rows.length&&<tr><td colSpan={9} className="empty">No se encontraron registros con los filtros aplicados.</td></tr>}
               </tbody>
@@ -346,36 +335,24 @@ export default function BitacoraGlobal(){
           </div>
           <div className="bit-global-results-footer nov-results-footer">Mostrando {rows.length?1:0} a {rows.length} de {rows.length} resultados</div>
         </div>
-      </section>
-
-      <aside className="bit-global-detail-card">
-        <div className="bit-global-card-title"><Briefcase size={19}/><h3>Detalle rápido</h3></div>
-        {selected?<>
-          <div className="bit-global-profile">
-            <div className="avatar">{initials(selected.label)}</div>
-            <div>
-              <div className="bit-global-detail-tag">{typeLabel(selected.type)}</div>
-              <h4>{selected.label}</h4>
-              <p>{selected.subtitle}</p>
-              <span className={`bit-global-status ${statusClass(selected.status)}`}>{statusLabel(selected.status)}</span>
-            </div>
-          </div>
-          <dl className="bit-global-detail-list">
-            <div><dt><Building2 size={15}/>Cliente</dt><dd>{selected.client}</dd></div>
-            <div><dt><Briefcase size={15}/>Compañía</dt><dd>{selected.company}</dd></div>
-            <div><dt><MapPin size={15}/>Ciudad</dt><dd>{selected.city}</dd></div>
-            <div><dt><MapPin size={15}/>Punto</dt><dd>{selected.point}</dd></div>
-            <div><dt><CalendarDays size={15}/>Fecha / Hora</dt><dd>{formatDateTime(selected.at)}</dd></div>
-          </dl>
-          <div className="bit-global-timeline">
-            <h4>Línea de tiempo</h4>
-            {selected.timeline.map((event,index)=><article key={event.id}><i className={index===0?'active':''}/><div><span>{formatDateTime(event.at)}</span><strong>{event.title}</strong><small>{event.place}</small></div></article>)}
-          </div>
-          <button className="bit-global-detail-button" onClick={()=>setViewedId(selected.id)}><Search size={16}/>Ver detalle completo</button>
-        </>:<div className="bit-global-empty-detail">Seleccione un registro para ver su detalle.</div>}
-      </aside>
-    </div>
-    {viewed&&<div className="nov-modal-backdrop record-view-backdrop" onClick={()=>setViewedId('')}><aside className="nov-modal record-view-modal" role="dialog" aria-modal="true" aria-labelledby="record-view-title" onClick={e=>e.stopPropagation()}><header><div><h3 id="record-view-title">{viewed.identifier} · {typeLabel(viewed.type)}</h3><span>Detalle del registro · Solo lectura</span></div><button aria-label="Cerrar detalle" onClick={()=>setViewedId('')}><X size={19}/></button></header><div className="nov-modal-body record-view-body"><div className="record-view-summary"><span className={`bit-global-type type-${viewed.type.toLowerCase()}`}>{iconByType(viewed.type)}{typeLabel(viewed.type)}</span><strong>{viewed.label}</strong><span className={`bit-global-status ${statusClass(viewed.status)}`}>{statusLabel(viewed.status)}</span></div><dl className="bit-global-detail-list record-view-details"><div><dt><Building2 size={15}/>Cliente</dt><dd>{viewed.client}</dd></div><div><dt><Briefcase size={15}/>Compañía</dt><dd>{viewed.company}</dd></div><div><dt><MapPin size={15}/>Ciudad</dt><dd>{viewed.city}</dd></div><div><dt><MapPin size={15}/>Punto</dt><dd>{viewed.point}</dd></div><div><dt><Eye size={15}/>Identificador</dt><dd>{viewed.identifier}</dd></div><div><dt><CalendarDays size={15}/>Fecha / Hora</dt><dd>{formatDateTime(viewed.at)}</dd></div><div><dt><ShieldCheck size={15}/>Estado</dt><dd>{statusLabel(viewed.status)}</dd></div></dl><div className="bit-global-timeline record-view-timeline"><h4>Línea de tiempo</h4>{viewed.timeline.map((event,index)=><article key={event.id}><i className={index===0?'active':''}/><div><span>{formatDateTime(event.at)}</span><strong>{event.title}</strong><small>{event.place}</small></div></article>)}</div></div><footer><button className="close" onClick={()=>setViewedId('')}><X size={15}/>Cerrar</button></footer></aside></div>}
+    </section>
+    {viewed&&<OperationalDrawer title={`${viewed.identifier} · ${typeLabel(viewed.type)}`} subtitle="Detalle del registro · Solo lectura" onClose={()=>setViewedId('')} footer={<button className="close" onClick={()=>setViewedId('')}><X size={15}/>Cerrar</button>}>
+      <div className="record-view-summary"><span className={`bit-global-type type-${viewed.type.toLowerCase()}`}>{iconByType(viewed.type)}{typeLabel(viewed.type)}</span><strong>{viewed.label}</strong><span className={`bit-global-status ${statusClass(viewed.status)}`}>{statusLabel(viewed.status)}</span></div>
+      <div className="nov-edit-grid three">
+        <ReadOnlyField label="Identificador" value={viewed.identifier}/>
+        <ReadOnlyField label="Nombre / Descripción" value={viewed.label}/>
+        <ReadOnlyField label="Tipo" value={typeLabel(viewed.type)}/>
+        <ReadOnlyField label="Cliente" value={viewed.client}/>
+        <ReadOnlyField label="Compañía" value={viewed.company}/>
+        <ReadOnlyField label="Ciudad" value={viewed.city}/>
+        <ReadOnlyField label="Punto" value={viewed.point}/>
+        <ReadOnlyField label="Fecha / Hora" value={formatDateTime(viewed.at)}/>
+        <ReadOnlyField label="Resultado" value={statusLabel(viewed.status)}/>
+        <ReadOnlyField label="Región" value={viewed.region}/>
+        <ReadOnlyField label="Zona" value={viewed.zone}/>
+      </div>
+      <div className="nov-audit"><h4>Historial / Trazabilidad</h4>{viewed.timeline.map(event=><article key={event.id}><i/><div><strong>{event.title}</strong><span>{formatDateTime(event.at)}</span><small>{event.place}</small></div></article>)}</div>
+    </OperationalDrawer>}
   </div>
 }
 
@@ -383,5 +360,8 @@ function Metric({icon,label,value,subtitle,tone}:{icon:ReactNode;label:string;va
   return <article><span className={tone}>{icon}</span><div><small>{label}</small><strong>{value}</strong><em>{subtitle}</em></div></article>
 }
 function Field({label,children}:{label:string;children:ReactNode}){
-  return <label className="bit-global-field"><span>{label}</span>{children}</label>
+  return <label className="bit-global-field nov-field"><span>{label}</span>{children}</label>
+}
+function ReadOnlyField({label,value}:{label:string;value:string}){
+  return <label className="nov-modal-field"><span>{label}</span><input value={value} disabled readOnly/></label>
 }

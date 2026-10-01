@@ -18,11 +18,21 @@ Resolve transversal Instance/Country context and master catalogs required by SGI
 - contractVersion: `v1`
 - estado: `UAT`
 
-- `SGI_COM_CORE_0002_IF01` — `GET` `/api/v1/instance-countries/{instanceCountryId}/context` — Instance/Country, locale, language, timezone, currency, units and formats
-- `SGI_COM_CORE_0002_IF02` — `GET` `/api/v1/instance-countries/{instanceCountryId}/territorial-structure` — Official subdivision type/catalog/geometries/dataset version
-- `SGI_COM_CORE_0002_IF03` — `GET` `/api/v1/instance-countries/{instanceCountryId}/companies` — Canonical Company catalog/identity/logo/status/source version
+- `SGI_COM_CORE_0002_IF01` — `GET` `/api/v1/catalog/instance-countries?countryId={countryId}` — CORE Instance-Country record and country context
+- `SGI_COM_CORE_0002_IF02` — `GET` `/api/v1/catalog/subdivisions?countryId={countryId}` and `/api/v1/catalog/subdivisions/geojson?countryId={countryId}` — Official subdivision catalog and GeoJSON geometries
+- `SGI_COM_CORE_0002_IF03` — `GET` `/api/v1/catalog/companies` — Canonical Company catalog/identity/logo/status/source version
 - `SGI_COM_CORE_0002_IF04` — `GET` `/api/v1/instance-countries/{instanceCountryId}/calendar-regulatory-profile` — Calendar/holidays and regulatory profile/version/effective dates
 - aliases históricos: `SGI_COM__CORE__00001__V0001`, `SGI_COM__CORE__00001`
+
+Campos mínimos de respuesta que SGI necesita en las interfaces implementadas:
+
+- IF01 recibe el `countryId` de CORE y devuelve una lista de Instancias-País con `id`, `code`, `name`, `countryId`, `countryCode`, `countryName`, `locale`, `timezone` y `currency`. SGI selecciona el `code` configurado; el ID de instancia de CORE se conserva aparte del tenant local SGI.
+- IF02 recibe `countryId` y devuelve `subdivisionType`, `subdivisionSingular`, `subdivisionPlural`, `datasetVersion` y `subdivisions[]` con `id`, `code`, `officialCode`, `name`, `type` y `typeLabel`. SGI consulta además el endpoint `geojson` con `Accept: application/geo+json`, asocia cada geometría por el ID exacto de provincia y verifica versión, cantidad e IDs antes de sincronizar. SGI considera ACTIVE las provincias devueltas y mantiene las asignaciones Zona/Región locales.
+- IF03 devuelve el catálogo completo de compañías; SGI lo filtra por el `instanceCountryId` devuelto por IF01. Cada elemento contiene `id`, `code`, `name`, `description`, `logoUrl`, `companyType`, `instanceCountryId`, `sourceVersion` y `status`.
+
+En UAT, el catálogo de CORE está publicado bajo `/api/v1/catalog` y responde a lecturas sin credencial de servicio en el ambiente observado. Las compañías se obtienen de `/companies` y SGI las filtra localmente por Instancia-País. La carga territorial consulta el catálogo de subdivisiones y su GeoJSON complementario; las demás interconexiones siguen el resolver genérico.
+
+IF02 e IF03 deben devolver el catálogo completo de la Instancia–País en una sola respuesta. Los códigos oficiales/canónicos deben ser únicos y estables; si CORE cambia un UUID manteniendo el mismo código, SGI reata la referencia por ese código. En la primera reconciliación de datos UAT antiguos sin ID CORE, SGI también puede usar un nombre normalizado único cuando el código local todavía difiere del oficial. SGI conserva como inactivos los elementos omitidos y mantiene sus asignaciones Zona/Región y configuración operacional locales.
 
 ## `SGI_COM_CORE_0003_v001` — SGI_COM → CORE
 Resolve the effective binding of any interconnection by interconnectionId + Instancia PE + environment.

@@ -1,6 +1,7 @@
 package com.cajamarca.sgi.comando.interconnections;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.JsonNode;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
@@ -56,7 +57,10 @@ public class CoreInterconnectionResolver {
 
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() < 200 || response.statusCode() >= 300) {
-                throw new InterconnectionException("CORE_RESOLUTION_HTTP_" + response.statusCode(), "CORE could not resolve interconnection binding");
+                String detail = remoteMessage(response.body());
+                String message = "CORE no pudo resolver la interconexión (HTTP " + response.statusCode() + ")";
+                if (detail != null) message += ": " + detail;
+                throw new InterconnectionException("CORE_RESOLUTION_HTTP_" + response.statusCode(), message);
             }
             ResolvedInterconnection resolved = objectMapper.readValue(response.body(), ResolvedInterconnection.class);
             validateResolved(resolved, interconnectionId, interfaceId);
@@ -66,6 +70,18 @@ public class CoreInterconnectionResolver {
         } catch (Exception e) {
             LOG.warnf(e, "CORE resolution failed for %s / %s", interconnectionId, interfaceId);
             throw new InterconnectionException("CORE_RESOLUTION_FAILED", "Unable to resolve effective binding from CORE", e);
+        }
+    }
+
+    private String remoteMessage(String body) {
+        try {
+            JsonNode message = objectMapper.readTree(body).get("message");
+            if (message == null || message.isNull() || !message.isValueNode()) return null;
+            String detail = message.asText().trim();
+            if (detail.isEmpty()) return null;
+            return detail.length() > 500 ? detail.substring(0, 500) : detail;
+        } catch (Exception ignored) {
+            return null;
         }
     }
 

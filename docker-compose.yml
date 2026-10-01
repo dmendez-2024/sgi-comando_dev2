@@ -36,6 +36,8 @@ services:
       #- minio_data:/data
       - minio_data:/bitnami/minio/data
   backend:
+    env_file:
+      - .env
     build:
       context: ./backend
     environment:

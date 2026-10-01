@@ -1,11 +1,12 @@
 import {useMemo, useState, type ReactNode} from 'react';
 import {
-  AlertTriangle, BellRing, Building2, CalendarDays, CheckCircle2, ClipboardList, Clock3,
+  AlertTriangle, BellRing, Building2, CalendarDays, ClipboardList, Clock3,
   Download, FileWarning, FilterX, MapPin, Monitor,
-  RefreshCw, Search, ShieldAlert, ShieldCheck, UserRound, Zap, CircleAlert, ChevronRight, Filter, ChevronDown, Plus, Eye
+  RefreshCw, Save, Search, ShieldAlert, ShieldCheck, UserRound, Zap, CircleAlert, ChevronRight, Filter, ChevronDown, Plus, X
 } from 'lucide-react';
 import {getUser, type UatUser} from '../api';
 import IncidentNotificationPanel, {type IncidentRecord, type LocationOption, type IncidentSeverity} from '../components/IncidentNotificationPanel';
+import {OperationalDrawer} from '../components/OperationalDrawer';
 
 type ItemCategory='CONSIGNAS'|'NOVEDADES'|'ALARMAS';
 type ItemStatus='PENDING'|'IN_PROGRESS'|'OVERDUE'|'COMPLETED'|'APPROVED'|'DISCARDED'|'NEW'|'ACKNOWLEDGED'|'ESCALATED'|'RESOLVED'|'CRITICAL'|'DRAFT'|'FINALIZED';
@@ -113,6 +114,7 @@ export default function ConsolaMonitor(){
   const scope=scopeByUser[user];
   const [filters,setFilters]=useState<Filters>(EMPTY_FILTERS);
   const [selectedId,setSelectedId]=useState('');
+  const [detailId,setDetailId]=useState('');
   const [filtersOpen,setFiltersOpen]=useState(false);
   const [incidents,setIncidents]=useState<IncidentRecord[]>([]);
   const [incidentEditorOpen,setIncidentEditorOpen]=useState(false);
@@ -156,7 +158,7 @@ export default function ConsolaMonitor(){
     }).sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt));
   },[scoped,filters,dateError]);
 
-  const selected=rows.find(x=>x.id===selectedId) ?? rows[0] ?? null;
+  const inspected=detailId?rows.find(x=>x.id===detailId)??null:null;
   const editingIncident=editingIncidentId?incidents.find(x=>x.id===editingIncidentId)??null:null;
   const metrics=useMemo(()=>({
     attention: scoped.filter(x=>['PENDING','OVERDUE','NEW','CRITICAL','ESCALATED'].includes(x.status)).length,
@@ -179,11 +181,10 @@ export default function ConsolaMonitor(){
     const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='consola_operativa.csv'; a.click(); URL.revokeObjectURL(url);
   }
 
-  function openNewIncident(){setEditingIncidentId('');setIncidentEditorOpen(true);}
+  function openNewIncident(){setDetailId('');setEditingIncidentId('');setIncidentEditorOpen(true);}
   function openRow(row:ConsoleItem){
     setSelectedId(row.id);
-    if(row.id.startsWith('incident:')){setEditingIncidentId(row.id.slice('incident:'.length));setIncidentEditorOpen(true);}
-    else {setEditingIncidentId('');setIncidentEditorOpen(false);}
+    setDetailId(row.id);setEditingIncidentId('');setIncidentEditorOpen(false);
   }
   function saveIncident(record:IncidentRecord){
     const fallback=locationOptions[0];
@@ -191,6 +192,7 @@ export default function ConsolaMonitor(){
     setIncidents(prev=>prev.some(x=>x.id===normalized.id)?prev.map(x=>x.id===normalized.id?normalized:x):[normalized,...prev]);
     const rowId=`incident:${normalized.id}`;
     setSelectedId(rowId);
+    setDetailId(rowId);
     setIncidentEditorOpen(false);
     setEditingIncidentId('');
     const today=normalized.updatedAt.slice(0,10);
@@ -267,7 +269,7 @@ export default function ConsolaMonitor(){
             <table className="csl-table nov-table">
               <thead><tr><th>Categoría</th><th>Subtipo</th><th>Código</th><th>Título</th><th>Cliente</th><th>Punto / Puesto</th><th>Responsable</th><th>Estado</th><th>Prioridad</th><th>Última actualización</th><th></th></tr></thead>
               <tbody>
-                {rows.map(row=><tr key={row.id} className={selected?.id===row.id?'selected':''} onClick={()=>openRow(row)}>
+                {rows.map(row=><tr key={row.id} className={selectedId===row.id?'selected':''} onClick={()=>openRow(row)}>
                   <td><span className={`csl-category ${categoryClass(row.category)}`}>{categoryIcon(row.category)}{categoryLabel(row.category)}</span></td>
                   <td>{row.subtype}</td>
                   <td>{row.code}</td>
@@ -278,7 +280,7 @@ export default function ConsolaMonitor(){
                   <td><span className={`csl-status ${statusClass(row.status)}`}>{statusLabel(row.status)}</span></td>
                   <td><span className={`csl-priority ${priorityClass(row.priority)}`}>{priorityLabel(row.priority)}</span></td>
                   <td>{formatDateTime(row.updatedAt)}</td>
-                  <td><button className="csl-view-action" onClick={e=>{e.stopPropagation();openRow(row)}}>{row.id.startsWith('incident:')?'Editar':'Ver'} <ChevronRight size={13}/></button></td>
+                  <td><button className="csl-view-action" onClick={e=>{e.stopPropagation();openRow(row)}}>Ver <ChevronRight size={13}/></button></td>
                 </tr>)}
                 {!rows.length && <tr><td className="empty" colSpan={11}>{dateError?'Corrija el rango de fechas para consultar resultados.':'No se encontraron casos con los filtros aplicados.'}</td></tr>}
               </tbody>
@@ -296,10 +298,14 @@ export default function ConsolaMonitor(){
           locations={locationOptions}
           onCancel={()=>{setIncidentEditorOpen(false);setEditingIncidentId('')}}
           onSave={saveIncident}
-        />:
-        <aside className="csl-detail-card csl-case-detail">
-          {selected?<><div className="csl-detail-head"><div className="csl-detail-titleline"><Eye size={18}/><strong>Detalle</strong></div><span className={`csl-category ${categoryClass(selected.category)}`}>{categoryIcon(selected.category)}{categoryLabel(selected.category)}</span><small>{selected.code}</small><h4>{selected.title}</h4><span className={`csl-status ${statusClass(selected.status)}`}>{statusLabel(selected.status)}</span></div><dl className="csl-detail-list"><Detail icon={<Building2 size={14}/>} label="Compañía" value={selected.company}/><Detail icon={<Building2 size={14}/>} label="Cliente" value={selected.client}/><Detail icon={<MapPin size={14}/>} label="Ciudad" value={selected.city}/><Detail icon={<MapPin size={14}/>} label="Punto" value={selected.point}/><Detail icon={<MapPin size={14}/>} label="Puesto" value={selected.post}/><Detail icon={<UserRound size={14}/>} label="Responsable" value={selected.responsible}/><Detail icon={<ShieldCheck size={14}/>} label="Subtipo" value={selected.subtype}/><Detail icon={<ShieldAlert size={14}/>} label="Prioridad" value={priorityLabel(selected.priority)}/><Detail icon={<Zap size={14}/>} label="Origen" value={selected.originLabel}/><Detail icon={<CheckCircle2 size={14}/>} label="Estado" value={statusLabel(selected.status)}/></dl><section className="csl-detail-text"><h4>Resumen operativo</h4><p>{selected.summary}</p></section><section className="csl-detail-text"><h4>Acción recomendada</h4><p>{selected.recommendedAction}</p></section><div className="csl-detail-meta"><div><span>Creado</span><strong>{formatDateTime(selected.createdAt)}</strong></div><div><span>Actualizado</span><strong>{formatDateTime(selected.updatedAt)}</strong></div></div>{selected.id.startsWith('incident:')&&<div className="csl-actions"><button className="primary" type="button" onClick={()=>openRow(selected)}>Editar incidente</button></div>}</>:<div className="csl-empty">Seleccione un caso operativo.</div>}
-        </aside>}
+        />:inspected&&<OperationalDrawer title={`${inspected.code} · ${categoryLabel(inspected.category)}`} subtitle={`${inspected.originLabel} · Detalle operativo`} onClose={()=>setDetailId('')} className="csl-view-modal" bodyClassName="csl-view-body" footer={<>
+          {inspected.id.startsWith('incident:')&&<button type="button" onClick={()=>{setEditingIncidentId(inspected.id.slice('incident:'.length));setIncidentEditorOpen(true)}}><Save size={15}/>Editar incidente</button>}
+          <button className="close" type="button" onClick={()=>setDetailId('')}><X size={15}/>Cerrar</button>
+        </>}>
+          <div className="csl-view-summary"><span className={`csl-category ${categoryClass(inspected.category)}`}>{categoryIcon(inspected.category)}{categoryLabel(inspected.category)}</span><strong>{inspected.title}</strong><span className={`csl-priority ${priorityClass(inspected.priority)}`}>{priorityLabel(inspected.priority)}</span><span className={`csl-status ${statusClass(inspected.status)}`}>{statusLabel(inspected.status)}</span></div>
+          <dl className="csl-detail-list csl-view-details"><Detail icon={<Building2 size={14}/>} label="Compañía" value={inspected.company}/><Detail icon={<Building2 size={14}/>} label="Cliente" value={inspected.client}/><Detail icon={<MapPin size={14}/>} label="Ciudad" value={inspected.city}/><Detail icon={<MapPin size={14}/>} label="Punto" value={inspected.point}/><Detail icon={<MapPin size={14}/>} label="Puesto" value={inspected.post}/><Detail icon={<UserRound size={14}/>} label="Responsable" value={inspected.responsible}/><Detail icon={<ShieldCheck size={14}/>} label="Subtipo" value={inspected.subtype}/><Detail icon={<Zap size={14}/>} label="Origen" value={inspected.originLabel}/><Detail icon={<CalendarDays size={14}/>} label="Creado" value={formatDateTime(inspected.createdAt)}/><Detail icon={<Clock3 size={14}/>} label="Actualizado" value={formatDateTime(inspected.updatedAt)}/></dl>
+          <section className="csl-view-note"><h4>Resumen operativo</h4><p>{inspected.summary}</p></section><section className="csl-view-note"><h4>Acción recomendada</h4><p>{inspected.recommendedAction}</p></section>
+        </OperationalDrawer>}
     </div>
   </div>
 }

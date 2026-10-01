@@ -1,7 +1,7 @@
-
 import { useEffect, useState } from 'react';
 import Sidebar, { SIMULATOR_MENU } from './components/Sidebar';
 import { api } from './api';
+
 import Header from './components/Header';
 import Dashboard from './pages/Dashboard';
 import Companies from './pages/Companies';
@@ -21,6 +21,24 @@ export default function App() {
   const [userRevision, setUserRevision] = useState(0);
   const [uatTools, setUatTools] = useState(false);
   useEffect(() => { api.features().then(f => setUatTools(f.uatTools)).catch(() => setUatTools(false)); }, [userRevision]);
+  /*const [contextReload, setContextReload] = useState(0);
+  const [coreContext, setCoreContext] = useState<any>(null);
+  const [coreError, setCoreError] = useState('');
+  const [coreLoaded, setCoreLoaded] = useState(false);
+
+  useEffect(() => {
+    let current = true;
+    setCoreLoaded(false);
+    setCoreContext(null);
+    setCoreError('');
+    void api.context(contextReload > 0).then(context => {
+      if (current) { setCoreContext(context); setCoreLoaded(true); }
+    }).catch(error => {
+      if (current) { setCoreError(error instanceof Error ? error.message : 'No se pudo cargar el contexto de CORE.'); setCoreLoaded(true); }
+    });
+    return () => { current = false; };
+  }, [userRevision,contextReload]);*/
+
   const page = active === 'Dashboard'
     ? <Dashboard />
     : active === 'Territorio'
@@ -51,8 +69,10 @@ export default function App() {
     <div className="app">
       <Sidebar active={active} onChange={setActive} uatTools={uatTools} />
       <main>
-        <Header title={title} onUserChange={() => setUserRevision((x) => x + 1)} />
-        <section key={`${active}-${userRevision}`}>{page}</section>
+        <Header title={title} coreContext={coreContext} onUserChange={() => {setCoreLoaded(false);setUserRevision((x) => x + 1)}} />
+        {coreError&&<div className="core-bootstrap-message"><span>{coreError}</span><button onClick={()=>{setCoreLoaded(false);setContextReload(value=>value+1)}}>Reintentar conexión</button></div>}
+        {coreContext?.coreSyncStatus==='STALE'&&<div className="core-bootstrap-message stale">Mostrando el último catálogo CORE sincronizado ({coreContext.territorialDatasetVersion}). {coreContext.coreSyncMessage||''}</div>}
+        <section key={`${active}-${userRevision}-${coreContext?.coreCatalogSyncedAt||coreError}`}>{coreLoaded?page:<div className="core-bootstrap-message">Cargando contexto del país y catálogos de CORE…</div>}</section>
       </main>
     </div>
   );

@@ -35,7 +35,7 @@ public class TerritoryResource {
     public record ZoneDto(UUID id,String code,String name,String status,UUID responsibleEmployeeId,String responsibleName,List<String> provinceCodes){}
     public record RegionDto(UUID id,UUID zoneId,String code,String name,String status,UUID responsibleEmployeeId,String responsibleName,List<String> provinceCodes){}
     public record CompanyDto(UUID id,String code,String name,String status,UUID regionId){}
-    public record ProvinceDto(UUID id,String code,String name,UUID zoneId,UUID regionId,String status){}
+    public record ProvinceDto(UUID id,String code,String name,UUID zoneId,UUID regionId,String status,UUID coreSubdivisionId,String geometryJson,String coreDatasetVersion){}
     public record ResponsibleDto(UUID employeeId,String fullName,String roleCode){}
     public record TreeResponse(List<ZoneDto> zones,List<RegionDto> regions,List<CompanyDto> companies,List<ProvinceDto> provinces){}
 
@@ -150,7 +150,7 @@ public class TerritoryResource {
             Set<UUID> zoneIds=scope.visibleZoneIds(); zones=zoneIds.isEmpty()?List.of():TerritoryZone.list("instanceCountryId=?1 and id in ?2 order by code",tenant.instanceCountryId(),zoneIds);
             provinces=zoneIds.isEmpty()?List.of():CountrySubdivision.list("instanceCountryId=?1 and zoneId in ?2 order by name",tenant.instanceCountryId(),zoneIds);
         }
-        return new TreeResponse(zones.stream().map(this::zoneDto).toList(),regions.stream().map(this::regionDto).toList(),companies.stream().map(c->new CompanyDto(c.id,c.code,c.name,c.status,c.regionId)).toList(),provinces.stream().map(p->new ProvinceDto(p.id,p.code,p.name,p.zoneId,p.regionId,p.status)).toList());
+        return new TreeResponse(zones.stream().map(this::zoneDto).toList(),regions.stream().map(this::regionDto).toList(),companies.stream().map(c->new CompanyDto(c.id,c.code,c.name,c.status,c.regionId)).toList(),provinces.stream().map(p->new ProvinceDto(p.id,p.code,p.name,p.zoneId,p.regionId,p.status,p.coreSubdivisionId,p.geometryJson,p.coreDatasetVersion)).toList());
     }
 
     private ZoneDto zoneDto(TerritoryZone z){ return new ZoneDto(z.id,z.code,z.name,z.status,z.responsibleEmployeeId,responsibleName(z.responsibleEmployeeId),provinceCodes(z.id,null)); }
