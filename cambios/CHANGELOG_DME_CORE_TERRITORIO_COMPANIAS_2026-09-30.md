@@ -28,7 +28,7 @@
 
 ## Configuración
 
-- `SGI_CORE_CATALOG_BASE_URL`: base del API CORE. Para el ambiente local actual, `http://192.168.20.138:5173/api/v1`.
+- `SGI_CORE_CATALOG_BASE_URL`: URL raíz del servidor CORE. Para el ambiente local actual, `http://192.168.20.138:5173`; el cliente agrega `/api/v1` a las rutas del catálogo.
 - `SGI_CORE_COUNTRY_CODE`: código ISO alpha-2 provisional; valor por defecto `EC`.
 - `SGI_CORE_INSTANCE_COUNTRY_CODE`: código opcional para escoger la Instancia–País cuando CORE devuelva más de una para el país; si existe una sola, no hace falta configurarlo.
 - `SGI_CORE_CATALOG_TIMEOUT_MS`: timeout de las consultas, por defecto 5000 ms.

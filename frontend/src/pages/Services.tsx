@@ -86,7 +86,7 @@ type AtsPackageDto={
 };
 
 type PostSkillSet={attendance:number;accessControl:number;patrol:number;judgement:number;tactical:number;bearing:number;leadership:number;customerService:number};
-type PostOperationalConfig={postId:string;postType:'CAA'|'PAT'|'VIG'|'MIX';description:string;atsLocationKey:string;atsLocationLabel:string;atsPackageId?:string|null;atsLocationX?:number|null;atsLocationY?:number|null;skills:PostSkillSet;adjustmentJustification?:string|null;configStatus:'DRAFT'|'CONFIGURED';updatedBy?:string|null};
+type PostOperationalConfig={postId:string;postType:'CAA'|'PAT'|'VIG'|'MIX';description:string;alias?:string|null;visualTitle?:string|null;standardImageId?:string|null;standardImageName?:string|null;atsLocationKey:string;atsLocationLabel:string;atsPackageId?:string|null;atsLocationX?:number|null;atsLocationY?:number|null;skills:PostSkillSet;adjustmentJustification?:string|null;configStatus:'DRAFT'|'CONFIGURED';updatedBy?:string|null};
 type CommercialPost={id:string;pointId:string;code:string;name:string;format:string;fhe:number;tier:string;rotationCode?:string|null;cycleLengthDays?:number|null};
 type CommercialShift={id:string;postId:string;shiftName:string;startsAt:string;endsAt:string};
 type CommercialWeek={posts:CommercialPost[];shifts:CommercialShift[]};
@@ -520,6 +520,9 @@ function PostsPage({point,onBack}:{point:PointRow;onBack:()=>void}){
   const [notice,setNotice]=useState('');
   const [pageError,setPageError]=useState('');
   const [searchPost,setSearchPost]=useState('');
+  const [photoUrl,setPhotoUrl]=useState('');
+  const [photoBusy,setPhotoBusy]=useState(false);
+  const photoInputRef=useRef<HTMLInputElement>(null);
 
   const setPlanObjectUrl=(url:string)=>{
     if(atsPlanObjectUrlRef.current)URL.revokeObjectURL(atsPlanObjectUrlRef.current);
@@ -542,14 +545,28 @@ function PostsPage({point,onBack}:{point:PointRow;onBack:()=>void}){
   useEffect(()=>{void load();return()=>{if(atsPlanObjectUrlRef.current)URL.revokeObjectURL(atsPlanObjectUrlRef.current)}},[point.pointId]);
 
   useEffect(()=>{
+    if(loading)return;
     const config=configs.find((item:PostOperationalConfig)=>item.postId===selectedPostId);
-    if(config){setDraft({...config,skills:{...config.skills}});return}
+    if(config){setDraft(previous=>previous?.postId===selectedPostId?{...previous,standardImageId:config.standardImageId,standardImageName:config.standardImageName}:{...config,skills:{...config.skills}});return}
     const row=point.posts.find((item:Row)=>item.postId===selectedPostId);
     if(row){
       const type:PostOperationalConfig['postType']=row.postName.toLowerCase().includes('acceso')?'CAA':row.postName.toLowerCase().includes('perímetro')?'PAT':'VIG';
       setDraft({postId:row.postId,postType:type,description:'',atsLocationKey:'',atsLocationLabel:'',atsPackageId:null,atsLocationX:null,atsLocationY:null,skills:{...POST_TEMPLATES[type]},adjustmentJustification:'',configStatus:'DRAFT'});
     }
-  },[configs,selectedPostId,point.posts]);
+  },[configs,selectedPostId,point.posts,loading]);
+
+  useEffect(()=>{
+    let active=true;
+    let url='';
+    setPhotoUrl('');
+    const imageId=configs.find((item:PostOperationalConfig)=>item.postId===selectedPostId)?.standardImageId;
+    if(imageId)void api.postStandardImage(selectedPostId,imageId).then(blob=>{
+      if(!active)return;
+      url=URL.createObjectURL(blob as Blob);
+      setPhotoUrl(url);
+    }).catch(error=>{if(active)setPageError(errorMessage(error))});
+    return()=>{active=false;if(url)URL.revokeObjectURL(url)};
+  },[configs,selectedPostId]);
 
   const filteredPosts=useMemo(()=>{
     const q=searchPost.trim().toLowerCase();
@@ -568,11 +585,11 @@ function PostsPage({point,onBack}:{point:PointRow;onBack:()=>void}){
   const template=draft?POST_TEMPLATES[draft.postType]:POST_TEMPLATES.VIG;
   const adjusted=draft?!skillsEqual(draft.skills,template):false;
   const hasPlanLocation=!!draft&&(atsPackage?(draft.atsLocationX!=null&&draft.atsLocationY!=null&&draft.atsPackageId===atsPackage.id):!!draft.atsLocationKey);
-  const postValidationMessages=()=>{
+  const postValidationMessages=(status:'DRAFT'|'CONFIGURED')=>{
     if(!draft)return [] as string[];
     const messages:string[]=[];
-    if(!draft.description.trim())messages.push('Ingresa la descripción operacional del Puesto.');
-    if(!hasPlanLocation)messages.push('Selecciona la ubicación del Puesto directamente en el plano ATS.');
+    if(status==='CONFIGURED'&&!draft.description.trim())messages.push('Ingresa la descripción operacional del Puesto.');
+    if(status==='CONFIGURED'&&!hasPlanLocation)messages.push('Selecciona la ubicación del Puesto directamente en el plano ATS.');
     if(currentRuleError)messages.push(currentRuleError);
     if(adjusted&&!draft.adjustmentJustification?.trim())messages.push('Ingresa una justificación para los ajustes de habilidades.');
     return messages;
@@ -593,7 +610,7 @@ function PostsPage({point,onBack}:{point:PointRow;onBack:()=>void}){
   };
   const save=async(status:'DRAFT'|'CONFIGURED')=>{
     if(!draft)return;
-    const validationMessages=postValidationMessages();
+    const validationMessages=postValidationMessages(status);
     if(validationMessages.length){
       setPageError(validationMessages.join(' '));
       return;
@@ -608,6 +625,28 @@ function PostsPage({point,onBack}:{point:PointRow;onBack:()=>void}){
       setDraft({...saved,skills:{...saved.skills}});
       setNotice(status==='CONFIGURED'?'Configuración del puesto guardada correctamente.':'Borrador guardado correctamente.');
     }catch(error){setPageError(errorMessage(error))}finally{setSaving(false)}
+  };
+
+  const uploadPhoto=async(file:File)=>{
+    if(!draft)return;
+    setPhotoBusy(true);setPageError('');setNotice('');
+    try{
+      const image=await api.uploadPostStandardImage(draft.postId,file) as {id:string;originalName:string};
+      const next={...draft,standardImageId:image.id,standardImageName:image.originalName};
+      setDraft(next);
+      setConfigs(previous=>previous.map(item=>item.postId===draft.postId?{...item,standardImageId:image.id,standardImageName:image.originalName}:item));
+      setNotice('Foto estándar guardada.');
+    }catch(error){setPageError(errorMessage(error))}finally{setPhotoBusy(false);if(photoInputRef.current)photoInputRef.current.value=''}
+  };
+  const removePhoto=async()=>{
+    if(!draft?.standardImageId)return;
+    setPhotoBusy(true);setPageError('');
+    try{
+      await api.deletePostStandardImage(draft.postId,draft.standardImageId);
+      setDraft({...draft,standardImageId:null,standardImageName:null});
+      setConfigs(previous=>previous.map(item=>item.postId===draft.postId?{...item,standardImageId:null,standardImageName:null}:item));
+      setNotice('Foto estándar eliminada.');
+    }catch(error){setPageError(errorMessage(error))}finally{setPhotoBusy(false)}
   };
 
   if(!selectedRow){return <div className="services-v01"><div className="ser-empty">Este punto no tiene puestos recibidos desde SIC: COM.</div></div>}
@@ -706,13 +745,28 @@ function PostsPage({point,onBack}:{point:PointRow;onBack:()=>void}){
             </div>
           </section>
 
+          <section className="posts-section posts-visual-identity">
+            <header><div><h4>D. Identificación del puesto</h4><span>Alias, foto estándar y título o descripción</span></div></header>
+            <div className="posts-visual-form">
+              <label><span>Alias de puesto</span><input value={draft.alias??''} maxLength={120} onChange={event=>setDraft({...draft,alias:event.target.value})} placeholder="Ej. Acceso principal"/></label>
+              <label><span>Título o descripción</span><textarea value={draft.visualTitle??''} maxLength={300} onChange={event=>setDraft({...draft,visualTitle:event.target.value})} placeholder="Describe lo que muestra la foto o identifica este puesto…"/></label>
+              <div className="posts-photo-field"><strong>Foto estándar</strong><span>Imagen de referencia del puesto · máximo 5 MB</span>
+                {photoUrl&&<img src={photoUrl} alt={draft.visualTitle||draft.alias||'Foto estándar del puesto'}/>}
+                {draft.standardImageId&&!photoUrl&&<span>Cargando foto…</span>}
+                <input ref={photoInputRef} type="file" accept="image/*" hidden onChange={event=>{const file=event.target.files?.[0];if(file)void uploadPhoto(file)}}/>
+                <div className="posts-photo-actions"><button type="button" onClick={()=>photoInputRef.current?.click()} disabled={photoBusy}><Upload size={14}/>{photoBusy?'Procesando…':draft.standardImageId?'Reemplazar foto':'Seleccionar foto'}</button>{draft.standardImageId&&<button type="button" onClick={()=>void removePhoto()} disabled={photoBusy}>Eliminar</button>}</div>
+                {draft.standardImageName&&<small>{draft.standardImageName}</small>}
+              </div>
+            </div>
+          </section>
+
           <section className="posts-section posts-permissions">
-            <header><div><h4>D. Permisos requeridos</h4><span>Permisos o acreditaciones especiales</span></div></header>
+            <header><div><h4>E. Permisos requeridos</h4><span>Permisos o acreditaciones especiales</span></div></header>
             <div className="posts-coming-soon"><LockKeyhole size={30}/><strong>Próximamente</strong><span>Aquí se configurarán permisos o acreditaciones especiales, por ejemplo del Ministerio del Interior.</span></div>
           </section>
         </div>}
 
-        <div className="posts-actions"><button className="ser-action ghost" onClick={()=>{const original=configs.find((item:PostOperationalConfig)=>item.postId===selectedPostId);if(original)setDraft({...original,skills:{...original.skills}})}}>Cancelar cambios</button><button className="ser-action ghost" onClick={()=>void save('DRAFT')} disabled={saving}><Save size={15}/>{saving?'Guardando…':'Guardar borrador'}</button><button className="ser-action primary" onClick={()=>void save('CONFIGURED')} disabled={saving}><Save size={15}/>{saving?'Guardando…':'Guardar configuración'}</button></div>
+        <div className="posts-actions"><button className="ser-action ghost" onClick={()=>{const original=configs.find((item:PostOperationalConfig)=>item.postId===selectedPostId);if(original)setDraft({...original,skills:{...original.skills}})}}>Cancelar cambios</button><button className="ser-action ghost" onClick={()=>void save('DRAFT')} disabled={saving||photoBusy}><Save size={15}/>{saving?'Guardando…':'Guardar borrador'}</button><button className="ser-action primary" onClick={()=>void save('CONFIGURED')} disabled={saving||photoBusy}><Save size={15}/>{saving?'Guardando…':'Guardar configuración'}</button></div>
       </div>
     </div>
   </div>
