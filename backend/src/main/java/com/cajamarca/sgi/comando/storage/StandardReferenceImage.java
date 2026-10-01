@@ -13,7 +13,7 @@ import java.util.*;
 @Table(name="standard_reference_image")
 public class StandardReferenceImage extends PanacheEntityBase {
     public static final int MAX = 5;
-    public static final String PATROL_CHECKPOINT = "PATROL_CHECKPOINT", CONSIGNMENT_EVIDENCE = "CONSIGNMENT_EVIDENCE", LOGBOOK_FIELD = "LOGBOOK_FIELD";
+    public static final String PATROL_CHECKPOINT = "PATROL_CHECKPOINT", CONSIGNMENT_EVIDENCE = "CONSIGNMENT_EVIDENCE", LOGBOOK_FIELD = "LOGBOOK_FIELD", POST_CONFIG = "POST_CONFIG";
 
     @Id public UUID id;
     @Column(name="instance_country_id", nullable=false) public UUID instanceCountryId;

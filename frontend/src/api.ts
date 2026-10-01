@@ -39,6 +39,7 @@ function standardImageUpload(path:string,file:File){const fd=new FormData();fd.a
 const bitacoraImageUpload=(fieldId:string,file:File)=>standardImageUpload(`/api/bitacora/fields/${encodeURIComponent(fieldId)}/standard-images`,file);
 const patrolImageUpload=(checkpointId:string,file:File)=>standardImageUpload(`/api/patrols/checkpoints/${encodeURIComponent(checkpointId)}/standard-images`,file);
 const consignmentImageUpload=(evidenceId:string,file:File)=>standardImageUpload(`/api/consignments/evidences/${encodeURIComponent(evidenceId)}/standard-images`,file);
+const postImageUpload=(postId:string,file:File)=>standardImageUpload(`/api/post-configurations/${encodeURIComponent(postId)}/standard-image`,file);
 async function atsUpload(pointId:string,file:File):Promise<any>{
  const headers=new Headers(); headers.set('Authorization','Basic '+btoa(`${currentUser}:${PASSWORD}`)); headers.set('Content-Type','application/octet-stream');
  const res=await fetch(`${API}/api/points/${encodeURIComponent(pointId)}/ats/upload?filename=${encodeURIComponent(file.name)}`,{method:'POST',headers,body:file});
@@ -118,6 +119,9 @@ export const api={
 
  postConfigurations:(pointId:string)=>request<any[]>(`/api/post-configurations?pointId=${encodeURIComponent(pointId)}`),
  savePostConfiguration:(postId:string,body:any)=>request<any>(`/api/post-configurations/${encodeURIComponent(postId)}`,{method:'PUT',body:JSON.stringify(body)}),
+ postStandardImage:(postId:string,imageId:string)=>binaryRequest(`/api/post-configurations/${encodeURIComponent(postId)}/standard-image/${encodeURIComponent(imageId)}`),
+ uploadPostStandardImage:postImageUpload,
+ deletePostStandardImage:(postId:string,imageId:string)=>request<void>(`/api/post-configurations/${encodeURIComponent(postId)}/standard-image/${encodeURIComponent(imageId)}`,{method:'DELETE'}),
  points:(serviceId:string)=>request<any[]>(`/api/services/${serviceId}/points`),
  posts:(pointId:string)=>request<any[]>(`/api/posts?pointId=${encodeURIComponent(pointId)}`),
  consignmentProtocols:(pointId:string)=>request<any[]>(`/api/consignments/protocols?pointId=${encodeURIComponent(pointId)}`),

@@ -10,6 +10,8 @@ public class PostOperationalConfig extends BaseEntity {
     @Column(name="post_id", nullable=false) public UUID postId;
     @Column(name="post_type", nullable=false, length=8) public String postType;
     @Column(name="description", nullable=false, length=600) public String description;
+    @Column(name="alias", length=120) public String alias;
+    @Column(name="visual_title", length=300) public String visualTitle;
     @Column(name="ats_location_key", nullable=false, length=64) public String atsLocationKey;
     @Column(name="ats_location_label", nullable=false, length=160) public String atsLocationLabel;
     @Column(name="ats_package_id") public UUID atsPackageId;

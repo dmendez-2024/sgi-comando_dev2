@@ -5,12 +5,15 @@ import com.cajamarca.sgi.comando.ats.AtsPointPackage;
 import com.cajamarca.sgi.comando.operations.PointEntity;
 import com.cajamarca.sgi.comando.operations.PostEntity;
 import com.cajamarca.sgi.comando.territory.OperationalScopeService;
+import com.cajamarca.sgi.comando.storage.StandardReferenceImage;
+import com.cajamarca.sgi.comando.storage.StandardReferenceImages;
 import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
+import jakarta.ws.rs.core.HttpHeaders;
 import jakarta.ws.rs.core.Response;
 import java.util.*;
 
@@ -23,10 +26,11 @@ public class PostConfigurationResource {
     @Inject TenantContext tenant;
     @Inject OperationalScopeService scope;
     @Inject SecurityIdentity identity;
+    @Inject StandardReferenceImages references;
 
     public record SkillSet(int attendance,int accessControl,int patrol,int judgement,int tactical,int bearing,int leadership,int customerService) {}
-    public record ConfigDto(UUID postId,String postType,String description,String atsLocationKey,String atsLocationLabel,UUID atsPackageId,Double atsLocationX,Double atsLocationY,SkillSet skills,String adjustmentJustification,String configStatus,String updatedBy) {}
-    public record SaveRequest(String postType,String description,String atsLocationKey,String atsLocationLabel,UUID atsPackageId,Double atsLocationX,Double atsLocationY,SkillSet skills,String adjustmentJustification,String configStatus) {}
+    public record ConfigDto(UUID postId,String postType,String description,String alias,String visualTitle,UUID standardImageId,String standardImageName,String atsLocationKey,String atsLocationLabel,UUID atsPackageId,Double atsLocationX,Double atsLocationY,SkillSet skills,String adjustmentJustification,String configStatus,String updatedBy) {}
+    public record SaveRequest(String postType,String description,String alias,String visualTitle,String atsLocationKey,String atsLocationLabel,UUID atsPackageId,Double atsLocationX,Double atsLocationY,SkillSet skills,String adjustmentJustification,String configStatus) {}
 
     @GET
     @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION","SUPERVISOR_SEGURIDAD","AGENTE_SEGURIDAD","CLIENTE"})
@@ -68,7 +72,9 @@ public class PostConfigurationResource {
             config.postId=postId;
         }
         config.postType=request.postType().trim().toUpperCase(Locale.ROOT);
-        config.description=request.description().trim();
+        config.description=blankToEmpty(request.description());
+        config.alias=blankToNull(request.alias());
+        config.visualTitle=blankToNull(request.visualTitle());
         config.atsLocationKey=blankToEmpty(request.atsLocationKey()).toUpperCase(Locale.ROOT);
         config.atsLocationLabel=blankToEmpty(request.atsLocationLabel());
         config.atsPackageId=request.atsPackageId();
@@ -91,23 +97,66 @@ public class PostConfigurationResource {
         return dto(config);
     }
 
+    @POST
+    @Path("/{postId}/standard-image")
+    @Consumes(MediaType.MULTIPART_FORM_DATA)
+    @Transactional
+    @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
+    public StandardReferenceImages.Dto uploadStandardImage(@PathParam("postId") UUID postId,@org.jboss.resteasy.reactive.RestForm("file") org.jboss.resteasy.reactive.multipart.FileUpload file){
+        authorizedPost(postId);
+        StandardReferenceImage current=standardImage(postId);
+        if(current!=null) references.delete(StandardReferenceImage.POST_CONFIG,postId,current.id);
+        StandardReferenceImage image=references.add(tenant.instanceCountryId(),StandardReferenceImage.POST_CONFIG,postId,"post",file);
+        return new StandardReferenceImages.Dto(image.id,image.position,image.originalName,image.contentType);
+    }
+
+    @GET
+    @Path("/{postId}/standard-image/{imageId}")
+    @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION","SUPERVISOR_SEGURIDAD","AGENTE_SEGURIDAD","CLIENTE"})
+    public Response readStandardImage(@PathParam("postId") UUID postId,@PathParam("imageId") UUID imageId){
+        authorizedPost(postId);
+        StandardReferenceImage image=references.get(StandardReferenceImage.POST_CONFIG,postId,imageId);
+        return Response.ok(references.read(image)).type(image.contentType).header(HttpHeaders.CACHE_CONTROL,"no-store").build();
+    }
+
+    @DELETE
+    @Path("/{postId}/standard-image/{imageId}")
+    @Transactional
+    @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
+    public void deleteStandardImage(@PathParam("postId") UUID postId,@PathParam("imageId") UUID imageId){
+        authorizedPost(postId);
+        references.delete(StandardReferenceImage.POST_CONFIG,postId,imageId);
+    }
+
+    private void authorizedPost(UUID postId){
+        PostEntity post=PostEntity.find("id=?1 and instanceCountryId=?2",postId,tenant.instanceCountryId()).firstResult();
+        if(post==null) throw new NotFoundException("Puesto no encontrado");
+        scope.requireCompany(point(post.pointId).companyId);
+    }
+
+    private StandardReferenceImage standardImage(UUID postId){
+        return StandardReferenceImage.find("targetType=?1 and targetId=?2 and instanceCountryId=?3",StandardReferenceImage.POST_CONFIG,postId,tenant.instanceCountryId()).firstResult();
+    }
+
     private void validate(SaveRequest request, PointEntity point){
         String type=request.postType()==null?"":request.postType().trim().toUpperCase(Locale.ROOT);
         if(!POST_TYPES.contains(type)) throw new BadRequestException("Tipo de Puesto inválido");
-        if(request.description()==null||request.description().isBlank()) throw new BadRequestException("La descripción es obligatoria");
-        if(request.description().trim().length()>600) throw new BadRequestException("La descripción no puede superar 600 caracteres");
+        boolean configured="CONFIGURED".equals(normalizeStatus(request.configStatus()));
+        if(configured&&(request.description()==null||request.description().isBlank())) throw new BadRequestException("La descripción es obligatoria");
+        if(request.description()!=null&&request.description().trim().length()>600) throw new BadRequestException("La descripción no puede superar 600 caracteres");
+        if(request.alias()!=null&&request.alias().trim().length()>120) throw new BadRequestException("El alias no puede superar 120 caracteres");
+        if(request.visualTitle()!=null&&request.visualTitle().trim().length()>300) throw new BadRequestException("El título o descripción no puede superar 300 caracteres");
         boolean hasCoordinates=request.atsLocationX()!=null&&request.atsLocationY()!=null;
         if(hasCoordinates){
             if(request.atsLocationX()<0||request.atsLocationX()>1||request.atsLocationY()<0||request.atsLocationY()>1) throw new BadRequestException("La ubicación del Puesto debe estar dentro de los límites del plano ATS");
             if(request.atsPackageId()==null) throw new BadRequestException("La ubicación del Puesto debe vincularse a la versión ATS vigente");
             AtsPointPackage ats=AtsPointPackage.find("id=?1 and pointId=?2 and instanceCountryId=?3 and current=true",request.atsPackageId(),point.id,tenant.instanceCountryId()).firstResult();
             if(ats==null) throw new BadRequestException("La ubicación debe vincularse a la versión ATS vigente del Punto");
-        }else{
+        }else if(configured){
             if(request.atsLocationKey()==null||request.atsLocationKey().isBlank()||request.atsLocationLabel()==null||request.atsLocationLabel().isBlank()) throw new BadRequestException("Debe seleccionar la ubicación del Puesto directamente sobre el plano ATS");
         }
         if(request.skills()==null) throw new BadRequestException("Las habilidades son obligatorias");
         validateSkills(request.skills());
-        normalizeStatus(request.configStatus());
     }
 
     private void validateSkills(SkillSet skills){
@@ -140,7 +189,8 @@ public class PostConfigurationResource {
     private ConfigDto defaults(PostEntity post){
         String type=post.name!=null&&post.name.toLowerCase(Locale.ROOT).contains("acceso")?"CAA":post.name!=null&&post.name.toLowerCase(Locale.ROOT).contains("perímetro")?"PAT":"VIG";
         SkillSet skills=template(type);
-        return new ConfigDto(post.id,type,"","","",null,null,null,skills,null,"DRAFT",null);
+        StandardReferenceImage image=standardImage(post.id);
+        return new ConfigDto(post.id,type,"",null,null,image==null?null:image.id,image==null?null:image.originalName,"","",null,null,null,skills,null,"DRAFT",null);
     }
 
     private SkillSet template(String type){
@@ -153,7 +203,8 @@ public class PostConfigurationResource {
     }
 
     private ConfigDto dto(PostOperationalConfig c){
-        return new ConfigDto(c.postId,c.postType,c.description,c.atsLocationKey,c.atsLocationLabel,c.atsPackageId,c.atsLocationX,c.atsLocationY,
+        StandardReferenceImage image=standardImage(c.postId);
+        return new ConfigDto(c.postId,c.postType,c.description,c.alias,c.visualTitle,image==null?null:image.id,image==null?null:image.originalName,c.atsLocationKey,c.atsLocationLabel,c.atsPackageId,c.atsLocationX,c.atsLocationY,
             new SkillSet(c.skillAttendance,c.skillAccessControl,c.skillPatrol,c.skillJudgement,c.skillTactical,c.skillBearing,c.skillLeadership,c.skillCustomerService),
             c.adjustmentJustification,c.configStatus,c.updatedByUsername);
     }
