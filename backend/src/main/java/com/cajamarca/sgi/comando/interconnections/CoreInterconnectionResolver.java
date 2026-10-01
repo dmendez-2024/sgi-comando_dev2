@@ -1,6 +1,7 @@
 package com.cajamarca.sgi.comando.interconnections;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.JsonNode;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
@@ -19,8 +20,10 @@ import java.util.UUID;
 public class CoreInterconnectionResolver {
     private static final Logger LOG = Logger.getLogger(CoreInterconnectionResolver.class);
 
+
+    // Opcional: sin URL el backend arranca igual y cada llamada falla con CORE_RESOLVER_NOT_CONFIGURED.
     @ConfigProperty(name="sgi.interconnections.core-resolver-url")
-    String coreResolverUrl;
+    java.util.Optional<String> coreResolverUrl;
 
     @ConfigProperty(name="sgi.interconnections.environment")
     String environment;
@@ -35,15 +38,15 @@ public class CoreInterconnectionResolver {
         .build();
 
     public ResolvedInterconnection resolve(String interconnectionId, String interfaceId, UUID instanceCountryId) {
-        if (coreResolverUrl == null || coreResolverUrl.isBlank()) {
+        if (coreResolverUrl.isEmpty() || coreResolverUrl.get().isBlank()) {
             throw new InterconnectionException("CORE_RESOLVER_NOT_CONFIGURED", "CORE resolver bootstrap URL is not configured");
         }
         try {
-            String url = trimSlash(coreResolverUrl)
+            String url = trimSlash(coreResolverUrl.get())
                 + "/api/v1/interconnections/" + enc(interconnectionId)
                 + "/resolve?instanceCountryId=" + enc(instanceCountryId.toString())
                 + "&environment=" + enc(environment)
-                + "&interfaceId=" + enc(interfaceId);
+                + (interfaceId == null ? "" : "&interfaceId=" + enc(interfaceId));
 
             HttpRequest request = HttpRequest.newBuilder(URI.create(url))
                 .timeout(Duration.ofMillis(Math.max(coreTimeoutMs, 250)))
@@ -54,9 +57,13 @@ public class CoreInterconnectionResolver {
 
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() < 200 || response.statusCode() >= 300) {
-                throw new InterconnectionException("CORE_RESOLUTION_HTTP_" + response.statusCode(), "CORE could not resolve interconnection binding");
+                String detail = remoteMessage(response.body());
+                String message = "CORE no pudo resolver la interconexión (HTTP " + response.statusCode() + ")";
+                if (detail != null) message += ": " + detail;
+                throw new InterconnectionException("CORE_RESOLUTION_HTTP_" + response.statusCode(), message);
             }
             ResolvedInterconnection resolved = objectMapper.readValue(response.body(), ResolvedInterconnection.class);
+            if (resolved != null) resolved.normalize();
             validateResolved(resolved, interconnectionId, interfaceId);
             return resolved;
         } catch (InterconnectionException e) {
@@ -67,14 +74,26 @@ public class CoreInterconnectionResolver {
         }
     }
 
+    private String remoteMessage(String body) {
+        try {
+            JsonNode message = objectMapper.readTree(body).get("message");
+            if (message == null || message.isNull() || !message.isValueNode()) return null;
+            String detail = message.asText().trim();
+            if (detail.isEmpty()) return null;
+            return detail.length() > 500 ? detail.substring(0, 500) : detail;
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
     private static void validateResolved(ResolvedInterconnection r, String expectedId, String expectedInterface) {
         if (r == null || r.baseUrl == null || r.baseUrl.isBlank() || r.path == null || r.method == null) {
             throw new InterconnectionException("INVALID_CORE_RESOLUTION", "CORE returned an incomplete binding");
         }
-        if (r.interconnectionId != null && !expectedId.equals(r.interconnectionId)) {
+        if (r.interconnectionId != null && !expectedId.equalsIgnoreCase(r.interconnectionId)) {
             throw new InterconnectionException("CORE_RESOLUTION_ID_MISMATCH", "CORE resolved a different interconnection ID");
         }
-        if (r.interfaceId != null && !expectedInterface.equals(r.interfaceId)) {
+        if (expectedInterface != null && r.interfaceId != null && !expectedInterface.equals(r.interfaceId)) {
             throw new InterconnectionException("CORE_RESOLUTION_INTERFACE_MISMATCH", "CORE resolved a different interface ID");
         }
     }

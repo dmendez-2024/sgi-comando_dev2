@@ -1,1 +1,8 @@
-{"module": "SGI_COM_INT", "version": "0.1", "build": "UAT", "date": "2026-09-21"}
+{
+  "module": "SGI_COM_NEX",
+  "version": "0.1.0",
+  "build": "FROZEN_UAT",
+  "date": "2026-09-27",
+  "freezeDate": "2026-09-27",
+  "deliveryDate": "2026-09-28"
+}

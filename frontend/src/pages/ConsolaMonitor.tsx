@@ -1,13 +1,15 @@
 import {useMemo, useState, type ReactNode} from 'react';
 import {
-  AlertTriangle, BellRing, Building2, CalendarDays, CheckCircle2, ClipboardList, Clock3,
+  AlertTriangle, BellRing, Building2, CalendarDays, ClipboardList, Clock3,
   Download, FileWarning, FilterX, MapPin, Monitor,
-  RefreshCw, Search, ShieldAlert, ShieldCheck, UserRound, Zap, CircleAlert, X, ChevronRight
+  RefreshCw, Save, Search, ShieldAlert, ShieldCheck, UserRound, Zap, CircleAlert, ChevronRight, Filter, ChevronDown, Plus, X
 } from 'lucide-react';
 import {getUser, type UatUser} from '../api';
+import IncidentNotificationPanel, {type IncidentRecord, type LocationOption, type IncidentSeverity} from '../components/IncidentNotificationPanel';
+import {OperationalDrawer} from '../components/OperationalDrawer';
 
 type ItemCategory='CONSIGNAS'|'NOVEDADES'|'ALARMAS';
-type ItemStatus='PENDING'|'IN_PROGRESS'|'OVERDUE'|'COMPLETED'|'APPROVED'|'DISCARDED'|'NEW'|'ACKNOWLEDGED'|'ESCALATED'|'RESOLVED'|'CRITICAL';
+type ItemStatus='PENDING'|'IN_PROGRESS'|'OVERDUE'|'COMPLETED'|'APPROVED'|'DISCARDED'|'NEW'|'ACKNOWLEDGED'|'ESCALATED'|'RESOLVED'|'CRITICAL'|'DRAFT'|'FINALIZED';
 type Priority='LOW'|'MEDIUM'|'HIGH'|'CRITICAL';
 
 type ConsoleItem={
@@ -88,8 +90,8 @@ const EMPTY_FILTERS:Filters={category:'ALL',query:'',city:'',company:'ALL',clien
 const categoryLabel=(value:ItemCategory)=>value==='CONSIGNAS'?'Consignas':value==='NOVEDADES'?'Novedades':'Alarmas electrónicas';
 const categoryClass=(value:ItemCategory)=>value==='CONSIGNAS'?'consignas':value==='NOVEDADES'?'novedades':'alarmas';
 const categoryIcon=(value:ItemCategory)=>value==='CONSIGNAS'?<ClipboardList size={15}/>:value==='NOVEDADES'?<FileWarning size={15}/>:<BellRing size={15}/>;
-const statusLabel=(value:ItemStatus)=>({PENDING:'Pendiente',IN_PROGRESS:'En curso',OVERDUE:'Vencida',COMPLETED:'Completada',APPROVED:'Aprobada',DISCARDED:'Descartada',NEW:'Nueva',ACKNOWLEDGED:'Reconocida',ESCALATED:'Escalada',RESOLVED:'Resuelta',CRITICAL:'Crítica'}[value]);
-const statusClass=(value:ItemStatus)=>({PENDING:'warning',IN_PROGRESS:'info',OVERDUE:'danger',COMPLETED:'success',APPROVED:'success',DISCARDED:'neutral',NEW:'info',ACKNOWLEDGED:'info',ESCALATED:'warning',RESOLVED:'success',CRITICAL:'danger'}[value]);
+const statusLabel=(value:ItemStatus)=>({PENDING:'Pendiente',IN_PROGRESS:'En curso',OVERDUE:'Vencida',COMPLETED:'Completada',APPROVED:'Aprobada',DISCARDED:'Descartada',NEW:'Nueva',ACKNOWLEDGED:'Reconocida',ESCALATED:'Escalada',RESOLVED:'Resuelta',CRITICAL:'Crítica',DRAFT:'Borrador',FINALIZED:'Finalizado'}[value]);
+const statusClass=(value:ItemStatus)=>({PENDING:'warning',IN_PROGRESS:'info',OVERDUE:'danger',COMPLETED:'success',APPROVED:'success',DISCARDED:'neutral',NEW:'info',ACKNOWLEDGED:'info',ESCALATED:'warning',RESOLVED:'success',CRITICAL:'danger',DRAFT:'neutral',FINALIZED:'success'}[value]);
 const priorityClass=(value:Priority)=>({LOW:'neutral',MEDIUM:'info',HIGH:'warning',CRITICAL:'danger'}[value]);
 const priorityLabel=(value:Priority)=>({LOW:'Baja',MEDIUM:'Media',HIGH:'Alta',CRITICAL:'Crítica'}[value]);
 const formatDateTime=(value:string)=>new Intl.DateTimeFormat('es-EC',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}).format(new Date(value));
@@ -98,14 +100,38 @@ const unique=(values:string[])=>Array.from(new Set(values)).sort((a,b)=>a.locale
 function withinScope(row:ConsoleItem,scope:Scope){ if(scope.companies && !scope.companies.includes(row.companyCode)) return false; if(scope.zone && row.zone!==scope.zone) return false; if(scope.region && row.region!==scope.region) return false; return true; }
 function validateRange(from:string,to:string){ if(!from||!to) return 'Debe elegir siempre una fecha inicio y una fecha fin.'; if(to<from) return 'La fecha fin no puede ser menor que la fecha inicio.'; const start=new Date(`${from}T00:00:00`); const max=new Date(start); max.setFullYear(max.getFullYear()+1); const end=new Date(`${to}T23:59:59`); return end>max?'El período consultado no puede ser mayor a 1 año.':''; }
 
+const severityToPriority=(value:IncidentSeverity|''):Priority=>value==='CRITICAL'?'CRITICAL':value==='MAJOR'?'HIGH':value==='MODERATE'?'MEDIUM':'LOW';
+const incidentToConsoleItem=(record:IncidentRecord):ConsoleItem=>({
+  id:`incident:${record.id}`,category:'NOVEDADES',subtype:'Incidente',code:record.code,title:record.title||'Incidente sin título',
+  company:record.company||'—',companyCode:record.companyCode||'GAL',client:record.client||'—',city:record.city||'—',point:record.point||'—',post:record.post||'—',
+  responsible:record.collaboratorNames.join(', ')||'Operador de Consola',zone:'Zona Costa',region:'Costa Sur',status:record.status,priority:severityToPriority(record.severity),
+  createdAt:record.createdAt||record.updatedAt,updatedAt:record.updatedAt,summary:record.description||'Incidente en elaboración.',source:'NOV',originLabel:`Novedades · Incidentes · ${record.incidentType||record.subcategory||'Sin clasificar'}`,
+  recommendedAction:record.status==='DRAFT'?'Completar y finalizar la notificación del incidente.':'Incidente finalizado; puede reabrirse para edición desde Consola.'
+});
+
 export default function ConsolaMonitor(){
   const user=getUser();
   const scope=scopeByUser[user];
   const [filters,setFilters]=useState<Filters>(EMPTY_FILTERS);
   const [selectedId,setSelectedId]=useState('');
-  const [viewedId,setViewedId]=useState('');
+  const [detailId,setDetailId]=useState('');
+  const [filtersOpen,setFiltersOpen]=useState(false);
+  const [incidents,setIncidents]=useState<IncidentRecord[]>([]);
+  const [incidentEditorOpen,setIncidentEditorOpen]=useState(false);
+  const [editingIncidentId,setEditingIncidentId]=useState('');
 
-  const scoped=useMemo(()=>DATA.filter(x=>withinScope(x,scope)),[scope]);
+  const incidentRows=useMemo(()=>incidents.map(incidentToConsoleItem),[incidents]);
+  const allRows=useMemo(()=>[...DATA,...incidentRows],[incidentRows]);
+  const scoped=useMemo(()=>allRows.filter(x=>withinScope(x,scope)),[allRows,scope]);
+  const locationOptions=useMemo<LocationOption[]>(()=>{
+    const seen=new Set<string>();
+    return DATA.filter(x=>withinScope(x,scope)).flatMap(row=>{
+      const key=`${row.client}|${row.point}|${row.post}`;
+      if(seen.has(key))return [];
+      seen.add(key);
+      return [{client:row.client,point:row.point,post:row.post,company:row.company,companyCode:row.companyCode,city:row.city}];
+    });
+  },[scope]);
   const cities=useMemo(()=>unique(scoped.map(x=>x.city)),[scoped]);
   const companies=useMemo(()=>unique(scoped.map(x=>x.company)),[scoped]);
   const clients=useMemo(()=>unique(scoped.map(x=>x.client)),[scoped]);
@@ -132,8 +158,8 @@ export default function ConsolaMonitor(){
     }).sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt));
   },[scoped,filters,dateError]);
 
-  const selected=rows.find(x=>x.id===selectedId) ?? rows[0] ?? null;
-  const viewed=scoped.find(x=>x.id===viewedId) ?? null;
+  const inspected=detailId?rows.find(x=>x.id===detailId)??null:null;
+  const editingIncident=editingIncidentId?incidents.find(x=>x.id===editingIncidentId)??null:null;
   const metrics=useMemo(()=>({
     attention: scoped.filter(x=>['PENDING','OVERDUE','NEW','CRITICAL','ESCALATED'].includes(x.status)).length,
     reassign: scoped.filter(x=>x.subtype==='Reasignación' && !['COMPLETED','RESOLVED','APPROVED','DISCARDED'].includes(x.status)).length,
@@ -155,6 +181,26 @@ export default function ConsolaMonitor(){
     const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='consola_operativa.csv'; a.click(); URL.revokeObjectURL(url);
   }
 
+  function openNewIncident(){setDetailId('');setEditingIncidentId('');setIncidentEditorOpen(true);}
+  function openRow(row:ConsoleItem){
+    setSelectedId(row.id);
+    setDetailId(row.id);setEditingIncidentId('');setIncidentEditorOpen(false);
+  }
+  function saveIncident(record:IncidentRecord){
+    const fallback=locationOptions[0];
+    const normalized:IncidentRecord=record.companyCode||!fallback?record:{...record,company:fallback.company,companyCode:fallback.companyCode,city:fallback.city};
+    setIncidents(prev=>prev.some(x=>x.id===normalized.id)?prev.map(x=>x.id===normalized.id?normalized:x):[normalized,...prev]);
+    const rowId=`incident:${normalized.id}`;
+    setSelectedId(rowId);
+    setDetailId(rowId);
+    setIncidentEditorOpen(false);
+    setEditingIncidentId('');
+    const today=normalized.updatedAt.slice(0,10);
+    const start=new Date(`${today}T00:00:00`); start.setDate(start.getDate()-30);
+    setFilters(prev=>({...prev,category:'ALL',query:'',status:'ALL',dateFrom:start.toISOString().slice(0,10),dateTo:today}));
+  }
+  const nextIncidentCode=`INC-${new Date().getFullYear()}-${String(incidents.length+1).padStart(4,'0')}`;
+
   return <div className="csl-page nov-page">
     <div className="csl-topbar nov-topbar">
       <div><div className="page-backline">Operaciones / Consola</div><h2>Consola</h2><p>Workspace operativo para Monitores: consignas, novedades, reasignaciones y alarmas electrónicas.</p></div>
@@ -174,29 +220,48 @@ export default function ConsolaMonitor(){
       <section className="csl-main-card nov-main-card">
         <div className="csl-card-head">
           <div className="csl-title"><Search size={20}/><h3>Bandeja operativa unificada</h3></div>
-          <div className="csl-tabs">
-            <button className={filters.category==='ALL'?'active':''} onClick={()=>set('category','ALL')}>Todos</button>
-            <button className={filters.category==='CONSIGNAS'?'active':''} onClick={()=>set('category','CONSIGNAS')}><ClipboardList size={14}/>Consignas</button>
-            <button className={filters.category==='NOVEDADES'?'active':''} onClick={()=>set('category','NOVEDADES')}><FileWarning size={14}/>Novedades</button>
-            <button className={filters.category==='ALARMAS'?'active':''} onClick={()=>set('category','ALARMAS')}><BellRing size={14}/>Alarmas electrónicas</button>
+          <div className="csl-head-actions">
+            <button type="button" className="csl-notify-incident" onClick={openNewIncident}><img src="/assets/csl-incidents/incident.png" alt=""/><span><Plus size={14}/>Notificar Incidente</span></button>
+            <div className="csl-tabs">
+              <button className={filters.category==='ALL'?'active':''} onClick={()=>set('category','ALL')}>Todos</button>
+              <button className={filters.category==='CONSIGNAS'?'active':''} onClick={()=>set('category','CONSIGNAS')}><ClipboardList size={14}/>Consignas</button>
+              <button className={filters.category==='NOVEDADES'?'active':''} onClick={()=>set('category','NOVEDADES')}><FileWarning size={14}/>Novedades</button>
+              <button className={filters.category==='ALARMAS'?'active':''} onClick={()=>set('category','ALARMAS')}><BellRing size={14}/>Alarmas electrónicas</button>
+            </div>
           </div>
         </div>
-        <label className="csl-main-search nov-main-search"><Search size={18}/><input value={filters.query} onChange={e=>set('query',e.target.value)} placeholder="Buscar por código, título, cliente, punto, puesto o responsable…"/></label>
+        <div className={`csl-filter-accordion ${filtersOpen?'open':''}`}>
+          <button
+            type="button"
+            className="csl-filter-toggle"
+            aria-expanded={filtersOpen}
+            aria-controls="csl-search-filters"
+            onClick={()=>setFiltersOpen(open=>!open)}
+          >
+            <span><Filter size={18}/>Filtros de búsqueda</span>
+            <ChevronDown size={18} className="csl-filter-chevron" aria-hidden="true"/>
+          </button>
+          <div id="csl-search-filters" className="csl-filter-panel" aria-hidden={!filtersOpen}>
+            <div className="csl-filter-panel-inner">
+              <label className="csl-main-search nov-main-search"><Search size={18}/><input value={filters.query} onChange={e=>set('query',e.target.value)} placeholder="Buscar por código, título, cliente, punto, puesto o responsable…"/></label>
 
-        <div className="csl-filter-grid">
-          <Field label="Ciudad"><select value={filters.city} onChange={e=>set('city',e.target.value)}><option value="">Todas</option>{cities.map(x=><option key={x}>{x}</option>)}</select></Field>
-          <Field label="Compañía"><select value={filters.company} onChange={e=>setCompany(e.target.value)}><option value="ALL">Todas</option>{companies.map(x=><option key={x}>{x}</option>)}</select></Field>
-          <Field label="Cliente"><select value={filters.client} onChange={e=>setClient(e.target.value)}><option value="">Todos</option>{clients.map(x=><option key={x}>{x}</option>)}</select></Field>
-          <Field label="Punto"><select value={filters.point} onChange={e=>setPoint(e.target.value)} disabled={!filters.client}><option value="">{filters.client?'Todos':'Seleccione un cliente primero'}</option>{points.map(x=><option key={x}>{x}</option>)}</select></Field>
-          <Field label="Puesto"><select value={filters.post} onChange={e=>set('post',e.target.value)} disabled={!filters.point}><option value="">{filters.point?'Todos':'Seleccione un punto primero'}</option>{posts.map(x=><option key={x}>{x}</option>)}</select></Field>
-          <Field label="Estado"><select value={filters.status} onChange={e=>set('status',e.target.value as Filters['status'])}><option value="ALL">Todos</option><option value="PENDING">Pendiente</option><option value="IN_PROGRESS">En curso</option><option value="OVERDUE">Vencida</option><option value="COMPLETED">Completada</option><option value="APPROVED">Aprobada</option><option value="DISCARDED">Descartada</option><option value="NEW">Nueva</option><option value="ACKNOWLEDGED">Reconocida</option><option value="ESCALATED">Escalada</option><option value="RESOLVED">Resuelta</option><option value="CRITICAL">Crítica</option></select></Field>
-          <Field label="Responsable"><select value={filters.responsible} onChange={e=>set('responsible',e.target.value)} disabled={filters.company==='ALL'}><option value="">{filters.company!=='ALL'?'Todos':'Seleccione una compañía primero'}</option>{responsibles.map(x=><option key={x}>{x}</option>)}</select></Field>
-          <Field label="Fecha inicio"><input type="date" value={filters.dateFrom} onChange={e=>set('dateFrom',e.target.value)}/></Field>
-          <Field label="Fecha fin"><input type="date" value={filters.dateTo} onChange={e=>set('dateTo',e.target.value)}/></Field>
+              <div className="csl-filter-grid">
+                <Field label="Ciudad"><select value={filters.city} onChange={e=>set('city',e.target.value)}><option value="">Todas</option>{cities.map(x=><option key={x}>{x}</option>)}</select></Field>
+                <Field label="Compañía"><select value={filters.company} onChange={e=>setCompany(e.target.value)}><option value="ALL">Todas</option>{companies.map(x=><option key={x}>{x}</option>)}</select></Field>
+                <Field label="Cliente"><select value={filters.client} onChange={e=>setClient(e.target.value)}><option value="">Todos</option>{clients.map(x=><option key={x}>{x}</option>)}</select></Field>
+                <Field label="Punto"><select value={filters.point} onChange={e=>setPoint(e.target.value)} disabled={!filters.client}><option value="">{filters.client?'Todos':'Seleccione un cliente primero'}</option>{points.map(x=><option key={x}>{x}</option>)}</select></Field>
+                <Field label="Puesto"><select value={filters.post} onChange={e=>set('post',e.target.value)} disabled={!filters.point}><option value="">{filters.point?'Todos':'Seleccione un punto primero'}</option>{posts.map(x=><option key={x}>{x}</option>)}</select></Field>
+                <Field label="Estado"><select value={filters.status} onChange={e=>set('status',e.target.value as Filters['status'])}><option value="ALL">Todos</option><option value="PENDING">Pendiente</option><option value="IN_PROGRESS">En curso</option><option value="OVERDUE">Vencida</option><option value="COMPLETED">Completada</option><option value="APPROVED">Aprobada</option><option value="DISCARDED">Descartada</option><option value="NEW">Nueva</option><option value="ACKNOWLEDGED">Reconocida</option><option value="ESCALATED">Escalada</option><option value="RESOLVED">Resuelta</option><option value="CRITICAL">Crítica</option><option value="DRAFT">Borrador</option><option value="FINALIZED">Finalizado</option></select></Field>
+                <Field label="Responsable"><select value={filters.responsible} onChange={e=>set('responsible',e.target.value)} disabled={filters.company==='ALL'}><option value="">{filters.company!=='ALL'?'Todos':'Seleccione una compañía primero'}</option>{responsibles.map(x=><option key={x}>{x}</option>)}</select></Field>
+                <Field label="Fecha inicio"><input type="date" value={filters.dateFrom} onChange={e=>set('dateFrom',e.target.value)}/></Field>
+                <Field label="Fecha fin"><input type="date" value={filters.dateTo} onChange={e=>set('dateTo',e.target.value)}/></Field>
+              </div>
+              <div className="csl-rules-note"><CircleAlert size={15}/><span>Fechas obligatorias. Rango máximo: 1 año. Punto depende de Cliente; Puesto depende de Punto; Responsable depende de Compañía.</span></div>
+              {dateError && <div className="csl-validation-error"><AlertTriangle size={16}/><span>{dateError}</span></div>}
+              <div className="csl-search-actions"><button className="primary" disabled={!!dateError}><Search size={16}/>Buscar</button><button onClick={clear}><FilterX size={16}/>Limpiar filtros</button><button className="export" onClick={exportCsv} disabled={!!dateError || !rows.length}><Download size={16}/>Exportar</button></div>
+            </div>
+          </div>
         </div>
-        <div className="csl-rules-note"><CircleAlert size={15}/><span>Fechas obligatorias. Rango máximo: 1 año. Punto depende de Cliente; Puesto depende de Punto; Responsable depende de Compañía.</span></div>
-        {dateError && <div className="csl-validation-error"><AlertTriangle size={16}/><span>{dateError}</span></div>}
-        <div className="csl-search-actions"><button className="primary" disabled={!!dateError}><Search size={16}/>Buscar</button><button onClick={clear}><FilterX size={16}/>Limpiar filtros</button><button className="export" onClick={exportCsv} disabled={!!dateError || !rows.length}><Download size={16}/>Exportar</button></div>
 
         <div className="csl-results-card nov-results-card">
           <div className="csl-results-head nov-results-head"><h3>Casos operativos ({rows.length})</h3><div>Ordenado por <strong>Última actualización</strong></div></div>
@@ -204,7 +269,7 @@ export default function ConsolaMonitor(){
             <table className="csl-table nov-table">
               <thead><tr><th>Categoría</th><th>Subtipo</th><th>Código</th><th>Título</th><th>Cliente</th><th>Punto / Puesto</th><th>Responsable</th><th>Estado</th><th>Prioridad</th><th>Última actualización</th><th></th></tr></thead>
               <tbody>
-                {rows.map(row=><tr key={row.id} className={selected?.id===row.id?'selected':''} onClick={()=>{setSelectedId(row.id);setViewedId(row.id)}}>
+                {rows.map(row=><tr key={row.id} className={selectedId===row.id?'selected':''} onClick={()=>openRow(row)}>
                   <td><span className={`csl-category ${categoryClass(row.category)}`}>{categoryIcon(row.category)}{categoryLabel(row.category)}</span></td>
                   <td>{row.subtype}</td>
                   <td>{row.code}</td>
@@ -215,7 +280,7 @@ export default function ConsolaMonitor(){
                   <td><span className={`csl-status ${statusClass(row.status)}`}>{statusLabel(row.status)}</span></td>
                   <td><span className={`csl-priority ${priorityClass(row.priority)}`}>{priorityLabel(row.priority)}</span></td>
                   <td>{formatDateTime(row.updatedAt)}</td>
-                  <td><button className="csl-view-action" onClick={e=>{e.stopPropagation();setSelectedId(row.id);setViewedId(row.id)}}>Ver <ChevronRight size={13}/></button></td>
+                  <td><button className="csl-view-action" onClick={e=>{e.stopPropagation();openRow(row)}}>Ver <ChevronRight size={13}/></button></td>
                 </tr>)}
                 {!rows.length && <tr><td className="empty" colSpan={11}>{dateError?'Corrija el rango de fechas para consultar resultados.':'No se encontraron casos con los filtros aplicados.'}</td></tr>}
               </tbody>
@@ -225,8 +290,23 @@ export default function ConsolaMonitor(){
         </div>
       </section>
 
+      {incidentEditorOpen?
+        <IncidentNotificationPanel
+          key={editingIncident?.id??`new-${nextIncidentCode}`}
+          initial={editingIncident}
+          nextCode={nextIncidentCode}
+          locations={locationOptions}
+          onCancel={()=>{setIncidentEditorOpen(false);setEditingIncidentId('')}}
+          onSave={saveIncident}
+        />:inspected&&<OperationalDrawer title={`${inspected.code} · ${categoryLabel(inspected.category)}`} subtitle={`${inspected.originLabel} · Detalle operativo`} onClose={()=>setDetailId('')} className="csl-view-modal" bodyClassName="csl-view-body" footer={<>
+          {inspected.id.startsWith('incident:')&&<button type="button" onClick={()=>{setEditingIncidentId(inspected.id.slice('incident:'.length));setIncidentEditorOpen(true)}}><Save size={15}/>Editar incidente</button>}
+          <button className="close" type="button" onClick={()=>setDetailId('')}><X size={15}/>Cerrar</button>
+        </>}>
+          <div className="csl-view-summary"><span className={`csl-category ${categoryClass(inspected.category)}`}>{categoryIcon(inspected.category)}{categoryLabel(inspected.category)}</span><strong>{inspected.title}</strong><span className={`csl-priority ${priorityClass(inspected.priority)}`}>{priorityLabel(inspected.priority)}</span><span className={`csl-status ${statusClass(inspected.status)}`}>{statusLabel(inspected.status)}</span></div>
+          <dl className="csl-detail-list csl-view-details"><Detail icon={<Building2 size={14}/>} label="Compañía" value={inspected.company}/><Detail icon={<Building2 size={14}/>} label="Cliente" value={inspected.client}/><Detail icon={<MapPin size={14}/>} label="Ciudad" value={inspected.city}/><Detail icon={<MapPin size={14}/>} label="Punto" value={inspected.point}/><Detail icon={<MapPin size={14}/>} label="Puesto" value={inspected.post}/><Detail icon={<UserRound size={14}/>} label="Responsable" value={inspected.responsible}/><Detail icon={<ShieldCheck size={14}/>} label="Subtipo" value={inspected.subtype}/><Detail icon={<Zap size={14}/>} label="Origen" value={inspected.originLabel}/><Detail icon={<CalendarDays size={14}/>} label="Creado" value={formatDateTime(inspected.createdAt)}/><Detail icon={<Clock3 size={14}/>} label="Actualizado" value={formatDateTime(inspected.updatedAt)}/></dl>
+          <section className="csl-view-note"><h4>Resumen operativo</h4><p>{inspected.summary}</p></section><section className="csl-view-note"><h4>Acción recomendada</h4><p>{inspected.recommendedAction}</p></section>
+        </OperationalDrawer>}
     </div>
-    {viewed&&<div className="nov-modal-backdrop csl-view-backdrop" onClick={()=>setViewedId('')}><aside className="nov-modal csl-view-modal" role="dialog" aria-modal="true" aria-labelledby="csl-view-title" onClick={e=>e.stopPropagation()}><header><div><h3 id="csl-view-title">Detalle del caso operativo</h3><span>{viewed.code} · {categoryLabel(viewed.category)} · Solo lectura</span></div><button aria-label="Cerrar detalle" onClick={()=>setViewedId('')}><X size={19}/></button></header><div className="nov-modal-body csl-view-body"><div className="csl-view-summary"><span className={`csl-category ${categoryClass(viewed.category)}`}>{categoryIcon(viewed.category)}{categoryLabel(viewed.category)}</span><strong>{viewed.title}</strong><span className={`csl-status ${statusClass(viewed.status)}`}>{statusLabel(viewed.status)}</span></div><dl className="csl-detail-list csl-view-details"><Detail icon={<Building2 size={14}/>} label="Compañía" value={viewed.company}/><Detail icon={<Building2 size={14}/>} label="Cliente" value={viewed.client}/><Detail icon={<MapPin size={14}/>} label="Ciudad" value={viewed.city}/><Detail icon={<MapPin size={14}/>} label="Punto" value={viewed.point}/><Detail icon={<MapPin size={14}/>} label="Puesto" value={viewed.post}/><Detail icon={<UserRound size={14}/>} label="Responsable" value={viewed.responsible}/><Detail icon={<ShieldCheck size={14}/>} label="Subtipo" value={viewed.subtype}/><Detail icon={<ShieldAlert size={14}/>} label="Prioridad" value={priorityLabel(viewed.priority)}/><Detail icon={<Zap size={14}/>} label="Origen" value={viewed.originLabel}/><Detail icon={<CheckCircle2 size={14}/>} label="Estado" value={statusLabel(viewed.status)}/><Detail icon={<CalendarDays size={14}/>} label="Creado" value={formatDateTime(viewed.createdAt)}/><Detail icon={<Clock3 size={14}/>} label="Última actualización" value={formatDateTime(viewed.updatedAt)}/></dl><section className="csl-view-note"><h4>Resumen operativo</h4><p>{viewed.summary}</p></section><section className="csl-view-note"><h4>Acción recomendada</h4><p>{viewed.recommendedAction}</p></section></div><footer><button type="button" className="csl-view-full-detail"><Search size={16}/>Ver detalle completo</button></footer></aside></div>}
   </div>
 }
 

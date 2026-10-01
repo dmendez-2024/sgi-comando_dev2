@@ -1,3 +1,5 @@
+> **HISTÓRICO / SUPERSEDED 2026-09-27:** Documento histórico de INT v0.1. Los IDs v3 aquí citados son aliases; consultar `docs/KNOWN_LIMITATIONS.md`, `docs/INTERCONNECTIONS.md` y CURRENT para el estado vigente.
+
 # Known Limitations — INT v0.1
 
 - El módulo genérico está implementado, pero los adapters de negocio aún deben migrarse gradualmente desde providers LOCAL/ad-hoc hacia `GenericInterconnectionExecutor` usando los IDs canónicos.

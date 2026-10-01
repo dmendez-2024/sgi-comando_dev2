@@ -1,5 +1,7 @@
 # SGI: Comando — Cierre Final de Definición
 
+> **CIERRE HISTÓRICO SUPERSEDIDO / REABIERTO:** este documento registra el cierre del 2026-09-20. SISTEMAS devolvió una baseline posterior (`sgi-comando_dev.zip`, commit `8c528e8`, 2026-09-25) y el P0/P1 RC 2026-09-27 supersede la arquitectura/SITC y la definición de SoR de Impulsos aquí contenidas. Las verticales no modificadas conservan su historial; para estado vigente leer `docs/00_HANDOFF.md`, `docs/DECISIONS.md` y `sitc/SGI_Comando_CURRENT.sitcpack`.
+
 **Fecha de cierre:** 2026-09-20  
 **Estado:** CLOSED / FROZEN para todas las verticales funcionales definidas a esta fecha.  
 **Propósito del paquete:** entrega consolidada a Sistemas con código UAT vigente, documentación acumulativa, contratos de integración y paquete SITC.
@@ -37,7 +39,7 @@ SGI: Comando actúa como hub/orquestador operacional. Las integraciones principa
 
 ## Regla VISINT / Impulsos
 
-Las fotos/evidencias levantadas desde SGI: Operador viajan a SGI: Comando; SGI: Comando las envía a VISINT. VISINT devuelve evaluación `PASS / FAIL / ERROR`. Si existe `PASS`, SGI: Comando evalúa la regla vigente de Impulsos y ejecuta la probabilidad una sola vez. SGI: Comando es System of Record de reglas, adjudicación y ledger de Impulsos.
+Las fotos/evidencias levantadas desde SGI: Operador viajan a SGI: Comando; SGI: Comando las envía a VISINT. VISINT devuelve evaluación `PASS / FAIL / ERROR`. Si existe `PASS`, SGI: Comando evalúa la regla vigente de Impulsos y ejecuta la probabilidad una sola vez. Definición vigente superseding 2026-09-27: CORE es System of Record de las reglas versionadas de Impulsos; cada SGI: Comando PE aplica esas reglas y es System of Record de la evaluación/adjudicación y del ledger/saldo por Operador.
 
 ## CORE
 

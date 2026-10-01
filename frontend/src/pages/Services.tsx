@@ -14,6 +14,7 @@ import {
   History,
   Info,
   Link2,
+  Network,
   LockKeyhole,
   Layers3,
   Map as MapIcon,
@@ -35,6 +36,8 @@ import {api,ApiError} from '../api';
 import BitacoraConfig from './BitacoraConfig';
 import PatrolConfig from './PatrolConfig';
 import ConsignasConfig from './ConsignasConfig';
+import NexusConfig from './NexusConfig';
+import OperationPage from './OperationPage';
 
 type State='ACTIVE'|'INACTIVE'|'TO_CONFIGURE'|'PENDING_ASSIGNMENT';
 type Row={
@@ -56,9 +59,9 @@ type PointRow={
 };
 type ModuleStatus='complete'|'warning'|'blocked';
 type ModuleCard={
-  key:'ats'|'puestos'|'bitacora'|'patrullas'|'consignas'|'rrhh'|'rrmm'|'historial';
+  key:'ats'|'puestos'|'bitacora'|'patrullas'|'consignas'|'nexus'|'rrhh'|'rrmm'|'historial';
   title:string;summary:string;meta:string;status:ModuleStatus;blocking:boolean;
-  icon:'ats'|'posts'|'bitacora'|'patrullas'|'consignas'|'rrhh'|'rrmm'|'historial';
+  icon:'ats'|'posts'|'bitacora'|'patrullas'|'consignas'|'nexus'|'rrhh'|'rrmm'|'historial';
 };
 type Snapshot={version:string;progress:number;blockers:number;warnings:number;updatedAt:string;modules:ModuleCard[];nextActions:string[]};
 type AtsLinkedPost={location:string;code:string;status:'VINCULADO'|'PENDIENTE'};
@@ -90,8 +93,7 @@ type CommercialWeek={posts:CommercialPost[];shifts:CommercialShift[]};
 type SkillKey=keyof PostSkillSet;
 type AssignmentDestination={companyId:string;code:string;name:string;zoneId?:string|null;regionIds:string[]};
 type ClientOption={id:string;code:string;name:string};
-
-type View='list'|'config-landing'|'config-ats'|'config-posts'|'config-bitacora'|'config-patrols'|'config-consignas';
+type View='list'|'config-landing'|'config-ats'|'config-posts'|'config-bitacora'|'config-patrols'|'config-consignas'|'config-nexus'|'operation';
 
 const PAGE_SIZE=10;
 const TIER_MIN:Record<string,number>={I:6.5,II:7.5,III:8.5,IV:9.5};
@@ -218,6 +220,7 @@ function snapshotFor(point:PointRow):Snapshot{
     {key:'bitacora',title:'Bitácora',summary:'Procedimiento operativo y protocolos por puesto',meta:`${configuredPosts}/${totalPosts} puestos con bitácora definida`,status:bitacoraStatus,blocking:true,icon:'bitacora'},
     {key:'patrullas',title:'Patrullas',summary:'Rutas, hitos y frecuencia de patrullaje',meta:`${Math.max(1,totalPosts-1)}/${Math.max(1,totalPosts)} patrullas configuradas`,status:patrullaStatus,blocking:false,icon:'patrullas'},
     {key:'consignas',title:'Consignas',summary:'Consignas vigentes y alcance por punto o puesto',meta:`${Math.max(3,totalPosts+2)} consignas vigentes`,status:consignaStatus,blocking:false,icon:'consignas'},
+    {key:'nexus',title:'Nexus',summary:'Motor de eventos y reglas operativas del Punto',meta:'4 reglas · 2 activas · 1 borrador',status:'complete',blocking:false,icon:'nexus'},
     {key:'rrhh',title:'Recursos Humanos',summary:'Cobertura y enlace a asignaciones',meta:`ID 14 días: ${metric(point.idAverage)} · ${totalPosts} puestos`,status:rrhhStatus,blocking:false,icon:'rrhh'},
     {key:'rrmm',title:'Recursos Materiales',summary:'Activos esperados y estado observado en el punto',meta:`${Math.max(totalPosts*2,4)-Math.min(point.pendingNews,2)}/${Math.max(totalPosts*2,4)} activos confirmados`,status:rrmmStatus,blocking:false,icon:'rrmm'},
     {key:'historial',title:'Historial',summary:'Versiones del REGESEP y trazabilidad documental',meta:'Última publicación hace 9 días',status:historialStatus,blocking:false,icon:'historial'},
@@ -240,6 +243,7 @@ function moduleIcon(icon:ModuleCard['icon']){
     case 'bitacora': return <FileText size={18}/>;
     case 'patrullas': return <ShieldCheck size={18}/>;
     case 'consignas': return <ClipboardList size={18}/>;
+    case 'nexus': return <Network size={18}/>;
     case 'rrhh': return <Users size={18}/>;
     case 'rrmm': return <Warehouse size={18}/>;
     default: return <History size={18}/>;
@@ -752,7 +756,7 @@ function ConfigurationLanding({point,onBack,onOpenModule}:{point:PointRow;onBack
         <header><div><h3>Checklist de configuración</h3><span>Solo configuración · no muestra actividad operativa</span></div></header>
         <div className="ser-checklist">
           {snapshot.modules.map((module:ModuleCard)=>{
-            const openable=module.key==='ats'||module.key==='puestos'||module.key==='bitacora'||module.key==='patrullas'||module.key==='consignas';
+            const openable=module.key==='ats'||module.key==='puestos'||module.key==='bitacora'||module.key==='patrullas'||module.key==='consignas'||module.key==='nexus';
             return <button key={module.key} className={`ser-check-row ${module.status} ${openable?'':'disabled'}`} onClick={()=>openable&&onOpenModule(module.key)}>
               <span className="ser-check-main">{moduleIcon(module.icon)}<b>{module.title}</b></span>
               <span className="ser-check-meta">{module.meta}</span>
@@ -776,7 +780,7 @@ function ConfigurationLanding({point,onBack,onOpenModule}:{point:PointRow;onBack
 
     <section className="ser-modules-grid">
       {snapshot.modules.map((module:ModuleCard)=>{
-        const openable=module.key==='ats'||module.key==='puestos'||module.key==='bitacora'||module.key==='patrullas'||module.key==='consignas';
+        const openable=module.key==='ats'||module.key==='puestos'||module.key==='bitacora'||module.key==='patrullas'||module.key==='consignas'||module.key==='nexus';
         return <article key={module.key} className={`ser-module-card ${module.status}`}>
           <div className="ser-module-top"><span className={`ser-module-icon ${module.status}`}>{moduleIcon(module.icon)}</span><div><h4>{module.title}</h4><p>{module.summary}</p></div></div>
           <div className="ser-module-bottom"><strong>{module.meta}</strong><div><span className={statusPillClass(module.status)}>{statusLabel(module.status)}</span><button onClick={()=>openable&&onOpenModule(module.key)} disabled={!openable}>{openable?'Abrir':'Próximamente'}</button></div></div>
@@ -882,8 +886,14 @@ export default function Services(){
   if(selectedPoint&&view==='config-consignas'){
     return <ConsignasConfig point={selectedPoint} onBack={()=>setView('config-landing')}/>;
   }
+  if(selectedPoint&&view==='config-nexus'){
+    return <NexusConfig point={selectedPoint} onBack={()=>setView('config-landing')}/>;
+  }
+  if(selectedPoint&&view==='operation'){
+    return <OperationPage point={selectedPoint} onBack={backToList}/>;
+  }
   if(selectedPoint&&view==='config-landing'){
-    return <ConfigurationLanding point={selectedPoint} onBack={backToList} onOpenModule={(module:ModuleCard['key'])=>{if(module==='ats')setView('config-ats');if(module==='puestos')setView('config-posts');if(module==='bitacora')setView('config-bitacora');if(module==='patrullas')setView('config-patrols');if(module==='consignas')setView('config-consignas')}}/>;
+    return <ConfigurationLanding point={selectedPoint} onBack={backToList} onOpenModule={(module:ModuleCard['key'])=>{if(module==='ats')setView('config-ats');if(module==='puestos')setView('config-posts');if(module==='bitacora')setView('config-bitacora');if(module==='patrullas')setView('config-patrols');if(module==='consignas')setView('config-consignas');if(module==='nexus')setView('config-nexus')}}/>;
   }
 
   return <div className="services-v01 services-v02">
@@ -927,7 +937,7 @@ export default function Services(){
                 <td><span className={`ser-metric ${icTone(row.icAverage)}`}><i/>{metric(row.icAverage,'%')}</span></td>
                 <td><span className={`ser-news ${row.pendingNews?'pending':'zero'}`}>{row.pendingNews}</span></td>
                 <td><span className={`ser-state ${row.state.toLowerCase()}`}><i/>{stateLabel(row.state)}</span></td>
-                <td><button className="ser-action ghost" disabled title="Operación queda temporalmente en stand by"><Eye size={15}/>Operación</button></td>
+                <td><button className="ser-action ghost" onClick={()=>{setSelectedPointId(row.pointId);setView('operation')}}><Eye size={15}/>Operación</button></td>
                 <td>{row.assignmentStatus==='PENDING'?<button className="ser-action primary" onClick={()=>void openAssignment(row)} disabled={!row.canAssign} title={row.canAssign?'Asignar Servicio a una Compañía operativa':'Su perfil no puede asignar este Servicio'}><Building2 size={15}/>Asignación</button>:<div className="ser-row-actions"><button className="ser-action primary" onClick={()=>openConfiguration(row.pointId)}><Settings2 size={15}/>Configuración</button>{row.canReturn&&<button className="ser-action return" onClick={()=>openReturnToCoordination(row)} title="Retirar Servicio a Kaibil para reasignación"><ArrowLeft size={15}/>Retirar a Kaibil</button>}</div>}</td>
               </tr>;
             }):<tr><td colSpan={11}><div className="ser-empty">No existen puntos que coincidan con los filtros.</div></td></tr>}

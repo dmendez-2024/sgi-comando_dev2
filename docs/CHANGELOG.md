@@ -317,3 +317,27 @@ Responsable/aprobación: pendiente de confirmar.
 - Documentación contrastada contra el inventario de los 40 Markdown de `cambios/`, migraciones V27–V33 y rutas API citadas.
 - No se ejecutaron build, tests, UAT, migraciones ni restauraciones de base de datos.
 - Estado del resultado: revisión documental con acciones/CRs pendientes; no es cierre de RC ni gate de producción.
+
+
+## 2026-09-27 — P0/P1 RC
+Ver `docs/CHANGELOG_P0P1_2026-09-27.md`. Sin cambios de UI y sin EVC.
+
+
+## 2026-09-27 — CSL v0.1.1 UAT — Filtros colapsables
+- `Operaciones > Consola`: búsqueda y filtros pasan a accordion/collapsible.
+- Cerrado por defecto; al expandir conserva todos los controles y reglas existentes.
+- Sin cambios de backend, BD, interconexiones/SITC ni EVC.
+- Ver `docs/CHANGELOG_CSL_v0.1.1_2026-09-27.md`.
+
+## CSL v0.2 — Notificación de Incidentes — 2026-09-27
+- Nuevo flujo `Notificar Incidente` en Consola con panel lateral.
+- Categoría/subcategoría, criticidad, Cliente/Punto/Puesto, colaboradores, Descripción, Resolución, imágenes y Sanción.
+- Borrador/Finalizado reeditables.
+- Inasistencia Programada/Efectiva incorpora ranking UAT de Agentes para reasignación.
+- Sin cambios backend/BD/SITC; EVC fuera de alcance.
+
+
+## CSL v0.2.1 — 2026-09-27
+- Taxonomía de Incidentes sincronizada con `Incidentes(1).xlsx`: 3 categorías, 20 subcategorías, 90 incidentes.
+- Jerarquía corregida a Categoría → Subcategoría → Incidente.
+- Inasistencia programada/efectiva quedan como incidentes de Asistencia y Puntualidad.

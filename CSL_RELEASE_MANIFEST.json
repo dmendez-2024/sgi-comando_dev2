@@ -1,0 +1,100 @@
+{
+  "product": "SGI: Comando",
+  "programId": "SGI_COM",
+  "release": "CSL v0.2.5 FROZEN",
+  "date": "2026-09-27",
+  "baseline": "SGI_Comando_CSL_v0.2.4_BackendCompileFix_UAT.zip",
+  "status": "FROZEN",
+  "standard": "SITC-NOM-001 v4.1",
+  "vertical": {
+    "id": "CSL",
+    "name": "Consola",
+    "previous": "v0.2.4 UAT_CANDIDATE",
+    "current": "v0.2.5 FROZEN"
+  },
+  "change": {
+    "type": "UX_REASSIGNMENT_ENRICHMENT",
+    "summary": "Limpia el ícono de Incidentes y agrega teléfono + Francos Trabajados (últ. 6 meses) a candidatos de Cobertura/Reasignación."
+  },
+  "scope": {
+    "frontendChanged": true,
+    "backendChanged": false,
+    "databaseChanged": false,
+    "sitcChanged": false,
+    "interconnectionsChanged": false,
+    "evcImplemented": false
+  },
+  "incidentNotification": {
+    "taxonomySource": "docs/reference/Incidentes_2026-09-27.xlsx",
+    "taxonomy": {
+      "categories": 3,
+      "subcategories": 20,
+      "incidentTypes": 90
+    },
+    "hierarchy": [
+      "Categoría",
+      "Subcategoría",
+      "Incidente"
+    ],
+    "specialAbsenceIncidentTypes": [
+      "Inasistencia programada",
+      "Inasistencia efectiva"
+    ],
+    "maxDescriptionImages": 5,
+    "maxResolutionImages": 5,
+    "draftEditable": true,
+    "finalizedEditable": true,
+    "collaboratorLookbackDays": 14,
+    "reassignmentPrecedence": [
+      "Mismo Puesto",
+      "Mismo Punto",
+      "Misma Compañía por cercanía geográfica"
+    ],
+    "uatDataMode": "FRONTEND_DEMO_LOCAL",
+    "reassignmentCandidateFields": [
+      "Nombre",
+      "Teléfono",
+      "Francos Trabajados (últ. 6 meses)",
+      "Disponibilidad / prelación"
+    ]
+  },
+  "architectureInherited": {
+    "coreScope": "UNIVERSAL",
+    "sgiComScope": "PE_SPECIFIC",
+    "interconnections": 25,
+    "interfaces": 31,
+    "impulseRulesSystemOfRecord": "CORE",
+    "impulseLedgerSystemOfRecord": "SGI_COM_PE"
+  },
+  "validation": {
+    "tsxSyntaxParse": "PASS",
+    "incidentIcon": "PASS (62x62 RGBA; no embedded lateral text)",
+    "demoCandidateData": "PASS (14/14 phone + francosWorked6m)",
+    "backendTree": "BYTE_IDENTICAL_TO_v0.2.4",
+    "databaseTree": "BYTE_IDENTICAL_TO_v0.2.4",
+    "sitcTree": "BYTE_IDENTICAL_TO_v0.2.4",
+    "fullDockerBuild": "PENDING_USER_UAT"
+  },
+  "changeInventory": {
+    "frontendModified": [
+      "frontend/src/components/IncidentNotificationPanel.tsx",
+      "frontend/src/styles.css",
+      "frontend/public/assets/csl-incidents/incident.png",
+      "frontend/public/uat-version.json"
+    ],
+    "scriptsModified": [
+      "scripts/uat-start.ps1 (version label/readiness expectation only)"
+    ],
+    "documentationAdded": [
+      "README_CSL_v0.2.5.md",
+      "docs/CHANGELOG_CSL_v0.2.5_2026-09-27.md",
+      "docs/VALIDATION_CSL_v0.2.5_2026-09-27.md"
+    ]
+  },
+  "freeze": {
+    "date": "2026-09-27",
+    "deliveryToSystems": "2026-09-28",
+    "meaning": "Functional/UAT baseline frozen. Incident persistence and productive reassignment data sources remain pending.",
+    "changeRule": "Any later change requires a new version; do not overwrite CSL v0.2.5."
+  }
+}

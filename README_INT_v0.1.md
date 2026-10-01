@@ -1,3 +1,5 @@
+> **HISTÓRICO / SUPERSEDED 2026-09-27:** Documento histórico de INT v0.1. La arquitectura vigente es SITC-NOM-001 v4.1; consultar `docs/00_HANDOFF.md` y `sitc/SGI_Comando_CURRENT.sitcpack`.
+
 # SGI: Comando — INT v0.1 UAT
 
 Entrega técnica para incorporar el módulo genérico de interconexiones y normalizar todos los contratos de SGI: Comando conforme a SITC-NOM-001 v3.0.

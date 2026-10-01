@@ -1,11 +1,23 @@
-$ErrorActionPreference = "Stop"
+﻿$ErrorActionPreference = "Stop"
 $Repo = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 Set-Location $Repo
 
 $Project = "sgi-comando-uat"
-$ExpectedFrontendVersion = "0.1"
 
-Write-Host "SGI: Comando - INT v0.1 UAT / PERF v0.1 / CSL v0.1 FROZEN / NOV v0.1 FROZEN / CNS v0.1.2 FROZEN / BIT v0.1 FROZEN / COO v0.1 FROZEN / SER v0.10.10 FROZEN / COM v1.1.3 FROZEN / ASI v0.7.4 FROZEN" -ForegroundColor Cyan
+$EnvFile = Join-Path $Repo ".env"
+if (-not (Test-Path $EnvFile)) {
+    throw "Falta .env. Copie .env.example a .env, reemplace todos los CHANGE_ME y no lo agregue a Git."
+}
+$UnresolvedEnvLines = Get-Content $EnvFile | Where-Object {
+    $line = $_.Trim()
+    $line -and -not $line.StartsWith("#") -and $line -match "=CHANGE_ME(?:$|\s)"
+}
+if ($UnresolvedEnvLines) {
+    throw ".env contains unresolved placeholder values. Configure UAT secrets before startup."
+}
+$ExpectedFrontendVersion = "0.1.0"
+
+Write-Host "SGI: Comando - NEX v0.1 FROZEN UAT / Entrega SISTEMAS 2026-09-28 / SITC v4.1 / CSL v0.2.5 baseline" -ForegroundColor Cyan
 
 # IMPORTANT: Docker sometimes writes harmless warnings to STDERR (for example
 # "No resource found to remove"). With PowerShell 5.1 + ErrorActionPreference=Stop
@@ -120,11 +132,11 @@ if (-not $FrontendReady) {
     }
     if ($frontendResponse.StatusCode -ne 200 -or $frontendResponse.Content -notmatch $ExpectedFrontendVersion) {
         docker compose -p $Project logs frontend --tail=120
-        throw "UAT frontend version check failed: expected CSL v$ExpectedFrontendVersion"
+        throw "UAT frontend version check failed: expected NEX v$ExpectedFrontendVersion"
     }
 }
 
-Write-Host "Frontend CSL v$ExpectedFrontendVersion READY." -ForegroundColor Green
+Write-Host "Frontend NEX v$ExpectedFrontendVersion READY." -ForegroundColor Green
 Write-Host "Container status:" -ForegroundColor Cyan
 docker compose -p $Project ps
 if ($LASTEXITCODE -ne 0) { throw "docker compose ps failed with exit code $LASTEXITCODE" }

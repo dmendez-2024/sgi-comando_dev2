@@ -1,290 +1,277 @@
-# SGI: Comando — API / Interface Catalog (INT v0.1)
+# SGI: Comando — API / Interface Catalog v4.1
 
-Este catálogo se originó bajo SITC-NOM-001 v3.0 y el snapshot del 2026-09-21. Se conserva como evidencia histórica; antes de una nueva modificación debe reconciliarse con SITC-NOM-001 v4.1 y el SCENARIO_SNAPSHOT VIGENTE de CORE. Paths son contratos lógicos; host/basePath/auth efectivos los resuelve CORE por Instancia PE + ambiente.
+**RC:** P0/P1 2026-09-27.
 
-## `SGI_COM__CORE__00001__V0001` — Resolve transversal Instance/Country context and master catalogs required by SGI: Comando.
-- Origen técnico: `SGI_COM`
-- Destino: `CORE`
-- Tipo: `REST_API / SYNC / HTTPS`
-- Contrato: `v1`
-- SoR: `CORE`
-- Estado: `UAT`; destino `BLOCKED`
+## `SGI_COM_CORE_0001_v001` — SGI_COM → CORE
+Consume the effective versioned Impulse rules applicable to the SGI: Comando Instancia PE.
 
-### `SGI_COM__CORE__00001__IF01`
-`GET /api/v1/instance-countries/{instanceCountryId}/context` — Instance/Country, locale, language, timezone, currency, units and formats
+- SoR de los datos principales: `CORE`
+- contractVersion: `v1`
+- estado: `DESIGN`
 
-### `SGI_COM__CORE__00001__IF02`
-`GET /api/v1/instance-countries/{instanceCountryId}/territorial-structure` — Official subdivision type/catalog/geometries/dataset version
+- `SGI_COM_CORE_0001_IF01` — `GET` `/v1/impulses/rules/effective` — Return the effective versioned Impulse rules for one Instancia PE/context.
 
-### `SGI_COM__CORE__00001__IF03`
-`GET /api/v1/instance-countries/{instanceCountryId}/companies` — Canonical Company catalog/identity/logo/status/source version
+## `SGI_COM_CORE_0002_v001` — SGI_COM → CORE
+Resolve transversal Instance/Country context and master catalogs required by SGI: Comando.
 
-### `SGI_COM__CORE__00001__IF04`
-`GET /api/v1/instance-countries/{instanceCountryId}/calendar-regulatory-profile` — Calendar/holidays and regulatory profile/version/effective dates
+- SoR de los datos principales: `CORE`
+- contractVersion: `v1`
+- estado: `UAT`
 
-## `SGI_COM__CORE__00002__V0001` — Resolve the effective binding of any interconnection by interconnectionId + Instancia PE + environment.
-- Origen técnico: `SGI_COM`
-- Destino: `CORE`
-- Tipo: `REST_API / SYNC / HTTPS`
-- Contrato: `v1`
-- SoR: `CORE`
-- Estado: `UAT`; destino `BLOCKED`
+- `SGI_COM_CORE_0002_IF01` — `GET` `/api/v1/catalog/instance-countries?countryId={countryId}` — CORE Instance-Country record and country context
+- `SGI_COM_CORE_0002_IF02` — `GET` `/api/v1/catalog/subdivisions?countryId={countryId}` and `/api/v1/catalog/subdivisions/geojson?countryId={countryId}` — Official subdivision catalog and GeoJSON geometries
+- `SGI_COM_CORE_0002_IF03` — `GET` `/api/v1/catalog/companies` — Canonical Company catalog/identity/logo/status/source version
+- `SGI_COM_CORE_0002_IF04` — `GET` `/api/v1/instance-countries/{instanceCountryId}/calendar-regulatory-profile` — Calendar/holidays and regulatory profile/version/effective dates
+- aliases históricos: `SGI_COM__CORE__00001__V0001`, `SGI_COM__CORE__00001`
 
-### `SGI_COM__CORE__00002__IF01`
-`GET /api/v1/interconnections/{interconnectionId}/resolve` — Return target binding for one interface and context
+Campos mínimos de respuesta que SGI necesita en las interfaces implementadas:
 
-## `SGI_COM__IDENT__00001__V0001` — Validate service/user identity and obtain authorization context for SGI: Comando.
-- Origen técnico: `SGI_COM`
-- Destino: `IDENT`
-- Tipo: `REST_API / SYNC / HTTPS`
-- Contrato: `v1`
-- SoR: `IDENT`
-- Estado: `DESIGN`; destino `BLOCKED`
+- IF01 recibe el `countryId` de CORE y devuelve una lista de Instancias-País con `id`, `code`, `name`, `countryId`, `countryCode`, `countryName`, `locale`, `timezone` y `currency`. SGI selecciona el `code` configurado; el ID de instancia de CORE se conserva aparte del tenant local SGI.
+- IF02 recibe `countryId` y devuelve `subdivisionType`, `subdivisionSingular`, `subdivisionPlural`, `datasetVersion` y `subdivisions[]` con `id`, `code`, `officialCode`, `name`, `type` y `typeLabel`. SGI consulta además el endpoint `geojson` con `Accept: application/geo+json`, asocia cada geometría por el ID exacto de provincia y verifica versión, cantidad e IDs antes de sincronizar. SGI considera ACTIVE las provincias devueltas y mantiene las asignaciones Zona/Región locales.
+- IF03 devuelve el catálogo completo de compañías; SGI lo filtra por el `instanceCountryId` devuelto por IF01. Cada elemento contiene `id`, `code`, `name`, `description`, `logoUrl`, `companyType`, `instanceCountryId`, `sourceVersion` y `status`.
 
-### `SGI_COM__IDENT__00001__IF01`
-`POST /api/v1/identity/context` — Token introspection / identity and authorization context
+En UAT, el catálogo de CORE está publicado bajo `/api/v1/catalog` y responde a lecturas sin credencial de servicio en el ambiente observado. Las compañías se obtienen de `/companies` y SGI las filtra localmente por Instancia-País. La carga territorial consulta el catálogo de subdivisiones y su GeoJSON complementario; las demás interconexiones siguen el resolver genérico.
 
-## `SGI_COM__SIC_COM__00001__V0001` — Reconcile the commercial master required for physical-security operation.
-- Origen técnico: `SGI_COM`
-- Destino: `SIC_COM`
-- Tipo: `REST_API / SYNC / HTTPS`
-- Contrato: `v1`
-- SoR: `SIC_COM`
-- Estado: `DESIGN`; destino `MANUAL_PENDING`
+IF02 e IF03 deben devolver el catálogo completo de la Instancia–País en una sola respuesta. Los códigos oficiales/canónicos deben ser únicos y estables; si CORE cambia un UUID manteniendo el mismo código, SGI reata la referencia por ese código. En la primera reconciliación de datos UAT antiguos sin ID CORE, SGI también puede usar un nombre normalizado único cuando el código local todavía difiere del oficial. SGI conserva como inactivos los elementos omitidos y mantiene sus asignaciones Zona/Región y configuración operacional locales.
 
-### `SGI_COM__SIC_COM__00001__IF01`
-`GET /api/v1/sgi-export/services` — Paged/versioned Client, Service, Point, Post, shifts, FHE and TIER snapshot
+## `SGI_COM_CORE_0003_v001` — SGI_COM → CORE
+Resolve the effective binding of any interconnection by interconnectionId + Instancia PE + environment.
 
-## `SIC_COM__SGI_COM__00001__V0001` — Notify SGI: Comando of commercial Service/Point/Post lifecycle changes.
-- Origen técnico: `SIC_COM`
-- Destino: `SGI_COM`
-- Tipo: `WEBHOOK / ASYNC / HTTPS`
-- Contrato: `v1`
-- SoR: `SIC_COM`
-- Estado: `DESIGN`; destino `BLOCKED`
+- SoR de los datos principales: `CORE`
+- contractVersion: `v1`
+- estado: `UAT`
 
-### `SIC_COM__SGI_COM__00001__IF01`
-`POST /api/v1/inbound/sic-com/commercial-events` — Versioned commercial lifecycle event
+- `SGI_COM_CORE_0003_IF01` — `GET` `/api/v1/interconnections/{interconnectionId}/resolve` — Return target binding for one interface and context
+- aliases históricos: `SGI_COM__CORE__00002__V0001`, `SGI_COM__CORE__00002`
 
-**Estado de SGI:Comando:** receptor implementado en código y migración V33; contrato/contraparte permanece `DESIGN/BLOCKED` en el registro local hasta aprobar CR, actualizar CORE y completar UAT end-to-end. La especificación más reciente localizada es V3.1; las colecciones Postman son ejemplos, no evidencia de pruebas ejecutadas.
+## `SGI_COM_IDENT_0001_v001` — SGI_COM → IDENT
+Validate service/user identity and obtain authorization context for SGI: Comando.
 
-## `SGI_COM__SIC_RRHH__00001__V0001` — Read employee operational context for territory, assignments and supervision.
-- Origen técnico: `SGI_COM`
-- Destino: `SIC_RRHH`
-- Tipo: `REST_API / SYNC / HTTPS`
-- Contrato: `v1`
-- SoR: `SIC_RRHH`
-- Estado: `DESIGN`; destino `MANUAL_PENDING`
+- SoR de los datos principales: `IDENT`
+- contractVersion: `v1`
+- estado: `DESIGN`
 
-### `SGI_COM__SIC_RRHH__00001__IF01`
-`GET /api/v1/employees` — Personnel by company/domain with employment state and pagination
+- `SGI_COM_IDENT_0001_IF01` — `POST` `/api/v1/identity/context` — Token introspection / identity and authorization context
+- aliases históricos: `SGI_COM__IDENT__00001__V0001`, `SGI_COM__IDENT__00001`
 
-### `SGI_COM__SIC_RRHH__00001__IF02`
-`GET /api/v1/employees/{employeeId}/work-context` — Skills, certifications and unavailability intervals
+## `SGI_COM_SIC_COM_0001_v001` — SGI_COM → SIC_COM
+Reconcile the commercial master required for physical-security operation.
 
-## `SGI_COM__SIC_RRHH__00002__V0001` — Submit auditable operational labor events produced by SGI.
-- Origen técnico: `SGI_COM`
-- Destino: `SIC_RRHH`
-- Tipo: `REST_API / ASYNC / HTTPS`
-- Contrato: `v1`
-- SoR: `SGI_COM`
-- Estado: `DESIGN`; destino `MANUAL_PENDING`
+- SoR de los datos principales: `SIC_COM`
+- contractVersion: `v1`
+- estado: `DESIGN`
 
-### `SGI_COM__SIC_RRHH__00002__IF01`
-`POST /api/v1/sgi-operational-events` — Idempotent labor consequence/request event
+- `SGI_COM_SIC_COM_0001_IF01` — `GET` `/api/v1/sgi-export/services` — Paged/versioned Client, Service, Point, Post, shifts, FHE and TIER snapshot
+- aliases históricos: `SGI_COM__SIC_COM__00001__V0001`, `SGI_COM__SIC_COM__00001`
 
-## `SIC_RRHH__SGI_COM__00001__V0001` — Notify changes to employee/company/status/skills/unavailability used operationally by SGI.
-- Origen técnico: `SIC_RRHH`
-- Destino: `SGI_COM`
-- Tipo: `WEBHOOK / ASYNC / HTTPS`
-- Contrato: `v1`
-- SoR: `SIC_RRHH`
-- Estado: `DESIGN`; destino `BLOCKED`
+## `SIC_COM_SGI_COM_0001_v001` — SIC_COM → SGI_COM
+Notify SGI: Comando of commercial Service/Point/Post lifecycle changes.
 
-### `SIC_RRHH__SGI_COM__00001__IF01`
-`POST /api/v1/inbound/sic-rrhh/employee-events` — Employee operational master event
+- SoR de los datos principales: `SIC_COM`
+- contractVersion: `v1`
+- estado: `UAT`
 
-El receptor implementado admite las extensiones opcionales `personaId` y `canonicalEmployeeId`; `employeeId` numérico se mantiene como alias legacy de `personas.id`. La migración V29 agrega `employee_operational_snapshot.persona_id` sin backfill masivo. El contrato y su ID histórico requieren reconciliación formal con la referencia v4.1; la recepción del evento no demuestra UAT end-to-end.
+- `SIC_COM_SGI_COM_0001_IF01` — `POST` `/api/v1/inbound/sic-com/commercial-events` — Versioned commercial lifecycle event
+- aliases históricos: `SIC_COM__SGI_COM__00001__V0001`, `SIC_COM__SGI_COM__00001`
 
-## `SGI_COM__SIC_RRMM__00001__V0001` — Read expected material resources/inventory for Point/Post operational configuration and Relevo.
-- Origen técnico: `SGI_COM`
-- Destino: `SIC_RRMM`
-- Tipo: `REST_API / SYNC / HTTPS`
-- Contrato: `v1`
-- SoR: `SIC_RRMM`
-- Estado: `DESIGN`; destino `BLOCKED`
+## `SGI_COM_SIC_RRHH_0001_v001` — SGI_COM → SIC_RRHH
+Read employee operational context for territory, assignments and supervision.
 
-### `SGI_COM__SIC_RRMM__00001__IF01`
-`GET /api/v1/operational-assets/posts/{postId}/expected` — Expected assets/materials assigned to Post
+- SoR de los datos principales: `SIC_RRHH`
+- contractVersion: `v1`
+- estado: `DESIGN`
 
-### `SGI_COM__SIC_RRMM__00001__IF02`
-`GET /api/v1/operational-assets/points/{pointId}` — Material resources visible for Point configuration
+- `SGI_COM_SIC_RRHH_0001_IF01` — `GET` `/api/v1/employees` — Personnel by company/domain with employment state and pagination
+- `SGI_COM_SIC_RRHH_0001_IF02` — `GET` `/api/v1/employees/{employeeId}/work-context` — Skills, certifications and unavailability intervals
+- aliases históricos: `SGI_COM__SIC_RRHH__00001__V0001`, `SGI_COM__SIC_RRHH__00001`
 
-## `SIC_RRMM__SGI_COM__00001__V0001` — Provide SIC_RRMM with operational Company Point/Post catalog for MARE requirements.
-- Origen técnico: `SIC_RRMM`
-- Destino: `SGI_COM`
-- Tipo: `REST_API / SYNC / HTTPS`
-- Contrato: `v1`
-- SoR: `SGI_COM`
-- Estado: `UAT`; destino `BLOCKED`
+## `SGI_COM_SIC_RRHH_0002_v001` — SGI_COM → SIC_RRHH
+Submit auditable operational labor events produced by SGI.
 
-### `SIC_RRMM__SGI_COM__00001__IF01`
-`GET /api/v1/integration/rrmm/companies/{companyId}/points` — Points currently operated by Company
+- SoR de los datos principales: `SGI_COM`
+- contractVersion: `v1`
+- estado: `DESIGN`
 
-### `SIC_RRMM__SGI_COM__00001__IF02`
-`GET /api/v1/integration/rrmm/points/{pointId}/posts` — Posts under selected Point
+- `SGI_COM_SIC_RRHH_0002_IF01` — `POST` `/api/v1/sgi-operational-events` — Idempotent labor consequence/request event
+- aliases históricos: `SGI_COM__SIC_RRHH__00002__V0001`, `SGI_COM__SIC_RRHH__00002`
 
-## `ATS__SGI_COM__00001__V0001` — Deliver a published .ats security architecture package to SGI: Comando/REGESEP.
-- Origen técnico: `ATS`
-- Destino: `SGI_COM`
-- Tipo: `FILE / ASYNC / HTTPS`
-- Contrato: `v1`
-- SoR: `ATS`
-- Estado: `UAT`; destino `READY`
+## `SIC_RRHH_SGI_COM_0001_v001` — SIC_RRHH → SGI_COM
+Synchronize the ACTIVE/INACTIVE lifecycle of Seguridad Física personnel and their authoritative Persona–Compañía relationship into SGI: Comando.
 
-### `ATS__SGI_COM__00001__IF01`
-`POST /api/v1/inbound/ats/packages` — Upload versioned .ats package and manifest
+- SoR de identidad laboral y Persona–Compañía: `SIC_RRHH`
+- contractVersion: `v1`
+- estado SGI_COM: `UAT`
+- estado end-to-end: `UAT_PARTIAL` hasta homologar/probar contraparte
 
-## `SGI_COM__ATS__00001__V0001` — Reconcile operational observations about security components/vulnerabilities with ATS design.
-- Origen técnico: `SGI_COM`
-- Destino: `ATS`
-- Tipo: `REST_API / ASYNC / HTTPS`
-- Contrato: `v1`
-- SoR: `SGI_COM`
-- Estado: `DESIGN`; destino `BLOCKED`
+- `SIC_RRHH_SGI_COM_0001_IF01` — `POST` `/api/v1/inbound/sic-rrhh/employee-events` — evento maestro versionado de empleado.
+  - Headers: `Authorization`, `X-Correlation-Id`, `X-Interconnection-Id`, `X-Contract-Version`, `Idempotency-Key`.
+  - Campos: `employeeId?`, `personaId?`, `canonicalEmployeeId?`, `fullName`, `roleCode`, `employmentStatus`, `updatedFromSourceAt`, `companyCoreCatalogId?`, `companyCode?`.
+  - Para un empleado **nuevo**, `companyCoreCatalogId` o `companyCode` es obligatorio. SGI deja de inventar Kaibil como compañía fuente.
+  - Para un empleado ya existente, la omisión temporal de compañía conserva la compañía actual para compatibilidad de transición.
+  - `Idempotency-Key` se persiste por Instancia PE: mismo key + mismo payload es retry seguro; mismo key + payload distinto responde conflicto.
+- `SIC_RRHH_SGI_COM_0001_IF02` — `GET` `/api/v1/employees/by-persona/{personaId}` — consulta de empleado, cargo y Compañía operacional por el `personas.id` de DHO.
+  - Headers: `Authorization`, `X-Correlation-Id`, `X-Interconnection-Id`, `X-Contract-Version`.
+  - Campos: `personaId`, `employeeId`, `fullName`, `roleCode`, `employmentStatus`, `company.id`, `company.coreCatalogId`, `company.code`, `company.name`, `company.status`, `companyMembershipActive`.
+- aliases históricos: `SIC_RRHH__SGI_COM__00001__V0001`, `SIC_RRHH__SGI_COM__00001`
 
-### `SGI_COM__ATS__00001__IF01`
-`POST /api/v1/sgi-operational-observations` — Operational observation linked to ATS component/location
+## `SGI_COM_SIC_RRMM_0001_v001` — SGI_COM → SIC_RRMM
+Read expected material resources/inventory for Point/Post operational configuration and Relevo.
 
-## `SGI_COM__SMC__00001__V0001` — Publish normalized operational facts used by SMC to calculate ID/KPIs.
-- Origen técnico: `SGI_COM`
-- Destino: `SMC`
-- Tipo: `EVENT / ASYNC / HTTPS`
-- Contrato: `v1`
-- SoR: `SGI_COM`
-- Estado: `DESIGN`; destino `MANUAL_PENDING`
+- SoR de los datos principales: `SIC_RRMM`
+- contractVersion: `v1`
+- estado: `DESIGN`
 
-### `SGI_COM__SMC__00001__IF01`
-`POST /api/v1/operational-facts` — Idempotent normalized KPI fact
+- `SGI_COM_SIC_RRMM_0001_IF01` — `GET` `/api/v1/operational-assets/posts/{postId}/expected` — Expected assets/materials assigned to Post
+- `SGI_COM_SIC_RRMM_0001_IF02` — `GET` `/api/v1/operational-assets/points/{pointId}` — Material resources visible for Point configuration
+- aliases históricos: `SGI_COM__SIC_RRMM__00001__V0001`, `SGI_COM__SIC_RRMM__00001`
 
-## `SGI_COM__SMC__00002__V0001` — Read current employee ID/KPIs used by Assignments and operational views.
-- Origen técnico: `SGI_COM`
-- Destino: `SMC`
-- Tipo: `REST_API / SYNC / HTTPS`
-- Contrato: `v1`
-- SoR: `SMC`
-- Estado: `DESIGN`; destino `MANUAL_PENDING`
+## `SIC_RRMM_SGI_COM_0001_v001` — SIC_RRMM → SGI_COM
+Provide SIC_RRMM with operational Company Point/Post catalog for MARE requirements.
 
-### `SGI_COM__SMC__00002__IF01`
-`GET /api/v1/employees/{employeeId}/kpis/current` — Current ID and consumable KPI snapshot
+- SoR de los datos principales: `SGI_COM`
+- contractVersion: `v1`
+- estado: `UAT`
 
-## `SGI_COM__STC__00001__V0001` — Create a work/case in STC for Incidents, Requirements and Activities while preserving SGI origin.
-- Origen técnico: `SGI_COM`
-- Destino: `STC`
-- Tipo: `REST_API / ASYNC / HTTPS`
-- Contrato: `v1`
-- SoR: `SGI_COM`
-- Estado: `DESIGN`; destino `MANUAL_PENDING`
+- `SIC_RRMM_SGI_COM_0001_IF01` — `GET` `/api/v1/integration/rrmm/companies/{companyId}/points` — Points currently operated by Company
+- `SIC_RRMM_SGI_COM_0001_IF02` — `GET` `/api/v1/integration/rrmm/points/{pointId}/posts` — Posts under selected Point
+- aliases históricos: `SIC_RRMM__SGI_COM__00001__V0001`, `SIC_RRMM__SGI_COM__00001`
 
-### `SGI_COM__STC__00001__IF01`
-`POST /api/v1/tasks` — Create idempotent STC work case from SGI origin
+## `ATS_SGI_COM_0001_v001` — ATS → SGI_COM
+Deliver a published .ats security architecture package to SGI: Comando/REGESEP.
 
-## `SGI_COM__STC__00002__V0001` — Read workflow status/progress/closure for an SGI-originated STC case.
-- Origen técnico: `SGI_COM`
-- Destino: `STC`
-- Tipo: `REST_API / SYNC / HTTPS`
-- Contrato: `v1`
-- SoR: `STC`
-- Estado: `DESIGN`; destino `MANUAL_PENDING`
+- SoR de los datos principales: `ATS`
+- contractVersion: `v1`
+- estado: `UAT`
 
-### `SGI_COM__STC__00002__IF01`
-`GET /api/v1/tasks/{taskId}` — Current STC task status/result
+- `ATS_SGI_COM_0001_IF01` — `POST` `/api/v1/inbound/ats/packages` — Upload versioned .ats package and manifest
+- aliases históricos: `ATS__SGI_COM__00001__V0001`, `ATS__SGI_COM__00001`
 
-## `SGI_COM__VISINT__00001__V0001` — Submit task evidence/photos for visual validation by VISINT.
-- Origen técnico: `SGI_COM`
-- Destino: `VISINT`
-- Tipo: `REST_API / ASYNC / HTTPS`
-- Contrato: `v1`
-- SoR: `SGI_COM`
-- Estado: `DESIGN`; destino `MANUAL_PENDING`
+## `SGI_COM_ATS_0001_v001` — SGI_COM → ATS
+Reconcile operational observations about security components/vulnerabilities with ATS design.
 
-### `SGI_COM__VISINT__00001__IF01`
-`POST /api/v1/visual-reviews` — Create VISINT review
+- SoR de los datos principales: `SGI_COM`
+- contractVersion: `v1`
+- estado: `DESIGN`
 
-## `SGI_COM__VISINT__00002__V0001` — Read VISINT review result for Impulse eligibility and audit.
-- Origen técnico: `SGI_COM`
-- Destino: `VISINT`
-- Tipo: `REST_API / SYNC / HTTPS`
-- Contrato: `v1`
-- SoR: `VISINT`
-- Estado: `DESIGN`; destino `MANUAL_PENDING`
+- `SGI_COM_ATS_0001_IF01` — `POST` `/api/v1/sgi-operational-observations` — Operational observation linked to ATS component/location
+- aliases históricos: `SGI_COM__ATS__00001__V0001`, `SGI_COM__ATS__00001`
 
-### `SGI_COM__VISINT__00002__IF01`
-`GET /api/v1/visual-reviews/{reviewId}` — PASS/FAIL/ERROR result and technical metadata
+## `SGI_COM_SMC_0001_v001` — SGI_COM → SMC
+Publish normalized operational facts used by SMC to calculate ID/KPIs.
 
-## `SGI_OPR__SGI_COM__00001__V0001` — Synchronize the mobile operator runtime context/configuration required for the active assignment.
-- Origen técnico: `SGI_OPR`
-- Destino: `SGI_COM`
-- Tipo: `REST_API / SYNC / HTTPS`
-- Contrato: `v1`
-- SoR: `SGI_COM`
-- Estado: `DESIGN`; destino `BLOCKED`
+- SoR de los datos principales: `SGI_COM`
+- contractVersion: `v1`
+- estado: `DESIGN`
 
-### `SGI_OPR__SGI_COM__00001__IF01`
-`GET /api/v1/operator/runtime` — Assignment, Point/Post, protocols, consignments, patrols, bitacora and pending messages
+- `SGI_COM_SMC_0001_IF01` — `POST` `/api/v1/operational-facts` — Idempotent normalized KPI fact
+- aliases históricos: `SGI_COM__SMC__00001__V0001`, `SGI_COM__SMC__00001`
 
-## `SGI_OPR__SGI_COM__00002__V0001` — Submit idempotent operational executions, novelties and evidence captured by SGI: Operador.
-- Origen técnico: `SGI_OPR`
-- Destino: `SGI_COM`
-- Tipo: `REST_API / ASYNC / HTTPS`
-- Contrato: `v1`
-- SoR: `SGI_COM`
-- Estado: `DESIGN`; destino `BLOCKED`
+## `SGI_COM_SMC_0002_v001` — SGI_COM → SMC
+Read current employee ID/KPIs used by Assignments and operational views.
 
-### `SGI_OPR__SGI_COM__00002__IF01`
-`POST /api/v1/operator/executions` — Batch/idempotent operational events and evidence references
+- SoR de los datos principales: `SMC`
+- contractVersion: `v1`
+- estado: `DESIGN`
 
-## `SGI_CLT__SGI_COM__00001__V0001` — Read client-visible operational information after SGI moderation/authorization.
-- Origen técnico: `SGI_CLT`
-- Destino: `SGI_COM`
-- Tipo: `REST_API / SYNC / HTTPS`
-- Contrato: `v1`
-- SoR: `SGI_COM`
-- Estado: `DESIGN`; destino `BLOCKED`
+- `SGI_COM_SMC_0002_IF01` — `GET` `/api/v1/employees/{employeeId}/kpis/current` — Current ID and consumable KPI snapshot
+- aliases históricos: `SGI_COM__SMC__00002__V0001`, `SGI_COM__SMC__00002`
 
-### `SGI_CLT__SGI_COM__00001__IF01`
-`GET /api/v1/client/operational-items` — Approved/publishable novelties and client-authorized operational read model
+## `SGI_COM_STC_0001_v001` — SGI_COM → STC
+Create a work/case in STC for Incidents, Requirements and Activities while preserving SGI origin.
 
-## `SGI_CLT__SGI_COM__00002__V0001` — Submit client-originated Consigna proposals, incidents or requirements for SGI moderation/routing.
-- Origen técnico: `SGI_CLT`
-- Destino: `SGI_COM`
-- Tipo: `REST_API / ASYNC / HTTPS`
-- Contrato: `v1`
-- SoR: `SGI_COM`
-- Estado: `DESIGN`; destino `BLOCKED`
+- SoR de los datos principales: `SGI_COM`
+- contractVersion: `v1`
+- estado: `DESIGN`
 
-### `SGI_CLT__SGI_COM__00002__IF01`
-`POST /api/v1/client/proposals` — Client-originated proposal/request
+- `SGI_COM_STC_0001_IF01` — `POST` `/api/v1/tasks` — Create idempotent STC work case from SGI origin
+- aliases históricos: `SGI_COM__STC__00001__V0001`, `SGI_COM__STC__00001`
 
-## `SGI_COM__CM_CON__00001__V0001` — Request pre-shift attendance confirmation through Cajamarca Conmigo/IVR capability.
-- Origen técnico: `SGI_COM`
-- Destino: `CM_CON`
-- Tipo: `REST_API / ASYNC / HTTPS`
-- Contrato: `v1`
-- SoR: `SGI_COM`
-- Estado: `DESIGN`; destino `MANUAL_PENDING`
+## `SGI_COM_STC_0002_v001` — SGI_COM → STC
+Read workflow status/progress/closure for an SGI-originated STC case.
 
-### `SGI_COM__CM_CON__00001__IF01`
-`POST /api/v1/shift-confirmations` — Create attendance confirmation request
+- SoR de los datos principales: `STC`
+- contractVersion: `v1`
+- estado: `DESIGN`
 
-## `SGI_COM__CM_CON__00002__V0001` — Read the result of a pre-shift attendance confirmation.
-- Origen técnico: `SGI_COM`
-- Destino: `CM_CON`
-- Tipo: `REST_API / SYNC / HTTPS`
-- Contrato: `v1`
-- SoR: `CM_CON`
-- Estado: `DESIGN`; destino `MANUAL_PENDING`
+- `SGI_COM_STC_0002_IF01` — `GET` `/api/v1/tasks/{taskId}` — Current STC task status/result
+- aliases históricos: `SGI_COM__STC__00002__V0001`, `SGI_COM__STC__00002`
 
-### `SGI_COM__CM_CON__00002__IF01`
-`GET /api/v1/shift-confirmations/{requestId}` — Confirmation result
+## `SGI_COM_VISINT_0001_v001` — SGI_COM → VISINT
+Submit task evidence/photos for visual validation by VISINT.
 
+- SoR de los datos principales: `SGI_COM`
+- contractVersion: `v1`
+- estado: `DESIGN`
+
+- `SGI_COM_VISINT_0001_IF01` — `POST` `/api/v1/visual-reviews` — Create VISINT review
+- aliases históricos: `SGI_COM__VISINT__00001__V0001`, `SGI_COM__VISINT__00001`
+
+## `SGI_COM_VISINT_0002_v001` — SGI_COM → VISINT
+Read VISINT review result for Impulse eligibility and audit.
+
+- SoR de los datos principales: `VISINT`
+- contractVersion: `v1`
+- estado: `DESIGN`
+
+- `SGI_COM_VISINT_0002_IF01` — `GET` `/api/v1/visual-reviews/{reviewId}` — PASS/FAIL/ERROR result and technical metadata
+- aliases históricos: `SGI_COM__VISINT__00002__V0001`, `SGI_COM__VISINT__00002`
+
+## `SGI_OPR_SGI_COM_0001_v001` — SGI_OPR → SGI_COM
+Synchronize the mobile operator runtime context/configuration required for the active assignment.
+
+- SoR de los datos principales: `SGI_COM`
+- contractVersion: `v1`
+- estado: `DESIGN`
+
+- `SGI_OPR_SGI_COM_0001_IF01` — `GET` `/api/v1/operator/runtime` — Assignment, Point/Post, protocols, consignments, patrols, bitacora and pending messages
+- aliases históricos: `SGI_OPR__SGI_COM__00001__V0001`, `SGI_OPR__SGI_COM__00001`
+
+## `SGI_OPR_SGI_COM_0002_v001` — SGI_OPR → SGI_COM
+Submit idempotent operational executions, novelties and evidence captured by SGI: Operador.
+
+- SoR de los datos principales: `SGI_COM`
+- contractVersion: `v1`
+- estado: `UAT_PARTIAL`
+
+- `SGI_OPR_SGI_COM_0002_IF01` — `POST` `/api/v1/operator/executions` — Batch/idempotent operational events and evidence references
+- aliases históricos: `SGI_OPR__SGI_COM__00002__V0001`, `SGI_OPR__SGI_COM__00002`
+
+## `SGI_CLT_SGI_COM_0001_v001` — SGI_CLT → SGI_COM
+Read client-visible operational information after SGI moderation/authorization.
+
+- SoR de los datos principales: `SGI_COM`
+- contractVersion: `v1`
+- estado: `DESIGN`
+
+- `SGI_CLT_SGI_COM_0001_IF01` — `GET` `/api/v1/client/operational-items` — Approved/publishable novelties and client-authorized operational read model
+- aliases históricos: `SGI_CLT__SGI_COM__00001__V0001`, `SGI_CLT__SGI_COM__00001`
+
+## `SGI_CLT_SGI_COM_0002_v001` — SGI_CLT → SGI_COM
+Submit client-originated Consigna proposals, incidents or requirements for SGI moderation/routing.
+
+- SoR de los datos principales: `SGI_COM`
+- contractVersion: `v1`
+- estado: `DESIGN`
+
+- `SGI_CLT_SGI_COM_0002_IF01` — `POST` `/api/v1/client/proposals` — Client-originated proposal/request
+- aliases históricos: `SGI_CLT__SGI_COM__00002__V0001`, `SGI_CLT__SGI_COM__00002`
+
+## `SGI_COM_CM_CON_0001_v001` — SGI_COM → CM_CON
+Request pre-shift attendance confirmation through Cajamarca Conmigo/IVR capability.
+
+- SoR de los datos principales: `SGI_COM`
+- contractVersion: `v1`
+- estado: `DESIGN`
+
+- `SGI_COM_CM_CON_0001_IF01` — `POST` `/api/v1/shift-confirmations` — Create attendance confirmation request
+- aliases históricos: `SGI_COM__CM_CON__00001__V0001`, `SGI_COM__CM_CON__00001`
+
+## `SGI_COM_CM_CON_0002_v001` — SGI_COM → CM_CON
+Read the result of a pre-shift attendance confirmation.
+
+- SoR de los datos principales: `CM_CON`
+- contractVersion: `v1`
+- estado: `DESIGN`
+
+- `SGI_COM_CM_CON_0002_IF01` — `GET` `/api/v1/shift-confirmations/{requestId}` — Confirmation result
+- aliases históricos: `SGI_COM__CM_CON__00002__V0001`, `SGI_COM__CM_CON__00002`

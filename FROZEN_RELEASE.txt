@@ -1,0 +1,6 @@
+SGI: Comando
+ENTREGA SISTEMAS 2026-09-28
+Freeze: 2026-09-27
+Status: CLOSED / FROZEN
+Current functional baselines: CSL v0.2.5 FROZEN; NEX v0.1 FROZEN
+See docs/SYSTEMS_HANDOFF_2026-09-28.md

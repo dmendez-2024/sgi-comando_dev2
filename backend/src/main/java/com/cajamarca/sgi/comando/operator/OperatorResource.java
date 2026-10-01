@@ -27,32 +27,21 @@ public class OperatorResource {
     @Inject OperationalScopeService scope;
     @Inject EntityManager em;
     @Inject ObjectMapper mapper;
-    @ConfigProperty(name="sgi.operator.relief-uat-enabled",defaultValue="false") boolean enabled;
+    @Inject OperatorContext ctx;
+    @Inject OperatorPatrols patrols;
+    @Inject PatrolExecutionService patrolExecutions;
+    @Inject TaskEvidenceService taskEvidences;
+    @Inject OperatorTasks tasks;
+
+    @org.jboss.resteasy.reactive.server.ServerExceptionMapper
+    public Response mapError(WebApplicationException e) { return OperatorErrors.withMessage(e); }
     record AssignmentContext(OperationalAssignmentEntity assignment,ShiftOccurrenceEntity shift,PostEntity post,PointEntity point) {}
 
-    private AppUser actor() {
-        if(!enabled) throw new NotFoundException("Integración de relevo UAT deshabilitada");
-        AppUser u=AppUser.find("username=?1 and instanceCountryId=?2",identity.getPrincipal().getName(),tenant.instanceCountryId()).firstResult();
-        if(u==null || !u.active) throw new ForbiddenException("Usuario no habilitado en esta instancia");
-        return u;
-    }
-    private UUID employee() {
-        AppUser u=actor();
-        if(!identity.hasRole("AGENTE_SEGURIDAD") && !identity.hasRole("SUPERVISOR_SEGURIDAD")) throw new ForbiddenException("Rol de operador requerido");
-        List<?> rows=em.createNativeQuery("select employee_id from operator_employee_binding where instance_country_id=:tenant and username=:user and active=true")
-            .setParameter("tenant",tenant.instanceCountryId()).setParameter("user",u.username).getResultList();
-        if(rows.size()!=1) throw new ForbiddenException("Vínculo usuario empleado pendiente de configuración");
-        return UUID.fromString(rows.get(0).toString());
-    }
+    private AppUser actor() { return ctx.actor(); }
+    private UUID employee() { return ctx.employee(); }
     private AssignmentContext assignment(UUID id,UUID employee) {
-        OperationalAssignmentEntity a=OperationalAssignmentEntity.find("id=?1 and instanceCountryId=?2",id,tenant.instanceCountryId()).firstResult();
-        if(a==null || "REMOVED".equals(a.status) || !employee.equals(a.effectiveEmployeeId())) throw new ForbiddenException("Asignación no autorizada");
-        ShiftOccurrenceEntity s=ShiftOccurrenceEntity.find("id=?1 and instanceCountryId=?2",a.shiftOccurrenceId,tenant.instanceCountryId()).firstResult();
-        if(s==null) throw new NotFoundException("Turno no disponible");
-        PostEntity post=PostEntity.find("id=?1 and instanceCountryId=?2",s.postId,tenant.instanceCountryId()).firstResult();
-        PointEntity point=post==null?null:PointEntity.find("id=?1 and instanceCountryId=?2",post.pointId,tenant.instanceCountryId()).firstResult();
-        if(point==null) throw new NotFoundException("Puesto o punto no disponible");
-        return new AssignmentContext(a,s,post,point);
+        OperatorContext.Assignment x=ctx.assignment(id,employee);
+        return new AssignmentContext(x.assignment(),x.shift(),x.post(),x.point());
     }
     @SuppressWarnings("unchecked")
     private ArrayNode consignments(AssignmentContext c) {
@@ -95,7 +84,14 @@ public class OperatorResource {
         UUID employee=employee();
         if(requestedEmployee!=null && !requestedEmployee.equals(employee)) throw new ForbiddenException("Empleado incorrecto");
         ObjectNode response=mapper.createObjectNode().put("instanceCountryId",tenant.instanceCountryId().toString()).put("employeeId",employee.toString());
-        if(assignmentId!=null) { response.set("relief",context(assignment(assignmentId,employee))); return response; }
+        if(assignmentId!=null) {
+            AssignmentContext c=assignment(assignmentId,employee);
+            response.set("relief",context(c));
+            response.set("patrols",patrols.runtime(c.post.id));
+            response.set("consignmentTasks",tasks.consignmentTasks(c.post));
+            response.set("logbookTasks",tasks.logbookTasks(c.post));
+            return response;
+        }
         ArrayNode choices=response.putArray("assignments");
         List<OperationalAssignmentEntity> assignments=OperationalAssignmentEntity.list("instanceCountryId=?1 and status<>'REMOVED' and (actualEmployeeId=?2 or (actualEmployeeId is null and employeeId=?2))",tenant.instanceCountryId(),employee);
         Instant now=Instant.now();
@@ -104,9 +100,8 @@ public class OperatorResource {
         return response;
     }
     static String hash(byte[] bytes) { try { return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes)); } catch(Exception e) { throw new IllegalStateException(e); } }
-    private void lock(UUID assignmentId) {
-        em.createNativeQuery("select pg_advisory_xact_lock(hashtextextended(:key,0))").setParameter("key",tenant.instanceCountryId()+":"+assignmentId).getSingleResult();
-    }
+
+    private void lock(UUID assignmentId) { ctx.lock(assignmentId); }
     @PUT @Path("/relief-evidence/{eventId}/{purpose}") @Consumes("image/jpeg") @Transactional
     public Map<String,Object> upload(@PathParam("eventId") UUID eventId,@PathParam("purpose") String purpose,@QueryParam("assignmentId") UUID assignmentId,byte[] bytes) {
         UUID employee=employee(); assignment(assignmentId,employee);
@@ -125,6 +120,8 @@ public class OperatorResource {
     }
     @POST @Path("/executions") @Consumes(MediaType.APPLICATION_JSON) @Transactional
     public ObjectNode submit(JsonNode batch) {
+        if(PatrolExecutionContract.TYPE.equals(batch.path("events").path(0).path("type").asText())) return patrolExecutions.submit(batch);
+        if(TaskEvidenceService.TYPE.equals(batch.path("events").path(0).path("type").asText())) return taskEvidences.submit(batch);
         UUID employee=employee(); validate(batch,employee,tenant.instanceCountryId(),Instant.now());
         JsonNode event=batch.path("events").get(0); UUID eventId=uuid(event,"eventId"), assignmentId=uuid(event,"assignmentId");
         AssignmentContext c=assignment(assignmentId,employee); lock(assignmentId);

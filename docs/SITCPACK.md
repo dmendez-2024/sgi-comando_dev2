@@ -1,25 +1,53 @@
-# SGI: Comando — SITCpack INT v0.1
+# SGI: Comando — SITCpack CURRENT
 
-## Baseline recibido
-- `SITC-ECOSISTEMA-CM-SISTEMAS-20260921-SCENARIO_SNAPSHOT.sitcpack`
-- `SITC-NOM-001 v3.0`
+**Norma:** SITC-NOM-001 v4.1  
+**Fecha:** 2026-09-27  
+**Código baseline:** SISTEMAS commit `8c528e8`.
 
-## Entregables
-- `sitc/SGI_Comando_CURRENT.sitcpack` — snapshot acumulativo v3 importable a CORE.
-- `sitc/SGI_COM_INT_v0.1_COMPONENT_DELTA.sitcpack` — delta de SGI_COM.
-- `sitc/v3/SGI_COM-v1.1.0-INT-v0.1-COMPONENT_DELTA.sitcpack`
-- `sitc/v3/SITC-ECOSISTEMA-CM-20260921-SGI_COM-INTERCONNECTIONS-SCENARIO_SNAPSHOT.sitcpack`
+## CURRENT
 
-El snapshot acumulativo conserva los 23 Program IDs del maestro y agrega 24 interconexiones / 30 interfaces.
+`repo/sitc/SGI_Comando_CURRENT.sitcpack`
 
-## Importación a CORE
-1. Validar schema y referencias Program ID.
-2. Preview/Merge: Programs por `programId`; interconexiones por `interconnectionRef`; interfaces por `interfaceId`.
-3. Preservar revisión `interconnectionId`.
-4. Mostrar CREATE / UPDATE / NO_CHANGE / CONFLICT / INVALID.
-5. No importar secretos.
-6. No activar ni modificar bindings productivos de Instancias PE automáticamente.
-7. Tras aprobación arquitectónica, configurar/activar bindings por Instancia PE + ambiente de forma explícita.
+Contenido:
+- `manifest.json`
+- `architecture.json`
+- `core-normalized.json`
+- `scenario.json`
+- `README.md`
 
-## Runtime
-SGI_COM usa `SGI_COM__CORE__00002__V0001` para resolver bindings. CORE devuelve configuración efectiva y SGI_COM la cachea; luego SGI_COM conversa directamente con el destino.
+CURRENT contiene **23 Program IDs**, **25 interconexiones** y **31 interfaces**.
+
+## Cambios frente al CURRENT v3 anterior
+
+- `CORE.scope`: `UNIVERSAL`.
+- Programas PE usan nomenclatura v4.1 `PE_SPECIFIC`.
+- IDs de interconexión: `ORIGEN_DESTINO_NNNN_vNNN`.
+- IDs v3 se conservan solo en `legacyConnectionIds`.
+- Nueva definición `SGI_COM_CORE_0001_v001` para reglas versionadas de Impulsos.
+- CORE = SoR reglas de Impulsos.
+- SGI_COM PE = SoR evaluación/adjudicación/ledger/saldo.
+- SIC:RRHH inbound usa `credential_ref`, idempotencia persistente (V34) y exige relación Persona–Compañía autoritativa para altas nuevas.
+
+## Delta de esta RC
+
+`sitc/SGI_COM_P0P1_20260927_COMPONENT_DELTA.sitcpack`
+
+## Delta específico Impulsos
+
+`sitc/IMP_v0.2_delta.sitcpack`
+
+`IMP_v0.1_delta.sitcpack` se conserva como histórico y su decisión de SoR queda superseded.
+
+## Importación CORE
+
+- `PREVIEW_MERGE`.
+- Merge Programas por `programId`.
+- Merge interconexiones por `referenceCode`.
+- Merge interfaces por `interfaceId`.
+- Mostrar `CREATE / UPDATE / NO_CHANGE / CONFLICT / INVALID`.
+- No importar secretos.
+- No activar ni modificar bindings productivos automáticamente.
+
+## CSL v0.2 — 2026-09-27
+Sin cambios de arquitectura, Program IDs o interconexiones. `sitc/SGI_Comando_CURRENT.sitcpack` se preserva byte-for-byte respecto de CSL v0.1.1 / P0P1. La Notificación de Incidentes usa capacidades internas de SGI: Comando en esta UAT y no activa nuevos contratos externos.
+

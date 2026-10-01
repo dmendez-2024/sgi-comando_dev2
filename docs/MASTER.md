@@ -187,17 +187,33 @@ Se congela conceptualmente la orquestación de evidencia visual y gamificación 
 2. La evidencia entra a SGI: Comando; no existe integración directa Operador→VISINT.
 3. SGI: Comando solicita y recibe la revisión VISINT.
 4. VISINT devuelve la evaluación visual, sin decidir premios.
-5. SGI: Comando ejecuta la regla vigente de Impulsos (elegibilidad, probabilidad, cantidad y habilidad) y registra el resultado de forma idempotente.
+5. SGI: Comando consume desde CORE la regla versionada vigente de Impulsos, la aplica de forma idempotente y registra el resultado/ledger local.
 6. SGI: Operador muestra estado de revisión y, cuando exista, el premio otorgado.
 
 Ver `docs/SGI_OPR_VISINT_IMPULSOS.md`.
 
 
-## INT v0.1 — Módulo genérico de interconexiones (2026-09-21)
-SGI: Comando incorpora un único módulo reusable para integraciones salientes conforme a SITC-NOM-001 v3.0. La lógica de negocio ya no debe crear clientes HTTP ad-hoc ni hardcodear hosts/puertos/credenciales.
+## Integraciones — SITC-NOM-001 v4.1 / P0-P1 RC (2026-09-27)
+SGI: Comando incorpora un único módulo reusable para integraciones salientes conforme a SITC-NOM-001 v4.1. La lógica de negocio ya no debe crear clientes HTTP ad-hoc ni hardcodear hosts/puertos/credenciales.
 
-Flujo técnico: `Business Adapter → GenericInterconnectionExecutor → CORE resolver/cache → auth/resilience/observability → programa destino`. CORE resuelve configuración por `interconnectionId + instance_country_id + ambiente`, pero no actúa como proxy del tráfico funcional.
+Flujo técnico: `Business Adapter → GenericInterconnectionExecutor → CORE resolver/cache → auth/resilience/observability → programa destino`. CORE resuelve configuración por `interconnectionId + Instancia PE + ambiente`, pero no actúa como proxy del tráfico funcional.
 
 Componentes: `CoreInterconnectionResolver`, `ResolutionCache`, `CredentialRefResolver`, `CircuitRegistry`, `GenericInterconnectionExecutor`, catálogo canónico e IDs. La URL bootstrap del resolver CORE se configura por ambiente; todos los demás bindings provienen de CORE.
 
 Ver `docs/INTERCONNECTIONS.md`, `docs/API_CATALOG.md`, `docs/SITCPACK.md` y `sitc/SGI_Comando_CURRENT.sitcpack`.
+
+
+### Impulsos — SoR vigente
+CORE es SoR de las reglas versionadas de Impulsos. Cada Instancia PE de SGI: Comando aplica esas reglas a los hechos operativos recibidos desde SGI: Operador y es SoR del ledger/saldo resultante por Operador.
+
+## CSL v0.2.1 — Notificación de Incidentes / Taxonomía Excel (2026-09-27)
+Consola incorpora una creación contextual de Incidentes con panel derecho. La UAT valida la jerarquía Categoría → Subcategoría → Incidente, criticidad, ubicación, colaboradores, adjuntos, sanción, estados Borrador/Finalizado y el flujo especial de Inasistencia programada/efectiva.
+
+La regla productiva futura para colaboradores es: solo personas con servicio en el Punto durante las 2 semanas anteriores al momento de consulta, deduplicadas. Para inasistencias, la selección de reemplazo usa disponibilidad del turno objetivo + turno previo y prelación mismo Puesto, mismo Punto, misma Compañía por cercanía geográfica.
+
+Esta versión no crea persistencia backend ni routing STC; conserva el SITC vigente. EVC queda fuera de alcance.
+
+
+
+## Checkpoint final — 2026-09-27 — FROZEN / entrega a SISTEMAS
+La baseline acumulativa queda cerrada para handoff a SISTEMAS el 2026-09-28. CSL v0.2.5 y NEX v0.1 pasan a FROZEN junto con las verticales históricas ya congeladas. Nexus se incorpora en Configuración del Punto entre Consignas y Recursos Humanos, con Reglas + Historial y modelo Objeto/Evento-Estado + ANTES/DURANTE/DESPUÉS + Evento de Referencia + correlación/acciones. Su runtime EVC/BPM productivo y persistencia backend quedan expresamente fuera de NEX v0.1. Ver `docs/SYSTEMS_HANDOFF_2026-09-28.md`.

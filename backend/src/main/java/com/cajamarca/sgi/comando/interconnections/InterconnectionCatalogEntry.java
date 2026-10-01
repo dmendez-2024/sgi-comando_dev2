@@ -6,6 +6,7 @@ import java.util.List;
 public class InterconnectionCatalogEntry {
     public String interconnectionRef;
     public String interconnectionId;
+    public List<String> legacyConnectionIds = new ArrayList<>();
     public String sourceProgramId;
     public String targetProgramId;
     public String purpose;

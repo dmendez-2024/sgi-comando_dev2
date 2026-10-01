@@ -456,19 +456,62 @@ SGI-05 se difiere hasta construir ATS. El paquete `.ats` deberá transportar al 
 
 - **SGI-IMP-DEC-001:** la evidencia fotográfica tomada en SGI: Operador para tareas/relevos viaja a VISINT **a través de SGI: Comando**; no se autoriza integración directa SGI_OPR→VISINT.
 - **SGI-IMP-DEC-002:** VISINT es responsable de la validación visual; no es System of Record ni motor de Impulsos.
-- **SGI-IMP-DEC-003:** SGI: Comando es System of Record de reglas, evaluación probabilística, cantidad adjudicada y ledger de Impulsos.
+- **SGI-IMP-DEC-003 (SUPERSEDED 2026-09-27):** la formulación previa ubicaba reglas y ledger en SGI: Comando.
+- **SGI-IMP-DEC-009 (VIGENTE):** CORE es System of Record de las reglas versionadas de Impulsos. Cada Instancia PE de SGI: Comando aplica la regla efectiva y es SoR de la evaluación/adjudicación y del ledger/saldo de Impulsos por Operador.
 - **SGI-IMP-DEC-004:** `VISINT PASS` habilita la evaluación de recompensa, pero no garantiza premio. `PASS + NO_AWARD` es un resultado válido.
 - **SGI-IMP-DEC-005:** un resultado visual no conforme no genera Impulsos mediante este flujo.
 - **SGI-IMP-DEC-006:** la probabilidad se resuelve una sola vez por combinación lógica `(task_execution_id, visint_review_id, impulse_rule_version)`; retries/callbacks duplicados deben devolver el resultado existente.
-- **SGI-IMP-DEC-007:** la cantidad mostrada en mockups (por ejemplo `+5`) es ilustrativa de una ejecución; el valor real proviene de la regla vigente en SGI: Comando.
+- **SGI-IMP-DEC-007:** la cantidad mostrada en mockups (por ejemplo `+5`) es ilustrativa de una ejecución; el valor real proviene de la regla versionada vigente en CORE y es aplicado por la Instancia PE de SGI: Comando.
 - **SGI-IMP-DEC-008:** la evaluación VISINT y la evaluación de Impulsos mantienen estados separados para no confundir cumplimiento de tarea con recompensa.
 
 
-## INT-DEC-001 — Interconexiones genéricas / SITC-NOM-001 v3.0 (2026-09-21)
-- Se adopta `SOURCE__TARGET__NNNNN` como referencia estable y `__VNNNN` como revisión maestra.
-- IDs legacy `INT_SOURCE__TARGET__001` quedan solo como alias histórico; no se crean nuevos IDs en ese formato.
+## INT-DEC-001 — Interconexiones genéricas / SITC-NOM-001 v4.1 (supersesión 2026-09-27)
+- Se adopta `ORIGEN_DESTINO_NNNN` como referencia estable, `ORIGEN_DESTINO_NNNN_vNNN` como ID versionado e `..._IFNN` para interfaces.
+- IDs v3 con `INT_`, doble guion bajo, cinco dígitos o `V0001` quedan solo como `legacyConnectionId`/alias histórico; no se crean nuevos IDs en esos formatos.
 - SGI: Comando usa un único módulo genérico para resolver CORE, caché, transporte, auth, resiliencia y observabilidad.
 - CORE mantiene definiciones y bindings por Instancia PE + ambiente; no transporta el tráfico funcional.
 - La importación del `.sitcpack` acumulativo usa preview/merge y no cambia automáticamente bindings productivos.
 - Sistemas legacy quedan `MANUAL_PENDING` hasta adecuación y prueba por DEV.
 - Todo el resto de verticales SGI: Comando permanece FROZEN.
+
+## CSL v0.2 — decisiones de Notificación de Incidentes — 2026-09-27
+- **CSL-DEC-INC-001:** `Notificar Incidente` se ejecuta desde Consola y abre panel lateral derecho, sin abandonar la bandeja operativa.
+- **CSL-DEC-INC-002:** Categorías: Servicio, Seguridad, Administrativo.
+- **CSL-DEC-INC-003 (SUPERSEDED por CSL-DEC-INC-004):** la UAT v0.2 trató provisionalmente Inasistencia Programada/Efectiva como variantes especiales a nivel de subcategoría.
+- **CSL-DEC-INC-004:** Criticidad: Informativo, Menor, Moderado, Mayor, Crítico.
+- **CSL-DEC-INC-005:** Cliente y Punto obligatorios; Puesto opcional.
+- **CSL-DEC-INC-006:** Colaboradores elegibles: quienes trabajaron en el Punto desde ahora hasta 14 días atrás, sin duplicidad.
+- **CSL-DEC-INC-007:** Descripción y Resolución admiten máximo 5 imágenes cada una.
+- **CSL-DEC-INC-008:** Sanción requiere Sí/No; si Sí, descripción de sanción.
+- **CSL-DEC-INC-009:** Borrador y Finalizado permanecen reeditables desde Casos operativos.
+- **CSL-DEC-INC-010:** Programada: elegir uno de los próximos dos turnos; libre = no trabaja en turno objetivo ni turno previo. Efectiva: turno actual; libre = no trabaja ahora ni turno previo.
+- **CSL-DEC-INC-011:** Reemplazos se ordenan: mismo Puesto, mismo Punto, misma Compañía por cercanía geográfica usando coordenadas del último Punto trabajado.
+- **CSL-DEC-INC-012:** CSL v0.2 UAT implementa la lógica con dataset DEMO/local; no modifica BD, backend ni SITC.
+- **CSL-DEC-INC-013:** EVC/Eventos de Cumplimiento no forma parte de esta versión.
+
+
+- **CSL-DEC-INC-004 (2026-09-27):** el catálogo de Incidentes sigue la jerarquía Categoría → Subcategoría → Incidente del Excel `Incidentes(1).xlsx`. Inasistencia programada/efectiva son tipos de incidente bajo Asistencia y Puntualidad y activan el flujo especial de cobertura.
+
+## Evidencias del agente — Fase 1 (2026-09-29)
+- **SGI-EVI-DEC-001:** Las fotos del agente se envían por `multipart/form-data`: campo `metadata` (JSON como texto) y 1..5 partes `files`, cada una nombrada `<clientEvidenceId>.<ext>`.
+- **SGI-EVI-DEC-002:** Un Hito admite entre `evidence_min_count` y `evidence_max_count` fotos (1..5, por defecto 1..5).
+- **SGI-EVI-DEC-003:** Fotos estándar y del agente se almacenan en MinIO; Postgres guarda solo la referencia (clave, sha256, tamaño). El `bytea` anterior se migra en segundo plano y se eliminará en una versión posterior.
+- **SGI-EVI-DEC-004:** Carga en dos pasos (evidencias → ejecución), idempotente por `clientEvidenceId` y por `eventId`.
+- **SGI-EVI-DEC-005:** MinIO local usa `bitnamilegacy/minio` (edición comunitaria): la edición AIStor requiere licencia comercial y las imágenes `minio/minio` ya no se publican. Esta versión no incluye consola web.
+
+
+## VISINT en Hitos de patrulla — Fase 2 (2026-09-29)
+- **SGI-VIS-DEC-001:** VISINT se configura por Hito (`visint_enabled`) y viene **activado por defecto** en los Hitos que requieren evidencia (desde 2026-09-30; antes apagado). La opción no se muestra en pantalla: todo Hito con evidencia se valida con VISINT y necesita al menos una foto estándar para publicarse. Si está activo, el Hito necesita foto estándar para publicarse.
+- **SGI-VIS-DEC-002:** VISINT responde de forma **síncrona**. La llamada la hace un worker en segundos después de confirmar el Hito; la confirmación del agente nunca depende de VISINT.
+- **SGI-VIS-DEC-003:** VISINT decide el veredicto (`PASS`/`FAIL`/`ERROR`). Comando no usa puntajes ni reglas propias (p. ej., "al menos una foto cumple"): solo guarda y muestra el resultado.
+- **SGI-VIS-DEC-004:** La revisión guarda un snapshot de las fotos estándar enviadas (`visual_review_standard`: clave en MinIO, posición, sha256), para reconstruir desde la evidencia original hasta la decisión.
+- **SGI-VIS-DEC-005:** VISINT real (`SGI_VISINT_MODE=HTTP`) por defecto. El simulado solo funciona con `SGI_VISINT_MODE=MOCK` **y** `SGI_UAT_FEATURES_ENABLED=true` ("Cero DEMO/mock" en rutas productivas). El contrato HTTP es provisional hasta recibir el oficial.
+- **SGI-VIS-DEC-006:** Las herramientas UAT (VISINT simulado, Simulador de Agente) quedan detrás de `SGI_UAT_FEATURES_ENABLED` (feature flag).
+- **SGI-VIS-DEC-007:** VISINT recibe las fotos como archivos (`multipart/form-data`), no como base64 ni URLs: Comando las lee de MinIO y las envía. En `image` va **la foto del agente** y en `referenceImages` (+ `referenceIds`) **las fotos estándar** del Hito (1 a 5); VISINT devuelve un veredicto por ejecución y la foto estándar que coincidió (`matchedReferenceId`). Basta coincidir con una.
+- **SGI-VIS-DEC-008:** `sgi.interconnections.core-resolver-url` pasa a ser opcional: sin CORE configurado el backend arranca y cada llamada externa falla con `CORE_RESOLVER_NOT_CONFIGURED`.
+- **SGI-VIS-DEC-009:** VISINT se llama directo (`SGI_VISINT_URL` = `/v1/evidence/validate`, `SGI_VISINT_TOKEN` en `X-API-Key`), no vía CORE. `requestId` = `<revisión>-<intento>`, para que un reintento tras `TIMEOUT` no reciba el mismo resultado guardado. Estados (plan de integración VISINT): `PASS` cumple; `FAIL_*` no cumple; `TIMEOUT`/`PROCESSING` se reintentan solos; `ERROR_VISINT` es falla técnica (no incumplimiento).
+- **SGI-VIS-DEC-014:** (reemplaza la parte "no vía CORE" de DEC-009) La URL de VISINT se resuelve en CORE con la Interconexión `SGI_COM_VISINT_0001_v002` (`resolvedUrl` de la ResolutionView, con la caché y el stale de `ResolutionCache`); `SGI_VISINT_URL` queda como respaldo cuando CORE no está configurado, falla o no tiene binding. El resolver acepta la respuesta real de CORE (`resolvedUrl`, `httpMethod`, `code`, `retries`). Se mantienen el timeout de 60 s y la regla de reintentos de Comando: el `timeoutMs` de 5000 que publica CORE es menor que la latencia observada en las pruebas de estrés (p95 13 s sin caché).
+- **SGI-VIS-DEC-010:** Reconocimiento facial / identificación del agente queda fuera de alcance (plan de integración VISINT, lámina 12).
+- **SGI-VIS-DEC-012:** Fase 3: el agente consulta el resultado (`GET /api/v1/operator/executions/{eventId}`). Tras "No cumple" puede tomar una nueva foto del mismo Hito en la misma ronda (`task_execution.capture_no`); tras error técnico de VISINT no se le exige (el Hito queda registrado). Sin tope de capturas hasta que Gerencia decida.
+- **SGI-VIS-DEC-013:** Fase 4: fotos estándar (1–5) en una tabla común `standard_reference_image` para Hitos, evidencias de Consigna y campos de Bitácora. Consignas: una foto por evidencia tipo Foto y turno (nueva captura si "no cumple"). Bitácora: una foto por campo y registro de visitante (`groupId`); VISINT valida solo campos tipo DOCUMENTO; Rostro se guarda sin VISINT (facial fuera de alcance). Evento del agente `TASK_EVIDENCE_SUBMITTED`.
+- **SGI-VIS-DEC-011:** Cada Hito tiene de 0 a 5 fotos estándar (`patrol_checkpoint_standard_image`); la foto estándar única anterior pasa a ser la n.º 1. Se elimina la configuración de mínimo/máximo de fotos: el agente envía **una** foto por Hito.

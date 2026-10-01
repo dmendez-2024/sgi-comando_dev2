@@ -1,6 +1,5 @@
 package com.cajamarca.sgi.comando.rrhh;
 
-import com.cajamarca.sgi.comando.assignments.AssignmentRolePolicy;
 import com.cajamarca.sgi.comando.assignments.CompanyMembershipEntity;
 import com.cajamarca.sgi.comando.assignments.EmployeeOperationalSnapshot;
 import com.cajamarca.sgi.comando.common.TenantContext;
@@ -9,12 +8,18 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
 import jakarta.ws.rs.BadRequestException;
+import jakarta.ws.rs.WebApplicationException;
+import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.InternalServerErrorException;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
+import java.util.HexFormat;
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
 
 @ApplicationScoped
@@ -33,23 +38,41 @@ public class RrhhEmployeeSyncService {
         "/avatars/82000000-0000-0000-0000-000000000011.png",
         "/avatars/82000000-0000-0000-0000-000000000012.png"
     );
-    private static final UUID KAIBIL_CORE_CATALOG_ID =
-        UUID.fromString("a2000000-0000-0000-0000-000000000005");
-    private static final String KAIBIL_CODE = "KAI-001";
 
     @Inject TenantContext tenant;
-    @Inject AssignmentRolePolicy rolePolicy;
 
     @ConfigProperty(name = "sgi.integrations.rrhh.use-canonical-employee-id", defaultValue = "false")
     boolean useCanonicalEmployeeId;
 
+    /**
+     * Apply one versioned SIC:RRHH event. Idempotency-Key is persisted so a retry
+     * with the same payload is safe, while reuse of the key with different content
+     * is rejected.
+     */
     @Transactional
-    public void synchronize(RrhhEmployeeEventResource.EmployeeEventRequest request) {
+    public void synchronize(RrhhEmployeeEventResource.EmployeeEventRequest request, String idempotencyKey) {
         validate(request);
+        String key = trim(idempotencyKey);
+        if (key.isEmpty() || key.length() > 160) {
+            throw new BadRequestException("Idempotency-Key es obligatorio y debe tener máximo 160 caracteres.");
+        }
+
         UUID tenantId = tenant.instanceCountryId();
+        String contentHash = contentHash(request);
+        RrhhEmployeeEventReceipt prior = RrhhEmployeeEventReceipt.find(
+            "instanceCountryId=?1 and idempotencyKey=?2", tenantId, key
+        ).firstResult();
+        if (prior != null) {
+            if (!prior.contentHash.equals(contentHash)) {
+                throw new WebApplicationException("Idempotency-Key ya fue recibido con contenido distinto.", Response.Status.CONFLICT);
+            }
+            return;
+        }
+
         Long personaId = sourcePersonaId(request);
         UUID employeeId = resolveEmployeeId(tenantId, request);
         Instant sourceTimestamp = request.updatedFromSourceAt();
+        String employmentStatus = trim(request.employmentStatus()).toUpperCase();
 
         EmployeeOperationalSnapshot employeeById = EmployeeOperationalSnapshot.find(
             "instanceCountryId=?1 and employeeId=?2", tenantId, employeeId
@@ -78,36 +101,68 @@ public class RrhhEmployeeSyncService {
             employee.personaId = personaId;
         }
 
+        if (employee == null && "INACTIVE".equals(employmentStatus)) {
+            throw new BadRequestException(
+                "No se puede inactivar al colaborador porque no existe en SGI:Comando. Debe sincronizarse primero su activación."
+            );
+        }
+
         if (employee != null && employee.updatedFromSourceAt != null
             && sourceTimestamp.isBefore(employee.updatedFromSourceAt)) {
+            recordReceipt(tenantId, key, contentHash, sourceTimestamp, "STALE_IGNORED");
             return;
         }
+
+        Company sourceCompany = resolveSourceCompany(tenantId, request, employee);
 
         if (employee == null) {
             employee = new EmployeeOperationalSnapshot();
             employee.instanceCountryId = tenantId;
             employee.employeeId = employeeId;
             employee.personaId = personaId;
-            employee.companyId = kaibil(tenantId).id;
+            employee.companyId = sourceCompany.id;
             employee.requiredChange = false;
+        } else {
+            employee.companyId = sourceCompany.id;
         }
         if (blank(employee.photoKey)) employee.photoKey = localAvatarKey(employeeId);
 
         employee.fullName = request.fullName().trim();
         employee.roleCode = request.roleCode().trim();
-        employee.employmentStatus = "ACTIVE";
+        employee.employmentStatus = employmentStatus;
         employee.updatedFromSourceAt = sourceTimestamp;
         if (!employee.isPersistent()) employee.persist();
 
+        if ("ACTIVE".equals(employmentStatus)) {
+            reconcilePrimaryMembership(tenantId, employee, sourceCompany, sourceTimestamp);
+        } else {
+            closePrimaryMembership(tenantId, employee, sourceTimestamp);
+        }
+        recordReceipt(tenantId, key, contentHash, sourceTimestamp, "APPLIED");
+    }
+
+    private void reconcilePrimaryMembership(
+        UUID tenantId,
+        EmployeeOperationalSnapshot employee,
+        Company sourceCompany,
+        Instant sourceTimestamp
+    ) {
         CompanyMembershipEntity membership = CompanyMembershipEntity.find(
             "instanceCountryId=?1 and employeeId=?2 and membershipType='PRIMARY' and endsAt is null",
-            tenantId, employeeId
+            tenantId, employee.employeeId
         ).firstResult();
+
+        if (membership != null && !membership.companyId.equals(sourceCompany.id)) {
+            membership.endsAt = sourceTimestamp.isBefore(membership.startsAt) ? membership.startsAt : sourceTimestamp;
+            membership.persistAndFlush();
+            membership = null;
+        }
+
         if (membership == null) {
             membership = new CompanyMembershipEntity();
             membership.instanceCountryId = tenantId;
-            membership.companyId = employee.companyId;
-            membership.employeeId = employeeId;
+            membership.companyId = sourceCompany.id;
+            membership.employeeId = employee.employeeId;
             membership.membershipType = "PRIMARY";
             membership.startsAt = sourceTimestamp;
             membership.requiredChange = employee.requiredChange;
@@ -116,6 +171,110 @@ public class RrhhEmployeeSyncService {
         } else {
             membership.roleCode = employee.roleCode;
             membership.requiredChange = employee.requiredChange;
+        }
+    }
+
+    private void closePrimaryMembership(
+        UUID tenantId,
+        EmployeeOperationalSnapshot employee,
+        Instant sourceTimestamp
+    ) {
+        List<CompanyMembershipEntity> memberships = CompanyMembershipEntity.list(
+            "instanceCountryId=?1 and employeeId=?2 and membershipType='PRIMARY' and endsAt is null",
+            tenantId, employee.employeeId
+        );
+        for (CompanyMembershipEntity membership : memberships) {
+            membership.endsAt = sourceTimestamp.isBefore(membership.startsAt)
+                ? membership.startsAt
+                : sourceTimestamp;
+        }
+    }
+
+    /**
+     * SIC:RRHH is SoR of Persona->Compañía. New personnel must therefore arrive
+     * with a company identity. For transition compatibility, an existing employee
+     * may omit it and retain the already persisted source company.
+     */
+    private Company resolveSourceCompany(
+        UUID tenantId,
+        RrhhEmployeeEventResource.EmployeeEventRequest request,
+        EmployeeOperationalSnapshot existingEmployee
+    ) {
+        Company byCore = null;
+        if (request.companyCoreCatalogId() != null) {
+            List<Company> rows = Company.list(
+                "instanceCountryId=?1 and coreCatalogId=?2", tenantId, request.companyCoreCatalogId()
+            );
+            if (rows.size() != 1) {
+                throw new BadRequestException("companyCoreCatalogId no resuelve exactamente una Compañía SGI del tenant.");
+            }
+            byCore = rows.getFirst();
+        }
+
+        Company byCode = null;
+        if (!blank(request.companyCode())) {
+            List<Company> rows = Company.list(
+                "instanceCountryId=?1 and code=?2", tenantId, request.companyCode().trim()
+            );
+            if (rows.size() != 1) {
+                throw new BadRequestException("companyCode no resuelve exactamente una Compañía SGI del tenant.");
+            }
+            byCode = rows.getFirst();
+        }
+
+        if (byCore != null && byCode != null && !byCore.id.equals(byCode.id)) {
+            throw new BadRequestException("companyCoreCatalogId y companyCode identifican Compañías distintas.");
+        }
+        if (byCore != null) return byCore;
+        if (byCode != null) return byCode;
+
+        if (existingEmployee != null && existingEmployee.companyId != null) {
+            Company existing = Company.find(
+                "instanceCountryId=?1 and id=?2", tenantId, existingEmployee.companyId
+            ).firstResult();
+            if (existing != null) return existing;
+            throw new InternalServerErrorException("La Compañía actual del empleado no existe en el tenant.");
+        }
+
+        throw new BadRequestException(
+            "SIC:RRHH es SoR de Persona–Compañía: un empleado nuevo requiere companyCoreCatalogId o companyCode."
+        );
+    }
+
+    private void recordReceipt(
+        UUID tenantId,
+        String idempotencyKey,
+        String contentHash,
+        Instant sourceTimestamp,
+        String status
+    ) {
+        RrhhEmployeeEventReceipt receipt = new RrhhEmployeeEventReceipt();
+        receipt.instanceCountryId = tenantId;
+        receipt.idempotencyKey = idempotencyKey;
+        receipt.contentHash = contentHash;
+        receipt.sourceUpdatedAt = sourceTimestamp;
+        receipt.processingStatus = status;
+        receipt.processedAt = Instant.now();
+        receipt.persist();
+    }
+
+    private String contentHash(RrhhEmployeeEventResource.EmployeeEventRequest request) {
+        String canonical = String.join("\u001f",
+            Objects.toString(request.employeeId(), ""),
+            Objects.toString(request.personaId(), ""),
+            Objects.toString(request.canonicalEmployeeId(), ""),
+            trim(request.fullName()),
+            trim(request.roleCode()),
+            trim(request.employmentStatus()).toUpperCase(),
+            Objects.toString(request.updatedFromSourceAt(), ""),
+            Objects.toString(request.companyCoreCatalogId(), ""),
+            trim(request.companyCode()).toUpperCase()
+        );
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            return HexFormat.of().formatHex(digest.digest(canonical.getBytes(StandardCharsets.UTF_8)));
+        } catch (NoSuchAlgorithmException e) {
+            throw new InternalServerErrorException("SHA-256 no está disponible.", e);
         }
     }
 
@@ -169,28 +328,16 @@ public class RrhhEmployeeSyncService {
         if (request.roleCode().trim().length() > 80) {
             throw new BadRequestException("roleCode supera el máximo de 80 caracteres.");
         }
-        if (!"ACTIVE".equalsIgnoreCase(trim(request.employmentStatus()))) {
-            throw new BadRequestException("Solo se sincronizan empleados activos de Seguridad Física.");
+        String employmentStatus = trim(request.employmentStatus()).toUpperCase();
+        if (!"ACTIVE".equals(employmentStatus) && !"INACTIVE".equals(employmentStatus)) {
+            throw new BadRequestException("employmentStatus solo admite ACTIVE o INACTIVE.");
         }
         if (request.updatedFromSourceAt() == null) {
             throw new BadRequestException("updatedFromSourceAt es obligatorio.");
         }
-    }
-
-    private Company kaibil(UUID tenantId) {
-        List<Company> canonical = Company.list(
-            "instanceCountryId=?1 and coreCatalogId=?2", tenantId, KAIBIL_CORE_CATALOG_ID
-        );
-        if (canonical.size() == 1) return canonical.get(0);
-        if (canonical.size() > 1) {
-            throw new InternalServerErrorException("Existe más de una Compañía vinculada al catálogo CORE de Kaibil.");
+        if (!blank(request.companyCode()) && request.companyCode().trim().length() > 80) {
+            throw new BadRequestException("companyCode supera el máximo de 80 caracteres.");
         }
-        List<Company> compatible = Company.list(
-            "instanceCountryId=?1 and code=?2 and companyType='COORDINATION' and alwaysActive=true",
-            tenantId, KAIBIL_CODE
-        );
-        if (compatible.size() == 1) return compatible.get(0);
-        throw new InternalServerErrorException("No se pudo resolver la Compañía Kaibil activa del tenant.");
     }
 
     private static boolean blank(String value) { return value == null || value.trim().isEmpty(); }

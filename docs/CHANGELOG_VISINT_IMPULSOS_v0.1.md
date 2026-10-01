@@ -2,6 +2,7 @@
 
 Fecha: 2026-09-20
 
+> **SUPERSEDED 2026-09-27 (SoR solamente):** este changelog conserva la decisión histórica v0.1. La definición vigente es: **CORE = SoR de reglas versionadas de Impulsos; cada SGI: Comando PE = SoR de evaluación/adjudicación y ledger/saldo por Operador**. Ver `docs/DECISIONS.md`, `docs/SGI_OPR_VISINT_IMPULSOS.md` y `sitc/IMP_v0.2_delta.sitcpack`.
 - Se documenta el flujo `SGI_OPR → SGI_COM → VISINT → SGI_COM → SGI_OPR`.
 - SGI: Comando queda definido como SoR de reglas/probabilidad/cantidad/ledger de Impulsos.
 - VISINT valida evidencia pero no decide recompensas.

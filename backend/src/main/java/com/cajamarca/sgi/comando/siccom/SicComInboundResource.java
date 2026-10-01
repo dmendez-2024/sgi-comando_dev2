@@ -30,7 +30,8 @@ public class SicComInboundResource {
       @HeaderParam("Idempotency-Key") String idempotencyKey) {
     serviceToken.assertAuthorized(authorization);
     if (blank(correlationId) || blank(idempotencyKey)) throw badRequest("X-Correlation-Id e Idempotency-Key son obligatorios.");
-    if (!InterconnectionIds.SIC_COM_EVENTS.equals(interconnectionId)) throw badRequest("X-Interconnection-Id no corresponde a SIC_COM -> SGI_COM.");
+    if (!InterconnectionIds.matches(interconnectionId, InterconnectionIds.SIC_COM_EVENTS, InterconnectionIds.LEGACY_SIC_COM_EVENTS))
+      throw badRequest("X-Interconnection-Id no corresponde a SIC_COM -> SGI_COM.");
     if (!"v1".equals(contractVersion)) throw badRequest("X-Contract-Version no soportada.");
     if (request == null || !idempotencyKey.equals(request.eventId())) throw badRequest("Idempotency-Key debe coincidir con eventId.");
     try {

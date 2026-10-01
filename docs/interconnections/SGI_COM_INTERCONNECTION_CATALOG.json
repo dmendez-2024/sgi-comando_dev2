@@ -1,7 +1,107 @@
 [
   {
-    "interconnectionRef": "SGI_COM__CORE__00001",
-    "interconnectionId": "SGI_COM__CORE__00001__V0001",
+    "interconnectionRef": "SGI_COM_CORE_0001",
+    "interconnectionId": "SGI_COM_CORE_0001_v001",
+    "legacyConnectionIds": [],
+    "sourceProgramId": "SGI_COM",
+    "targetProgramId": "CORE",
+    "purpose": "Consume the effective versioned Impulse rules applicable to the SGI: Comando Instancia PE.",
+    "trigger": "Startup/ruleset refresh, cache expiry or explicit invalidation.",
+    "interactionType": "REST_API",
+    "mode": "SYNC",
+    "protocol": "HTTPS",
+    "contractVersion": "v1",
+    "request": {
+      "query": [
+        "instanceCountryId",
+        "asOf"
+      ]
+    },
+    "response": {
+      "fields": [
+        "rulesetVersion",
+        "effectiveFrom",
+        "effectiveTo",
+        "rules[]"
+      ]
+    },
+    "dataOwnerProgramId": "CORE",
+    "authentication": "SERVICE_IDENTITY",
+    "authorizationScope": "service-to-service",
+    "timeoutPolicy": {
+      "timeout": "5s"
+    },
+    "retryPolicy": {
+      "policy": "2 attempts; exponential backoff on transport/5xx when idempotent"
+    },
+    "idempotency": "NO",
+    "criticality": "HIGH",
+    "observability": {
+      "correlationId": true,
+      "structuredLogs": true,
+      "latencyMetric": true,
+      "resultMetric": true,
+      "interconnectionIdHeader": true
+    },
+    "errorModel": [
+      "VALIDATION_ERROR",
+      "AUTHENTICATION_ERROR",
+      "AUTHORIZATION_ERROR",
+      "TIMEOUT",
+      "DEPENDENCY_UNAVAILABLE",
+      "CONTRACT_MISMATCH",
+      "TECHNICAL_ERROR"
+    ],
+    "legacyTarget": false,
+    "targetImplementationStatus": "DESIGN",
+    "status": "DESIGN",
+    "businessDataFlow": "CORE Impulse rule definitions -> SGI_COM PE; SGI_COM evaluates local operator facts and owns the resulting Impulse ledger.",
+    "interfaces": [
+      {
+        "interfaceId": "SGI_COM_CORE_0001_IF01",
+        "interfaceKey": "IMPULSE_RULESET_FETCH",
+        "method": "GET",
+        "path": "/v1/impulses/rules/effective",
+        "purpose": "Return the effective versioned Impulse rules for one Instancia PE/context.",
+        "contentType": "application/json",
+        "request": {
+          "query": [
+            "instanceCountryId",
+            "asOf"
+          ]
+        },
+        "response": {
+          "fields": [
+            "rulesetVersion",
+            "effectiveFrom",
+            "effectiveTo",
+            "rules[]"
+          ]
+        }
+      }
+    ],
+    "bindingTemplate": {
+      "scope": "INSTANCE_PE_ENVIRONMENT",
+      "requiredEffectiveFields": [
+        "baseUrl",
+        "authentication.authType",
+        "authentication.credentialRef",
+        "timeoutMs",
+        "maxRetries",
+        "configurationVersion"
+      ],
+      "secretsInSitcpack": false,
+      "activationOnImport": false,
+      "cachePolicy": {
+        "defaultTtlSeconds": 300,
+        "allowStaleSeconds": 3600
+      }
+    },
+    "notes": "CORE is SoR for Impulse rules. SGI_COM PE is SoR for each operator's awarded/reversed Impulse ledger and balance."
+  },
+  {
+    "interconnectionRef": "SGI_COM_CORE_0002",
+    "interconnectionId": "SGI_COM_CORE_0002_v001",
     "sourceProgramId": "SGI_COM",
     "targetProgramId": "CORE",
     "purpose": "Resolve transversal Instance/Country context and master catalogs required by SGI: Comando.",
@@ -13,7 +113,7 @@
     "request": {},
     "response": {},
     "dataOwnerProgramId": "CORE",
-    "authentication": "SERVICE_TOKEN",
+    "authentication": "SERVICE_IDENTITY",
     "authorizationScope": "service-to-service",
     "timeoutPolicy": {
       "timeout": "5s"
@@ -45,34 +145,76 @@
     "businessDataFlow": "CORE master data -> SGI_COM (SGI_COM initiates reads)",
     "interfaces": [
       {
-        "interfaceId": "SGI_COM__CORE__00001__IF01",
+        "interfaceId": "SGI_COM_CORE_0002_IF01",
         "method": "GET",
-        "path": "/api/v1/instance-countries/{instanceCountryId}/context",
+        "path": "/api/v1/catalog/instance-countries?countryId={countryId}",
         "purpose": "Instance/Country, locale, language, timezone, currency, units and formats",
         "contentType": "application/json",
-        "request": {},
-        "response": {}
+        "request": {"query": ["countryId"]},
+        "response": {
+          "fields": [
+            "id",
+            "code",
+            "name",
+            "countryId",
+            "countryCode",
+            "countryName",
+            "locale",
+            "timezone",
+            "currency"
+          ]
+        }
       },
       {
-        "interfaceId": "SGI_COM__CORE__00001__IF02",
+        "interfaceId": "SGI_COM_CORE_0002_IF02",
         "method": "GET",
-        "path": "/api/v1/instance-countries/{instanceCountryId}/territorial-structure",
-        "purpose": "Official subdivision type/catalog/geometries/dataset version",
+        "path": "/api/v1/catalog/subdivisions?countryId={countryId}",
+        "purpose": "Official subdivision catalog/type/dataset version; geometries from companion GeoJSON endpoint",
         "contentType": "application/json",
-        "request": {},
-        "response": {}
+        "request": {"query": ["countryId"]},
+        "response": {
+          "fields": [
+            "countryId",
+            "countryCode",
+            "countryName",
+            "subdivisionType",
+            "subdivisionSingular",
+            "subdivisionPlural",
+            "datasetVersion",
+            "subdivisions[].id",
+            "subdivisions[].code",
+            "subdivisions[].name",
+            "subdivisions[].officialCode",
+            "subdivisions[].type",
+            "subdivisions[].typeLabel",
+            "geojson.features[].id",
+            "geojson.features[].geometry"
+          ]
+        }
       },
       {
-        "interfaceId": "SGI_COM__CORE__00001__IF03",
+        "interfaceId": "SGI_COM_CORE_0002_IF03",
         "method": "GET",
-        "path": "/api/v1/instance-countries/{instanceCountryId}/companies",
+        "path": "/api/v1/catalog/companies",
         "purpose": "Canonical Company catalog/identity/logo/status/source version",
         "contentType": "application/json",
         "request": {},
-        "response": {}
+        "response": {
+          "fields": [
+            "instanceCountryId",
+            "companies[].id",
+            "companies[].code",
+            "companies[].name",
+            "companies[].description",
+            "companies[].logoUrl",
+            "companies[].companyType",
+            "companies[].sourceVersion",
+            "companies[].status"
+          ]
+        }
       },
       {
-        "interfaceId": "SGI_COM__CORE__00001__IF04",
+        "interfaceId": "SGI_COM_CORE_0002_IF04",
         "method": "GET",
         "path": "/api/v1/instance-countries/{instanceCountryId}/calendar-regulatory-profile",
         "purpose": "Calendar/holidays and regulatory profile/version/effective dates",
@@ -98,11 +240,15 @@
         "allowStaleSeconds": 3600
       }
     },
-    "notes": "CORE is SoR. SGI_COM stores references/snapshots only where operational traceability requires it."
+    "notes": "CORE is SoR. SGI_COM stores references/snapshots only where operational traceability requires it.",
+    "legacyConnectionIds": [
+      "SGI_COM__CORE__00001__V0001",
+      "SGI_COM__CORE__00001"
+    ]
   },
   {
-    "interconnectionRef": "SGI_COM__CORE__00002",
-    "interconnectionId": "SGI_COM__CORE__00002__V0001",
+    "interconnectionRef": "SGI_COM_CORE_0003",
+    "interconnectionId": "SGI_COM_CORE_0003_v001",
     "sourceProgramId": "SGI_COM",
     "targetProgramId": "CORE",
     "purpose": "Resolve the effective binding of any interconnection by interconnectionId + Instancia PE + environment.",
@@ -114,7 +260,7 @@
     "request": {},
     "response": {},
     "dataOwnerProgramId": "CORE",
-    "authentication": "SERVICE_TOKEN",
+    "authentication": "SERVICE_IDENTITY",
     "authorizationScope": "service-to-service",
     "timeoutPolicy": {
       "timeout": "5s"
@@ -146,7 +292,7 @@
     "businessDataFlow": "SGI_COM -> CORE resolver; CORE returns effective non-secret binding",
     "interfaces": [
       {
-        "interfaceId": "SGI_COM__CORE__00002__IF01",
+        "interfaceId": "SGI_COM_CORE_0003_IF01",
         "method": "GET",
         "path": "/api/v1/interconnections/{interconnectionId}/resolve",
         "purpose": "Return target binding for one interface and context",
@@ -197,11 +343,15 @@
         "allowStaleSeconds": 3600
       }
     },
-    "notes": "Bootstrap exception: CORE resolver base URL is supplied by runtime configuration. CORE is not a proxy for functional traffic."
+    "notes": "Bootstrap exception: CORE resolver base URL is supplied by runtime configuration. CORE is not a proxy for functional traffic.",
+    "legacyConnectionIds": [
+      "SGI_COM__CORE__00002__V0001",
+      "SGI_COM__CORE__00002"
+    ]
   },
   {
-    "interconnectionRef": "SGI_COM__IDENT__00001",
-    "interconnectionId": "SGI_COM__IDENT__00001__V0001",
+    "interconnectionRef": "SGI_COM_IDENT_0001",
+    "interconnectionId": "SGI_COM_IDENT_0001_v001",
     "sourceProgramId": "SGI_COM",
     "targetProgramId": "IDENT",
     "purpose": "Validate service/user identity and obtain authorization context for SGI: Comando.",
@@ -213,7 +363,7 @@
     "request": {},
     "response": {},
     "dataOwnerProgramId": "IDENT",
-    "authentication": "SERVICE_TOKEN",
+    "authentication": "SERVICE_IDENTITY",
     "authorizationScope": "service-to-service",
     "timeoutPolicy": {
       "timeout": "5s"
@@ -245,7 +395,7 @@
     "businessDataFlow": "IDENT identity/authorization data -> SGI_COM (SGI_COM initiates validation)",
     "interfaces": [
       {
-        "interfaceId": "SGI_COM__IDENT__00001__IF01",
+        "interfaceId": "SGI_COM_IDENT_0001_IF01",
         "method": "POST",
         "path": "/api/v1/identity/context",
         "purpose": "Token introspection / identity and authorization context",
@@ -284,11 +434,15 @@
         "allowStaleSeconds": 3600
       }
     },
-    "notes": "IDENT is master of credentials/MFA/roles/permissions; SIC_RRHH remains SoR of labor identity."
+    "notes": "IDENT is master of credentials/MFA/roles/permissions; SIC_RRHH remains SoR of labor identity.",
+    "legacyConnectionIds": [
+      "SGI_COM__IDENT__00001__V0001",
+      "SGI_COM__IDENT__00001"
+    ]
   },
   {
-    "interconnectionRef": "SGI_COM__SIC_COM__00001",
-    "interconnectionId": "SGI_COM__SIC_COM__00001__V0001",
+    "interconnectionRef": "SGI_COM_SIC_COM_0001",
+    "interconnectionId": "SGI_COM_SIC_COM_0001_v001",
     "sourceProgramId": "SGI_COM",
     "targetProgramId": "SIC_COM",
     "purpose": "Reconcile the commercial master required for physical-security operation.",
@@ -300,7 +454,7 @@
     "request": {},
     "response": {},
     "dataOwnerProgramId": "SIC_COM",
-    "authentication": "SERVICE_TOKEN",
+    "authentication": "SERVICE_IDENTITY",
     "authorizationScope": "service-to-service",
     "timeoutPolicy": {
       "timeout": "5s"
@@ -332,7 +486,7 @@
     "businessDataFlow": "SIC_COM master data -> SGI_COM (SGI_COM initiates reconciliation)",
     "interfaces": [
       {
-        "interfaceId": "SGI_COM__SIC_COM__00001__IF01",
+        "interfaceId": "SGI_COM_SIC_COM_0001_IF01",
         "method": "GET",
         "path": "/api/v1/sgi-export/services",
         "purpose": "Paged/versioned Client, Service, Point, Post, shifts, FHE and TIER snapshot",
@@ -376,11 +530,15 @@
         "allowStaleSeconds": 3600
       }
     },
-    "notes": "SIC_COM does not assign operating Company. Legacy endpoint must be implemented manually by DEV."
+    "notes": "SIC_COM does not assign operating Company. Legacy endpoint must be implemented manually by DEV.",
+    "legacyConnectionIds": [
+      "SGI_COM__SIC_COM__00001__V0001",
+      "SGI_COM__SIC_COM__00001"
+    ]
   },
   {
-    "interconnectionRef": "SIC_COM__SGI_COM__00001",
-    "interconnectionId": "SIC_COM__SGI_COM__00001__V0001",
+    "interconnectionRef": "SIC_COM_SGI_COM_0001",
+    "interconnectionId": "SIC_COM_SGI_COM_0001_v001",
     "sourceProgramId": "SIC_COM",
     "targetProgramId": "SGI_COM",
     "purpose": "Notify SGI: Comando of commercial Service/Point/Post lifecycle changes.",
@@ -392,7 +550,7 @@
     "request": {},
     "response": {},
     "dataOwnerProgramId": "SIC_COM",
-    "authentication": "SERVICE_TOKEN",
+    "authentication": "SERVICE_IDENTITY",
     "authorizationScope": "service-to-service",
     "timeoutPolicy": {
       "timeout": "5s"
@@ -419,12 +577,12 @@
       "TECHNICAL_ERROR"
     ],
     "legacyTarget": false,
-    "targetImplementationStatus": "BLOCKED",
-    "status": "DESIGN",
+    "targetImplementationStatus": "READY",
+    "status": "UAT",
     "businessDataFlow": "SIC_COM -> SGI_COM",
     "interfaces": [
       {
-        "interfaceId": "SIC_COM__SGI_COM__00001__IF01",
+        "interfaceId": "SIC_COM_SGI_COM_0001_IF01",
         "method": "POST",
         "path": "/api/v1/inbound/sic-com/commercial-events",
         "purpose": "Versioned commercial lifecycle event",
@@ -466,13 +624,17 @@
         "allowStaleSeconds": 3600
       }
     },
-    "notes": "Legacy SIC_COM producer must be implemented manually. SGI_COM inbound adapter is not enabled until contract UAT.",
+    "notes": "Legacy SIC_COM producer must be implemented manually. SGI_COM inbound adapter is not enabled until contract UAT. Inbound SGI_COM adapter implemented in Systems baseline; v4.1 ID canonicalized.",
     "legacySource": true,
-    "sourceImplementationStatus": "MANUAL_PENDING"
+    "sourceImplementationStatus": "MANUAL_PENDING",
+    "legacyConnectionIds": [
+      "SIC_COM__SGI_COM__00001__V0001",
+      "SIC_COM__SGI_COM__00001"
+    ]
   },
   {
-    "interconnectionRef": "SGI_COM__SIC_RRHH__00001",
-    "interconnectionId": "SGI_COM__SIC_RRHH__00001__V0001",
+    "interconnectionRef": "SGI_COM_SIC_RRHH_0001",
+    "interconnectionId": "SGI_COM_SIC_RRHH_0001_v001",
     "sourceProgramId": "SGI_COM",
     "targetProgramId": "SIC_RRHH",
     "purpose": "Read employee operational context for territory, assignments and supervision.",
@@ -484,7 +646,7 @@
     "request": {},
     "response": {},
     "dataOwnerProgramId": "SIC_RRHH",
-    "authentication": "SERVICE_TOKEN",
+    "authentication": "SERVICE_IDENTITY",
     "authorizationScope": "service-to-service",
     "timeoutPolicy": {
       "timeout": "5s"
@@ -516,7 +678,7 @@
     "businessDataFlow": "SIC_RRHH master data -> SGI_COM (SGI_COM initiates reads)",
     "interfaces": [
       {
-        "interfaceId": "SGI_COM__SIC_RRHH__00001__IF01",
+        "interfaceId": "SGI_COM_SIC_RRHH_0001_IF01",
         "method": "GET",
         "path": "/api/v1/employees",
         "purpose": "Personnel by company/domain with employment state and pagination",
@@ -544,7 +706,7 @@
         }
       },
       {
-        "interfaceId": "SGI_COM__SIC_RRHH__00001__IF02",
+        "interfaceId": "SGI_COM_SIC_RRHH_0001_IF02",
         "method": "GET",
         "path": "/api/v1/employees/{employeeId}/work-context",
         "purpose": "Skills, certifications and unavailability intervals",
@@ -581,11 +743,15 @@
         "allowStaleSeconds": 3600
       }
     },
-    "notes": "Legacy RRHH endpoints require manual DEV implementation. SGI_COM must not query RRHH DB directly."
+    "notes": "Legacy RRHH endpoints require manual DEV implementation. SGI_COM must not query RRHH DB directly.",
+    "legacyConnectionIds": [
+      "SGI_COM__SIC_RRHH__00001__V0001",
+      "SGI_COM__SIC_RRHH__00001"
+    ]
   },
   {
-    "interconnectionRef": "SGI_COM__SIC_RRHH__00002",
-    "interconnectionId": "SGI_COM__SIC_RRHH__00002__V0001",
+    "interconnectionRef": "SGI_COM_SIC_RRHH_0002",
+    "interconnectionId": "SGI_COM_SIC_RRHH_0002_v001",
     "sourceProgramId": "SGI_COM",
     "targetProgramId": "SIC_RRHH",
     "purpose": "Submit auditable operational labor events produced by SGI.",
@@ -597,7 +763,7 @@
     "request": {},
     "response": {},
     "dataOwnerProgramId": "SGI_COM",
-    "authentication": "SERVICE_TOKEN",
+    "authentication": "SERVICE_IDENTITY",
     "authorizationScope": "service-to-service",
     "timeoutPolicy": {
       "timeout": "5s"
@@ -629,7 +795,7 @@
     "businessDataFlow": "SGI_COM operational fact -> SIC_RRHH labor processing",
     "interfaces": [
       {
-        "interfaceId": "SGI_COM__SIC_RRHH__00002__IF01",
+        "interfaceId": "SGI_COM_SIC_RRHH_0002_IF01",
         "method": "POST",
         "path": "/api/v1/sgi-operational-events",
         "purpose": "Idempotent labor consequence/request event",
@@ -675,14 +841,18 @@
         "allowStaleSeconds": 3600
       }
     },
-    "notes": "SGI_COM reports fact/request; RRHH owns labor/payroll consequence."
+    "notes": "SGI_COM reports fact/request; RRHH owns labor/payroll consequence.",
+    "legacyConnectionIds": [
+      "SGI_COM__SIC_RRHH__00002__V0001",
+      "SGI_COM__SIC_RRHH__00002"
+    ]
   },
   {
-    "interconnectionRef": "SIC_RRHH__SGI_COM__00001",
-    "interconnectionId": "SIC_RRHH__SGI_COM__00001__V0001",
+    "interconnectionRef": "SIC_RRHH_SGI_COM_0001",
+    "interconnectionId": "SIC_RRHH_SGI_COM_0001_v001",
     "sourceProgramId": "SIC_RRHH",
     "targetProgramId": "SGI_COM",
-    "purpose": "Notify changes to employee/company/status/skills/unavailability used operationally by SGI.",
+    "purpose": "Synchronize active Seguridad Física personnel and their authoritative Persona–Compañía relationship into SGI: Comando.",
     "trigger": "Labor master data changes in SIC_RRHH.",
     "interactionType": "WEBHOOK",
     "mode": "ASYNC",
@@ -691,7 +861,7 @@
     "request": {},
     "response": {},
     "dataOwnerProgramId": "SIC_RRHH",
-    "authentication": "SERVICE_TOKEN",
+    "authentication": "SERVICE_IDENTITY",
     "authorizationScope": "service-to-service",
     "timeoutPolicy": {
       "timeout": "5s"
@@ -718,26 +888,37 @@
       "TECHNICAL_ERROR"
     ],
     "legacyTarget": false,
-    "targetImplementationStatus": "BLOCKED",
-    "status": "DESIGN",
+    "targetImplementationStatus": "UAT_PARTIAL",
+    "status": "UAT",
     "businessDataFlow": "SIC_RRHH -> SGI_COM",
     "interfaces": [
       {
-        "interfaceId": "SIC_RRHH__SGI_COM__00001__IF01",
+        "interfaceId": "SIC_RRHH_SGI_COM_0001_IF01",
         "method": "POST",
         "path": "/api/v1/inbound/sic-rrhh/employee-events",
-        "purpose": "Employee operational master event",
+        "purpose": "Versioned employee master event with identity, role, source company and persistent idempotency.",
         "contentType": "application/json",
         "request": {
+          "headers": [
+            "Authorization",
+            "X-Correlation-Id",
+            "X-Interconnection-Id",
+            "X-Contract-Version",
+            "Idempotency-Key"
+          ],
           "fields": [
-            "eventId",
-            "eventType",
-            "employeeId",
-            "companyId",
-            "effectiveAt",
-            "sourceVersion",
-            "payload"
-          ]
+            "employeeId?",
+            "personaId?",
+            "canonicalEmployeeId?",
+            "fullName",
+            "roleCode",
+            "employmentStatus",
+            "updatedFromSourceAt",
+            "companyCoreCatalogId?",
+            "companyCode?"
+          ],
+          "companyRule": "For a new employee, companyCoreCatalogId or companyCode is mandatory. Existing employees may omit during transition and retain current source company.",
+          "idempotency": "Idempotency-Key is persisted per Instancia PE; same key + same payload is safe, same key + different payload returns conflict."
         },
         "response": {
           "fields": [
@@ -764,13 +945,17 @@
         "allowStaleSeconds": 3600
       }
     },
-    "notes": "Optional event acceleration; SGI_COM reconciliation contract remains authoritative recovery path.",
+    "notes": "Optional event acceleration; SGI_COM reconciliation contract remains authoritative recovery path. Inbound SGI_COM adapter implemented; service credential moved to credential_ref. Company/employment semantics still require bilateral contract freeze.",
     "legacySource": true,
-    "sourceImplementationStatus": "MANUAL_PENDING"
+    "sourceImplementationStatus": "MANUAL_PENDING",
+    "legacyConnectionIds": [
+      "SIC_RRHH__SGI_COM__00001__V0001",
+      "SIC_RRHH__SGI_COM__00001"
+    ]
   },
   {
-    "interconnectionRef": "SGI_COM__SIC_RRMM__00001",
-    "interconnectionId": "SGI_COM__SIC_RRMM__00001__V0001",
+    "interconnectionRef": "SGI_COM_SIC_RRMM_0001",
+    "interconnectionId": "SGI_COM_SIC_RRMM_0001_v001",
     "sourceProgramId": "SGI_COM",
     "targetProgramId": "SIC_RRMM",
     "purpose": "Read expected material resources/inventory for Point/Post operational configuration and Relevo.",
@@ -782,7 +967,7 @@
     "request": {},
     "response": {},
     "dataOwnerProgramId": "SIC_RRMM",
-    "authentication": "SERVICE_TOKEN",
+    "authentication": "SERVICE_IDENTITY",
     "authorizationScope": "service-to-service",
     "timeoutPolicy": {
       "timeout": "5s"
@@ -814,7 +999,7 @@
     "businessDataFlow": "SIC_RRMM material master -> SGI_COM (SGI_COM initiates reads)",
     "interfaces": [
       {
-        "interfaceId": "SGI_COM__SIC_RRMM__00001__IF01",
+        "interfaceId": "SGI_COM_SIC_RRMM_0001_IF01",
         "method": "GET",
         "path": "/api/v1/operational-assets/posts/{postId}/expected",
         "purpose": "Expected assets/materials assigned to Post",
@@ -833,7 +1018,7 @@
         }
       },
       {
-        "interfaceId": "SGI_COM__SIC_RRMM__00001__IF02",
+        "interfaceId": "SGI_COM_SIC_RRMM_0001_IF02",
         "method": "GET",
         "path": "/api/v1/operational-assets/points/{pointId}",
         "purpose": "Material resources visible for Point configuration",
@@ -868,11 +1053,15 @@
         "allowStaleSeconds": 3600
       }
     },
-    "notes": "SIC_RRMM generic/interconnection side to be implemented in its own program chat."
+    "notes": "SIC_RRMM generic/interconnection side to be implemented in its own program chat.",
+    "legacyConnectionIds": [
+      "SGI_COM__SIC_RRMM__00001__V0001",
+      "SGI_COM__SIC_RRMM__00001"
+    ]
   },
   {
-    "interconnectionRef": "SIC_RRMM__SGI_COM__00001",
-    "interconnectionId": "SIC_RRMM__SGI_COM__00001__V0001",
+    "interconnectionRef": "SIC_RRMM_SGI_COM_0001",
+    "interconnectionId": "SIC_RRMM_SGI_COM_0001_v001",
     "sourceProgramId": "SIC_RRMM",
     "targetProgramId": "SGI_COM",
     "purpose": "Provide SIC_RRMM with operational Company Point/Post catalog for MARE requirements.",
@@ -884,7 +1073,7 @@
     "request": {},
     "response": {},
     "dataOwnerProgramId": "SGI_COM",
-    "authentication": "SERVICE_TOKEN",
+    "authentication": "SERVICE_IDENTITY",
     "authorizationScope": "service-to-service",
     "timeoutPolicy": {
       "timeout": "5s"
@@ -916,7 +1105,7 @@
     "businessDataFlow": "SGI_COM operational catalog -> SIC_RRMM (SIC_RRMM initiates reads)",
     "interfaces": [
       {
-        "interfaceId": "SIC_RRMM__SGI_COM__00001__IF01",
+        "interfaceId": "SIC_RRMM_SGI_COM_0001_IF01",
         "method": "GET",
         "path": "/api/v1/integration/rrmm/companies/{companyId}/points",
         "purpose": "Points currently operated by Company",
@@ -935,7 +1124,7 @@
         }
       },
       {
-        "interfaceId": "SIC_RRMM__SGI_COM__00001__IF02",
+        "interfaceId": "SIC_RRMM_SGI_COM_0001_IF02",
         "method": "GET",
         "path": "/api/v1/integration/rrmm/points/{pointId}/posts",
         "purpose": "Posts under selected Point",
@@ -971,11 +1160,15 @@
         "allowStaleSeconds": 3600
       }
     },
-    "notes": "Target provider belongs to SGI_COM; source-side generic module will be added later in SIC_RRMM."
+    "notes": "Target provider belongs to SGI_COM; source-side generic module will be added later in SIC_RRMM.",
+    "legacyConnectionIds": [
+      "SIC_RRMM__SGI_COM__00001__V0001",
+      "SIC_RRMM__SGI_COM__00001"
+    ]
   },
   {
-    "interconnectionRef": "ATS__SGI_COM__00001",
-    "interconnectionId": "ATS__SGI_COM__00001__V0001",
+    "interconnectionRef": "ATS_SGI_COM_0001",
+    "interconnectionId": "ATS_SGI_COM_0001_v001",
     "sourceProgramId": "ATS",
     "targetProgramId": "SGI_COM",
     "purpose": "Deliver a published .ats security architecture package to SGI: Comando/REGESEP.",
@@ -987,7 +1180,7 @@
     "request": {},
     "response": {},
     "dataOwnerProgramId": "ATS",
-    "authentication": "SERVICE_TOKEN",
+    "authentication": "SERVICE_IDENTITY",
     "authorizationScope": "service-to-service",
     "timeoutPolicy": {
       "timeout": "5s"
@@ -1019,7 +1212,7 @@
     "businessDataFlow": "ATS published design -> SGI_COM",
     "interfaces": [
       {
-        "interfaceId": "ATS__SGI_COM__00001__IF01",
+        "interfaceId": "ATS_SGI_COM_0001_IF01",
         "method": "POST",
         "path": "/api/v1/inbound/ats/packages",
         "purpose": "Upload versioned .ats package and manifest",
@@ -1059,11 +1252,15 @@
         "allowStaleSeconds": 3600
       }
     },
-    "notes": "Existing file-based ATS import is normalized under a canonical interconnection ID."
+    "notes": "Existing file-based ATS import is normalized under a canonical interconnection ID.",
+    "legacyConnectionIds": [
+      "ATS__SGI_COM__00001__V0001",
+      "ATS__SGI_COM__00001"
+    ]
   },
   {
-    "interconnectionRef": "SGI_COM__ATS__00001",
-    "interconnectionId": "SGI_COM__ATS__00001__V0001",
+    "interconnectionRef": "SGI_COM_ATS_0001",
+    "interconnectionId": "SGI_COM_ATS_0001_v001",
     "sourceProgramId": "SGI_COM",
     "targetProgramId": "ATS",
     "purpose": "Reconcile operational observations about security components/vulnerabilities with ATS design.",
@@ -1075,7 +1272,7 @@
     "request": {},
     "response": {},
     "dataOwnerProgramId": "SGI_COM",
-    "authentication": "SERVICE_TOKEN",
+    "authentication": "SERVICE_IDENTITY",
     "authorizationScope": "service-to-service",
     "timeoutPolicy": {
       "timeout": "5s"
@@ -1107,7 +1304,7 @@
     "businessDataFlow": "SGI_COM operational observation -> ATS",
     "interfaces": [
       {
-        "interfaceId": "SGI_COM__ATS__00001__IF01",
+        "interfaceId": "SGI_COM_ATS_0001_IF01",
         "method": "POST",
         "path": "/api/v1/sgi-operational-observations",
         "purpose": "Operational observation linked to ATS component/location",
@@ -1149,11 +1346,15 @@
         "allowStaleSeconds": 3600
       }
     },
-    "notes": "Future contract; no effect on current ATS/SGI frozen behavior until reopened and tested."
+    "notes": "Future contract; no effect on current ATS/SGI frozen behavior until reopened and tested.",
+    "legacyConnectionIds": [
+      "SGI_COM__ATS__00001__V0001",
+      "SGI_COM__ATS__00001"
+    ]
   },
   {
-    "interconnectionRef": "SGI_COM__SMC__00001",
-    "interconnectionId": "SGI_COM__SMC__00001__V0001",
+    "interconnectionRef": "SGI_COM_SMC_0001",
+    "interconnectionId": "SGI_COM_SMC_0001_v001",
     "sourceProgramId": "SGI_COM",
     "targetProgramId": "SMC",
     "purpose": "Publish normalized operational facts used by SMC to calculate ID/KPIs.",
@@ -1165,7 +1366,7 @@
     "request": {},
     "response": {},
     "dataOwnerProgramId": "SGI_COM",
-    "authentication": "SERVICE_TOKEN",
+    "authentication": "SERVICE_IDENTITY",
     "authorizationScope": "service-to-service",
     "timeoutPolicy": {
       "timeout": "5s"
@@ -1197,7 +1398,7 @@
     "businessDataFlow": "SGI_COM operational facts -> SMC",
     "interfaces": [
       {
-        "interfaceId": "SGI_COM__SMC__00001__IF01",
+        "interfaceId": "SGI_COM_SMC_0001_IF01",
         "method": "POST",
         "path": "/api/v1/operational-facts",
         "purpose": "Idempotent normalized KPI fact",
@@ -1242,11 +1443,15 @@
         "allowStaleSeconds": 3600
       }
     },
-    "notes": "SMC legacy adapter requires manual DEV implementation."
+    "notes": "SMC legacy adapter requires manual DEV implementation.",
+    "legacyConnectionIds": [
+      "SGI_COM__SMC__00001__V0001",
+      "SGI_COM__SMC__00001"
+    ]
   },
   {
-    "interconnectionRef": "SGI_COM__SMC__00002",
-    "interconnectionId": "SGI_COM__SMC__00002__V0001",
+    "interconnectionRef": "SGI_COM_SMC_0002",
+    "interconnectionId": "SGI_COM_SMC_0002_v001",
     "sourceProgramId": "SGI_COM",
     "targetProgramId": "SMC",
     "purpose": "Read current employee ID/KPIs used by Assignments and operational views.",
@@ -1258,7 +1463,7 @@
     "request": {},
     "response": {},
     "dataOwnerProgramId": "SMC",
-    "authentication": "SERVICE_TOKEN",
+    "authentication": "SERVICE_IDENTITY",
     "authorizationScope": "service-to-service",
     "timeoutPolicy": {
       "timeout": "5s"
@@ -1290,7 +1495,7 @@
     "businessDataFlow": "SMC KPI result -> SGI_COM (SGI_COM initiates read)",
     "interfaces": [
       {
-        "interfaceId": "SGI_COM__SMC__00002__IF01",
+        "interfaceId": "SGI_COM_SMC_0002_IF01",
         "method": "GET",
         "path": "/api/v1/employees/{employeeId}/kpis/current",
         "purpose": "Current ID and consumable KPI snapshot",
@@ -1324,11 +1529,15 @@
         "allowStaleSeconds": 3600
       }
     },
-    "notes": "ID below TIER is warning, not assignment blocker."
+    "notes": "ID below TIER is warning, not assignment blocker.",
+    "legacyConnectionIds": [
+      "SGI_COM__SMC__00002__V0001",
+      "SGI_COM__SMC__00002"
+    ]
   },
   {
-    "interconnectionRef": "SGI_COM__STC__00001",
-    "interconnectionId": "SGI_COM__STC__00001__V0001",
+    "interconnectionRef": "SGI_COM_STC_0001",
+    "interconnectionId": "SGI_COM_STC_0001_v001",
     "sourceProgramId": "SGI_COM",
     "targetProgramId": "STC",
     "purpose": "Create a work/case in STC for Incidents, Requirements and Activities while preserving SGI origin.",
@@ -1340,7 +1549,7 @@
     "request": {},
     "response": {},
     "dataOwnerProgramId": "SGI_COM",
-    "authentication": "SERVICE_TOKEN",
+    "authentication": "SERVICE_IDENTITY",
     "authorizationScope": "service-to-service",
     "timeoutPolicy": {
       "timeout": "5s"
@@ -1372,7 +1581,7 @@
     "businessDataFlow": "SGI_COM origin -> STC workflow",
     "interfaces": [
       {
-        "interfaceId": "SGI_COM__STC__00001__IF01",
+        "interfaceId": "SGI_COM_STC_0001_IF01",
         "method": "POST",
         "path": "/api/v1/tasks",
         "purpose": "Create idempotent STC work case from SGI origin",
@@ -1419,11 +1628,15 @@
         "allowStaleSeconds": 3600
       }
     },
-    "notes": "STC is SoR of resolution workflow; SGI preserves operational origin and correlation."
+    "notes": "STC is SoR of resolution workflow; SGI preserves operational origin and correlation.",
+    "legacyConnectionIds": [
+      "SGI_COM__STC__00001__V0001",
+      "SGI_COM__STC__00001"
+    ]
   },
   {
-    "interconnectionRef": "SGI_COM__STC__00002",
-    "interconnectionId": "SGI_COM__STC__00002__V0001",
+    "interconnectionRef": "SGI_COM_STC_0002",
+    "interconnectionId": "SGI_COM_STC_0002_v001",
     "sourceProgramId": "SGI_COM",
     "targetProgramId": "STC",
     "purpose": "Read workflow status/progress/closure for an SGI-originated STC case.",
@@ -1435,7 +1648,7 @@
     "request": {},
     "response": {},
     "dataOwnerProgramId": "STC",
-    "authentication": "SERVICE_TOKEN",
+    "authentication": "SERVICE_IDENTITY",
     "authorizationScope": "service-to-service",
     "timeoutPolicy": {
       "timeout": "5s"
@@ -1467,7 +1680,7 @@
     "businessDataFlow": "STC workflow state -> SGI_COM (SGI_COM initiates read)",
     "interfaces": [
       {
-        "interfaceId": "SGI_COM__STC__00002__IF01",
+        "interfaceId": "SGI_COM_STC_0002_IF01",
         "method": "GET",
         "path": "/api/v1/tasks/{taskId}",
         "purpose": "Current STC task status/result",
@@ -1503,11 +1716,15 @@
         "allowStaleSeconds": 3600
       }
     },
-    "notes": "Polling contract avoids requiring an inbound callback from legacy STC; a future event contract may be added if chosen."
+    "notes": "Polling contract avoids requiring an inbound callback from legacy STC; a future event contract may be added if chosen.",
+    "legacyConnectionIds": [
+      "SGI_COM__STC__00002__V0001",
+      "SGI_COM__STC__00002"
+    ]
   },
   {
-    "interconnectionRef": "SGI_COM__VISINT__00001",
-    "interconnectionId": "SGI_COM__VISINT__00001__V0001",
+    "interconnectionRef": "SGI_COM_VISINT_0001",
+    "interconnectionId": "SGI_COM_VISINT_0001_v001",
     "sourceProgramId": "SGI_COM",
     "targetProgramId": "VISINT",
     "purpose": "Submit task evidence/photos for visual validation by VISINT.",
@@ -1519,7 +1736,7 @@
     "request": {},
     "response": {},
     "dataOwnerProgramId": "SGI_COM",
-    "authentication": "SERVICE_TOKEN",
+    "authentication": "SERVICE_IDENTITY",
     "authorizationScope": "service-to-service",
     "timeoutPolicy": {
       "timeout": "5s"
@@ -1551,7 +1768,7 @@
     "businessDataFlow": "SGI_COM evidence/context -> VISINT",
     "interfaces": [
       {
-        "interfaceId": "SGI_COM__VISINT__00001__IF01",
+        "interfaceId": "SGI_COM_VISINT_0001_IF01",
         "method": "POST",
         "path": "/api/v1/visual-reviews",
         "purpose": "Create VISINT review",
@@ -1595,11 +1812,15 @@
         "allowStaleSeconds": 3600
       }
     },
-    "notes": "No direct SGI_OPR->VISINT. VISINT does not award Impulsos."
+    "notes": "No direct SGI_OPR->VISINT. VISINT does not award Impulsos.",
+    "legacyConnectionIds": [
+      "SGI_COM__VISINT__00001__V0001",
+      "SGI_COM__VISINT__00001"
+    ]
   },
   {
-    "interconnectionRef": "SGI_COM__VISINT__00002",
-    "interconnectionId": "SGI_COM__VISINT__00002__V0001",
+    "interconnectionRef": "SGI_COM_VISINT_0002",
+    "interconnectionId": "SGI_COM_VISINT_0002_v001",
     "sourceProgramId": "SGI_COM",
     "targetProgramId": "VISINT",
     "purpose": "Read VISINT review result for Impulse eligibility and audit.",
@@ -1611,7 +1832,7 @@
     "request": {},
     "response": {},
     "dataOwnerProgramId": "VISINT",
-    "authentication": "SERVICE_TOKEN",
+    "authentication": "SERVICE_IDENTITY",
     "authorizationScope": "service-to-service",
     "timeoutPolicy": {
       "timeout": "5s"
@@ -1643,7 +1864,7 @@
     "businessDataFlow": "VISINT assessment -> SGI_COM (SGI_COM initiates read)",
     "interfaces": [
       {
-        "interfaceId": "SGI_COM__VISINT__00002__IF01",
+        "interfaceId": "SGI_COM_VISINT_0002_IF01",
         "method": "GET",
         "path": "/api/v1/visual-reviews/{reviewId}",
         "purpose": "PASS/FAIL/ERROR result and technical metadata",
@@ -1680,11 +1901,15 @@
         "allowStaleSeconds": 3600
       }
     },
-    "notes": "PASS enables SGI_COM probabilistic Impulse evaluation; PASS does not guarantee an award."
+    "notes": "PASS enables SGI_COM probabilistic Impulse evaluation; PASS does not guarantee an award.",
+    "legacyConnectionIds": [
+      "SGI_COM__VISINT__00002__V0001",
+      "SGI_COM__VISINT__00002"
+    ]
   },
   {
-    "interconnectionRef": "SGI_OPR__SGI_COM__00001",
-    "interconnectionId": "SGI_OPR__SGI_COM__00001__V0001",
+    "interconnectionRef": "SGI_OPR_SGI_COM_0001",
+    "interconnectionId": "SGI_OPR_SGI_COM_0001_v001",
     "sourceProgramId": "SGI_OPR",
     "targetProgramId": "SGI_COM",
     "purpose": "Synchronize the mobile operator runtime context/configuration required for the active assignment.",
@@ -1696,7 +1921,7 @@
     "request": {},
     "response": {},
     "dataOwnerProgramId": "SGI_COM",
-    "authentication": "SERVICE_TOKEN",
+    "authentication": "SERVICE_IDENTITY",
     "authorizationScope": "service-to-service",
     "timeoutPolicy": {
       "timeout": "5s"
@@ -1728,7 +1953,7 @@
     "businessDataFlow": "SGI_COM operational config -> SGI_OPR (SGI_OPR initiates sync)",
     "interfaces": [
       {
-        "interfaceId": "SGI_OPR__SGI_COM__00001__IF01",
+        "interfaceId": "SGI_OPR_SGI_COM_0001_IF01",
         "method": "GET",
         "path": "/api/v1/operator/runtime",
         "purpose": "Assignment, Point/Post, protocols, consignments, patrols, bitacora and pending messages",
@@ -1773,11 +1998,15 @@
       }
     },
     "notes": "SGI_OPR source-side generic module will be implemented separately. Response can carry VISINT/Impulse notifications without a reverse HTTP interconnection.",
-    "sourceImplementationStatus": "BLOCKED"
+    "sourceImplementationStatus": "BLOCKED",
+    "legacyConnectionIds": [
+      "SGI_OPR__SGI_COM__00001__V0001",
+      "SGI_OPR__SGI_COM__00001"
+    ]
   },
   {
-    "interconnectionRef": "SGI_OPR__SGI_COM__00002",
-    "interconnectionId": "SGI_OPR__SGI_COM__00002__V0001",
+    "interconnectionRef": "SGI_OPR_SGI_COM_0002",
+    "interconnectionId": "SGI_OPR_SGI_COM_0002_v001",
     "sourceProgramId": "SGI_OPR",
     "targetProgramId": "SGI_COM",
     "purpose": "Submit idempotent operational executions, novelties and evidence captured by SGI: Operador.",
@@ -1789,7 +2018,7 @@
     "request": {},
     "response": {},
     "dataOwnerProgramId": "SGI_COM",
-    "authentication": "SERVICE_TOKEN",
+    "authentication": "SERVICE_IDENTITY",
     "authorizationScope": "service-to-service",
     "timeoutPolicy": {
       "timeout": "5s"
@@ -1816,12 +2045,12 @@
       "TECHNICAL_ERROR"
     ],
     "legacyTarget": false,
-    "targetImplementationStatus": "BLOCKED",
-    "status": "DESIGN",
+    "targetImplementationStatus": "READY",
+    "status": "UAT_PARTIAL",
     "businessDataFlow": "SGI_OPR executions/evidence -> SGI_COM",
     "interfaces": [
       {
-        "interfaceId": "SGI_OPR__SGI_COM__00002__IF01",
+        "interfaceId": "SGI_OPR_SGI_COM_0002_IF01",
         "method": "POST",
         "path": "/api/v1/operator/executions",
         "purpose": "Batch/idempotent operational events and evidence references",
@@ -1864,12 +2093,16 @@
         "allowStaleSeconds": 3600
       }
     },
-    "notes": "SGI_COM remains orchestration/operational SoR according to domain; offline data is purged only after server ACK.",
-    "sourceImplementationStatus": "BLOCKED"
+    "notes": "SGI_COM remains orchestration/operational SoR according to domain; offline data is purged only after server ACK. Relief execution/evidence inbound is implemented in the 2026-09-25 Systems baseline.",
+    "sourceImplementationStatus": "BLOCKED",
+    "legacyConnectionIds": [
+      "SGI_OPR__SGI_COM__00002__V0001",
+      "SGI_OPR__SGI_COM__00002"
+    ]
   },
   {
-    "interconnectionRef": "SGI_CLT__SGI_COM__00001",
-    "interconnectionId": "SGI_CLT__SGI_COM__00001__V0001",
+    "interconnectionRef": "SGI_CLT_SGI_COM_0001",
+    "interconnectionId": "SGI_CLT_SGI_COM_0001_v001",
     "sourceProgramId": "SGI_CLT",
     "targetProgramId": "SGI_COM",
     "purpose": "Read client-visible operational information after SGI moderation/authorization.",
@@ -1881,7 +2114,7 @@
     "request": {},
     "response": {},
     "dataOwnerProgramId": "SGI_COM",
-    "authentication": "SERVICE_TOKEN",
+    "authentication": "SERVICE_IDENTITY",
     "authorizationScope": "service-to-service",
     "timeoutPolicy": {
       "timeout": "5s"
@@ -1913,7 +2146,7 @@
     "businessDataFlow": "SGI_COM approved information -> SGI_CLT (SGI_CLT initiates read)",
     "interfaces": [
       {
-        "interfaceId": "SGI_CLT__SGI_COM__00001__IF01",
+        "interfaceId": "SGI_CLT_SGI_COM_0001_IF01",
         "method": "GET",
         "path": "/api/v1/client/operational-items",
         "purpose": "Approved/publishable novelties and client-authorized operational read model",
@@ -1959,11 +2192,15 @@
     },
     "notes": "SGI_CLT is legacy; consumer changes require manual DEV. Unapproved novelties must never appear.",
     "legacySource": true,
-    "sourceImplementationStatus": "MANUAL_PENDING"
+    "sourceImplementationStatus": "MANUAL_PENDING",
+    "legacyConnectionIds": [
+      "SGI_CLT__SGI_COM__00001__V0001",
+      "SGI_CLT__SGI_COM__00001"
+    ]
   },
   {
-    "interconnectionRef": "SGI_CLT__SGI_COM__00002",
-    "interconnectionId": "SGI_CLT__SGI_COM__00002__V0001",
+    "interconnectionRef": "SGI_CLT_SGI_COM_0002",
+    "interconnectionId": "SGI_CLT_SGI_COM_0002_v001",
     "sourceProgramId": "SGI_CLT",
     "targetProgramId": "SGI_COM",
     "purpose": "Submit client-originated Consigna proposals, incidents or requirements for SGI moderation/routing.",
@@ -1975,7 +2212,7 @@
     "request": {},
     "response": {},
     "dataOwnerProgramId": "SGI_COM",
-    "authentication": "SERVICE_TOKEN",
+    "authentication": "SERVICE_IDENTITY",
     "authorizationScope": "service-to-service",
     "timeoutPolicy": {
       "timeout": "5s"
@@ -2007,7 +2244,7 @@
     "businessDataFlow": "SGI_CLT proposal -> SGI_COM",
     "interfaces": [
       {
-        "interfaceId": "SGI_CLT__SGI_COM__00002__IF01",
+        "interfaceId": "SGI_CLT_SGI_COM_0002_IF01",
         "method": "POST",
         "path": "/api/v1/client/proposals",
         "purpose": "Client-originated proposal/request",
@@ -2053,11 +2290,15 @@
     },
     "notes": "Legacy source implementation pending; SGI approval rules remain authoritative.",
     "legacySource": true,
-    "sourceImplementationStatus": "MANUAL_PENDING"
+    "sourceImplementationStatus": "MANUAL_PENDING",
+    "legacyConnectionIds": [
+      "SGI_CLT__SGI_COM__00002__V0001",
+      "SGI_CLT__SGI_COM__00002"
+    ]
   },
   {
-    "interconnectionRef": "SGI_COM__CM_CON__00001",
-    "interconnectionId": "SGI_COM__CM_CON__00001__V0001",
+    "interconnectionRef": "SGI_COM_CM_CON_0001",
+    "interconnectionId": "SGI_COM_CM_CON_0001_v001",
     "sourceProgramId": "SGI_COM",
     "targetProgramId": "CM_CON",
     "purpose": "Request pre-shift attendance confirmation through Cajamarca Conmigo/IVR capability.",
@@ -2069,7 +2310,7 @@
     "request": {},
     "response": {},
     "dataOwnerProgramId": "SGI_COM",
-    "authentication": "SERVICE_TOKEN",
+    "authentication": "SERVICE_IDENTITY",
     "authorizationScope": "service-to-service",
     "timeoutPolicy": {
       "timeout": "5s"
@@ -2101,7 +2342,7 @@
     "businessDataFlow": "SGI_COM confirmation request -> CM_CON",
     "interfaces": [
       {
-        "interfaceId": "SGI_COM__CM_CON__00001__IF01",
+        "interfaceId": "SGI_COM_CM_CON_0001_IF01",
         "method": "POST",
         "path": "/api/v1/shift-confirmations",
         "purpose": "Create attendance confirmation request",
@@ -2143,11 +2384,15 @@
         "allowStaleSeconds": 3600
       }
     },
-    "notes": "CM_CON is legacy. If IVR becomes its own Program ID later, a new canonical interconnection must be created; do not invent it now."
+    "notes": "CM_CON is legacy. If IVR becomes its own Program ID later, a new canonical interconnection must be created; do not invent it now.",
+    "legacyConnectionIds": [
+      "SGI_COM__CM_CON__00001__V0001",
+      "SGI_COM__CM_CON__00001"
+    ]
   },
   {
-    "interconnectionRef": "SGI_COM__CM_CON__00002",
-    "interconnectionId": "SGI_COM__CM_CON__00002__V0001",
+    "interconnectionRef": "SGI_COM_CM_CON_0002",
+    "interconnectionId": "SGI_COM_CM_CON_0002_v001",
     "sourceProgramId": "SGI_COM",
     "targetProgramId": "CM_CON",
     "purpose": "Read the result of a pre-shift attendance confirmation.",
@@ -2159,7 +2404,7 @@
     "request": {},
     "response": {},
     "dataOwnerProgramId": "CM_CON",
-    "authentication": "SERVICE_TOKEN",
+    "authentication": "SERVICE_IDENTITY",
     "authorizationScope": "service-to-service",
     "timeoutPolicy": {
       "timeout": "5s"
@@ -2191,7 +2436,7 @@
     "businessDataFlow": "CM_CON confirmation result -> SGI_COM (SGI_COM initiates read)",
     "interfaces": [
       {
-        "interfaceId": "SGI_COM__CM_CON__00002__IF01",
+        "interfaceId": "SGI_COM_CM_CON_0002_IF01",
         "method": "GET",
         "path": "/api/v1/shift-confirmations/{requestId}",
         "purpose": "Confirmation result",
@@ -2225,6 +2470,10 @@
         "allowStaleSeconds": 3600
       }
     },
-    "notes": "Confirmation expresses intent and never substitutes the Relevo."
+    "notes": "Confirmation expresses intent and never substitutes the Relevo.",
+    "legacyConnectionIds": [
+      "SGI_COM__CM_CON__00002__V0001",
+      "SGI_COM__CM_CON__00002"
+    ]
   }
 ]

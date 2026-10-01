@@ -37,4 +37,4 @@ Actual latency still depends on production hardware, PostgreSQL statistics, conc
 
 ## Documentation addendum — VISINT / Impulsos
 
-This package also carries the approved cross-system documentation for `SGI_OPR → SGI_COM → VISINT → SGI_COM`, with SGI: Comando as System of Record for Impulse rules and awards. No UI/performance behavior is changed by this documentation addendum. See `docs/SGI_OPR_VISINT_IMPULSOS.md`.
+This package also carries the approved cross-system documentation for `SGI_OPR → SGI_COM → VISINT → SGI_COM`, Historical note: this package originally described SGI: Comando as System of Record for Impulse rules and awards. **SUPERSEDED 2026-09-27:** CORE is SoR of versioned Impulse rules; each SGI: Comando PE applies them and is SoR of the award/ledger/balance. No UI/performance behavior is changed by this documentation addendum. See `docs/SGI_OPR_VISINT_IMPULSOS.md`.
