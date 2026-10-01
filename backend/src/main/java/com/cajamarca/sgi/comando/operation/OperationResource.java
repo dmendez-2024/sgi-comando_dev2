@@ -100,6 +100,7 @@ public class OperationResource {
         r.result = null;
         r.matchedStandardImageId = null;
         r.reasonCode = null;
+        r.qualityValid = null; r.qualityScore = null; r.matchCompatible = null; r.matchScore = null;
         return detail(r);
     }
 

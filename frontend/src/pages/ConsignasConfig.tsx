@@ -22,7 +22,7 @@ import {
   Upload,
   X,
 } from 'lucide-react';
-import StandardGallery,{type StandardImageRef} from '../components/StandardGallery';
+import StandardGallery,{type StandardImageRef,uploadStandardImages,uploadSummary} from '../components/StandardGallery';
 import {api} from '../api';
 
 type PointPost={postId:string;postCode:string;postName:string;tier:string;state:string};
@@ -259,7 +259,14 @@ export default function ConsignasConfig({point,onBack}:{point:PointContext;onBac
   const createEvidence=async()=>{if(!draft||!isDraft)return;try{const e=await api.createConsignmentEvidence(draft.id,{name:'Nueva evidencia',evidenceType:'PHOTO',required:true}) as Evidence;await load(selectedProtocolId,draft.id,e.id);setTab('EVIDENCIAS')}catch(e){setError(errorText(e))}};
   const saveEvidence=async()=>{if(!selectedEvidence||!isDraft)return;try{const e=await api.saveConsignmentEvidence(selectedEvidence.id,{name:selectedEvidence.name,description:selectedEvidence.description,evidenceType:selectedEvidence.evidenceType,required:selectedEvidence.required,standardImageNotes:selectedEvidence.standardImageNotes}) as Evidence;await load(selectedProtocolId,draft!.id,e.id);setNotice('Evidencia guardada.')}catch(e){setError(errorText(e))}};
   const deleteEvidence=()=>{if(!selectedEvidence||!isDraft)return;const evidenceId=selectedEvidence.id;const itemId=draft?.id;setConfirmState({title:'Eliminar evidencia',message:`Se eliminará la evidencia “${selectedEvidence.name}”. La foto estándar asociada también se eliminará.`,confirmLabel:'Eliminar evidencia',tone:'danger',run:async()=>{await api.deleteConsignmentEvidence(evidenceId);await load(selectedProtocolId,itemId??undefined);setNotice('Evidencia eliminada.')}})};
-  const uploadPhoto=async(file:File)=>{if(!selectedEvidence||!isDraft)return;if(file.size>5*1024*1024){setError('La foto estándar no puede superar 5 MB.');return}try{const e=await api.uploadConsignmentStandardImage(selectedEvidence.id,file) as Evidence;await load(selectedProtocolId,draft!.id,e.id);setTab('EVIDENCIAS');setNotice('Foto estándar cargada y versionada.')}catch(err){setError(errorText(err))}};
+  const uploadPhotos=async(files:File[])=>{
+    if(!selectedEvidence||!isDraft||!files.length)return;setError('');
+    const evidenceId=selectedEvidence.id;
+    const r=await uploadStandardImages(files,selectedEvidence.standardImages.length,f=>api.uploadConsignmentStandardImage(evidenceId,f),
+      (done,total)=>setNotice(total>1?`Subiendo foto estándar ${done} de ${total}…`:'Subiendo foto estándar…'),errorText);
+    if(r.uploaded){await load(selectedProtocolId,draft!.id,evidenceId);setTab('EVIDENCIAS')}
+    setNotice(r.uploaded?`${uploadSummary(r.uploaded)} Estándar versionado.`:'');if(r.problems.length)setError(r.problems.join(' · '));
+  };
   const removePhoto=async(imageId:string)=>{if(!selectedEvidence||!isDraft)return;try{await api.deleteConsignmentStandardImage(selectedEvidence.id,imageId);await load(selectedProtocolId,draft!.id,selectedEvidence.id)}catch(e){setError(errorText(e))}};
 
   const updateEvidence=<K extends keyof Evidence>(key:K,value:Evidence[K])=>{
@@ -332,7 +339,7 @@ export default function ConsignasConfig({point,onBack}:{point:PointContext;onBac
         {draft&&<div className="con-v109-footer-actions">{isDraft&&<button className="primary" onClick={()=>void saveItem()} disabled={saving}><Save size={14}/>Guardar consigna</button>}<span>{draft.code} · {priorityLabel(draft.priority)} · {scopeLabel(draft,point.posts)}</span></div>}
       </>}</section>
     </div>
-    <input ref={photoInput} hidden type="file" accept="image/png,image/jpeg,image/webp" onChange={e=>{const f=e.target.files?.[0];if(f)void uploadPhoto(f);e.currentTarget.value=''}}/>
+    <input ref={photoInput} hidden type="file" accept="image/png,image/jpeg,image/webp" multiple onChange={e=>{const files=Array.from(e.currentTarget.files??[]);e.currentTarget.value='';void uploadPhotos(files)}}/>
 
     {history&&<div className="pat-modal-backdrop" onClick={()=>setHistory(null)}><section className="pat-history-modal" onClick={e=>e.stopPropagation()}><header><div><h3>Historial · {selectedProtocol?.code}</h3><span>Las versiones publicadas conservan su snapshot completo.</span></div><button onClick={()=>setHistory(null)}><X size={18}/></button></header><div>{history.map(v=><article key={v.id}><div><strong>v{v.versionNo}</strong><span className={`con-state ${v.status.toLowerCase()}`}>{statusLabel(v.status)}</span></div><div><b>{v.name}</b><small>{v.consignments.length} Consignas</small></div><small>{v.publishedAt?new Date(v.publishedAt).toLocaleString('es-EC'):'Borrador no publicado'}</small></article>)}</div></section></div>}
     {confirmState&&<ConfirmDialog state={confirmState} busy={confirmBusy} onCancel={()=>!confirmBusy&&setConfirmState(null)} onConfirm={()=>void runConfirm()}/>}  

@@ -73,7 +73,7 @@ public class HttpVisintAdapter implements VisintPort {
     /**
      * Estados del plan de integración VISINT: PASS → cumple. FAIL_QUALITY / FAIL_NO_MATCH / FAIL_INVALID_IMAGE (u otro con
      * match.compatible=false) → no cumple. TIMEOUT / PROCESSING → VISINT no alcanzó a evaluar: se reintenta. ERROR_VISINT u otro
-     * → ERROR (falla técnica, no es incumplimiento). Los puntajes (score) se ignoran.
+     * → ERROR (falla técnica, no es incumplimiento). Los puntajes (quality/match) se guardan solo como dato: no cambian el veredicto.
      */
     public static ReviewResult parseResult(String json, ObjectMapper mapper) {
         JsonNode n;
@@ -89,7 +89,8 @@ public class HttpVisintAdapter implements VisintPort {
             : n.path("match").path("compatible").isBoolean() && !n.path("match").path("compatible").asBoolean() ? "FAIL" : "ERROR";
         String code = reason == null ? status : reason;
         String findings = "Código VISINT: " + code + (!code.equals(status) && !result.equals("PASS") ? " (" + status + ")" : "");
-        return new ReviewResult(text(n, "requestId"), result, findings, result.equals("PASS") ? uuid(text(n, "matchedReferenceId")) : null, code, text(n, "modelVersion"));
+        return new ReviewResult(text(n, "requestId"), result, findings, result.equals("PASS") ? uuid(text(n, "matchedReferenceId")) : null, code, text(n, "modelVersion"),
+            bool(n.path("quality"), "valid"), number(n.path("quality"), "score"), bool(n.path("match"), "compatible"), number(n.path("match"), "score"));
     }
 
     /** Si no se puede leer una foto se trata como falla temporal: sigue la regla de reintentos y termina en ERROR_FINAL. */
@@ -105,6 +106,8 @@ public class HttpVisintAdapter implements VisintPort {
     static String serviceType(String taskType) {
         return switch (taskType) { case "PATROL_CHECKPOINT" -> "PATRULLA"; case "CONSIGNMENT_EVIDENCE" -> "CONSIGNA"; case "LOGBOOK_FIELD" -> "BITACORA"; default -> taskType; };
     }
+    private static Boolean bool(JsonNode n, String f) { return n.path(f).isBoolean() ? n.path(f).asBoolean() : null; }
+    private static Double number(JsonNode n, String f) { return n.path(f).isNumber() ? n.path(f).asDouble() : null; }
     private static String text(JsonNode n, String f) { return n.hasNonNull(f) && !n.path(f).asText().isBlank() ? n.path(f).asText() : null; }
     private static UUID uuid(String s) { try { return s == null ? null : UUID.fromString(s); } catch (IllegalArgumentException e) { return null; } }
 

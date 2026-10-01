@@ -34,6 +34,24 @@ class HttpVisintAdapterTest {
         assertEquals(STD2, r.matchedStandardImageId());
         assertEquals("OK", r.reasonCode());
         assertEquals("visint-faces-1/buffalo_l-w600k_r50-v1", r.modelVersion());
+        assertEquals(Boolean.TRUE, r.qualityValid());
+        assertEquals(0.8838, r.qualityScore());
+        assertEquals(Boolean.TRUE, r.matchCompatible());
+        assertEquals(0.7635, r.matchScore());
+    }
+
+    @Test void scoresAreInformativeAndOptional() {
+        // match.score null (p. ej. FAIL_QUALITY) y respuestas sin quality/match: los puntajes quedan en null y el veredicto no cambia.
+        var q = HttpVisintAdapter.parseResult("""
+            {"requestId":"x","status":"FAIL_QUALITY","quality":{"valid":false,"score":0.4357},"match":{"compatible":false,"score":null},"reasonCode":"BLURRY"}""", m);
+        assertEquals("FAIL", q.result());
+        assertEquals(Boolean.FALSE, q.qualityValid());
+        assertEquals(0.4357, q.qualityScore());
+        assertEquals(Boolean.FALSE, q.matchCompatible());
+        assertNull(q.matchScore());
+        var none = HttpVisintAdapter.parseResult(status("PASS"), m);
+        assertEquals("PASS", none.result());
+        assertNull(none.qualityValid()); assertNull(none.qualityScore()); assertNull(none.matchCompatible()); assertNull(none.matchScore());
     }
 
     @Test void timeoutAndProcessingAreRetried() {
