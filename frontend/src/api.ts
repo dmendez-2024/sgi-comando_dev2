@@ -5,41 +5,57 @@ const PASSWORD='CajamarcaUAT!2026';
 export const setUser=(u:UatUser)=>{currentUser=u;localStorage.setItem('sgi-uat-user',u)};
 export const getUser=()=>currentUser;
 export class ApiError extends Error{status:number;body:string;constructor(status:number,body:string){super(`${status} ${body}`);this.status=status;this.body=body}}
-async function request<T>(path:string,init?:RequestInit):Promise<T>{
- const headers=new Headers(init?.headers); headers.set('Content-Type','application/json'); headers.set('Authorization','Basic '+btoa(`${currentUser}:${PASSWORD}`));
+async function request<T>(path:string,init?:RequestInit,user:UatUser=currentUser):Promise<T>{
+ const headers=new Headers(init?.headers); headers.set('Content-Type','application/json'); headers.set('Authorization','Basic '+btoa(`${user}:${PASSWORD}`));
  const res=await fetch(`${API}${path}`,{...init,headers}); if(!res.ok){const body=await res.text();throw new ApiError(res.status,body)} return res.status===204?undefined as T:res.json();
 }
 
-async function binaryRequest(path:string,init?:RequestInit):Promise<Blob>{
- const headers=new Headers(init?.headers); headers.set('Authorization','Basic '+btoa(`${currentUser}:${PASSWORD}`));
+async function binaryRequest(path:string,init?:RequestInit,user:UatUser=currentUser):Promise<Blob>{
+ const headers=new Headers(init?.headers); headers.set('Authorization','Basic '+btoa(`${user}:${PASSWORD}`));
  const res=await fetch(`${API}${path}`,{...init,headers}); if(!res.ok){const body=await res.text();throw new ApiError(res.status,body)} return res.blob();
 }
 async function atsCurrentOrNull(pointId:string):Promise<any|null>{
  try{return await request<any>(`/api/points/${encodeURIComponent(pointId)}/ats`)}catch(error){if(error instanceof ApiError&&error.status===404)return null;throw error}
 }
-
-async function bitacoraImageUpload(fieldId:string,file:File):Promise<any>{
- const headers=new Headers(); headers.set('Authorization','Basic '+btoa(`${currentUser}:${PASSWORD}`)); headers.set('Content-Type','application/octet-stream');
- const res=await fetch(`${API}/api/bitacora/fields/${encodeURIComponent(fieldId)}/standard-image?filename=${encodeURIComponent(file.name)}&contentType=${encodeURIComponent(file.type||'application/octet-stream')}`,{method:'POST',headers,body:file});
- if(!res.ok){const body=await res.text();throw new ApiError(res.status,body)} return res.json();
+const authHeader=(user:UatUser=currentUser)=>"Basic "+btoa(`${user}:${PASSWORD}`);
+// TEMPORAL (demo UAT): el Simulador de Agente llama a la API del operador como el usuario UAT "agente",
+// sin cambiar el usuario del resto de la app. Quitar junto con el simulador.
+const SIMULATOR_USER:UatUser='agente';
+/** POST multipart/form-data con progreso de subida. No fija Content-Type: el navegador agrega el boundary. */
+export function multipartRequest<T>(path:string,form:FormData,opts:{onProgress?:(pct:number)=>void;signal?:AbortSignal;idempotencyKey?:string;user?:UatUser}={}):Promise<T>{
+ return new Promise((resolve,reject)=>{
+  const xhr=new XMLHttpRequest(); xhr.open("POST",`${API}${path}`); xhr.setRequestHeader("Authorization",authHeader(opts.user));
+  if(opts.idempotencyKey)xhr.setRequestHeader("Idempotency-Key",opts.idempotencyKey);
+  xhr.upload.onprogress=e=>{if(e.lengthComputable)opts.onProgress?.(Math.round(e.loaded*100/e.total))};
+  xhr.onload=()=>xhr.status>=200&&xhr.status<300?resolve((xhr.responseText?JSON.parse(xhr.responseText):undefined) as T):reject(new ApiError(xhr.status,xhr.responseText));
+  xhr.onerror=()=>reject(new ApiError(0,"Error de red: no se pudo contactar al servidor"));
+  xhr.onabort=()=>reject(new ApiError(0,"Carga cancelada"));
+  opts.signal?.addEventListener("abort",()=>xhr.abort());
+  xhr.send(form);
+ });
 }
-async function patrolImageUpload(checkpointId:string,file:File):Promise<any>{
- const headers=new Headers(); headers.set('Authorization','Basic '+btoa(`${currentUser}:${PASSWORD}`)); headers.set('Content-Type','application/octet-stream');
- const res=await fetch(`${API}/api/patrols/checkpoints/${encodeURIComponent(checkpointId)}/standard-image?filename=${encodeURIComponent(file.name)}&contentType=${encodeURIComponent(file.type||'application/octet-stream')}`,{method:'POST',headers,body:file});
- if(!res.ok){const body=await res.text();throw new ApiError(res.status,body)} return res.json();
-}
-
-async function consignmentImageUpload(evidenceId:string,file:File):Promise<any>{
- const headers=new Headers(); headers.set('Authorization','Basic '+btoa(`${currentUser}:${PASSWORD}`)); headers.set('Content-Type','application/octet-stream');
- const res=await fetch(`${API}/api/consignments/evidences/${encodeURIComponent(evidenceId)}/standard-image?filename=${encodeURIComponent(file.name)}&contentType=${encodeURIComponent(file.type||'application/octet-stream')}`,{method:'POST',headers,body:file});
- if(!res.ok){const body=await res.text();throw new ApiError(res.status,body)} return res.json();
-}
+function standardImageUpload(path:string,file:File){const fd=new FormData();fd.append("file",file,file.name);return multipartRequest<any>(path,fd)}
+const bitacoraImageUpload=(fieldId:string,file:File)=>standardImageUpload(`/api/bitacora/fields/${encodeURIComponent(fieldId)}/standard-images`,file);
+const patrolImageUpload=(checkpointId:string,file:File)=>standardImageUpload(`/api/patrols/checkpoints/${encodeURIComponent(checkpointId)}/standard-images`,file);
+const consignmentImageUpload=(evidenceId:string,file:File)=>standardImageUpload(`/api/consignments/evidences/${encodeURIComponent(evidenceId)}/standard-images`,file);
 async function atsUpload(pointId:string,file:File):Promise<any>{
  const headers=new Headers(); headers.set('Authorization','Basic '+btoa(`${currentUser}:${PASSWORD}`)); headers.set('Content-Type','application/octet-stream');
  const res=await fetch(`${API}/api/points/${encodeURIComponent(pointId)}/ats/upload?filename=${encodeURIComponent(file.name)}`,{method:'POST',headers,body:file});
  if(!res.ok){const body=await res.text();throw new ApiError(res.status,body)} return res.json();
 }
 export const api={
+ operationExecutions:(pointId:string)=>request<any[]>(`/api/operation/executions?pointId=${encodeURIComponent(pointId)}`),
+ operationExecution:(id:string)=>request<any>(`/api/operation/executions/${encodeURIComponent(id)}`),
+ operationEvidenceImage:(id:string)=>binaryRequest(`/api/operation/evidences/${encodeURIComponent(id)}/content`),
+ operationStandardImage:(executionId:string,standardId:string)=>binaryRequest(`/api/operation/executions/${encodeURIComponent(executionId)}/standards/${encodeURIComponent(standardId)}`),
+ retryVisualReview:(id:string)=>request<any>(`/api/operation/visual-reviews/${encodeURIComponent(id)}/retry`,{method:'POST'}),
+ features:()=>request<{uatTools:boolean;visintMode:string;visintSimulated:boolean}>('/api/features'),
+ operatorRuntime:(assignmentId?:string)=>request<any>(`/api/v1/operator/runtime${assignmentId?`?assignmentId=${encodeURIComponent(assignmentId)}`:""}`,undefined,SIMULATOR_USER),
+ uploadEvidences:(form:FormData,opts:{onProgress?:(pct:number)=>void;signal?:AbortSignal;idempotencyKey?:string})=>multipartRequest<any>("/api/v1/operator/evidences",form,{...opts,user:SIMULATOR_USER}),
+ submitExecution:(batch:any)=>request<any>("/api/v1/operator/executions",{method:"POST",body:JSON.stringify(batch)},SIMULATOR_USER),
+ operatorStandardImage:(imageId:string,assignmentId:string)=>binaryRequest(`/api/v1/operator/standard-images/${encodeURIComponent(imageId)}?assignmentId=${encodeURIComponent(assignmentId)}`,undefined,SIMULATOR_USER),
+ operatorExecution:(eventId:string)=>request<any>(`/api/v1/operator/executions/${encodeURIComponent(eventId)}`,undefined,SIMULATOR_USER),
+ operatorCheckpointImage:(checkpointId:string,imageId:string,assignmentId:string)=>binaryRequest(`/api/v1/operator/checkpoints/${encodeURIComponent(checkpointId)}/standard-images/${encodeURIComponent(imageId)}?assignmentId=${encodeURIComponent(assignmentId)}`,undefined,SIMULATOR_USER),
  context:()=>request<any>('/api/context'),
  companies:(page=0,size=50)=>request<any>(`/api/companies?page=${page}&size=${size}`),
  companyCoreCatalog:()=>request<any[]>('/api/companies/core-catalog'),
@@ -73,9 +89,9 @@ export const api={
  createBitacoraField:(accreditationId:string,body:any)=>request<any>(`/api/bitacora/accreditations/${encodeURIComponent(accreditationId)}/fields`,{method:'POST',body:JSON.stringify(body)}),
  saveBitacoraField:(fieldId:string,body:any)=>request<any>(`/api/bitacora/fields/${encodeURIComponent(fieldId)}`,{method:'PUT',body:JSON.stringify(body)}),
  deleteBitacoraField:(fieldId:string)=>request<void>(`/api/bitacora/fields/${encodeURIComponent(fieldId)}`,{method:'DELETE'}),
- bitacoraStandardImage:(fieldId:string)=>binaryRequest(`/api/bitacora/fields/${encodeURIComponent(fieldId)}/standard-image`),
+ bitacoraStandardImage:(fieldId:string,imageId:string)=>binaryRequest(`/api/bitacora/fields/${encodeURIComponent(fieldId)}/standard-images/${encodeURIComponent(imageId)}`),
  uploadBitacoraStandardImage:(fieldId:string,file:File)=>bitacoraImageUpload(fieldId,file),
- deleteBitacoraStandardImage:(fieldId:string)=>request<any>(`/api/bitacora/fields/${encodeURIComponent(fieldId)}/standard-image`,{method:'DELETE'}),
+ deleteBitacoraStandardImage:(fieldId:string,imageId:string)=>request<any>(`/api/bitacora/fields/${encodeURIComponent(fieldId)}/standard-images/${encodeURIComponent(imageId)}`,{method:'DELETE'}),
  bitacoraProtocolHistory:(protocolId:string)=>request<any[]>(`/api/bitacora/protocols/${encodeURIComponent(protocolId)}/history`),
  forkBitacoraProtocol:(protocolId:string)=>request<any>(`/api/bitacora/protocols/${encodeURIComponent(protocolId)}/fork`,{method:'POST'}),
 
@@ -95,9 +111,9 @@ export const api={
  savePatrolCheckpoint:(checkpointId:string,body:any)=>request<any>(`/api/patrols/checkpoints/${encodeURIComponent(checkpointId)}`,{method:'PUT',body:JSON.stringify(body)}),
  savePatrolCheckpointRules:(checkpointId:string,body:any)=>request<any>(`/api/patrols/checkpoints/${encodeURIComponent(checkpointId)}/rules`,{method:'PUT',body:JSON.stringify(body)}),
  deletePatrolCheckpoint:(checkpointId:string)=>request<void>(`/api/patrols/checkpoints/${encodeURIComponent(checkpointId)}`,{method:'DELETE'}),
- patrolStandardImage:(checkpointId:string)=>binaryRequest(`/api/patrols/checkpoints/${encodeURIComponent(checkpointId)}/standard-image`),
+ patrolStandardImage:(checkpointId:string,imageId:string)=>binaryRequest(`/api/patrols/checkpoints/${encodeURIComponent(checkpointId)}/standard-images/${encodeURIComponent(imageId)}`),
  uploadPatrolStandardImage:(checkpointId:string,file:File)=>patrolImageUpload(checkpointId,file),
- deletePatrolStandardImage:(checkpointId:string)=>request<any>(`/api/patrols/checkpoints/${encodeURIComponent(checkpointId)}/standard-image`,{method:'DELETE'}),
+ deletePatrolStandardImage:(checkpointId:string,imageId:string)=>request<any>(`/api/patrols/checkpoints/${encodeURIComponent(checkpointId)}/standard-images/${encodeURIComponent(imageId)}`,{method:'DELETE'}),
 
  postConfigurations:(pointId:string)=>request<any[]>(`/api/post-configurations?pointId=${encodeURIComponent(pointId)}`),
  savePostConfiguration:(postId:string,body:any)=>request<any>(`/api/post-configurations/${encodeURIComponent(postId)}`,{method:'PUT',body:JSON.stringify(body)}),
@@ -118,9 +134,9 @@ export const api={
  createConsignmentEvidence:(itemId:string,body:any)=>request<any>(`/api/consignments/items/${encodeURIComponent(itemId)}/evidences`,{method:'POST',body:JSON.stringify(body)}),
  saveConsignmentEvidence:(evidenceId:string,body:any)=>request<any>(`/api/consignments/evidences/${encodeURIComponent(evidenceId)}`,{method:'PUT',body:JSON.stringify(body)}),
  deleteConsignmentEvidence:(evidenceId:string)=>request<void>(`/api/consignments/evidences/${encodeURIComponent(evidenceId)}`,{method:'DELETE'}),
- consignmentStandardImage:(evidenceId:string)=>binaryRequest(`/api/consignments/evidences/${encodeURIComponent(evidenceId)}/standard-image`),
+ consignmentStandardImage:(evidenceId:string,imageId:string)=>binaryRequest(`/api/consignments/evidences/${encodeURIComponent(evidenceId)}/standard-images/${encodeURIComponent(imageId)}`),
  uploadConsignmentStandardImage:(evidenceId:string,file:File)=>consignmentImageUpload(evidenceId,file),
- deleteConsignmentStandardImage:(evidenceId:string)=>request<any>(`/api/consignments/evidences/${encodeURIComponent(evidenceId)}/standard-image`,{method:'DELETE'}),
+ deleteConsignmentStandardImage:(evidenceId:string,imageId:string)=>request<any>(`/api/consignments/evidences/${encodeURIComponent(evidenceId)}/standard-images/${encodeURIComponent(imageId)}`,{method:'DELETE'}),
  consignments:(pointId:string)=>request<any[]>(`/api/consignments?pointId=${encodeURIComponent(pointId)}`),
  currentRegesep:(pointId:string)=>request<any>(`/api/points/${pointId}/regesep/current`),
  assignmentWeek:(companyId:string,weekStart:string,pointId?:string)=>request<any>(`/api/assignments/week?companyId=${encodeURIComponent(companyId)}&weekStart=${weekStart}${pointId?`&pointId=${encodeURIComponent(pointId)}`:''}`),

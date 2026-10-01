@@ -37,6 +37,7 @@ import BitacoraConfig from './BitacoraConfig';
 import PatrolConfig from './PatrolConfig';
 import ConsignasConfig from './ConsignasConfig';
 import NexusConfig from './NexusConfig';
+import OperationPage from './OperationPage';
 
 type State='ACTIVE'|'INACTIVE'|'TO_CONFIGURE'|'PENDING_ASSIGNMENT';
 type Row={
@@ -92,8 +93,7 @@ type CommercialWeek={posts:CommercialPost[];shifts:CommercialShift[]};
 type SkillKey=keyof PostSkillSet;
 type AssignmentDestination={companyId:string;code:string;name:string;zoneId?:string|null;regionIds:string[]};
 type ClientOption={id:string;code:string;name:string};
-
-type View='list'|'config-landing'|'config-ats'|'config-posts'|'config-bitacora'|'config-patrols'|'config-consignas'|'config-nexus';
+type View='list'|'config-landing'|'config-ats'|'config-posts'|'config-bitacora'|'config-patrols'|'config-consignas'|'config-nexus'|'operation';
 
 const PAGE_SIZE=10;
 const TIER_MIN:Record<string,number>={I:6.5,II:7.5,III:8.5,IV:9.5};
@@ -889,6 +889,9 @@ export default function Services(){
   if(selectedPoint&&view==='config-nexus'){
     return <NexusConfig point={selectedPoint} onBack={()=>setView('config-landing')}/>;
   }
+  if(selectedPoint&&view==='operation'){
+    return <OperationPage point={selectedPoint} onBack={backToList}/>;
+  }
   if(selectedPoint&&view==='config-landing'){
     return <ConfigurationLanding point={selectedPoint} onBack={backToList} onOpenModule={(module:ModuleCard['key'])=>{if(module==='ats')setView('config-ats');if(module==='puestos')setView('config-posts');if(module==='bitacora')setView('config-bitacora');if(module==='patrullas')setView('config-patrols');if(module==='consignas')setView('config-consignas');if(module==='nexus')setView('config-nexus')}}/>;
   }
@@ -934,7 +937,7 @@ export default function Services(){
                 <td><span className={`ser-metric ${icTone(row.icAverage)}`}><i/>{metric(row.icAverage,'%')}</span></td>
                 <td><span className={`ser-news ${row.pendingNews?'pending':'zero'}`}>{row.pendingNews}</span></td>
                 <td><span className={`ser-state ${row.state.toLowerCase()}`}><i/>{stateLabel(row.state)}</span></td>
-                <td><button className="ser-action ghost" disabled title="Operación queda temporalmente en stand by"><Eye size={15}/>Operación</button></td>
+                <td><button className="ser-action ghost" onClick={()=>{setSelectedPointId(row.pointId);setView('operation')}}><Eye size={15}/>Operación</button></td>
                 <td>{row.assignmentStatus==='PENDING'?<button className="ser-action primary" onClick={()=>void openAssignment(row)} disabled={!row.canAssign} title={row.canAssign?'Asignar Servicio a una Compañía operativa':'Su perfil no puede asignar este Servicio'}><Building2 size={15}/>Asignación</button>:<div className="ser-row-actions"><button className="ser-action primary" onClick={()=>openConfiguration(row.pointId)}><Settings2 size={15}/>Configuración</button>{row.canReturn&&<button className="ser-action return" onClick={()=>openReturnToCoordination(row)} title="Retirar Servicio a Kaibil para reasignación"><ArrowLeft size={15}/>Retirar a Kaibil</button>}</div>}</td>
               </tr>;
             }):<tr><td colSpan={11}><div className="ser-empty">No existen puntos que coincidan con los filtros.</div></td></tr>}

@@ -17,17 +17,24 @@ services:
 
   minio:
     #image: minio/minio:latest
-    image: quay.io/minio/aistor/minio:RELEASE.2026-03-26T21-24-40Z
-    command: server /data --console-address ":9001"
+    #image: quay.io/minio/aistor/minio:RELEASE.2026-03-26T21-24-40Z
+    #command: server /data --console-address ":9001"
+    #environment:
+      #MINIO_ROOT_USER: ${MINIO_ROOT_USER:-sgiadmin}
+      #MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD in .env}
+    # MinIO comunitario (Bitnami). La imagen AIStor (quay.io/minio/aistor) requiere licencia comercial
+    # y las imágenes comunitarias minio/minio ya no se publican.
+    image: bitnamilegacy/minio:2025.7.23
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-sgiadmin}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD in .env}
+      MINIO_CONSOLE_PORT_NUMBER: "9001"
     ports:
       - "9000:9000"
       - "9001:9001"
     volumes:
-      - minio_data:/data
-
+      #- minio_data:/data
+      - minio_data:/bitnami/minio/data
   backend:
     build:
       context: ./backend
@@ -51,6 +58,11 @@ services:
       SGI_CREDENTIAL_SIC_COM_SGI_COM_0001_V001: ${SGI_CREDENTIAL_SIC_COM_SGI_COM_0001_V001:-}
       SGI_CREDENTIAL_SIC_RRHH_SGI_COM_0001_V001: ${SGI_CREDENTIAL_SIC_RRHH_SGI_COM_0001_V001:-}
       SGI_OPERATOR_RELIEF_UAT_ENABLED: ${SGI_OPERATOR_RELIEF_UAT_ENABLED:-false}
+      # VISINT real (HTTP) por defecto; MOCK solo con SGI_UAT_FEATURES_ENABLED=true.
+      SGI_VISINT_MODE: ${SGI_VISINT_MODE:-HTTP}
+      SGI_VISINT_URL: ${SGI_VISINT_URL:-}
+      SGI_VISINT_TOKEN: ${SGI_VISINT_TOKEN:-}
+      SGI_UAT_FEATURES_ENABLED: ${SGI_UAT_FEATURES_ENABLED:-false}
     ports:
       - "8080:8080"
     depends_on:
