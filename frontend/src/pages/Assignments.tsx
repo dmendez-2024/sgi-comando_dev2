@@ -216,7 +216,6 @@ export default function Assignments(){
   const goWeek=(delta:number)=>setWeekAndScroll(addDays(weekStart,delta));
   const goToday=()=>{const current=monday();setWeekStart(current);scrollToDate(today)};
   const handleMatrixScroll=(e:any)=>{const left=e.currentTarget.scrollLeft||0;const first=Math.max(0,Math.min(days.length-1,Math.floor(left/DAY_WIDTH)));const next=Math.max(0,Math.min(days.length-VIRTUAL_RENDER_DAYS,first-VIRTUAL_BUFFER_DAYS));if(next!==virtualStart)setVirtualStart(next)};
-  const handleMatrixWheel=(e:any)=>{if(Math.abs(e.deltaY)<=Math.abs(e.deltaX))return;window.scrollBy({top:e.deltaY,left:0,behavior:'auto'});e.preventDefault?.();};
   useEffect(()=>{scrollToDate(weekStart)},[weekStart,companyId]);
 
   const selectionBounds=(ids=selectedShiftIds)=>{const coords=Array.from(ids).map(id=>coordByShift.get(id)).filter(Boolean) as CellCoord[];if(!coords.length)return null;return{minRow:Math.min(...coords.map(c=>c.rowIndex)),maxRow:Math.max(...coords.map(c=>c.rowIndex)),minDay:Math.min(...coords.map(c=>c.dayIndex)),maxDay:Math.max(...coords.map(c=>c.dayIndex))}};
@@ -345,7 +344,7 @@ export default function Assignments(){
           </div>
         </div>}
 
-        <div className="assignment-matrix-wrap spreadsheet-matrix" ref={matrixRef} onMouseLeave={()=>setHoverDate('')} onWheel={handleMatrixWheel} onScroll={handleMatrixScroll}>
+        <div className="assignment-matrix-wrap spreadsheet-matrix" ref={matrixRef} onMouseLeave={()=>setHoverDate('')} onScroll={handleMatrixScroll}>
           <div className="matrix-days spreadsheet-days"><div className="matrix-corner">Puesto / Turno</div>{leftSpacerWidth>0&&<div className="virtual-day-spacer" style={{flex:`0 0 ${leftSpacerWidth}px`}}/>}{renderDays.map(d=><div key={d} data-date-header={d} className={`day-head ${dayHeaderClass(d)}`} onMouseEnter={()=>setHoverDate(d)} onClick={()=>onDayHeaderClick(d)}><strong>{dayName(d)}</strong><span>{new Date(`${d}T12:00:00`).getDate()}</span><small>{formatDate(d)}</small></div>)}{rightSpacerWidth>0&&<div className="virtual-day-spacer" style={{flex:`0 0 ${rightSpacerWidth}px`}}/>}</div>
           {loading&&!week?<div className="matrix-loading">Cargando timeline operacional…</div>:visiblePoints.map(point=>{const coverage=pointCoverage(point),posts=postsByPoint.get(point.id)??[];return <div className="point-assignment-block spreadsheet-point" key={point.id}>
             <div className={`point-band ${coverage.pct===100?'complete':coverage.pct>=80?'partial':'critical'}`}><div className="point-band-sticky"><div className="point-band-meta"><strong className="point-band-title">{point.name}</strong><span className="point-band-subtitle">Cliente: {point.clientName} · Ciudad: {point.city}</span></div><b className="point-band-coverage">Asignación {coverage.pct}%</b></div><div className="point-band-fill" aria-hidden="true"/></div>

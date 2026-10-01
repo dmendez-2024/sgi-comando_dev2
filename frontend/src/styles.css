@@ -525,7 +525,7 @@
 .assignments-asi-v06 .inline-excel-toolbar{flex:1 1 auto;min-width:0;margin:0;display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:8px 9px;border-radius:12px}
 .assignments-asi-v06 .inline-excel-toolbar .selection-count{margin-right:4px}
 .assignments-asi-v06 .assignment-matrix-wrap{border:1px solid #dfe4eb;border-radius:12px;background:#fff;overflow-x:auto;overflow-y:visible;max-width:100%;scrollbar-gutter:stable}
-.assignments-asi-v06 .spreadsheet-matrix{max-height:none;overflow-x:auto;overflow-y:visible;overscroll-behavior-x:contain;overscroll-behavior-y:auto}
+.assignments-asi-v06 .spreadsheet-matrix{max-height:max(300px,calc(100vh - var(--freeze-pane-offset) - var(--main-top-offset) - 24px));overflow-x:auto;overflow-y:auto;overscroll-behavior:contain}
 .assignments-asi-v06 .spreadsheet-days{grid-template-columns:calc(var(--asi-post-col) + var(--asi-shift-col)) repeat(var(--asi-day-count),var(--asi-day-col));top:0;z-index:30;background:#f8fafd;border-bottom:1px solid #dce3ea}
 .assignments-asi-v06 .spreadsheet-days>.matrix-corner{background:#f8fafd}
 .assignments-asi-v06 .spreadsheet-days>.day-head{background:#f8fafd;min-height:58px}

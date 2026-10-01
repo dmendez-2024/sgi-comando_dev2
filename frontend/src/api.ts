@@ -158,7 +158,8 @@ export const api={
  assignmentPublish:(planId:string)=>request<any>(`/api/assignments/plans/${encodeURIComponent(planId)}/publish`,{method:'POST'}),
  assignmentCompatibility:(assignmentId:string)=>request<any>(`/api/assignments/compatibility/${encodeURIComponent(assignmentId)}`),
  assignmentPostDetails:(postId:string)=>request<any>(`/api/assignments/posts/${encodeURIComponent(postId)}/details`),
- assignmentCoverage:(weekStart:string)=>request<any>(`/api/assignments/coverage?weekStart=${weekStart}`),
+ assignmentCoverage:(weekStart:string,companyId='',clientId='')=>request<any>(`/api/assignments/coverage?${new URLSearchParams({weekStart,...(companyId?{companyId}:{}),...(clientId?{clientId}:{})})}`),
+ dashboardMetrics:(weekStart:string,companyId='',clientId='')=>request<any>(`/api/dashboard/metrics?${new URLSearchParams({weekStart,...(companyId?{companyId}:{}),...(clientId?{clientId}:{})})}`),
 
  coordinationCompanies:()=>request<any[]>('/api/coordination/companies'),
  coordinationPosts:(companyId:string)=>request<any[]>(`/api/coordination/posts?companyId=${encodeURIComponent(companyId)}`),

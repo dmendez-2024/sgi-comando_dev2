@@ -14,7 +14,8 @@ type CoverageCompany={companyId:string;companyName:string;posts:number;uncovered
 type Coverage={companies:CoverageCompany[];totalUnassignedShifts:number;totalUncoveredPoints:number;overallCoveragePct:number};
 type PointLocation={id:string;province?:string;city?:string};
 type Province={code:string;name:string;status?:string;geometryJson?:string;coreSubdivisionId?:string;coreDatasetVersion?:string};
-type DashboardData={companies:Company[];rows:ServiceRow[];coverage:Coverage|null;locations:PointLocation[];provinces:Province[];errors:string[]};
+type DashboardMetrics={calculatedAt:string;idAverage:number|null;icAverage:number|null;idSamples:number;icSamples:number;lateReliefs:number;recordedReliefs:number};
+type DashboardData={companies:Company[];rows:ServiceRow[];coverage:Coverage|null;metrics:DashboardMetrics|null;locations:PointLocation[];provinces:Province[];errors:string[]};
 
 function dateAtLocalNoon(value:Date){return new Date(value.getFullYear(),value.getMonth(),value.getDate(),12)}
 function weekStartIso(offset=0){
@@ -26,7 +27,6 @@ function weekStartIso(offset=0){
 function shiftDate(value:string,days:number){const [year,month,day]=value.split('-').map(Number);const date=new Date(year,month-1,day,12);date.setDate(date.getDate()+days);return date}
 function dateLabel(date:Date){return new Intl.DateTimeFormat('es-EC',{day:'numeric',month:'short'}).format(date)}
 function weekLabel(value:string){return `${dateLabel(shiftDate(value,0))} – ${dateLabel(shiftDate(value,6))}`}
-function average(values:(number|null|undefined)[]){const available=values.filter((value):value is number=>typeof value==='number'&&Number.isFinite(value));return available.length?available.reduce((sum,value)=>sum+value,0)/available.length:null}
 function normalize(value:string){return value.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLocaleLowerCase('es').trim()}
 function statusLabel(row:ServiceRow){
   if(row.state==='PENDING_ASSIGNMENT')return 'Pendiente de asignación';
@@ -36,8 +36,10 @@ function statusLabel(row:ServiceRow){
 }
 
 const visibleMetricsWithoutSource=[
-  'Faltos registrados','Relevos tardíos','Incumplimiento de consignas',
-  'Incidentes críticos abiertos','Incumplimiento de ruta de supervisión'
+  {label:'Faltos registrados',note:'Sin registro confirmado de asistencia'},
+  {label:'Incumplimiento de consignas',note:'Sin registro confirmado de incumplimiento'},
+  {label:'Incidentes críticos abiertos',note:'Las novedades no registran criticidad'},
+  {label:'Incumplimiento de ruta de supervisión',note:'Sin registro de visitas ejecutadas'}
 ];
 const provinceAliases:Record<string,string>={
   'azuay':'AZU','bolivar':'BOL','canar':'CAN','carchi':'CAR','chimborazo':'CHI','cotopaxi':'COT',
@@ -60,31 +62,35 @@ export default function Dashboard(){
   const [clientSearch,setClientSearch]=useState('');
   const [clientMenuOpen,setClientMenuOpen]=useState(false);
   const [loading,setLoading]=useState(true);
-  const [data,setData]=useState<DashboardData>({companies:[],rows:[],coverage:null,locations:[],provinces:[],errors:[]});
+  const [data,setData]=useState<DashboardData>({companies:[],rows:[],coverage:null,metrics:null,locations:[],provinces:[],errors:[]});
 
   useEffect(()=>{
     let cancelled=false;
     setLoading(true);
     void (async()=>{
-      const [companiesResult,overviewResult,coverageResult,territoryResult]=await Promise.allSettled([
-        api.companies(0,100),api.serviceOverview(),api.assignmentCoverage(weekStart),api.territory()
+      const [companiesResult,overviewResult,coverageResult,territoryResult,metricsResult]=await Promise.allSettled([
+        api.companies(0,100),api.serviceOverview(),api.assignmentCoverage(weekStart,companyId,clientId),api.territory(),api.dashboardMetrics(weekStart,companyId,clientId)
       ]);
       const errors:string[]=[];
       const companies=companiesResult.status==='fulfilled'?(companiesResult.value.items??[]) as Company[]:[];
       const rows=overviewResult.status==='fulfilled'?((overviewResult.value.rows??[]) as ServiceRow[]):[];
       const coverage=coverageResult.status==='fulfilled'?coverageResult.value as Coverage:null;
+      const metrics=metricsResult.status==='fulfilled'?metricsResult.value as DashboardMetrics:null;
       const provinces=territoryResult.status==='fulfilled'?((territoryResult.value.provinces??[]) as Province[]):[];
       if(companiesResult.status==='rejected')errors.push('No se pudieron cargar las compañías.');
       if(overviewResult.status==='rejected')errors.push('No se pudo cargar el resumen de Servicios.');
       if(coverageResult.status==='rejected')errors.push('No se pudo cargar la cobertura de la semana.');
+      if(metricsResult.status==='rejected')errors.push('No se pudieron cargar los indicadores de la semana.');
+      if(territoryResult.status==='rejected')errors.push('No se pudo cargar el catálogo territorial.');
 
       const serviceIds=Array.from(new Set(rows.map(row=>row.serviceId).filter(Boolean)));
       const locationGroups=await Promise.allSettled(serviceIds.map(id=>api.points(id)));
       const locations=locationGroups.flatMap(result=>result.status==='fulfilled'?result.value as PointLocation[]:[]);
-      if(!cancelled){setData({companies,rows,coverage,locations,provinces,errors});setLoading(false)}
+      if(locationGroups.some(result=>result.status==='rejected'))errors.push('No se pudieron cargar todas las ubicaciones de los puntos.');
+      if(!cancelled){setData({companies,rows,coverage,metrics,locations,provinces,errors});setLoading(false)}
     })();
     return()=>{cancelled=true};
-  },[weekStart]);
+  },[weekStart,companyId,clientId]);
 
   const clients=useMemo(()=>{
     const unique=new Map<string,{id:string;name:string}>();
@@ -97,16 +103,15 @@ export default function Dashboard(){
   const pointIds=useMemo(()=>new Set(filteredRows.map(row=>row.pointId)),[filteredRows]);
   const companyOptions=useMemo(()=>data.companies.filter(company=>!clientId||filteredRows.some(row=>row.companyId===company.id)),[data.companies,filteredRows,clientId]);
   const coverageCompanies=data.coverage?.companies??[];
-  const selectedCoverage=companyId?coverageCompanies.find(company=>company.companyId===companyId):null;
-  const uncoveredPoints=clientId?null:(selectedCoverage?.uncoveredPoints??data.coverage?.totalUncoveredPoints??null);
-  const coveragePct=clientId?null:(selectedCoverage?.coveragePct??data.coverage?.overallCoveragePct??null);
-  const idAverage=average(filteredRows.map(row=>row.idAverage));
-  const icAverage=average(filteredRows.map(row=>row.icAverage));
+  const uncoveredPoints=data.coverage?.totalUncoveredPoints??null;
+  const coveragePct=data.coverage?.overallCoveragePct??null;
+  const idAverage=data.metrics?.idAverage??null;
+  const icAverage=data.metrics?.icAverage??null;
   const attentionRows=useMemo(()=>filteredRows.filter(row=>row.state!=='ACTIVE'||row.pendingNews>0)
     .sort((a,b)=>{
       const rank=(row:ServiceRow)=>row.state==='PENDING_ASSIGNMENT'?0:row.state==='TO_CONFIGURE'?1:row.state==='INACTIVE'?2:3;
       return rank(a)-rank(b)||b.pendingNews-a.pendingNews||a.clientName.localeCompare(b.clientName,'es');
-    }).slice(0,12),[filteredRows]);
+    }),[filteredRows]);
   const provinceCounts=useMemo<DashboardProvinceCount[]>(()=>{
     const provinceByName=new Map<string,Province>();
     data.provinces.forEach(province=>{provinceByName.set(normalize(province.name),province);provinceByName.set(normalize(province.code),province)});
@@ -128,12 +133,14 @@ export default function Dashboard(){
     .sort((a,b)=>b.uncoveredPoints-a.uncoveredPoints||a.companyName.localeCompare(b.companyName,'es')),[coverageCompanies,companyId]);
   const chartMax=Math.max(1,...chartCompanies.map(company=>company.uncoveredPoints));
   const companyName=companyOptions.find(company=>company.id===companyId)?.name;
-  const today=new Intl.DateTimeFormat('es-EC',{weekday:'long',day:'numeric',month:'long',year:'numeric'}).format(new Date());
+  const today=data.metrics?new Intl.DateTimeFormat('es-EC',{weekday:'long',day:'numeric',month:'long',year:'numeric',hour:'2-digit',minute:'2-digit',timeZone:'America/Guayaquil'}).format(new Date(data.metrics.calculatedAt)):'pendiente de cargar';
   const metrics=[
-    {id:'uncovered',label:'Puntos sin cobertura',value:uncoveredPoints==null?'N/D':uncoveredPoints.toLocaleString('es-EC'),note:coveragePct==null?'La cobertura no tiene desglose por cliente':`${coveragePct}% de cobertura semanal`,available:uncoveredPoints!=null},
-    {id:'id',label:'Índice de desempeño promedio',value:idAverage==null?'N/D':idAverage.toFixed(1),note:idAverage==null?'Sin evaluaciones disponibles':'Asignaciones cerradas · últimos 14 días',available:idAverage!=null},
-    {id:'ic',label:'Índice de compatibilidad promedio',value:icAverage==null?'N/D':`${icAverage.toFixed(1)}%`,note:icAverage==null?'Sin evaluaciones disponibles':'Asignaciones cerradas · últimos 14 días',available:icAverage!=null},
-    ...visibleMetricsWithoutSource.map((label,index)=>({id:`pending-${index}`,label,value:'N/D',note:'La UAT no expone una fuente para este indicador',available:false}))
+    {id:'uncovered',label:'Puntos sin cobertura',value:uncoveredPoints==null?'Sin datos':uncoveredPoints.toLocaleString('es-EC'),note:coveragePct==null?'No se pudo cargar la cobertura':`${coveragePct}% de cobertura planificada · semana seleccionada`,available:uncoveredPoints!=null},
+    {id:'id',label:'Índice de desempeño promedio',value:idAverage==null?'Sin datos':idAverage.toFixed(1),note:idAverage==null?'Sin ID registrado en turnos terminados':`${data.metrics?.idSamples} asignaciones · ID registrado ponderado por duración`,available:idAverage!=null},
+    {id:'ic',label:'Índice de compatibilidad promedio',value:icAverage==null?'Sin datos':`${icAverage.toFixed(1)}%`,note:icAverage==null?'Sin IC registrado en turnos terminados':`${data.metrics?.icSamples} asignaciones · IC ponderado por duración`,available:icAverage!=null},
+    {id:'pending-0',...visibleMetricsWithoutSource[0],value:'Sin datos',available:false},
+    {id:'late-reliefs',label:'Relevos tardíos',value:data.metrics?data.metrics.lateReliefs.toLocaleString('es-EC'):'Sin datos',note:data.metrics?`${data.metrics.recordedReliefs} relevos registrados · ejecución posterior a hora programada`:'No se pudieron cargar los relevos',available:data.metrics!=null},
+    ...visibleMetricsWithoutSource.slice(1).map((metric,index)=>({id:`pending-${index+1}`,...metric,value:'Sin datos',available:false}))
   ];
   const dateOptions=useMemo(()=>[-4,-3,-2,-1,0,1,2,3,4].map(offset=>{
     const value=weekStartIso(offset);
@@ -180,6 +187,6 @@ export default function Dashboard(){
         </section>
       </div>
     </div>
-    <div className="dash-v6-footnote"><FileText size={14}/><span>Solo se muestran como disponibles los indicadores con fuente real. Los indicadores en N/D requieren una fuente operativa que esta UAT no expone. Gráfico y mapa no tienen filtros propios; siguen el alcance global de compañía.</span></div>
+    <div className="dash-v6-footnote"><FileText size={14}/><span>Cobertura, ID, IC y relevos usan la semana, compañía y cliente seleccionados. ID e IC son valores guardados en asignaciones de turnos terminados, ponderados por su duración; no acreditan ejecución real. Los indicadores sin fuente confirmada muestran «Sin datos». Atención requerida y mapa muestran el estado actual del alcance seleccionado.</span></div>
   </div>;
 }

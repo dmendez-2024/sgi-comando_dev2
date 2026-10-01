@@ -6,6 +6,7 @@ import com.cajamarca.sgi.comando.consignments.Consignment;
 import com.cajamarca.sgi.comando.consignments.ConsignmentPostScope;
 import com.cajamarca.sgi.comando.operations.PointEntity;
 import com.cajamarca.sgi.comando.operations.PostEntity;
+import com.cajamarca.sgi.comando.operations.ServiceEntity;
 import com.cajamarca.sgi.comando.outbox.OutboxEvent;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -502,15 +503,18 @@ public class AssignmentResource {
     @GET
     @Path("/coverage")
     @Transactional
-    public CoverageResponse coverage(@QueryParam("weekStart") String weekStart) {
+    public CoverageResponse coverage(@QueryParam("weekStart") String weekStart, @QueryParam("companyId") UUID companyId, @QueryParam("clientId") UUID clientId) {
         LocalDate week=normalizeWeek(parseDate(weekStart));
         Set<UUID> allowedCompanies=scope.allowedCompanyIds();
+        if(companyId!=null){scope.requireCompany(companyId);allowedCompanies=Set.of(companyId);}
         List<Company> companies=allowedCompanies.isEmpty()?List.of():Company.list("instanceCountryId=?1 and status='ACTIVE' and id in ?2 order by name",tenant.instanceCountryId(),allowedCompanies);
+        Set<UUID> clientServiceIds=clientId==null?null:ServiceEntity.<ServiceEntity>list("instanceCountryId=?1 and clientId=?2",tenant.instanceCountryId(),clientId).stream().map(s->s.id).collect(Collectors.toSet());
         List<CoverageCompanyDto> result=new ArrayList<>();
         int totalReq=0,totalAssigned=0,totalUncoveredPoints=0;
         for(Company c:companies){
             AssignmentPlanEntity plan=ensurePlan(c.id,week);
             List<PointEntity> points=PointEntity.list("instanceCountryId=?1 and companyId=?2 and status='ACTIVE'",tenant.instanceCountryId(),c.id);
+            if(clientServiceIds!=null)points=points.stream().filter(p->clientServiceIds.contains(p.serviceId)).toList();
             Set<UUID> pids=points.stream().map(p->p.id).collect(Collectors.toSet());
             List<PostEntity> posts=pids.isEmpty()?List.of():PostEntity.list("instanceCountryId=?1 and pointId in ?2",tenant.instanceCountryId(),pids);
             Set<UUID> postIds=posts.stream().map(p->p.id).collect(Collectors.toSet());
