@@ -99,12 +99,18 @@ Detalle completo: `docs/API_CONTRACTS.md` (Fase 2) y decisiones `SGI-VIS-DEC-001
 | Variable | Valor local (`.env`, no versionado) | Por defecto |
 |---|---|---|
 | `SGI_VISINT_MODE` | `HTTP` (real) | `HTTP` |
-| `SGI_VISINT_URL` | `http://181.39.84.138:8010/v1/evidence/validate` | vacío → "VISINT no configurado" |
+| `SGI_INTERCONNECTIONS_CORE_RESOLVER_URL` | `http://192.168.20.138:5173` (CORE) | vacío → se usa `SGI_VISINT_URL` |
+| `SGI_INTERCONNECTIONS_ENVIRONMENT` | `LOCAL` | `UAT` |
+| `SGI_INTERCONNECTIONS_INSTANCE_COUNTRY_ID` | `398233d2-293a-4709-ac30-b74c4269e22d` (temporal, hasta que IDENT entregue el id de la empresa) | vacío → se usa `SGI_VISINT_URL` |
+| `SGI_VISINT_INTERCONNECTION_CODE` | — | `SGI_COM_VISINT_0001_v002` |
+| `SGI_VISINT_URL` | `http://181.39.84.138:8010/v1/evidence/validate` (respaldo si CORE no resuelve) | vacío y sin CORE → "VISINT no configurado" |
 | `SGI_VISINT_TOKEN` | token de VISINT (solo en `.env`) | vacío |
 | `SGI_VISINT_AUTH_HEADER` / `SGI_VISINT_AUTH_SCHEME` | — | `X-API-Key` / sin esquema |
 | `SGI_VISINT_TIMEOUT_SECONDS` | — | `60` |
 | `SGI_UAT_FEATURES_ENABLED` | `true` | `false` |
 | `SGI_OPERATOR_RELIEF_UAT_ENABLED` | `true` | `false` |
+
+La URL de VISINT se pide primero a CORE: `GET {CORE}/api/v1/interconnections/SGI_COM_VISINT_0001_v002/resolve?instanceCountryId=…&environment=…` → `resolvedUrl` (en caché 5 min, se acepta la anterior hasta 1 h si CORE falla). Si CORE no está configurado, no responde o no tiene binding (404), se usa `SGI_VISINT_URL`. El log indica la fuente: `URL de VISINT desde CORE …` o `… desde SGI_VISINT_URL`. El token sigue saliendo de `SGI_VISINT_TOKEN` (CORE responde `credentialRef: null`); de CORE no se usan `timeoutMs` (5000) ni `retries`.
 
 Para demo sin VISINT real: `SGI_VISINT_MODE=MOCK` y `docker compose up -d backend`.
 

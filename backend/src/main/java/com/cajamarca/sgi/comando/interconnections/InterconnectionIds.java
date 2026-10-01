@@ -42,7 +42,7 @@ public final class InterconnectionIds {
     public static final String STC_CREATE_CASE = "SGI_COM_STC_0001_v001";
     public static final String STC_CASE_STATUS = "SGI_COM_STC_0002_v001";
 
-    public static final String VISINT_REVIEW_REQUEST = "SGI_COM_VISINT_0001_v001";
+    public static final String VISINT_REVIEW_REQUEST = "SGI_COM_VISINT_0001_v002";
     public static final String VISINT_REVIEW_RESULT = "SGI_COM_VISINT_0002_v001";
 
     public static final String OPR_RUNTIME_SYNC = "SGI_OPR_SGI_COM_0001_v001";
