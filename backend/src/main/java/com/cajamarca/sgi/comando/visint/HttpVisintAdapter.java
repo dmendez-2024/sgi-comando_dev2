@@ -15,12 +15,13 @@ import java.util.*;
 /**
  * VISINT real (POST multipart/form-data, ver docs/API_CONTRACTS.md): en "image" va la foto del agente y en
  * "referenceImages" (+ "referenceIds") las fotos estándar del Hito (1 a 5). VISINT responde el status y la foto estándar que coincidió.
+ * La URL la da {@link VisintEndpoint} (CORE y, si falla, SGI_VISINT_URL).
  */
 @ApplicationScoped
 public class HttpVisintAdapter implements VisintPort {
     @Inject StorageService storage;
     @Inject ObjectMapper mapper;
-    @ConfigProperty(name="sgi.visint.url") Optional<String> url;
+    @Inject VisintEndpoint endpoint;
     @ConfigProperty(name="sgi.visint.token") Optional<String> token;
     @ConfigProperty(name="sgi.visint.auth-header", defaultValue="X-API-Key") String authHeader;
     @ConfigProperty(name="sgi.visint.auth-scheme") Optional<String> authScheme;
@@ -28,7 +29,7 @@ public class HttpVisintAdapter implements VisintPort {
 
     @Override
     public ReviewResult review(ReviewRequest r) {
-        if (url.isEmpty() || url.get().isBlank()) throw new VisintUnavailableException("VISINT no configurado (SGI_VISINT_URL)");
+        String url = endpoint.url();
         Multipart form = new Multipart();
         form.field("requestId", r.reviewId() + "-" + r.attempt());
         form.field("source", "SGI_COM");
@@ -48,7 +49,7 @@ public class HttpVisintAdapter implements VisintPort {
             form.file("referenceImages", s.imageId().toString(), s.contentType(), photo(s.bucket(), s.objectKey()));
             form.field("referenceIds", s.imageId());
         }
-        HttpRequest.Builder req = HttpRequest.newBuilder(URI.create(url.get())).timeout(Duration.ofSeconds(timeoutSeconds))
+        HttpRequest.Builder req = HttpRequest.newBuilder(URI.create(url)).timeout(Duration.ofSeconds(timeoutSeconds))
             .header("Content-Type", "multipart/form-data; boundary=" + form.boundary)
             .header("X-Correlation-Id", r.correlationId().toString())
             .POST(HttpRequest.BodyPublishers.ofByteArray(form.bytes()));

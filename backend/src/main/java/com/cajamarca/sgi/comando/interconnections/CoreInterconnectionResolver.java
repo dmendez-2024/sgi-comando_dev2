@@ -46,7 +46,7 @@ public class CoreInterconnectionResolver {
                 + "/api/v1/interconnections/" + enc(interconnectionId)
                 + "/resolve?instanceCountryId=" + enc(instanceCountryId.toString())
                 + "&environment=" + enc(environment)
-                + "&interfaceId=" + enc(interfaceId);
+                + (interfaceId == null ? "" : "&interfaceId=" + enc(interfaceId));
 
             HttpRequest request = HttpRequest.newBuilder(URI.create(url))
                 .timeout(Duration.ofMillis(Math.max(coreTimeoutMs, 250)))
@@ -63,6 +63,7 @@ public class CoreInterconnectionResolver {
                 throw new InterconnectionException("CORE_RESOLUTION_HTTP_" + response.statusCode(), message);
             }
             ResolvedInterconnection resolved = objectMapper.readValue(response.body(), ResolvedInterconnection.class);
+            if (resolved != null) resolved.normalize();
             validateResolved(resolved, interconnectionId, interfaceId);
             return resolved;
         } catch (InterconnectionException e) {
@@ -89,10 +90,10 @@ public class CoreInterconnectionResolver {
         if (r == null || r.baseUrl == null || r.baseUrl.isBlank() || r.path == null || r.method == null) {
             throw new InterconnectionException("INVALID_CORE_RESOLUTION", "CORE returned an incomplete binding");
         }
-        if (r.interconnectionId != null && !expectedId.equals(r.interconnectionId)) {
+        if (r.interconnectionId != null && !expectedId.equalsIgnoreCase(r.interconnectionId)) {
             throw new InterconnectionException("CORE_RESOLUTION_ID_MISMATCH", "CORE resolved a different interconnection ID");
         }
-        if (r.interfaceId != null && !expectedInterface.equals(r.interfaceId)) {
+        if (expectedInterface != null && r.interfaceId != null && !expectedInterface.equals(r.interfaceId)) {
             throw new InterconnectionException("CORE_RESOLUTION_INTERFACE_MISMATCH", "CORE resolved a different interface ID");
         }
     }

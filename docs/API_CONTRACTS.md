@@ -186,7 +186,7 @@ El ack de `POST /api/v1/operator/executions` (`PATROL_CHECKPOINT_COMPLETED`) inf
 | `ERROR_FINAL` | VISINT respondió `ERROR` (no pudo evaluar) o se agotaron 5 intentos. Se puede reintentar manualmente. |
 
 ### Contrato con VISINT
-Llamada **síncrona**, directa (no pasa por CORE): `POST {SGI_VISINT_URL}` (hoy `http://181.39.84.138:8010/v1/evidence/validate`), `multipart/form-data` (archivos, no base64). Una llamada por ejecución del Hito: VISINT compara la **foto del agente** con las **fotos estándar** (1 a 5) y basta que coincida con una.
+Llamada **síncrona** a la URL que resuelve CORE (Interconexión `SGI_COM_VISINT_0001_v002`, campo `resolvedUrl`; respaldo `SGI_VISINT_URL`): `POST {url}` (hoy `http://181.39.84.138:8010/v1/evidence/validate`), `multipart/form-data` (archivos, no base64). Una llamada por ejecución del Hito: VISINT compara la **foto del agente** con las **fotos estándar** (1 a 5) y basta que coincida con una.
 
 Campos del formulario:
 | Campo | Valor que envía Comando |

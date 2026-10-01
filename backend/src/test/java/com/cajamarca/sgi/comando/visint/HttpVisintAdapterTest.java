@@ -68,7 +68,7 @@ class HttpVisintAdapterTest {
 
     @Test void notConfiguredIsUnavailable() {
         HttpVisintAdapter a = adapter("", new byte[0]);
-        a.url = Optional.empty();
+        a.endpoint = VisintEndpoint.fixed(Optional.empty());
         var e = assertThrows(VisintUnavailableException.class, () -> a.review(request()));
         assertTrue(e.getMessage().contains("no configurado"));
     }
@@ -162,7 +162,7 @@ class HttpVisintAdapterTest {
 
     HttpVisintAdapter adapter(String url, byte[] photo) {
         HttpVisintAdapter a = new HttpVisintAdapter();
-        a.mapper = m; a.url = Optional.of(url); a.token = Optional.of("secreto"); a.authHeader = "X-API-Key"; a.authScheme = Optional.empty(); a.timeoutSeconds = 5;
+        a.mapper = m; a.endpoint = VisintEndpoint.fixed(Optional.of(url)); a.token = Optional.of("secreto"); a.authHeader = "X-API-Key"; a.authScheme = Optional.empty(); a.timeoutSeconds = 5;
         a.storage = new StorageService() { @Override public byte[] read(String bucket, String key) { return photo; } };
         return a;
     }
