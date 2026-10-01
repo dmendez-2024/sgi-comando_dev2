@@ -419,7 +419,7 @@
     "interconnectionId": "SIC_RRHH_SGI_COM_0001_v001",
     "sourceProgramId": "SIC_RRHH",
     "targetProgramId": "SGI_COM",
-    "purpose": "Synchronize active Seguridad Física personnel and their authoritative Persona–Compañía relationship into SGI: Comando.",
+    "purpose": "Synchronize the employee lifecycle from SIC: RRHH and expose the current SGI operational company and role by DHO personaId.",
     "interactionType": "WEBHOOK",
     "mode": "ASYNC",
     "protocol": "HTTPS",
@@ -462,6 +462,39 @@
           "fields": [
             "accepted",
             "correlationId"
+          ]
+        }
+      },
+      {
+        "interfaceId": "SIC_RRHH_SGI_COM_0001_IF02",
+        "method": "GET",
+        "path": "/api/v1/employees/by-persona/{personaId}",
+        "purpose": "Read the current SGI operational employee, role and assigned company using DHO personas.id.",
+        "contentType": "application/json",
+        "request": {
+          "headers": [
+            "Authorization",
+            "X-Correlation-Id",
+            "X-Interconnection-Id",
+            "X-Contract-Version"
+          ],
+          "path": [
+            "personaId"
+          ]
+        },
+        "response": {
+          "fields": [
+            "personaId",
+            "employeeId",
+            "fullName",
+            "roleCode",
+            "employmentStatus",
+            "company.id",
+            "company.coreCatalogId",
+            "company.code",
+            "company.name",
+            "company.status",
+            "companyMembershipActive"
           ]
         }
       }

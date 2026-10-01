@@ -86,7 +86,7 @@ Submit auditable operational labor events produced by SGI.
 - aliases históricos: `SGI_COM__SIC_RRHH__00002__V0001`, `SGI_COM__SIC_RRHH__00002`
 
 ## `SIC_RRHH_SGI_COM_0001_v001` — SIC_RRHH → SGI_COM
-Synchronize active Seguridad Física personnel and their authoritative Persona–Compañía relationship into SGI: Comando.
+Synchronize the ACTIVE/INACTIVE lifecycle of Seguridad Física personnel and their authoritative Persona–Compañía relationship into SGI: Comando.
 
 - SoR de identidad laboral y Persona–Compañía: `SIC_RRHH`
 - contractVersion: `v1`
@@ -99,6 +99,9 @@ Synchronize active Seguridad Física personnel and their authoritative Persona�
   - Para un empleado **nuevo**, `companyCoreCatalogId` o `companyCode` es obligatorio. SGI deja de inventar Kaibil como compañía fuente.
   - Para un empleado ya existente, la omisión temporal de compañía conserva la compañía actual para compatibilidad de transición.
   - `Idempotency-Key` se persiste por Instancia PE: mismo key + mismo payload es retry seguro; mismo key + payload distinto responde conflicto.
+- `SIC_RRHH_SGI_COM_0001_IF02` — `GET` `/api/v1/employees/by-persona/{personaId}` — consulta de empleado, cargo y Compañía operacional por el `personas.id` de DHO.
+  - Headers: `Authorization`, `X-Correlation-Id`, `X-Interconnection-Id`, `X-Contract-Version`.
+  - Campos: `personaId`, `employeeId`, `fullName`, `roleCode`, `employmentStatus`, `company.id`, `company.coreCatalogId`, `company.code`, `company.name`, `company.status`, `companyMembershipActive`.
 - aliases históricos: `SIC_RRHH__SGI_COM__00001__V0001`, `SIC_RRHH__SGI_COM__00001`
 
 ## `SGI_COM_SIC_RRMM_0001_v001` — SGI_COM → SIC_RRMM
@@ -262,4 +265,3 @@ Read the result of a pre-shift attendance confirmation.
 
 - `SGI_COM_CM_CON_0002_IF01` — `GET` `/api/v1/shift-confirmations/{requestId}` — Confirmation result
 - aliases históricos: `SGI_COM__CM_CON__00002__V0001`, `SGI_COM__CM_CON__00002`
-

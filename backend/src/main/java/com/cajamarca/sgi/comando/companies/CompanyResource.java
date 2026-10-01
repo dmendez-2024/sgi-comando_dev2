@@ -2,6 +2,7 @@ package com.cajamarca.sgi.comando.companies;
 
 import com.cajamarca.sgi.comando.assignments.EmployeeOperationalSnapshot;
 import com.cajamarca.sgi.comando.common.TenantContext;
+import com.cajamarca.sgi.comando.core.CoreCatalogService;
 import com.cajamarca.sgi.comando.operations.PointEntity;
 import com.cajamarca.sgi.comando.operations.ServiceEntity;
 import com.cajamarca.sgi.comando.territory.CountrySubdivision;
@@ -24,11 +25,13 @@ import jakarta.ws.rs.core.*;
 import java.time.Instant;
 import java.util.*;
 import java.util.stream.Collectors;
+import org.jboss.logging.Logger;
 
 @Path("/api/companies")
 @Consumes(MediaType.APPLICATION_JSON)
 @Produces(MediaType.APPLICATION_JSON)
 public class CompanyResource {
+    private static final Logger LOG = Logger.getLogger(CompanyResource.class);
     private static final Set<String> ACTIVE_SERVICE_STATUSES = Set.of("ACTIVE", "VIGENTE");
     private static final Set<String> KAIBIL_ROLES = Set.of("PRESIDENTE","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL");
 
@@ -36,6 +39,7 @@ public class CompanyResource {
     @Inject OperationalScopeService scope;
     @Inject ObjectMapper mapper;
     @Inject SecurityIdentity identity;
+    @Inject CoreCatalogService coreCatalogService;
 
     public record CompanyUpdateRequest(String status, UUID zoneId, List<UUID> regionIds, UUID responsibleEmployeeId, String changeReason) {}
     public record CompanyActivationRequest(UUID coreCompanyId, String status, UUID zoneId, List<UUID> regionIds, String changeReason) {}
@@ -67,6 +71,8 @@ public class CompanyResource {
     @GET @Path("/core-catalog")
     @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL"})
     public List<CoreCompanyDto> coreCatalog(){
+        try{coreCatalogService.synchronizeActiveCompanies();}
+        catch(RuntimeException e){LOG.warn("No se pudo actualizar el catálogo de Compañías desde CORE; se conserva el último snapshot local.",e);}
         List<CoreCompanyCatalogSnapshot> rows=CoreCompanyCatalogSnapshot.list("instanceCountryId=?1 and sourceStatus='ACTIVE' order by name",tenant.instanceCountryId());
         Set<UUID> active=Company.<Company>list("instanceCountryId=?1 and coreCatalogId is not null",tenant.instanceCountryId()).stream().map(c->c.coreCatalogId).collect(Collectors.toSet());
         return rows.stream().map(c->new CoreCompanyDto(c.coreCompanyId,c.code,c.name,c.historicalReview,c.logoDataUrl,c.companyType,c.sourceVersion,c.sourceStatus,active.contains(c.coreCompanyId))).toList();

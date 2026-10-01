@@ -158,6 +158,7 @@ export const api={
  coordinationRoutePreview:(routeId:string)=>request<any>(`/api/coordination/routes/${encodeURIComponent(routeId)}/preview`),
  territory:()=>request<any>('/api/territory'),
  territoryAdmin:()=>request<any>('/api/territory/admin'),
+ territoryMap:()=>request<any>('/api/territory/map'),
  territoryResponsibles:()=>request<any[]>('/api/territory/responsibles'),
  territoryAudit:(entityType:string,entityId:string)=>request<any[]>(`/api/territory/audit?entityType=${encodeURIComponent(entityType)}&entityId=${encodeURIComponent(entityId)}`),
  createZone:(body:any)=>request<any>('/api/territory/zones',{method:'POST',body:JSON.stringify(body)}),
