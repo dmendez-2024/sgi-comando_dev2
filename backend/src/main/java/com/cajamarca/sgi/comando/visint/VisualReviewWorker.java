@@ -69,6 +69,8 @@ public class VisualReviewWorker {
             r.matchedStandardImageId = res.matchedStandardImageId() != null && standards.stream().anyMatch(s -> s.imageId().equals(res.matchedStandardImageId())) ? res.matchedStandardImageId() : null;
             r.reasonCode = cut(res.reasonCode(), 60);
             r.modelVersion = cut(res.modelVersion(), 120);
+            r.qualityValid = res.qualityValid(); r.qualityScore = res.qualityScore();
+            r.matchCompatible = res.matchCompatible(); r.matchScore = res.matchScore();
             r.status = switch (res.result()) { case "PASS" -> "PASSED"; case "FAIL" -> "FAILED"; default -> "ERROR_FINAL"; };
             r.reviewedAt = Instant.now();
             r.nextAttemptAt = null;

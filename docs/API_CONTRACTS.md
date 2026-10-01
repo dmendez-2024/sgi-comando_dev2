@@ -209,7 +209,7 @@ Response `200`:
 {"requestId":"…","status":"PASS","quality":{"valid":true,"score":0.88},"match":{"compatible":true,"score":0.76},
  "matchedReferenceId":"<id de la foto estándar que coincidió>","reasonCode":"OK","processedAt":"…","modelVersion":"visint-faces-1/…"}
 ```
-Cómo lo interpreta Comando (los `score` se ignoran; VISINT decide):
+Cómo lo interpreta Comando (VISINT decide por `status`; los `score` se guardan y se informan al agente, pero no cambian el resultado):
 | Respuesta | Resultado |
 |---|---|
 | `PASS` | `PASS` → **Cumple** (se marca la foto estándar `matchedReferenceId`) |
@@ -218,7 +218,7 @@ Cómo lo interpreta Comando (los `score` se ignoran; VISINT decide):
 | `ERROR_VISINT` u otro | `ERROR` → **falla técnica**, no es incumplimiento (reintento manual) |
 | sin `status`, JSON inválido, HTTP no 2xx, sin conexión, foto ilegible en MinIO | VISINT no disponible → reintento automático |
 
-Estados según el plan de integración VISINT (lámina 9). Se guardan `reasonCode` (o el `status` si no viene), `matchedReferenceId` y `modelVersion`.
+Estados según el plan de integración VISINT (lámina 9). Se guardan `reasonCode` (o el `status` si no viene), `matchedReferenceId`, `modelVersion` y los puntajes `quality.valid`, `quality.score`, `match.compatible` y `match.score` (null si VISINT no los envía; el simulado no los envía).
 
 **Modo simulado (solo UAT):** con `SGI_VISINT_MODE=MOCK` **y** `SGI_UAT_FEATURES_ENABLED=true`, Comando no llama a VISINT: un simulador determinista responde `PASS` si la foto del agente es idéntica a alguna foto estándar (y la señala) y, si no, PASS/FAIL/ERROR según la huella de las fotos. Los hallazgos dicen “(VISINT simulado)”. Fuera de UAT el simulado se rechaza. Por defecto `SGI_VISINT_MODE=HTTP`.
 
@@ -244,9 +244,11 @@ La confirmación del Hito responde al instante (`validationStatus: QUEUED_FOR_VI
 Solo el agente que registró la ejecución (otro usuario → 404; sin rol de operador → 403).
 ```json
 {"eventId":"…","patrolRunId":"…","checkpointId":"…","captureNo":1,"executedAt":"…","receivedAt":"…",
- "validation":{"status":"FAILED","result":"FAIL","reasonCode":"NO_REFERENCE_ABOVE_THRESHOLD","reviewedAt":"…"},
+ "validation":{"status":"FAILED","result":"FAIL","reasonCode":"NO_REFERENCE_ABOVE_THRESHOLD","reviewedAt":"…",
+               "quality":{"valid":true,"score":1.0},"match":{"compatible":false,"score":0.0107}},
  "outcome":"NOT_VALIDATED","message":"Evidencia no validada: no coincide con el lugar esperado. Tome una nueva foto.","canRetake":true}
 ```
+`validation.quality` y `validation.match` son los puntajes de VISINT tal como los devuelve (informativos). Son `null` mientras la revisión no tiene respuesta, si la tarea no tiene VISINT o si VISINT no los envió; `match.score` puede venir `null` (p. ej. `FAIL_QUALITY`).
 
 | `outcome` | Cuándo | Mensaje al agente | `canRetake` |
 |---|---|---|---|

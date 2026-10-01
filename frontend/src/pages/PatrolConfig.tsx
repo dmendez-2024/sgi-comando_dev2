@@ -5,7 +5,7 @@ import {
   Map as MapIcon,MapPin,Navigation,Plus,RefreshCcw,Route,Save,Search,ShieldCheck,Smartphone,
   Trash2,Upload,X
 } from 'lucide-react';
-import StandardGallery from '../components/StandardGallery';
+import StandardGallery,{uploadStandardImages,uploadSummary} from '../components/StandardGallery';
 import {api} from '../api';
 
 type PointPost={postId:string;postCode:string;postName:string;tier:string;state:string};
@@ -163,7 +163,14 @@ export default function PatrolConfig({point,onBack}:{point:PointContext;onBack:(
   const toggleRule=(kind:RuleType,checked:boolean)=>{if(!selectedCheckpoint)return;const rules=selectedCheckpoint.rules.some(r=>r.ruleType===kind)?selectedCheckpoint.rules.map(r=>r.ruleType===kind?{...r,required:checked}:r):[...selectedCheckpoint.rules,{id:`local-${kind}`,checkpointId:selectedCheckpoint.id,sortOrder:selectedCheckpoint.rules.length+1,ruleType:kind,required:checked,evidenceRequired:kind==='FOTOGRAFIA'}];updateCheckpoint('rules',rules)};
   const saveCheckpoint=async()=>{if(!selectedCheckpoint||!patrolDraft||!isDraft)return;setSaving(true);try{const cp=selectedCheckpoint;await api.savePatrolCheckpoint(cp.id,{name:cp.name,description:cp.description,originMode:cp.originMode,atsPackageId:cp.atsPackageId,atsX:cp.atsX,atsY:cp.atsY,latitude:cp.latitude,longitude:cp.longitude,gpsAccuracyM:cp.gpsAccuracyM,controlType:cp.controlType,requiresEvidence:cp.requiresEvidence,standardImageNotes:cp.standardImageNotes,visintEnabled:cp.requiresEvidence});await api.savePatrolCheckpointRules(cp.id,{rules:cp.rules.filter(r=>r.required).map(r=>({ruleType:r.ruleType,required:true,evidenceRequired:r.evidenceRequired}))});await load(selectedProtocolId,patrolDraft.id,cp.id);setNotice(`${cp.code} guardado.`)}catch(e){setError(errorText(e))}finally{setSaving(false)}};
   const requestDeleteCheckpoint=()=>{if(!selectedCheckpoint||!patrolDraft||!isDraft)return;const id=selectedCheckpoint.id;const code=selectedCheckpoint.code;const patrolId=patrolDraft.id;setConfirmState({title:'Eliminar Hito',message:`Se eliminará ${code} de esta Patrulla. Esta acción no se puede deshacer.`,confirmLabel:'Eliminar Hito',tone:'danger',run:async()=>{await api.deletePatrolCheckpoint(id);await load(selectedProtocolId,patrolId);setNotice('Hito eliminado del borrador.')}})};
-  const uploadPhoto=async(file:File)=>{if(!selectedCheckpoint||!patrolDraft||!isDraft)return;if(file.size>5*1024*1024){setError('La foto estándar no puede superar 5 MB.');return}try{const saved=await api.uploadPatrolStandardImage(selectedCheckpoint.id,file) as Checkpoint;await load(selectedProtocolId,patrolDraft.id,saved.id);setNotice('Foto estándar agregada.')}catch(e){setError(errorText(e))}};
+  const uploadPhotos=async(files:File[])=>{
+    if(!selectedCheckpoint||!patrolDraft||!isDraft||!files.length)return;setError('');
+    const checkpointId=selectedCheckpoint.id;
+    const r=await uploadStandardImages(files,selectedCheckpoint.standardImages.length,f=>api.uploadPatrolStandardImage(checkpointId,f),
+      (done,total)=>setNotice(total>1?`Subiendo foto estándar ${done} de ${total}…`:'Subiendo foto estándar…'),errorText);
+    if(r.uploaded)await load(selectedProtocolId,patrolDraft.id,checkpointId);
+    setNotice(r.uploaded?uploadSummary(r.uploaded):'');if(r.problems.length)setError(r.problems.join(' · '));
+  };
   const removePhoto=async(imageId:string)=>{if(!selectedCheckpoint||!patrolDraft||!isDraft)return;try{await api.deletePatrolStandardImage(selectedCheckpoint.id,imageId);await load(selectedProtocolId,patrolDraft.id,selectedCheckpoint.id);setNotice('Foto estándar retirada del borrador.')}catch(e){setError(errorText(e))}};
   const onPlanClick=(event:ReactMouseEvent<HTMLDivElement>)=>{if(!placementMode||!planUrl||!isDraft)return;const r=event.currentTarget.getBoundingClientRect();const x=Math.max(0,Math.min(1,(event.clientX-r.left)/r.width));const y=Math.max(0,Math.min(1,(event.clientY-r.top)/r.height));if(placementMode==='NEW_ATS')void addAtsCheckpoint(x,y);else void linkSelectedOnPlan(x,y)};
   const runConfirm=async()=>{if(!confirmState||confirmBusy)return;setConfirmBusy(true);setError('');try{await confirmState.run();setConfirmState(null)}catch(e){setError(errorText(e))}finally{setConfirmBusy(false)}};
@@ -198,7 +205,7 @@ export default function PatrolConfig({point,onBack}:{point:PointContext;onBack:(
       </section>
     </div>
 
-    <input ref={photoInput} type="file" accept="image/png,image/jpeg,image/webp" capture="environment" hidden onChange={e=>{const f=e.target.files?.[0];if(f)void uploadPhoto(f);e.currentTarget.value=''}}/>
+    <input ref={photoInput} type="file" accept="image/png,image/jpeg,image/webp" multiple hidden onChange={e=>{const files=Array.from(e.currentTarget.files??[]);e.currentTarget.value='';void uploadPhotos(files)}}/>
     {history&&<div className="pat-modal-backdrop" onClick={()=>setHistory(null)}><section className="pat-history-modal" onClick={e=>e.stopPropagation()}><header><div><h3>Historial · {draft?.code}</h3><span>Snapshots publicados del Protocolo de Patrullas.</span></div><button onClick={()=>setHistory(null)}><X size={18}/></button></header><div>{history.map(v=><article key={v.id}><div><strong>v{v.versionNo}</strong><span className={`bit-protocol-state ${v.status.toLowerCase()}`}>{statusLabel(v.status)}</span></div><div><b>{v.name}</b><small>{v.patrols.length} patrullas · {v.patrols.reduce((s,p)=>s+p.checkpoints.length,0)} hitos</small></div><small>{v.lastPublishedAt?new Date(v.lastPublishedAt).toLocaleString('es-EC'):'Borrador no publicado'}</small></article>)}</div></section></div>}
     {confirmState&&<ConfirmDialog state={confirmState} busy={confirmBusy} onCancel={()=>!confirmBusy&&setConfirmState(null)} onConfirm={()=>void runConfirm()}/>} 
   </div>;

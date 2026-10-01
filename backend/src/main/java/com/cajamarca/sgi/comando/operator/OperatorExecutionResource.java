@@ -22,7 +22,10 @@ public class OperatorExecutionResource {
     @org.jboss.resteasy.reactive.server.ServerExceptionMapper
     public Response mapError(WebApplicationException e) { return OperatorErrors.withMessage(e); }
 
-    public record Validation(String status, String result, String reasonCode, Instant reviewedAt) {}
+    /** quality y match: puntajes de VISINT tal como los devuelve (informativos; el veredicto es status/result). null mientras no hay respuesta. */
+    public record Validation(String status, String result, String reasonCode, Instant reviewedAt, Quality quality, Match match) {}
+    public record Quality(Boolean valid, Double score) {}
+    public record Match(Boolean compatible, Double score) {}
     /** outcome: NOT_REQUIRED | PENDING | VALIDATED | NOT_VALIDATED | TECHNICAL_ERROR. */
     public record ExecutionResult(UUID eventId, String targetType, UUID targetId, UUID patrolRunId, UUID groupId, UUID checkpointId, int captureNo, Instant executedAt, Instant receivedAt,
                                   Validation validation, String outcome, String message, boolean canRetake) {}
@@ -56,7 +59,10 @@ public class OperatorExecutionResource {
             ? TaskExecution.count("instanceCountryId=?1 and patrolExecutionId=?2 and targetId=?3 and captureNo>?4", x.instanceCountryId, x.patrolExecutionId, x.targetId, x.captureNo) == 0
             : x.groupId == null || TaskExecution.count("instanceCountryId=?1 and groupId=?2 and targetId=?3 and captureNo>?4", x.instanceCountryId, x.groupId, x.targetId, x.captureNo) == 0;
         boolean canRetake = "NOT_VALIDATED".equals(outcome) && latest;
-        Validation v = r == null ? new Validation("NOT_REQUESTED", null, null, null) : new Validation(r.status, r.result, r.reasonCode, r.reviewedAt);
+        Validation v = r == null ? new Validation("NOT_REQUESTED", null, null, null, null, null)
+            : new Validation(r.status, r.result, r.reasonCode, r.reviewedAt,
+                r.qualityValid == null && r.qualityScore == null ? null : new Quality(r.qualityValid, r.qualityScore),
+                r.matchCompatible == null && r.matchScore == null ? null : new Match(r.matchCompatible, r.matchScore));
         return new ExecutionResult(x.id, x.targetType, x.targetId, x.patrolExecutionId, x.groupId, x.targetId, x.captureNo, x.executedAt, x.receivedAt, v, outcome, message(outcome, r, canRetake, "PATROL_CHECKPOINT".equals(x.targetType)), canRetake);
     }
 

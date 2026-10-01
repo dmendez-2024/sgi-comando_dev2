@@ -26,6 +26,10 @@ public class VisualReview extends PanacheEntityBase {
     @Column(name="matched_standard_image_id") public UUID matchedStandardImageId;
     @Column(name="reason_code", length=60) public String reasonCode;
     @Column(name="model_version", length=120) public String modelVersion;
+    @Column(name="quality_valid") public Boolean qualityValid;
+    @Column(name="quality_score") public Double qualityScore;
+    @Column(name="match_compatible") public Boolean matchCompatible;
+    @Column(name="match_score") public Double matchScore;
     @Column(name="correlation_id", nullable=false) public UUID correlationId;
     @Column(name="created_at", nullable=false) public Instant createdAt;
     @Column(name="requested_at") public Instant requestedAt;

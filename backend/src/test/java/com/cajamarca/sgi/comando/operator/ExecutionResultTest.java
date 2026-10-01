@@ -36,6 +36,20 @@ class ExecutionResultTest {
             .body("message", containsString("validada"));
     }
 
+    @Test void scoresFromVisintAreReturned() throws Exception {
+        UUID event = VisintFixtures.executeWithPhoto(em, VisintFixtures.publishVisintPatrol(), SAME);
+        result(event).statusCode(200).body("validation.quality", nullValue()).body("validation.match", nullValue());
+        mock.forceNextResult("PASS");
+        worker.processDue();
+        // El simulado no trae puntajes; se cargan los que guardaría la respuesta real de VISINT.
+        io.quarkus.narayana.jta.QuarkusTransaction.requiringNew().run(() -> em.createNativeQuery(
+            "update visual_review set quality_valid=true, quality_score=0.7473, match_compatible=true, match_score=0.9582 where task_execution_id=:e")
+            .setParameter("e", event).executeUpdate());
+        result(event).statusCode(200).body("outcome", is("VALIDATED"))
+            .body("validation.quality.valid", is(true)).body("validation.quality.score", is(0.7473f))
+            .body("validation.match.compatible", is(true)).body("validation.match.score", is(0.9582f));
+    }
+
     @Test void notValidatedAllowsRetakeInTheSameRound() throws Exception {
         Map<String,Object> ids = VisintFixtures.publishVisintPatrol();
         UUID run = UUID.randomUUID();
