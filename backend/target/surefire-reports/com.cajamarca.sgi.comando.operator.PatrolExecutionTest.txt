@@ -1,0 +1,4 @@
+-------------------------------------------------------------------------------
+Test set: com.cajamarca.sgi.comando.operator.PatrolExecutionTest
+-------------------------------------------------------------------------------
+Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 10.95 s -- in com.cajamarca.sgi.comando.operator.PatrolExecutionTest
