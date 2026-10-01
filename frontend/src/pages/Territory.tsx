@@ -18,6 +18,7 @@ type AuditEvent={id:string;entityType:string;entityId:string;eventType:string;ac
 type EditorState={kind:'ZONE'|'REGION';mode:'CREATE'|'EDIT';id?:string;zoneId?:string;code:string;name:string;status:string;responsibleEmployeeId:string;provinceCodes:string[]}|null;
 type MenuState={kind:'ZONE'|'REGION';id:string}|null;
 type MapPoint=[number,number];
+type MapShape=MapPoint[]|MapPoint[][];
 type GeoGeometry={type:'Polygon'|'MultiPolygon';coordinates:MapPoint[][]|MapPoint[][][]};
 type GeoFeature={id:string;type:'Feature';properties:{code:string;officialCode?:string;name:string;type?:string;typeLabel?:string;labelPoint?:MapPoint};geometry:GeoGeometry};
 type TerritoryGeoJson={type:'FeatureCollection';countryName:string;countryCode?:string;countryIsoAlpha3?:string;datasetVersion:string;detail?:string;total:number;subdivisionType?:string;subdivisionSingular?:string;subdivisionPlural?:string;features:GeoFeature[]};
@@ -36,7 +37,8 @@ function geoRings(feature:GeoFeature):MapPoint[][]{
   return feature.geometry.type==='Polygon'
     ? feature.geometry.coordinates as MapPoint[][]
     : (feature.geometry.coordinates as MapPoint[][][]).flat();
-/* =======
+}
+
 type MapBounds={minX:number;maxX:number;minY:number;maxY:number};
 function geometryMapShape(raw?:string):MapShape|null{
   if(!raw)return null;
@@ -62,7 +64,6 @@ function projectDynamicPoint([x,y]:MapPoint,bounds:MapBounds):MapPoint{
 }
 function dynamicMapPath(shape:MapShape,bounds:MapBounds){
   return shapeRings(shape).map(ring=>ring.map((point,index)=>{const [x,y]=projectDynamicPoint(point,bounds);return`${index?'L':'M'}${x.toFixed(1)} ${y.toFixed(1)}`}).join(' ')+' Z').join(' ');
->>>>>>> local */
 }
 function projector(features:GeoFeature[],frame:{x:number;y:number;width:number;height:number}){
   const points=features.flatMap(feature=>geoRings(feature).flat());
@@ -81,7 +82,6 @@ function geoPath(feature:GeoFeature,project:(point:MapPoint)=>MapPoint){
 function geoKey(value:string){return (value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim().toLowerCase()}
 
 function TerritoryOperationalMap({tree,geo,error}:{tree:Tree;geo:TerritoryGeoJson|null;error:string}){
-//function TerritoryOperationalMap({tree,datasetVersion}:{tree:Tree;datasetVersion?:string}){
   const assignments=useMemo(()=>{
     const zones=new Map(tree.zones.map(zone=>[zone.id,zone]));
     const regions=new Map(tree.regions.map(region=>[region.id,region]));
@@ -126,36 +126,12 @@ function TerritoryOperationalMap({tree,geo,error}:{tree:Tree;geo:TerritoryGeoJso
       {mainFeatures.map(feature=>{const item=assignments.get(feature.id);return <path key={feature.id} fillRule="evenodd" className={`ter-province-shape ${item?'assigned':'pending'}`} d={geoPath(feature,mainProject)} fill={item?zoneColor(item.zone):'#e2e7ed'}><title>{item?`${feature.properties.name} · ${item.zone.name} · ${item.region.name}`:`${feature.properties.name} · Sin Zona y Región activas`}</title></path>})}
       {insetProject&&insetFeatures.map(feature=>{const item=assignments.get(feature.id);return <path key={feature.id} fillRule="evenodd" className={`ter-province-shape ${item?'assigned':'pending'}`} d={geoPath(feature,insetProject)} fill={item?zoneColor(item.zone):'#e2e7ed'}><title>{item?`${feature.properties.name} · ${item.zone.name} · ${item.region.name}`:`${feature.properties.name} · Sin Zona y Región activas`}</title></path>})}
       {insetFeatures.length>0&&<text className="ter-map-inset-label" x="41" y="288">Galápagos</text>}
-/*=======
-  const shapes=useMemo(()=>tree.provinces.flatMap(province=>{if(province.status!=='ACTIVE')return[];const shape=geometryMapShape(province.geometryJson);return shape?[{province,shape}]:[]}),[tree.provinces]);
-  const bounds=useMemo(()=>shapeBounds(shapes.map(item=>item.shape)),[shapes]);
-  const labels=useMemo(()=>activeZones.map(zone=>{
-    const centers=shapes.filter(({province})=>assignments.get(province.code)?.zone.id===zone.id).map(({shape})=>{
-      const ring=shapeRings(shape)[0];
-      const total=ring.reduce((sum,point)=>{const [x,y]=bounds?projectDynamicPoint(point,bounds):[0,0];return [sum[0]+x,sum[1]+y] as MapPoint},[0,0] as MapPoint);
-      return [total[0]/ring.length,total[1]/ring.length] as MapPoint;
-    });
-    if(!centers.length)return null;
-    const total=centers.reduce((sum,point)=>[sum[0]+point[0],sum[1]+point[1]] as MapPoint,[0,0]);
-    return {zone,x:total[0]/centers.length,y:total[1]/centers.length};
-  }).filter((label):label is {zone:Zone;x:number;y:number}=>label!==null&&Number.isFinite(label.x)&&Number.isFinite(label.y)),[activeZones,assignments,shapes,bounds]);
-  return <div className="ter-map-wrap">
-    <svg className="ter-operational-map" viewBox="0 0 450 320" role="img" aria-label="Mapa operacional generado con las subdivisiones oficiales de CORE">
-      {shapes.map(({province,shape})=>{
-        const item=assignments.get(province.code);
-        const path=bounds?dynamicMapPath(shape,bounds):'';
-        return <path key={province.id} className={`ter-province-shape ${item?'assigned':'pending'}`} d={path} fill={item?zoneColor(item.zone):'#e2e7ed'}>
-          <title>{item?`${province.name} · ${item.zone.name} · ${item.region.name}`:`${province.name} · Sin Zona y Región activas`}</title>
-        </path>
-      })}
--- local */
       {labels.map(({zone,x,y})=><text key={zone.id} className="ter-zone-map-label" x={x} y={y}>{zone.code}</text>)}
     </svg>:<div className="ter-map-unavailable"><MapIcon size={24}/><strong>Mapa no disponible</strong><span>{error||'CORE no devolvió geometrías para el país seleccionado.'}</span></div>}
     <div className="ter-map-legend">
       {activeZones.map(zone=><div key={zone.id}><i className="zone-dot" style={{background:zoneColor(zone)}}/><span>{zone.name} ({zone.code})</span></div>)}
       {!activeZones.length&&<div className="ter-map-empty">Sin Zonas y Regiones activas para representar.</div>}
       <div className="ter-map-note"><MapIcon size={14}/>Mapa base {geo?.countryName||'Ecuador'}; la estructura inferior es la configuración vigente.</div>
-      {/* <div className="ter-map-note"><MapIcon size={14}/>{shapes.length?`Polígonos CORE · ${datasetVersion||'versión actual'}.`:'CORE aún no entrega geometrías para este país.'}</div> */}
     </div>
   </div>
 }
@@ -344,7 +320,6 @@ export default function Territory(){
         <p>El catálogo y la denominación territorial ({subdivisionPlural}) provienen de CORE. SGI: Comando administra únicamente su agrupación operacional en Zonas y Regiones.</p>
       </div>
       <TerritoryOperationalMap tree={tree} geo={territoryMap} error={mapError}/>
-      {/* <TerritoryOperationalMap tree={tree} datasetVersion={core.territorialDatasetVersion}/> */}
     </section>
 
     <section className="ter-structure-card">

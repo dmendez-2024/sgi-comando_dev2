@@ -135,10 +135,10 @@ export default function Dashboard(){
     {id:'ic',label:'Índice de compatibilidad promedio',value:icAverage==null?'N/D':`${icAverage.toFixed(1)}%`,note:icAverage==null?'Sin evaluaciones disponibles':'Asignaciones cerradas · últimos 14 días',available:icAverage!=null},
     ...visibleMetricsWithoutSource.map((label,index)=>({id:`pending-${index}`,label,value:'N/D',note:'La UAT no expone una fuente para este indicador',available:false}))
   ];
-  const companyName=data.companies[0]?.name??'Compañía UAT';
-  const companyCoverage=data.coverage?.companies?.[0];
-  const unassigned=data.coverage?.totalUnassignedShifts??0;
-  const coveragePct=companyCoverage?.coveragePct??0;
+  const dateOptions=useMemo(()=>[-4,-3,-2,-1,0,1,2,3,4].map(offset=>{
+    const value=weekStartIso(offset);
+    return {value,label:`${offset===0?'Semana actual · ':''}${weekLabel(value)}`};
+  }),[]);
   return <div className="dash-v6">
     {data.errors.length>0&&<div className="dash-v6-error"><AlertTriangle size={16}/><span>{data.errors.join(' ')}</span></div>}
     <div className="dash-v6-heading">

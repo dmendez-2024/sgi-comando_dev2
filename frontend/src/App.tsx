@@ -21,7 +21,7 @@ export default function App() {
   const [userRevision, setUserRevision] = useState(0);
   const [uatTools, setUatTools] = useState(false);
   useEffect(() => { api.features().then(f => setUatTools(f.uatTools)).catch(() => setUatTools(false)); }, [userRevision]);
-  /*const [contextReload, setContextReload] = useState(0);
+  const [contextReload, setContextReload] = useState(0);
   const [coreContext, setCoreContext] = useState<any>(null);
   const [coreError, setCoreError] = useState('');
   const [coreLoaded, setCoreLoaded] = useState(false);
@@ -31,13 +31,13 @@ export default function App() {
     setCoreLoaded(false);
     setCoreContext(null);
     setCoreError('');
-    void api.context(contextReload > 0).then(context => {
+    void api.context().then(context => {
       if (current) { setCoreContext(context); setCoreLoaded(true); }
     }).catch(error => {
       if (current) { setCoreError(error instanceof Error ? error.message : 'No se pudo cargar el contexto de CORE.'); setCoreLoaded(true); }
     });
     return () => { current = false; };
-  }, [userRevision,contextReload]);*/
+  }, [userRevision,contextReload]);
 
   const page = active === 'Dashboard'
     ? <Dashboard />
