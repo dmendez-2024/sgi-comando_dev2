@@ -3,6 +3,7 @@ package com.cajamarca.sgi.comando.territory;
 import com.cajamarca.sgi.comando.assignments.EmployeeOperationalSnapshot;
 import com.cajamarca.sgi.comando.common.TenantContext;
 import com.cajamarca.sgi.comando.companies.Company;
+import com.cajamarca.sgi.comando.core.CoreCatalogService;
 import com.cajamarca.sgi.comando.operations.PointEntity;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.security.RolesAllowed;
@@ -13,18 +14,21 @@ import jakarta.ws.rs.core.*;
 import java.time.Instant;
 import java.util.*;
 import java.util.stream.Collectors;
+import org.jboss.logging.Logger;
 
 @Path("/api/territory")
 @Consumes(MediaType.APPLICATION_JSON)
 @Produces(MediaType.APPLICATION_JSON)
 @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION","SUPERVISOR_SEGURIDAD"})
 public class TerritoryResource {
+    private static final Logger LOG=Logger.getLogger(TerritoryResource.class);
     private static final Set<String> COUNTRY_EDIT_ROLES=Set.of("PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL");
     private static final Set<String> REGION_EDIT_ROLES=Set.of("PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL");
     @Inject TenantContext tenant;
     @Inject OperationalScopeService scope;
     @Inject io.quarkus.security.identity.SecurityIdentity identity;
     @Inject ObjectMapper mapper;
+    @Inject CoreCatalogService coreCatalog;
 
     public record ZoneRequest(String code,String name,String status,UUID responsibleEmployeeId,List<String> provinceCodes){}
     public record RegionRequest(UUID zoneId,String code,String name,String status,UUID responsibleEmployeeId,List<String> provinceCodes){}
@@ -37,6 +41,19 @@ public class TerritoryResource {
 
     @GET
     public TreeResponse tree(){ return buildTree(false); }
+
+    @GET @Path("/map")
+    public Response map(){
+        try{
+            coreCatalog.synchronizeTerritoryCatalog();
+            return Response.ok(coreCatalog.territoryGeoJson()).build();
+        }catch(RuntimeException e){
+            LOG.warn("No se pudo actualizar el mapa territorial desde CORE.",e);
+            return Response.status(Response.Status.BAD_GATEWAY)
+                .entity(Map.of("message","No se pudo obtener la geografía territorial desde CORE."))
+                .build();
+        }
+    }
 
     @GET @Path("/admin")
     public TreeResponse adminTree(){

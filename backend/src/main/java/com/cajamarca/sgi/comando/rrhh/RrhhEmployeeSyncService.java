@@ -72,6 +72,7 @@ public class RrhhEmployeeSyncService {
         Long personaId = sourcePersonaId(request);
         UUID employeeId = resolveEmployeeId(tenantId, request);
         Instant sourceTimestamp = request.updatedFromSourceAt();
+        String employmentStatus = trim(request.employmentStatus()).toUpperCase();
 
         EmployeeOperationalSnapshot employeeById = EmployeeOperationalSnapshot.find(
             "instanceCountryId=?1 and employeeId=?2", tenantId, employeeId
@@ -100,6 +101,12 @@ public class RrhhEmployeeSyncService {
             employee.personaId = personaId;
         }
 
+        if (employee == null && "INACTIVE".equals(employmentStatus)) {
+            throw new BadRequestException(
+                "No se puede inactivar al colaborador porque no existe en SGI:Comando. Debe sincronizarse primero su activación."
+            );
+        }
+
         if (employee != null && employee.updatedFromSourceAt != null
             && sourceTimestamp.isBefore(employee.updatedFromSourceAt)) {
             recordReceipt(tenantId, key, contentHash, sourceTimestamp, "STALE_IGNORED");
@@ -122,11 +129,15 @@ public class RrhhEmployeeSyncService {
 
         employee.fullName = request.fullName().trim();
         employee.roleCode = request.roleCode().trim();
-        employee.employmentStatus = "ACTIVE";
+        employee.employmentStatus = employmentStatus;
         employee.updatedFromSourceAt = sourceTimestamp;
         if (!employee.isPersistent()) employee.persist();
 
-        reconcilePrimaryMembership(tenantId, employee, sourceCompany, sourceTimestamp);
+        if ("ACTIVE".equals(employmentStatus)) {
+            reconcilePrimaryMembership(tenantId, employee, sourceCompany, sourceTimestamp);
+        } else {
+            closePrimaryMembership(tenantId, employee, sourceTimestamp);
+        }
         recordReceipt(tenantId, key, contentHash, sourceTimestamp, "APPLIED");
     }
 
@@ -160,6 +171,22 @@ public class RrhhEmployeeSyncService {
         } else {
             membership.roleCode = employee.roleCode;
             membership.requiredChange = employee.requiredChange;
+        }
+    }
+
+    private void closePrimaryMembership(
+        UUID tenantId,
+        EmployeeOperationalSnapshot employee,
+        Instant sourceTimestamp
+    ) {
+        List<CompanyMembershipEntity> memberships = CompanyMembershipEntity.list(
+            "instanceCountryId=?1 and employeeId=?2 and membershipType='PRIMARY' and endsAt is null",
+            tenantId, employee.employeeId
+        );
+        for (CompanyMembershipEntity membership : memberships) {
+            membership.endsAt = sourceTimestamp.isBefore(membership.startsAt)
+                ? membership.startsAt
+                : sourceTimestamp;
         }
     }
 
@@ -301,8 +328,9 @@ public class RrhhEmployeeSyncService {
         if (request.roleCode().trim().length() > 80) {
             throw new BadRequestException("roleCode supera el máximo de 80 caracteres.");
         }
-        if (!"ACTIVE".equalsIgnoreCase(trim(request.employmentStatus()))) {
-            throw new BadRequestException("Solo se sincronizan empleados activos de Seguridad Física.");
+        String employmentStatus = trim(request.employmentStatus()).toUpperCase();
+        if (!"ACTIVE".equals(employmentStatus) && !"INACTIVE".equals(employmentStatus)) {
+            throw new BadRequestException("employmentStatus solo admite ACTIVE o INACTIVE.");
         }
         if (request.updatedFromSourceAt() == null) {
             throw new BadRequestException("updatedFromSourceAt es obligatorio.");
