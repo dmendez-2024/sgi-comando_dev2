@@ -24,6 +24,12 @@ const STEPS=['Foto','Subida','Validación'];
 const PHASE_STEP:Record<Phase,number>={idle:0,picked:0,uploading:1,stored:2,pending:2,done:3};
 const OUTCOME_ICON:Record<Outcome['outcome'],string>={PENDING:'',VALIDATED:'✓',NOT_REQUIRED:'✓',NOT_VALIDATED:'!',TECHNICAL_ERROR:'!'};
 const errorText=(e:unknown)=>e instanceof ApiError?(e.body||`Error ${e.status}`):String(e);
+/** 409 de una tarea ya registrada (Hito en la ronda, evidencia en el turno o campo del visitante): se avisa en un modal, no como error. */
+const duplicateText=(e:unknown)=>{
+ if(!(e instanceof ApiError)||e.status!==409)return null;
+ let text=e.body;try{const j=JSON.parse(e.body);text=j.message??j.title??text}catch{/* texto plano */}
+ return /ya fue registrad/i.test(text)?text:null;
+};
 const hhmm=(d:Date)=>d.toLocaleTimeString('es-EC',{hour:'2-digit',minute:'2-digit'});
 
 /** Estilos del simulador: a la izquierda la tarea a probar; a la derecha, la pantalla del agente dentro de un teléfono. */
@@ -68,7 +74,7 @@ const STYLES=`
 .agent-sim-facts dd.on{color:var(--green);font-weight:600}
 .agent-sim-phone{flex:0 1 404px;max-width:100%;margin:0 auto;padding:0}
 .agent-sim-bezel{background:#0a0d0b;border-radius:56px;padding:12px;box-shadow:0 40px 80px -40px rgba(5,20,10,.6),inset 0 0 0 1.5px #2a332d}
-.agent-sim-card.agent-sim-screen{background:var(--soft2);border-radius:44px;height:800px;display:flex;flex-direction:column;overflow:hidden}
+.agent-sim-card.agent-sim-screen{position:relative;background:var(--soft2);border-radius:44px;height:800px;display:flex;flex-direction:column;overflow:hidden}
 .agent-sim-statusbar{background:var(--ink);color:#fff;padding:14px 26px 0}
 .agent-sim-clock{display:flex;justify-content:space-between;align-items:center;font-size:13px;font-weight:600;height:24px}
 .agent-sim-clock i{width:96px;height:26px;background:#000;border-radius:20px}
@@ -143,7 +149,18 @@ const STYLES=`
 .agent-sim-actions button{width:100%;padding:15px 12px;border:0;border-radius:14px;font:inherit;font-size:15px;font-weight:700;background:var(--ink);color:#fff;cursor:pointer}
 .agent-sim-actions button.go{background:var(--green-d)}
 .agent-sim-actions button:disabled{background:var(--line);color:var(--muted);cursor:not-allowed}
-@media (prefers-reduced-motion:reduce){.agent-sim-result .spin{animation-duration:3s}.agent-sim-progress i{transition:none}}
+.agent-sim-modal{position:absolute;inset:0;z-index:5;display:flex;align-items:flex-end;background:rgba(12,18,14,.55);animation:agent-sim-fade .18s ease-out}
+.agent-sim-sheet{width:100%;background:#fff;border-radius:24px 24px 0 0;padding:22px 22px 26px;display:grid;gap:10px;box-shadow:0 -12px 32px rgba(12,18,14,.18);animation:agent-sim-rise .22s ease-out}
+.agent-sim-sheet-ico{width:36px;height:36px;border-radius:50%;background:#fef3c7;color:#92400e;display:grid;place-items:center;font-weight:700;font-size:18px}
+.agent-sim-sheet h4{margin:4px 0 0;font-size:17px;line-height:1.3;color:var(--ink)}
+.agent-sim-sheet p{margin:0;font-size:13.5px;line-height:1.5;color:var(--text2)}
+.agent-sim-sheet>div{display:grid;gap:8px;margin-top:8px}
+.agent-sim-sheet button{padding:13px 12px;border:1px solid var(--line2);border-radius:12px;font:inherit;font-size:14.5px;font-weight:700;background:#fff;color:var(--ink);cursor:pointer}
+.agent-sim-sheet button.go{border-color:var(--green-d);background:var(--green-d);color:#fff}
+.agent-sim-sheet button:focus-visible{outline:3px solid var(--green);outline-offset:2px}
+@keyframes agent-sim-fade{from{opacity:0}}
+@keyframes agent-sim-rise{from{transform:translateY(24px);opacity:0}}
+@media (prefers-reduced-motion:reduce){.agent-sim-modal,.agent-sim-sheet{animation:none}.agent-sim-result .spin{animation-duration:3s}.agent-sim-progress i{transition:none}}
 @media (max-width:900px){.agent-sim-left{position:static}}
 @media (max-width:480px){.agent-sim{padding:18px 14px 28px}.agent-sim-bezel{padding:0;background:none;box-shadow:none}.agent-sim-card.agent-sim-screen{border:1px solid var(--line);border-radius:18px;height:auto;min-height:640px}}
 `;
@@ -159,8 +176,8 @@ export default function AgentSimulator(){
  const [entryId,setEntryId]=useState(()=>crypto.randomUUID());
  const [guideUrls,setGuideUrls]=useState<string[]>([]);const [photos,setPhotos]=useState<PickedPhoto[]>([]);const [results,setResults]=useState<Result[]>([]);
  const [progress,setProgress]=useState<number|null>(null);const [error,setError]=useState('');const [done,setDone]=useState('');const [confirming,setConfirming]=useState(false);
- const [eventId,setEventId]=useState(()=>crypto.randomUUID());const [outcome,setOutcome]=useState<Outcome|null>(null);const [runId]=useState(()=>crypto.randomUUID());
- const [captureNo,setCaptureNo]=useState(1);const [now,setNow]=useState(()=>new Date());
+ const [eventId,setEventId]=useState(()=>crypto.randomUUID());const [outcome,setOutcome]=useState<Outcome|null>(null);const [runId,setRunId]=useState(()=>crypto.randomUUID());
+ const [captureNo,setCaptureNo]=useState(1);const [duplicate,setDuplicate]=useState<string|null>(null);const [now,setNow]=useState(()=>new Date());
 
  const patrol=patrols.find(p=>p.patrolId===patrolId);
  const consignment=consignments.find(c=>c.consignmentId===consignmentId);
@@ -231,7 +248,7 @@ export default function AgentSimulator(){
    const r=await api.submitExecution({batchId:crypto.randomUUID(),correlationId:crypto.randomUUID(),employeeId,instanceCountryId:INSTANCE,deviceId:DEVICE,capturedAt:at,events:[event]});
    setDone(`${task.label} registrado con ${r.results[0].evidenceCount} foto(s). Estado: recibido.`);
    const o:Outcome=await api.operatorExecution(eventId);setOutcome(o);setCaptureNo(o.captureNo);
-  }catch(e){setError(errorText(e))}finally{setConfirming(false)}
+  }catch(e){const dup=duplicateText(e);if(dup)setDuplicate(dup);else setError(errorText(e))}finally{setConfirming(false)}
  };
  const canConfirm=!!task&&stored.length===1&&!done&&!confirming;
  // Fase 3: mientras VISINT valida, se consulta el resultado cada 3 s (como hará la app del agente).
@@ -244,6 +261,17 @@ export default function AgentSimulator(){
  const retake=()=>{reset();setCaptureNo(n=>n+1)};
  /** Bitácora: cada visitante es un registro nuevo. */
  const newVisitor=()=>{setEntryId(crypto.randomUUID());reset();setCaptureNo(1)};
+ /** Salida del aviso de tarea repetida según el tipo: la foto ya subida se conserva para confirmar de nuevo. */
+ const duplicateHelp=kind==='PATRULLA'
+  ?{text:'Cada Hito se registra una sola vez por ronda. Para volver a probarlo, empieza una ronda nueva o elige otro Hito.',action:'Empezar ronda nueva',run:()=>setRunId(crypto.randomUUID())}
+  :kind==='CONSIGNA'
+  ?{text:'Cada evidencia de la consigna se envía una sola vez por turno. Para volver a probarla, elige otro turno en el paso 1.',action:null,run:null}
+  :{text:'Cada campo se registra una sola vez por visitante. Para registrar a otra persona, empieza un visitante nuevo.',action:'Nuevo visitante',run:()=>setEntryId(crypto.randomUUID())};
+ useEffect(()=>{
+  if(!duplicate)return;
+  const onKey=(e:KeyboardEvent)=>{if(e.key==='Escape')setDuplicate(null)};
+  window.addEventListener('keydown',onKey);return()=>window.removeEventListener('keydown',onKey);
+ },[duplicate]);
  const empty=kind==='PATRULLA'?!patrols.length:kind==='CONSIGNA'?!consignments.length:!logbooks.length;
 
  const assignment=assignments.find(a=>a.assignmentId===assignmentId);
@@ -266,7 +294,7 @@ export default function AgentSimulator(){
  }[phase];
  const chip=rejected?{cls:'bad',label:rejected}:phase==='uploading'?{cls:'up',label:'Subiendo…'}:stored.length?{cls:'ok',label:'✓ Foto subida'}:{cls:'',label:'Lista para subir'};
  const facts:{k:string;v:string;on?:boolean}[]=task?[{k:'Validación',v:task.visint?'VISINT compara con las fotos estándar':'Sin VISINT: la foto solo se guarda',on:task.visint}]:[];
- if(task&&kind==='PATRULLA'){facts.push({k:'Ronda',v:`${runId.slice(0,8)} · una por sesión`});facts.push({k:'GPS',v:gps?`${gps.latitude.toFixed(5)}, ${gps.longitude.toFixed(5)} · ±8 m`:'El Hito no tiene ubicación'})}
+ if(task&&kind==='PATRULLA'){facts.push({k:'Ronda',v:`${runId.slice(0,8)} · ronda en curso`});facts.push({k:'GPS',v:gps?`${gps.latitude.toFixed(5)}, ${gps.longitude.toFixed(5)} · ±8 m`:'El Hito no tiene ubicación'})}
  if(task&&kind==='CONSIGNA')facts.push({k:'Agrupa por',v:'Turno: una foto por evidencia'});
  if(task&&kind==='BITACORA')facts.push({k:'Agrupa por',v:'Visitante: una foto por campo'});
 
@@ -373,6 +401,17 @@ export default function AgentSimulator(){
        </div>
        <div className="agent-sim-actions"><button type="button" className={action.go&&action.run?'go':''} onClick={action.run} disabled={!action.run}>{action.label}</button></div>
       </>}
+      {duplicate&&<div className="agent-sim-modal" onClick={e=>{if(e.target===e.currentTarget)setDuplicate(null)}}>
+       <div className="agent-sim-sheet" role="alertdialog" aria-modal="true" aria-labelledby="agent-sim-dup-title" aria-describedby="agent-sim-dup-text">
+        <span className="agent-sim-sheet-ico" aria-hidden="true">!</span>
+        <h4 id="agent-sim-dup-title">{duplicate}</h4>
+        <p id="agent-sim-dup-text">{duplicateHelp.text}</p>
+        <div>
+         {duplicateHelp.run&&<button type="button" className="go" autoFocus onClick={()=>{duplicateHelp.run!();setDuplicate(null)}}>{duplicateHelp.action}</button>}
+         <button type="button" autoFocus={!duplicateHelp.run} onClick={()=>setDuplicate(null)}>{duplicateHelp.run?'Cancelar':'Entendido'}</button>
+        </div>
+       </div>
+      </div>}
      </div>
     </div>
    </section>
