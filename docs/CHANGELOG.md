@@ -412,3 +412,26 @@ Versión frontend: `0.11.2`
 ### Validación
 - `docs/VALIDATION_OPR_PATROL_HISTORY_2026-10-01.md`.
 
+# SGI_COM - OPR-PATROL-LIFECYCLE-001 - RC1 - 2026-10-01
+
+Baseline: `OPR-PATROL-HISTORY-001 RC1`
+
+### Cambios
+- El contrato de ejecución de Patrullas incorpora inicio explícito e idempotente (`START`) y cierre de la ejecución confirmada (`FINISH`).
+- Nuevo `GET /api/v1/operator/patrol-executions/current` para recuperar el estado y la hora oficial al reabrir la app.
+- Abrir o consultar una Patrulla ya no crea una ejecución ni inicia el cronómetro.
+
+### Impacto SITC
+- Cambio aditivo de interfaz en `SGI_OPR_SGI_COM_0001_v001`: IF10 ampliada e IF13 nueva.
+- Sin nueva interconexión, credencial, topología ni tabla paralela; `V37` agrega la referencia de asignación y unicidad de ejecución activa al `patrol_execution` canónico.
+- Evidencia: `docs/VALIDATION_OPR_PATROL_LIFECYCLE_2026-10-01.md`.
+
+# SGI_COM - UAT-PATROL-PRESENTATION-001 - 2026-10-01
+
+### Datos UAT versionados
+- Fixture `database/uat-fixtures/PAT_02_protocolo_unico_tres_patrullas_presentacion.sql`.
+- Puesto `PTO-001 / GGTT01`: un único protocolo activo, `PRO-PAT-0004 · Protocolo Integral de Prevención y Control`.
+- Tres patrullas activas y programadas: Apertura Segura, Protección de Activos Críticos y Cierre Perimetral Preventivo.
+- Cada patrulla contiene tres Hitos y cada Hito exige inspección visual, fotografía y confirmación.
+- La carga es transaccional, idempotente y acotada al tenant/puesto UAT.
+

@@ -59,14 +59,14 @@ public class CoreCatalogAdapter implements ExternalPorts.CorePort {
         context.put("instanceCountryId", coreInstanceCountryId.toString());
         context.set("country", instanceCountry);
 
-        JsonNode territoryResponse = get("/api/v1/catalog/subdivisions?countryId=" + enc(coreCountryId.toString()));
+        JsonNode territoryResponse = get("/catalog/subdivisions?countryId=" + enc(coreCountryId.toString()));
         if (!territoryResponse.isObject()) throw new IllegalStateException("CORE devolvió el catálogo territorial con un formato inesperado.");
         ObjectNode territory = ((ObjectNode) territoryResponse).deepCopy();
         territory.put("instanceCountryId", coreInstanceCountryId.toString());
-        JsonNode geoJson = get("/api/v1/catalog/subdivisions/geojson?countryId=" + enc(coreCountryId.toString()), "application/geo+json");
+        JsonNode geoJson = get("/catalog/subdivisions/geojson?countryId=" + enc(coreCountryId.toString()), "application/geo+json");
         mergeGeometry(territory, geoJson);
 
-        JsonNode companiesResponse = get("/api/v1/catalog/companies");
+        JsonNode companiesResponse = get("/catalog/companies");
         JsonNode companyItems = companiesResponse;
         if (companiesResponse.isObject()) {
             JsonNode nested = first(companiesResponse, "companies", "items", "data");
@@ -88,7 +88,7 @@ public class CoreCatalogAdapter implements ExternalPorts.CorePort {
     }
 
     private JsonNode fetchInstanceCountries(UUID coreCountryId) {
-        return get("/api/v1/catalog/instance-countries?countryId=" + enc(coreCountryId.toString()));
+        return get("/catalog/instance-countries?countryId=" + enc(coreCountryId.toString()));
     }
 
     private JsonNode selectInstanceCountry(JsonNode response) {
@@ -134,7 +134,7 @@ public class CoreCatalogAdapter implements ExternalPorts.CorePort {
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() < 200 || response.statusCode() >= 300) {
                 String detail = remoteMessage(response.body());
-                String message = "CORE respondió HTTP " + response.statusCode() + " al consultar " + pathAndQuery.substring(0, pathAndQuery.indexOf('?'));
+                String message = "CORE respondió HTTP " + response.statusCode() + " al consultar " + pathAndQuery.split("\\?", 2)[0];
                 if (detail != null) message += ": " + detail;
                 throw new IllegalStateException(message);
             }
@@ -144,7 +144,7 @@ public class CoreCatalogAdapter implements ExternalPorts.CorePort {
         } catch (IllegalStateException error) {
             throw error;
         } catch (Exception error) {
-            throw new IllegalStateException("No se pudo consultar el catálogo CORE " + pathAndQuery.substring(0, pathAndQuery.indexOf('?')) + ".", error);
+            throw new IllegalStateException("No se pudo consultar el catálogo CORE " + pathAndQuery.split("\\?", 2)[0] + ".", error);
         }
     }
 

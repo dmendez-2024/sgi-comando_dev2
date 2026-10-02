@@ -1,5 +1,11 @@
 # Handoff final — SGI: Comando — ENTREGA SISTEMAS 2026-09-28
 
+> **RC derivada 2026-10-01 — OPR-CONSIGNMENT-COMPLIANCE-001 RC1:** implementado el receptor idempotente de cumplimiento de Consignas y persistencia auditable `V38`. Reutiliza la interfaz SGI_COM–SGI_OPR existente. Validación en `docs/VALIDATION_OPR_CONSIGNMENT_COMPLIANCE_2026-10-01.md`.
+
+> **RC derivada 2026-10-01 — OPR-CONSIGNMENT-CONTEXT-001 RC1:** el runtime de Operador publica el Protocolo de Consignas vigente y sus reglas parametrizadas. Ampliación aditiva sin migración BD ni nueva interconexión SITC. Validación en `docs/VALIDATION_OPR_CONSIGNMENT_PROTOCOL_CONTEXT_2026-10-01.md`.
+
+> **RC derivada 2026-10-01 — OPR-PATROL-LIFECYCLE-001 RC1:** SGI_COM controla el inicio y fin real de la Patrulla. `START`/`FINISH` son idempotentes sobre la ejecución canónica y `GET /api/v1/operator/patrol-executions/current` permite recuperar el estado. `V37` agrega trazabilidad por asignación; validación en `docs/VALIDATION_OPR_PATROL_LIFECYCLE_2026-10-01.md`.
+
 > **RC derivada 2026-10-01 — OPR-PATROL-HISTORY-001 RC1:** frontend `0.11.2`. La pestaña Patrullas consume ejecuciones reales mediante `GET /api/v1/operator/patrol-executions`, con autorización por tenant/identidad/alcance. Sin migración BD ni nueva interconexión SITC. Validación en `docs/VALIDATION_OPR_PATROL_HISTORY_2026-10-01.md`.
 
 **Freeze:** 2026-09-27.  

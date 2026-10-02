@@ -3,6 +3,7 @@ package com.cajamarca.sgi.comando.coordination;
 import com.cajamarca.sgi.comando.assignments.PostShiftTemplate;
 import com.cajamarca.sgi.comando.common.TenantContext;
 import com.cajamarca.sgi.comando.companies.Company;
+import com.cajamarca.sgi.comando.core.CoreCatalogService;
 import com.cajamarca.sgi.comando.operations.PointEntity;
 import com.cajamarca.sgi.comando.operations.PostEntity;
 import com.cajamarca.sgi.comando.operations.ServiceEntity;
@@ -10,6 +11,7 @@ import com.cajamarca.sgi.comando.territory.OperationalScopeService;
 import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
+import jakarta.persistence.EntityManager;
 import jakarta.transaction.Transactional;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
@@ -31,6 +33,8 @@ public class CoordinationResource {
     private static final Set<String> COMPANY_ROLES=Set.of("COORDINADOR_COMPANIA","ASISTENTE_COORDINACION");
 
     @Inject TenantContext tenant;
+    @Inject CoreCatalogService coreCatalog;
+    @Inject EntityManager entityManager;
     @Inject OperationalScopeService scope;
     @Inject SecurityIdentity identity;
 
@@ -85,7 +89,7 @@ public class CoordinationResource {
         String format=norm(req.format(),FORMATS,"24/7","Formato inválido.");
         int mask=normalizeDayMask(format,req.dayMask());
         CoordinationPost p=new CoordinationPost();
-        p.instanceCountryId=tenant.instanceCountryId();p.companyId=c.id;p.postType=type;p.code=nextPostCode(c.id,type);p.name=clean(req.name(),"MONITORING".equals(type)?"Nuevo Monitoreo":"Nueva Supervisión");p.format=format;p.rotation=rotationFor(format);p.shiftStartTime=parseTime(req.shiftStartTime(),LocalTime.of(6,0));p.dayMask=mask;p.status="DRAFT";p.updatedByUsername=scope.username();p.persist();
+        p.instanceCountryId=tenant.instanceCountryId();p.companyId=c.id;p.postType=type;p.code=nextPostCode(c,type);p.name=clean(req.name(),"MONITORING".equals(type)?"Nuevo Monitoreo":"Nueva Supervisión");p.format=format;p.rotation=rotationFor(format);p.shiftStartTime=parseTime(req.shiftStartTime(),LocalTime.of(6,0));p.dayMask=mask;p.status="DRAFT";p.updatedByUsername=scope.username();p.persist();
         return postDto(p,c);
     }
 
@@ -216,7 +220,26 @@ public class CoordinationResource {
     private List<SupervisionRoutePoint> routePoints(UUID routeId){return SupervisionRoutePoint.list("instanceCountryId=?1 and routeId=?2 order by sortOrder",tenant.instanceCountryId(),routeId);}
     private void requireSupervisor(CoordinationPost p){if(!"SUPERVISION".equals(p.postType))throw new BadRequestException("Solo los Puestos de Supervisión tienen Ruta.");}
     private void requireDraftRoute(SupervisionRoute r){if(!"DRAFT".equals(r.status))throw new ClientErrorException("La Ruta publicada es inmutable. Cree una nueva versión.",409);}
-    private String nextPostCode(UUID companyId,String type){String prefix="MONITORING".equals(type)?"MON":"SUP";List<CoordinationPost> rows=CoordinationPost.list("instanceCountryId=?1 and companyId=?2 and postType=?3",tenant.instanceCountryId(),companyId,type);int max=0;for(CoordinationPost p:rows){try{String[] parts=p.code.split("-");max=Math.max(max,Integer.parseInt(parts[parts.length-1]));}catch(Exception ignored){}}return prefix+"-"+String.format(Locale.ROOT,"%03d",max+1);}
+    private String nextPostCode(Company company,String type){
+        String countryIsoAlpha3=coreCatalog.resolveCountry().isoAlpha3();
+        entityManager.createNativeQuery("select pg_advisory_xact_lock(hashtextextended(:key,0))")
+            .setParameter("key","coordination-post:"+tenant.instanceCountryId()+":"+company.id+":"+type).getSingleResult();
+        List<CoordinationPost> rows=CoordinationPost.list("instanceCountryId=?1 and companyId=?2 and postType=?3",tenant.instanceCountryId(),company.id,type);
+        return formatPostCode(countryIsoAlpha3,company.code,type,rows.stream().map(p->p.code).toList());
+    }
+
+    static String formatPostCode(String countryIsoAlpha3,String companyCode,String type,Collection<String> existingCodes){
+        if(countryIsoAlpha3==null||!countryIsoAlpha3.matches("(?i)[a-z]{3}"))throw new IllegalStateException("CORE no devolvió countryIsoAlpha3 válido.");
+        if(companyCode==null||companyCode.length()<3||!companyCode.substring(0,3).matches("(?i)[a-z0-9]{3}"))throw new IllegalStateException("La Compañía no tiene un código válido para el Puesto.");
+        String prefix="MONITORING".equals(type)?"MON":"SUP";
+        int max=0;
+        for(String code:existingCodes){
+            if(code==null)continue;
+            String[] parts=code.split("-");
+            try{max=Math.max(max,Integer.parseInt(parts[parts.length-1]));}catch(NumberFormatException ignored){}
+        }
+        return countryIsoAlpha3.toUpperCase(Locale.ROOT)+"-"+companyCode.substring(0,3).toUpperCase(Locale.ROOT)+"-"+prefix+"-"+String.format(Locale.ROOT,"%03d",max+1);
+    }
     private String rotationFor(String format){return "12/5".equals(format)?"5-2":"6-2";}
     private int normalizeDayMask(String format,Integer value){if("12/5".equals(format)){int mask=value==null?31:value;if(Integer.bitCount(mask)!=5||mask<1||mask>127)throw new BadRequestException("12/5 requiere seleccionar exactamente 5 días.");return mask;}return 127;}
     private String norm(String value,Set<String> allowed,String fallback,String message){String v=value==null||value.isBlank()?fallback:value.trim().toUpperCase(Locale.ROOT);if(v==null||!allowed.contains(v))throw new BadRequestException(message);return v;}

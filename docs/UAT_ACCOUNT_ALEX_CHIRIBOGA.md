@@ -6,7 +6,7 @@
 - Fuente de permisos y alcance: usuario `agente`
 - Fixture: `database/uat-fixtures/BIT_INT_001_alex_chiriboga_operator_UAT.sql`
 
-El fixture es idempotente y sólo se aplica si existe exactamente una persona activa con el nombre indicado en la misma instancia que `agente`. Replica el perfil, alcance y credencial común de UAT al crear la cuenta, pero conserva la credencial de Alex si la cuenta ya existe. Crea una identidad separada y auditable y el vínculo `operator_employee_binding` requerido por el runtime móvil. No duplica las asignaciones de turno: deben programarse para el empleado Alex.
+El fixture es idempotente y sólo se aplica si existe exactamente una persona activa con el nombre indicado. Replica el perfil, alcance y credencial común de UAT, pero crea una identidad separada y auditable. También crea el vínculo `operator_employee_binding` requerido por el runtime móvil.
 
 No forma parte de Flyway y no debe promoverse a producción. Para producción, IDENT debe aprovisionar una credencial independiente mediante el flujo oficial.
 

@@ -65,18 +65,51 @@ public class OperatorResource {
     @SuppressWarnings("unchecked")
     private ArrayNode consignments(AssignmentContext c) {
         List<Object[]> rows=em.createNativeQuery("""
-          select c.id,c.title,c.instruction,c.updated_at,p.version_no
+          select c.id,c.code,c.title,c.instruction,c.updated_at,p.version_no,p.code,p.name,
+                 c.priority,c.application_type,c.application_days_json,c.application_time_from,c.application_time_to,
+                 c.scope_type,c.acknowledgment_required,c.confirmation_required,c.evidence_required,c.gps_required,
+                 c.observation_required,c.expected_location_mode,
+                 (select cc.result from consignment_compliance cc where cc.instance_country_id=c.instance_country_id
+                    and cc.assignment_id=:assignment and cc.consignment_id=c.id order by cc.confirmed_at desc limit 1),
+                 (select cc.confirmed_at from consignment_compliance cc where cc.instance_country_id=c.instance_country_id
+                    and cc.assignment_id=:assignment and cc.consignment_id=c.id order by cc.confirmed_at desc limit 1),
+                 (select cc.username from consignment_compliance cc where cc.instance_country_id=c.instance_country_id
+                    and cc.assignment_id=:assignment and cc.consignment_id=c.id order by cc.confirmed_at desc limit 1)
           from consignment c join consignment_protocol p on p.id=c.protocol_id and p.instance_country_id=c.instance_country_id
           where c.instance_country_id=:tenant and c.point_id=:point and c.status='VIGENTE' and p.status='ACTIVO'
           and (c.validity_from is null or c.validity_from<=current_timestamp)
           and (c.validity_until is null or c.validity_until>=current_timestamp)
           and (c.scope_type='POINT' or c.post_id=:post or exists
             (select 1 from consignment_post_scope x where x.consignment_id=c.id and x.post_id=:post and x.instance_country_id=c.instance_country_id))
-          order by c.id
-          """).setParameter("tenant",tenant.instanceCountryId()).setParameter("point",c.point.id).setParameter("post",c.post.id).getResultList();
+          order by c.code
+          """).setParameter("tenant",tenant.instanceCountryId()).setParameter("point",c.point.id).setParameter("post",c.post.id)
+            .setParameter("assignment",c.assignment.id).getResultList();
         ArrayNode result=mapper.createArrayNode();
-        for(Object[] r:rows) result.addObject().put("consignmentId",r[0].toString()).put("title",r[1].toString()).put("instruction",r[2].toString())
-            .put("version",r[4].toString()+":"+r[3].toString());
+        for(Object[] r:rows) {
+            ObjectNode item=result.addObject()
+                .put("consignmentId",r[0].toString())
+                .put("code",r[1].toString())
+                .put("title",r[2].toString())
+                .put("instruction",r[3].toString())
+                .put("version",r[5].toString()+":"+r[4].toString())
+                .put("protocolCode",r[6].toString())
+                .put("protocolName",r[7].toString())
+                .put("priority",r[8].toString())
+                .put("applicationType",r[9].toString())
+                .put("applicationDaysJson",r[10]==null?"[]":r[10].toString())
+                .put("scopeType",r[13].toString())
+                .put("acknowledgmentRequired",Boolean.TRUE.equals(r[14]))
+                .put("confirmationRequired",Boolean.TRUE.equals(r[15]))
+                .put("evidenceRequired",Boolean.TRUE.equals(r[16]))
+                .put("gpsRequired",Boolean.TRUE.equals(r[17]))
+                .put("observationRequired",Boolean.TRUE.equals(r[18]))
+                .put("expectedLocationMode",r[19].toString());
+            if(r[11]!=null) item.put("applicationTimeFrom",r[11].toString());
+            if(r[12]!=null) item.put("applicationTimeTo",r[12].toString());
+            if(r[20]!=null) item.put("lastComplianceResult",r[20].toString());
+            if(r[21]!=null) item.put("lastComplianceAt",r[21].toString());
+            if(r[22]!=null) item.put("lastComplianceUsername",r[22].toString());
+        }
         return result;
     }
     @SuppressWarnings("unchecked")
@@ -254,11 +287,6 @@ public class OperatorResource {
           where d.id=:patrol and d.instance_country_id=:tenant and d.status='ACTIVO' and p.status='ACTIVO' and s.post_id=:post
           """).setParameter("patrol",patrolId).setParameter("tenant",tenant.instanceCountryId()).setParameter("post",c.post.id).getResultList();
         if(allowed.isEmpty()) throw new BadRequestException("Patrulla no activa para el puesto asignado");
-        List<?> old=em.createNativeQuery("select id,result from patrol_execution where id=:id and instance_country_id=:tenant")
-            .setParameter("id",executionId).setParameter("tenant",tenant.instanceCountryId()).getResultList();
-        if(!old.isEmpty()) return mapper.createObjectNode().put("executionId",executionId.toString()).put("status","ACKNOWLEDGED").put("result",((Object[])old.get(0))[1].toString());
-        Instant started=time(event,"startedAt"), finished=time(event,"finishedAt");
-        if(finished.isBefore(started) || started.isBefore(c.shift.startsAt.minusSeconds(43200)) || finished.isAfter(c.shift.endsAt.plusSeconds(43200))) throw new BadRequestException("Fechas de patrulla fuera de la ventana UAT del turno");
         List<?> plans=em.createNativeQuery("select id from patrol_plan where instance_country_id=:tenant and patrol_definition_id=:patrol and post_id=:post and active=true limit 1")
             .setParameter("tenant",tenant.instanceCountryId()).setParameter("patrol",patrolId).setParameter("post",c.post.id).getResultList();
         UUID planId;
@@ -267,6 +295,31 @@ public class OperatorResource {
             em.createNativeQuery("insert into patrol_plan(id,instance_country_id,patrol_definition_id,post_id,schedule_type,schedule_json,active,created_at,updated_at) select :id,:tenant,id,:post,schedule_type,'{\"source\":\"SGI_OPR_UAT\"}',true,current_timestamp,current_timestamp from patrol_definition where id=:patrol")
                 .setParameter("id",planId).setParameter("tenant",tenant.instanceCountryId()).setParameter("post",c.post.id).setParameter("patrol",patrolId).executeUpdate();
         } else planId=UUID.fromString(plans.get(0).toString());
+        String action=event.path("action").asText("").trim().toUpperCase(Locale.ROOT);
+        List<?> old=em.createNativeQuery("select id,started_at,finished_at,result from patrol_execution where id=:id and instance_country_id=:tenant")
+            .setParameter("id",executionId).setParameter("tenant",tenant.instanceCountryId()).getResultList();
+        if("START".equals(action)) {
+            if(!old.isEmpty()) return executionState((Object[])old.get(0));
+            List<?> active=em.createNativeQuery("""
+              select pe.id,pe.started_at,pe.finished_at,pe.result from patrol_execution pe
+              join patrol_plan pp on pp.id=pe.patrol_plan_id and pp.instance_country_id=pe.instance_country_id
+              where pe.instance_country_id=:tenant and pe.employee_id=:employee and pe.assignment_id=:assignment and pp.patrol_definition_id=:patrol
+                and pp.post_id=:post and pe.finished_at is null order by pe.started_at desc limit 1
+              """).setParameter("tenant",tenant.instanceCountryId()).setParameter("employee",employee).setParameter("assignment",assignmentId)
+                .setParameter("patrol",patrolId).setParameter("post",c.post.id).getResultList();
+            if(!active.isEmpty()) return executionState((Object[])active.get(0));
+            Instant started=Instant.now();
+            if(started.isBefore(c.shift.startsAt.minusSeconds(43200)) || started.isAfter(c.shift.endsAt.plusSeconds(43200))) throw new BadRequestException("Inicio de patrulla fuera de la ventana UAT del turno");
+            em.createNativeQuery("insert into patrol_execution(id,instance_country_id,patrol_plan_id,assignment_id,employee_id,started_at,finished_at,result,created_at,updated_at) values(:id,:tenant,:plan,:assignment,:employee,:started,null,null,current_timestamp,current_timestamp)")
+                .setParameter("id",executionId).setParameter("tenant",tenant.instanceCountryId()).setParameter("plan",planId).setParameter("assignment",assignmentId).setParameter("employee",employee).setParameter("started",started).executeUpdate();
+            return mapper.createObjectNode().put("executionId",executionId.toString()).put("status","IN_PROGRESS").put("startedAt",started.toString()).put("completedCheckpoints",0);
+        }
+        boolean finishing="FINISH".equals(action);
+        if(!finishing && !old.isEmpty()) return executionState((Object[])old.get(0));
+        if(finishing && old.isEmpty()) throw new NotFoundException("La ejecución de patrulla no fue iniciada");
+        Instant started=finishing?Instant.parse(((Object[])old.get(0))[1].toString()):time(event,"startedAt"), finished=Instant.now();
+        if(!finishing) finished=time(event,"finishedAt");
+        if(finished.isBefore(started) || started.isBefore(c.shift.startsAt.minusSeconds(43200)) || finished.isAfter(c.shift.endsAt.plusSeconds(43200))) throw new BadRequestException("Fechas de patrulla fuera de la ventana UAT del turno");
         JsonNode results=event.path("checkpointResults"); if(!results.isArray()) throw new BadRequestException("Resultados de hitos obligatorios");
         Set<UUID> seen=new HashSet<>(); boolean complete=true;
         for(JsonNode item:results) {
@@ -281,12 +334,83 @@ public class OperatorResource {
             .setParameter("tenant",tenant.instanceCountryId()).setParameter("patrol",patrolId).getSingleResult();
         if(required.intValue()!=seen.size()) complete=false;
         String finalResult=complete?"COMPLETA":"INCOMPLETA";
-        em.createNativeQuery("insert into patrol_execution(id,instance_country_id,patrol_plan_id,employee_id,started_at,finished_at,result,created_at,updated_at) values(:id,:tenant,:plan,:employee,:started,:finished,:result,current_timestamp,current_timestamp)")
-            .setParameter("id",executionId).setParameter("tenant",tenant.instanceCountryId()).setParameter("plan",planId).setParameter("employee",employee).setParameter("started",started).setParameter("finished",finished).setParameter("result",finalResult).executeUpdate();
+        if(finishing) {
+            int updated=em.createNativeQuery("update patrol_execution set finished_at=:finished,result=:result,updated_at=current_timestamp where id=:id and instance_country_id=:tenant and assignment_id=:assignment and employee_id=:employee and patrol_plan_id=:plan and finished_at is null")
+                .setParameter("finished",finished).setParameter("result",finalResult).setParameter("id",executionId).setParameter("tenant",tenant.instanceCountryId()).setParameter("assignment",assignmentId).setParameter("employee",employee).setParameter("plan",planId).executeUpdate();
+            if(updated!=1) throw new ClientErrorException("La patrulla ya fue finalizada o no corresponde al contexto activo",409);
+        } else em.createNativeQuery("insert into patrol_execution(id,instance_country_id,patrol_plan_id,assignment_id,employee_id,started_at,finished_at,result,created_at,updated_at) values(:id,:tenant,:plan,:assignment,:employee,:started,:finished,:result,current_timestamp,current_timestamp)")
+            .setParameter("id",executionId).setParameter("tenant",tenant.instanceCountryId()).setParameter("plan",planId).setParameter("assignment",assignmentId).setParameter("employee",employee).setParameter("started",started).setParameter("finished",finished).setParameter("result",finalResult).executeUpdate();
         for(JsonNode item:results) em.createNativeQuery("insert into patrol_checkpoint_execution(id,instance_country_id,patrol_execution_id,checkpoint_id,result,validated_at,evidence_json,created_at) values(:id,:tenant,:execution,:checkpoint,:result,:validated,:evidence,current_timestamp)")
             .setParameter("id",UUID.randomUUID()).setParameter("tenant",tenant.instanceCountryId()).setParameter("execution",executionId).setParameter("checkpoint",uuid(item,"checkpointId"))
             .setParameter("result",text(item,"result")).setParameter("validated",time(item,"validatedAt")).setParameter("evidence",item.path("evidence").toString()).executeUpdate();
         ObjectNode response=mapper.createObjectNode().put("executionId",executionId.toString()).put("status","RECEIVED").put("result",finalResult); response.put("persistedCheckpointCount",seen.size()); return response;
+    }
+    private ObjectNode executionState(Object[] row) {
+        ObjectNode state=mapper.createObjectNode().put("executionId",row[0].toString()).put("startedAt",row[1].toString());
+        if(row[2]==null) return state.put("status","IN_PROGRESS");
+        return state.put("status","COMPLETED").put("finishedAt",row[2].toString()).put("result",row[3]==null?"INCOMPLETA":row[3].toString());
+    }
+    @POST @Path("/consignment-compliances") @Consumes(MediaType.APPLICATION_JSON) @Transactional
+    public ObjectNode submitConsignmentCompliance(JsonNode event) {
+        UUID employee=employee(), assignmentId=uuid(event,"assignmentId"), executionId=uuid(event,"executionId"), consignmentId=uuid(event,"consignmentId");
+        AssignmentContext c=assignment(assignmentId,employee); lock(assignmentId);
+        String username=identity.getPrincipal().getName();
+        String result=text(event,"result").trim().toUpperCase(Locale.ROOT);
+        if(!Set.of("CUMPLIDA","NO_CUMPLIDA","CON_NOVEDAD","NO_APLICA").contains(result)) throw new BadRequestException("Resultado de Consigna inválido");
+        String comment=event.path("comment").asText("").trim();
+        if(comment.length()>2000) throw new BadRequestException("La observación supera 2000 caracteres");
+        int photoCount=event.path("photoCount").asInt(0);
+        if(photoCount<0 || photoCount>5) throw new BadRequestException("Cantidad de fotografías inválida");
+        String payloadHash=hash(canonical(event).toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        List<?> existing=em.createNativeQuery("select assignment_id,employee_id,consignment_id,payload_hash,result,confirmed_at from consignment_compliance where id=:id and instance_country_id=:tenant")
+            .setParameter("id",executionId).setParameter("tenant",tenant.instanceCountryId()).getResultList();
+        if(!existing.isEmpty()) {
+            Object[] old=(Object[])existing.get(0);
+            if(!assignmentId.toString().equals(old[0].toString()) || !employee.toString().equals(old[1].toString()) || !consignmentId.toString().equals(old[2].toString())) throw new ForbiddenException();
+            if(!payloadHash.equals(old[3].toString())) throw new ClientErrorException("Identificador reutilizado con contenido diferente",409);
+            return mapper.createObjectNode().put("executionId",executionId.toString()).put("status","RECEIVED").put("result",old[4].toString()).put("confirmedAt",old[5].toString());
+        }
+        @SuppressWarnings("unchecked") List<Object[]> allowed=em.createNativeQuery("""
+          select c.protocol_id,c.evidence_required,c.gps_required,c.observation_required
+          from consignment c join consignment_protocol p on p.id=c.protocol_id and p.instance_country_id=c.instance_country_id
+          where c.id=:consignment and c.instance_country_id=:tenant and c.point_id=:point and c.status='VIGENTE' and p.status='ACTIVO'
+            and (c.validity_from is null or c.validity_from<=current_timestamp)
+            and (c.validity_until is null or c.validity_until>=current_timestamp)
+            and (c.scope_type='POINT' or c.post_id=:post or exists
+              (select 1 from consignment_post_scope x where x.consignment_id=c.id and x.post_id=:post and x.instance_country_id=c.instance_country_id))
+          """).setParameter("consignment",consignmentId).setParameter("tenant",tenant.instanceCountryId()).setParameter("point",c.point.id).setParameter("post",c.post.id).getResultList();
+        if(allowed.isEmpty()) throw new BadRequestException("La Consigna no está vigente o no aplica al puesto asignado");
+        Object[] rules=allowed.get(0);
+        if("CUMPLIDA".equals(result) && Boolean.TRUE.equals(rules[1]) && photoCount==0) throw new BadRequestException("La Consigna requiere evidencia fotográfica");
+        if("CUMPLIDA".equals(result) && Boolean.TRUE.equals(rules[3]) && comment.isBlank()) throw new BadRequestException("La Consigna requiere una observación");
+        List<?> alreadyConfirmed=em.createNativeQuery("select id,result,confirmed_at from consignment_compliance where instance_country_id=:tenant and assignment_id=:assignment and consignment_id=:consignment")
+            .setParameter("tenant",tenant.instanceCountryId()).setParameter("assignment",assignmentId).setParameter("consignment",consignmentId).getResultList();
+        if(!alreadyConfirmed.isEmpty()) {
+            Object[] old=(Object[])alreadyConfirmed.get(0);
+            return mapper.createObjectNode().put("executionId",old[0].toString()).put("status","RECEIVED").put("result",old[1].toString()).put("confirmedAt",old[2].toString());
+        }
+        Instant confirmedAt=Instant.now();
+        em.createNativeQuery("insert into consignment_compliance(id,instance_country_id,protocol_id,consignment_id,assignment_id,employee_id,username,result,comment,photo_count,gps_required,payload_hash,payload_json,confirmed_at,created_at) values(:id,:tenant,:protocol,:consignment,:assignment,:employee,:username,:result,:comment,:photos,:gps,:hash,:payload,:confirmed,current_timestamp)")
+            .setParameter("id",executionId).setParameter("tenant",tenant.instanceCountryId()).setParameter("protocol",UUID.fromString(rules[0].toString()))
+            .setParameter("consignment",consignmentId).setParameter("assignment",assignmentId).setParameter("employee",employee).setParameter("username",username)
+            .setParameter("result",result).setParameter("comment",comment).setParameter("photos",photoCount).setParameter("gps",Boolean.TRUE.equals(rules[2]))
+            .setParameter("hash",payloadHash).setParameter("payload",event.toString()).setParameter("confirmed",confirmedAt).executeUpdate();
+        return mapper.createObjectNode().put("executionId",executionId.toString()).put("status","RECEIVED").put("result",result).put("confirmedAt",confirmedAt.toString());
+    }
+    @GET @Path("/patrol-executions/current")
+    public ObjectNode currentPatrol(@QueryParam("assignmentId") UUID assignmentId,@QueryParam("patrolId") UUID patrolId) {
+        UUID employee=employee(); AssignmentContext c=assignment(assignmentId,employee);
+        if(patrolId==null) throw new BadRequestException("patrolId obligatorio");
+        @SuppressWarnings("unchecked") List<Object[]> rows=em.createNativeQuery("""
+          select pe.id,pe.started_at,pe.finished_at,pe.result,
+                 (select count(*) from patrol_checkpoint_execution pce where pce.instance_country_id=pe.instance_country_id and pce.patrol_execution_id=pe.id)
+          from patrol_execution pe join patrol_plan pp on pp.id=pe.patrol_plan_id and pp.instance_country_id=pe.instance_country_id
+          where pe.instance_country_id=:tenant and pe.assignment_id=:assignment and pe.employee_id=:employee and pp.patrol_definition_id=:patrol and pp.post_id=:post
+          order by pe.started_at desc limit 1
+          """).setParameter("tenant",tenant.instanceCountryId()).setParameter("assignment",assignmentId).setParameter("employee",employee).setParameter("patrol",patrolId)
+            .setParameter("post",c.post.id).getResultList();
+        if(rows.isEmpty()) return mapper.createObjectNode().put("status","NOT_STARTED").put("completedCheckpoints",0);
+        Object[] row=rows.get(0); return executionState(row).put("completedCheckpoints",((Number)row[4]).intValue());
     }
     @GET @Path("/patrol-executions")
     public ArrayNode listPatrolExecutions() {
@@ -318,7 +442,7 @@ public class OperatorResource {
             UUID executionId=UUID.fromString(row[0].toString());
             ObjectNode item=result.addObject().put("id",executionId.toString()).put("patrolCode",row[1].toString()).put("patrolName",row[2].toString())
                 .put("protocolCode",row[3].toString()).put("protocolName",row[4].toString()).put("employeeId",row[5].toString())
-                .put("startedAt",row[6].toString()).put("finishedAt",row[7].toString()).put("result",row[8].toString())
+                .put("startedAt",row[6].toString()).put("finishedAt",row[7]==null?"":row[7].toString()).put("result",row[8]==null?"EN_CURSO":row[8].toString())
                 .put("submittedBy",row[9]==null?"Operador":row[9].toString()).put("clientName",row[10].toString()).put("city",row[11].toString())
                 .put("pointName",row[12].toString()).put("postName",row[13].toString()).put("companyCode",row[14]==null?"":row[14].toString())
                 .put("companyName",row[15]==null?"—":row[15].toString()).put("completedCheckpoints",((Number)row[17]).intValue()).put("totalCheckpoints",((Number)row[18]).intValue());
@@ -386,8 +510,6 @@ public class OperatorResource {
     }
     @POST @Path("/executions") @Consumes(MediaType.APPLICATION_JSON) @Transactional
     public ObjectNode submit(JsonNode batch) {
-        if(PatrolExecutionContract.TYPE.equals(batch.path("events").path(0).path("type").asText())) return patrolExecutions.submit(batch);
-        if(TaskEvidenceService.TYPE.equals(batch.path("events").path(0).path("type").asText())) return taskEvidences.submit(batch);
         UUID employee=employee(); validate(batch,employee,tenant.instanceCountryId(),Instant.now());
         JsonNode event=batch.path("events").get(0); UUID eventId=uuid(event,"eventId"), assignmentId=uuid(event,"assignmentId");
         AssignmentContext c=assignment(assignmentId,employee); lock(assignmentId);

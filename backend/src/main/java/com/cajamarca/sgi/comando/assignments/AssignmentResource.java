@@ -6,7 +6,6 @@ import com.cajamarca.sgi.comando.consignments.Consignment;
 import com.cajamarca.sgi.comando.consignments.ConsignmentPostScope;
 import com.cajamarca.sgi.comando.operations.PointEntity;
 import com.cajamarca.sgi.comando.operations.PostEntity;
-import com.cajamarca.sgi.comando.operations.ServiceEntity;
 import com.cajamarca.sgi.comando.outbox.OutboxEvent;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -68,9 +67,9 @@ public class AssignmentResource {
     public record TransferDecisionRequest(String note) {}
     public record CompanyTransferDto(UUID id,UUID employeeId,String employeeName,String roleCode,BigDecimal idScore,UUID originCompanyId,String originCompanyName,UUID destinationCompanyId,String destinationCompanyName,String reasonCode,String reasonLabel,String observations,String status,String initiatedBy,Instant initiatedAt,String decisionBy,Instant decisionAt,String decisionNote,Instant effectiveAt,int releasedFutureAssignments,String rrhhSyncStatus) {}
     public record AssignmentAuditDto(String postCode, String postName, String shiftName, Instant startsAt, String assignmentStatus, String actor) {}
-    public record CoverageCompanyDto(UUID companyId, String companyName, int posts, int uncoveredPoints, int requiredShifts, int assignedShifts, int unassignedShifts, double coveragePct,
+    public record CoverageCompanyDto(UUID companyId, String companyName, int posts, int requiredShifts, int assignedShifts, int unassignedShifts, double coveragePct,
                                      Integer publishedRequiredShifts, Integer publishedAssignedShifts, Double publishedCoveragePct, String planStatus) {}
-    public record CoverageResponse(LocalDate weekStart, List<CoverageCompanyDto> companies, int totalRequiredShifts, int totalAssignedShifts, int totalUnassignedShifts, int totalUncoveredPoints, double overallCoveragePct) {}
+    public record CoverageResponse(LocalDate weekStart, List<CoverageCompanyDto> companies, int totalRequiredShifts, int totalAssignedShifts, int totalUnassignedShifts, double overallCoveragePct) {}
     public record ValidationProblem(String code, String message) {}
     public record EvaluationDto(UUID shiftOccurrenceId, String state, BigDecimal ic, List<ValidationProblem> blockers, List<String> warnings) {}
     public record DraftSaveResponse(UUID planId, Instant savedAt, String savedBy) {}
@@ -163,8 +162,6 @@ public class AssignmentResource {
                                    @QueryParam("q") String q,
                                    @QueryParam("role") String role,
                                    @QueryParam("availability") String availability,
-                                   @QueryParam("sort") @DefaultValue("PERSON") String sort,
-                                   @QueryParam("direction") @DefaultValue("ASC") String direction,
                                    @QueryParam("page") @DefaultValue("0") int page,
                                    @QueryParam("size") @DefaultValue("50") int size) {
         if(companyId==null) throw new BadRequestException("companyId obligatorio");
@@ -172,10 +169,6 @@ public class AssignmentResource {
         scope.requireCompany(companyId);
         LocalDate week=normalizeWeek(parseDate(weekStart));
         int safePage=Math.max(page,0),safeSize=Math.min(Math.max(size,1),100);
-        String sortKey=sort==null?"PERSON":sort.trim().toUpperCase(Locale.ROOT);
-        String sortDirection=direction==null?"ASC":direction.trim().toUpperCase(Locale.ROOT);
-        if(!Set.of("PERSON","ID","FREE").contains(sortKey))throw new BadRequestException("Orden de personal inválido.");
-        if(!Set.of("ASC","DESC").contains(sortDirection))throw new BadRequestException("Dirección de orden inválida.");
         Instant from=week.atStartOfDay(OPERATING_ZONE).toInstant(),to=week.plusDays(7).atStartOfDay(OPERATING_ZONE).toInstant();
         List<String> openTransferStatuses=List.of("PENDING_ACCEPTANCE","ACCEPTED_PENDING_EFFECTIVE");
 
@@ -214,29 +207,14 @@ public class AssignmentResource {
         }
         String where=hql.toString();
         long total=EmployeeOperationalSnapshot.count(where,params);
-        AssignmentPlanEntity plan=AssignmentPlanEntity.find("instanceCountryId=?1 and companyId=?2 and weekStart=?3",tenant.instanceCountryId(),companyId,week).firstResult();
-        List<EmployeeOperationalSnapshot> pageRows;
-        Map<UUID,Double> hoursForSorting=Map.of();
-        if("FREE".equals(sortKey)){
-            List<EmployeeOperationalSnapshot> allRows=EmployeeOperationalSnapshot.<EmployeeOperationalSnapshot>find(where,params).list();
-            Set<UUID> allIds=allRows.stream().map(e->e.employeeId).collect(Collectors.toSet());
-            hoursForSorting=plan==null?Map.of():assignedHoursByEmployee(plan.id,from,to,allIds);
-            Map<UUID,Double> sortHours=hoursForSorting;
-            Comparator<EmployeeOperationalSnapshot> byFree=Comparator.comparingDouble(e->Math.max(0d,44d-roundOne(sortHours.getOrDefault(e.employeeId,0d))));
-            if("DESC".equals(sortDirection))byFree=byFree.reversed();
-            allRows.sort(byFree.thenComparing(e->e.fullName,String.CASE_INSENSITIVE_ORDER).thenComparing(e->e.employeeId));
-            long offset=(long)safePage*safeSize;
-            pageRows=offset>=allRows.size()?List.of():allRows.subList((int)offset,Math.min(allRows.size(),(int)offset+safeSize));
-        }else{
-            String order="ID".equals(sortKey)?"idScore "+sortDirection+" nulls last, lower(fullName) asc, employeeId asc":"lower(fullName) "+sortDirection+", roleCode asc, employeeId asc";
-            pageRows=EmployeeOperationalSnapshot.<EmployeeOperationalSnapshot>find(where+" order by "+order,params).page(Page.of(safePage,safeSize)).list();
-        }
+        List<EmployeeOperationalSnapshot> pageRows=EmployeeOperationalSnapshot.<EmployeeOperationalSnapshot>find(where+" order by fullName",params).page(Page.of(safePage,safeSize)).list();
         if(pageRows.isEmpty())return new PersonnelPage(List.of(),total,safePage,safeSize);
 
         Set<UUID> employeeIds=pageRows.stream().map(e->e.employeeId).collect(Collectors.toSet());
         List<EmployeeUnavailabilitySnapshot> unavs=EmployeeUnavailabilitySnapshot.list("instanceCountryId=?1 and employeeId in ?2 and startsAt<?3 and endsAt>?4 and sourceStatus='ACTIVE' order by startsAt",tenant.instanceCountryId(),employeeIds,to,from);
         Map<UUID,List<EmployeeUnavailabilitySnapshot>> unavByEmployee=unavs.stream().collect(Collectors.groupingBy(u->u.employeeId));
-        Map<UUID,Double> assignedHours="FREE".equals(sortKey)?hoursForSorting:plan==null?Map.of():assignedHoursByEmployee(plan.id,from,to,employeeIds);
+        AssignmentPlanEntity plan=AssignmentPlanEntity.find("instanceCountryId=?1 and companyId=?2 and weekStart=?3",tenant.instanceCountryId(),companyId,week).firstResult();
+        Map<UUID,Double> assignedHours=plan==null?Map.of():assignedHoursByEmployee(plan.id,from,to,employeeIds);
         Map<UUID,EmployeeCompanyTransfer> openByEmployee=new HashMap<>();
         List<EmployeeCompanyTransfer> open=EmployeeCompanyTransfer.list("instanceCountryId=?1 and employeeId in ?2 and status in ?3",tenant.instanceCountryId(),employeeIds,openTransferStatuses);
         for(EmployeeCompanyTransfer t:open)openByEmployee.put(t.employeeId,t);
@@ -503,18 +481,15 @@ public class AssignmentResource {
     @GET
     @Path("/coverage")
     @Transactional
-    public CoverageResponse coverage(@QueryParam("weekStart") String weekStart, @QueryParam("companyId") UUID companyId, @QueryParam("clientId") UUID clientId) {
+    public CoverageResponse coverage(@QueryParam("weekStart") String weekStart) {
         LocalDate week=normalizeWeek(parseDate(weekStart));
         Set<UUID> allowedCompanies=scope.allowedCompanyIds();
-        if(companyId!=null){scope.requireCompany(companyId);allowedCompanies=Set.of(companyId);}
         List<Company> companies=allowedCompanies.isEmpty()?List.of():Company.list("instanceCountryId=?1 and status='ACTIVE' and id in ?2 order by name",tenant.instanceCountryId(),allowedCompanies);
-        Set<UUID> clientServiceIds=clientId==null?null:ServiceEntity.<ServiceEntity>list("instanceCountryId=?1 and clientId=?2",tenant.instanceCountryId(),clientId).stream().map(s->s.id).collect(Collectors.toSet());
         List<CoverageCompanyDto> result=new ArrayList<>();
-        int totalReq=0,totalAssigned=0,totalUncoveredPoints=0;
+        int totalReq=0,totalAssigned=0;
         for(Company c:companies){
             AssignmentPlanEntity plan=ensurePlan(c.id,week);
             List<PointEntity> points=PointEntity.list("instanceCountryId=?1 and companyId=?2 and status='ACTIVE'",tenant.instanceCountryId(),c.id);
-            if(clientServiceIds!=null)points=points.stream().filter(p->clientServiceIds.contains(p.serviceId)).toList();
             Set<UUID> pids=points.stream().map(p->p.id).collect(Collectors.toSet());
             List<PostEntity> posts=pids.isEmpty()?List.of():PostEntity.list("instanceCountryId=?1 and pointId in ?2",tenant.instanceCountryId(),pids);
             Set<UUID> postIds=posts.stream().map(p->p.id).collect(Collectors.toSet());
@@ -522,17 +497,12 @@ public class AssignmentResource {
             List<ShiftOccurrenceEntity> shifts=postIds.isEmpty()?List.of():ShiftOccurrenceEntity.list("instanceCountryId=?1 and postId in ?2 and startsAt>=?3 and startsAt<?4",tenant.instanceCountryId(),postIds,from,to);
             shifts=eligibleShiftsAfterServiceTransition(points,posts,shifts);
             Set<UUID> shiftIds=shifts.stream().map(s->s.id).collect(Collectors.toSet());
-            List<OperationalAssignmentEntity> activeAssignments=shiftIds.isEmpty()?List.of():OperationalAssignmentEntity.list("instanceCountryId=?1 and assignmentPlanId=?2 and shiftOccurrenceId in ?3 and status<>'REMOVED'",tenant.instanceCountryId(),plan.id,shiftIds);
-            Set<UUID> assignedShiftIds=activeAssignments.stream().map(a->a.shiftOccurrenceId).collect(Collectors.toSet());
-            Map<UUID,UUID> pointByPostId=posts.stream().collect(Collectors.toMap(p->p.id,p->p.pointId));
-            Set<UUID> uncoveredPointIds=shifts.stream().filter(s->!assignedShiftIds.contains(s.id)).map(s->pointByPostId.get(s.postId)).filter(Objects::nonNull).collect(Collectors.toSet());
-            int assigned=assignedShiftIds.size();
+            long assigned=shiftIds.isEmpty()?0:OperationalAssignmentEntity.count("instanceCountryId=?1 and assignmentPlanId=?2 and shiftOccurrenceId in ?3 and status<>'REMOVED'",tenant.instanceCountryId(),plan.id,shiftIds);
             int req=shifts.size(), asg=(int)assigned, un=Math.max(req-asg,0); double pct=req==0?100d:roundPct(100d*asg/req);
-            int uncoveredPoints=uncoveredPointIds.size();
-            result.add(new CoverageCompanyDto(c.id,c.name,posts.size(),uncoveredPoints,req,asg,un,pct,plan.publishedRequiredShifts,plan.publishedAssignedShifts,plan.publishedCoveragePct==null?null:plan.publishedCoveragePct.doubleValue(),plan.status)); totalReq+=req;totalAssigned+=asg;totalUncoveredPoints+=uncoveredPoints;
+            result.add(new CoverageCompanyDto(c.id,c.name,posts.size(),req,asg,un,pct,plan.publishedRequiredShifts,plan.publishedAssignedShifts,plan.publishedCoveragePct==null?null:plan.publishedCoveragePct.doubleValue(),plan.status)); totalReq+=req;totalAssigned+=asg;
         }
         int un=Math.max(totalReq-totalAssigned,0); double pct=totalReq==0?100d:roundPct(100d*totalAssigned/totalReq);
-        return new CoverageResponse(week,result,totalReq,totalAssigned,un,totalUncoveredPoints,pct);
+        return new CoverageResponse(week,result,totalReq,totalAssigned,un,pct);
     }
 
     private AssignmentPlanEntity ensurePlan(UUID companyId, LocalDate week) {

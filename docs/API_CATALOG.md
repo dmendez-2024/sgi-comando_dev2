@@ -288,3 +288,20 @@ Read the result of a pre-shift attendance confirmation.
 - Cada opción añade `endsAt` y `accessMode` (`CURRENT_SHIFT` o `EARLY_ENTRY`) de forma compatible.
 - Más de una opción significa una ambigüedad real de planificación; el consumidor debe bloquear y solicitar corrección.
 
+# OPR-CONSIGNMENT-CONTEXT-001 - Contexto parametrizado de Consignas
+
+`GET /api/v1/operator/runtime`
+
+- `consignments[]` conserva el contrato existente y añade `code`, `protocolCode`, `protocolName`, `priority`, `applicationType`, `applicationDaysJson`, `applicationTimeFrom`, `applicationTimeTo`, `scopeType`, `acknowledgmentRequired`, `confirmationRequired`, `evidenceRequired`, `gpsRequired`, `observationRequired` y `expectedLocationMode`.
+- La fuente oficial es el único Protocolo de Consignas `ACTIVO` de SGI Comando aplicable al Punto/Puesto de la asignación autorizada.
+- La ampliación es aditiva y no introduce una nueva interconexión SITC ni cambia autenticación, topología o credenciales.
+
+## Confirmación de cumplimiento
+
+`POST /api/v1/operator/consignment-compliances`
+
+- Registra el cumplimiento contra tenant, asignación autorizada, empleado autenticado, Protocolo y Consigna vigente.
+- `executionId` es la clave idempotente: una repetición idéntica devuelve el acuse existente y una reutilización con contenido distinto responde `409`.
+- Valida evidencia y observación cuando la parametrización las declara obligatorias.
+- El resultado persistido se devuelve posteriormente en `lastComplianceResult`, `lastComplianceAt` y `lastComplianceUsername` dentro del runtime.
+
