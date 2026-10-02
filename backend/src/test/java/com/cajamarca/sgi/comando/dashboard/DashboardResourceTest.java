@@ -62,11 +62,17 @@ class DashboardResourceTest {
             .get("/api/dashboard/metrics").then().statusCode(200).body("idAverage", nullValue()).body("recordedReliefs", is(0));
         as("presidente").queryParam("weekStart", "2001-01-01").queryParam("clientId", UUID.randomUUID())
             .get("/api/assignments/coverage").then().statusCode(200).body("totalUncoveredPoints", is(0)).body("totalRequiredShifts", is(0));
+        as("presidente").queryParam("weekStart", "2001-01-03").queryParam("companyId", company).queryParam("clientId", client)
+            .get("/api/dashboard/operational-risk-trend").then().statusCode(200)
+            .body("find { it.date == '2001-01-02' }.scheduledPoints", is(1))
+            .body("find { it.date == '2001-01-02' }.uncoveredPoints", is(1))
+            .body("find { it.date == '2001-01-02' }.riskIndex", is(100.0f));
     }
 
     @Test void validatesDatesAndCompanyScope() {
         as("presidente").queryParam("weekStart", "invalid").get("/api/dashboard/metrics").then().statusCode(400);
         as("coord").queryParam("companyId", UUID.randomUUID()).get("/api/dashboard/metrics").then().statusCode(403);
+        as("coord").queryParam("companyId", UUID.randomUUID()).get("/api/dashboard/operational-risk-trend").then().statusCode(403);
         as("agente").get("/api/dashboard/metrics").then().statusCode(403);
         as("coord").queryParam("companyId", UUID.randomUUID()).get("/api/assignments/coverage").then().statusCode(403);
     }

@@ -1918,6 +1918,15 @@
 .dash-v6-bar-row>i{height:9px;overflow:hidden;border-radius:99px;background:#eaf0f6}
 .dash-v6-bar-row>i>b{display:block;height:100%;border-radius:inherit;background:linear-gradient(90deg,#1687d9,#61b2eb)}
 .dash-v6-bar-row>strong{color:#203854;font-size:9px;text-align:right}
+.dash-v6-line-chart{min-width:0;padding:2px 12px 7px}
+.dash-v6-line-legend{display:flex;align-items:center;justify-content:center;gap:5px;color:#6e7f98;font-size:9px}
+.dash-v6-line-legend i{width:8px;height:8px;border-radius:50%;background:#ff3047}
+.dash-v6-line-chart svg{display:block;width:100%;height:auto;overflow:visible}
+.dash-v6-line-grid{stroke:#dce5f0;stroke-width:1}
+.dash-v6-line-axis{stroke:#b7c6dc;stroke-width:1}
+.dash-v6-line-tick,.dash-v6-line-date,.dash-v6-line-unit{fill:#647ca1;font-size:8px}
+.dash-v6-line-path{fill:none;stroke:#ff3047;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.dash-v6-line-point{fill:#ff3047;stroke:#fff;stroke-width:1}
 .dash-v6-map-wrap{display:flex;min-height:210px;flex-direction:column;align-items:center;justify-content:center;padding:2px 12px 8px}
 .dash-v6-ecuador-map{display:block;width:min(100%,350px);height:190px;overflow:visible}
 .dash-v6-map-province path{stroke:#fff;stroke-width:1.1;stroke-linejoin:round;transition:filter .15s}

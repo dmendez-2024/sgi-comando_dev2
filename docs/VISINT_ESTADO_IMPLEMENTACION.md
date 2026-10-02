@@ -99,7 +99,7 @@ Detalle completo: `docs/API_CONTRACTS.md` (Fase 2) y decisiones `SGI-VIS-DEC-001
 | Variable | Valor local (`.env`, no versionado) | Por defecto |
 |---|---|---|
 | `SGI_VISINT_MODE` | `HTTP` (real) | `HTTP` |
-| `SGI_INTERCONNECTIONS_CORE_RESOLVER_URL` | `http://192.168.20.138:5173` (CORE) | vacío → se usa `SGI_VISINT_URL` |
+| `SGI_INTERCONNECTIONS_CORE_RESOLVER_URL` | `https://apps.cajamarca.ec/dev.core` (CORE) | vacío → se usa `SGI_VISINT_URL` |
 | `SGI_INTERCONNECTIONS_ENVIRONMENT` | `LOCAL` | `UAT` |
 | `SGI_INTERCONNECTIONS_INSTANCE_COUNTRY_ID` | `398233d2-293a-4709-ac30-b74c4269e22d` (temporal, hasta que IDENT entregue el id de la empresa) | vacío → se usa `SGI_VISINT_URL` |
 | `SGI_VISINT_INTERCONNECTION_CODE` | — | `SGI_COM_VISINT_0001_v002` |
