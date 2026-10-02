@@ -28,7 +28,8 @@ public final class InterconnectionIds {
 
     public static final String RRHH_EMPLOYEE_CONTEXT = "SGI_COM_SIC_RRHH_0001_v001";
     public static final String RRHH_OPERATIONAL_LABOR_EVENTS = "SGI_COM_SIC_RRHH_0002_v001";
-    public static final String RRHH_MASTER_EVENTS = "SIC_RRHH_SGI_COM_0001_v001";
+    public static final String DHO_MASTER_EVENTS = "SIC_DHO_SGI_COM_0001_v001";
+    public static final String TRANSITIONAL_RRHH_MASTER_EVENTS = "SIC_RRHH_SGI_COM_0001_v001";
 
     public static final String RRMM_EXPECTED_ASSETS = "SGI_COM_SIC_RRMM_0001_v001";
     public static final String RRMM_POINT_POST_CATALOG = "SIC_RRMM_SGI_COM_0001_v001";

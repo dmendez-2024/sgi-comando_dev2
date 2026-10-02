@@ -13,10 +13,10 @@ import jakarta.ws.rs.BadRequestException;
 import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.HeaderParam;
-import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.ServiceUnavailableException;
 import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.core.MediaType;
@@ -26,7 +26,12 @@ import org.eclipse.microprofile.config.inject.ConfigProperty;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.Instant;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 @Path("/api/v1")
@@ -63,7 +68,7 @@ public class RrhhEmployeeEventResource {
         String name,
         String status
     ) {}
-    public record EmployeeByPersonaResponse(
+    public record ActiveEmployeeResponse(
         Long personaId,
         UUID employeeId,
         String fullName,
@@ -72,6 +77,7 @@ public class RrhhEmployeeEventResource {
         EmployeeCompanyResponse company,
         boolean companyMembershipActive
     ) {}
+    private record MembershipKey(UUID employeeId, UUID companyId) {}
     public record ApiError(String code, String message) {}
 
     @POST
@@ -94,9 +100,9 @@ public class RrhhEmployeeEventResource {
     }
 
     @GET
-    @Path("/employees/by-persona/{personaId}")
-    public EmployeeByPersonaResponse findByPersonaId(
-        @PathParam("personaId") Long personaId,
+    @Path("/employees")
+    public List<ActiveEmployeeResponse> findActiveByInstanceCountry(
+        @QueryParam("instanceCountryId") UUID instanceCountryId,
         @HeaderParam("Authorization") String authorization,
         @HeaderParam("X-Correlation-Id") String correlationId,
         @HeaderParam("X-Interconnection-Id") String interconnectionId,
@@ -104,40 +110,65 @@ public class RrhhEmployeeEventResource {
     ) {
         requireServiceCredential(authorization);
         validateContractHeaders(correlationId, interconnectionId, contractVersion);
-        if (personaId == null || personaId <= 0) {
-            throw apiError(Response.Status.BAD_REQUEST, "INVALID_PERSONA_ID", "personaId debe ser mayor que cero.");
-        }
-
-        UUID tenantId = tenant.instanceCountryId();
-        EmployeeOperationalSnapshot employee = EmployeeOperationalSnapshot.find(
-            "instanceCountryId=?1 and personaId=?2", tenantId, personaId
-        ).firstResult();
-        if (employee == null) {
+        if (instanceCountryId == null) {
             throw apiError(
-                Response.Status.NOT_FOUND,
-                "EMPLOYEE_NOT_FOUND",
-                "No existe un empleado asociado al personaId indicado en esta Instancia-País."
+                Response.Status.BAD_REQUEST,
+                "INVALID_INSTANCE_COUNTRY_ID",
+                "instanceCountryId es obligatorio."
             );
         }
 
-        Company company = Company.find(
-            "instanceCountryId=?1 and id=?2", tenantId, employee.companyId
-        ).firstResult();
+        UUID tenantId = tenant.instanceCountryId();
+        if (!tenantId.equals(instanceCountryId)) {
+            throw apiError(
+                Response.Status.NOT_FOUND,
+                "INSTANCE_COUNTRY_NOT_FOUND",
+                "La empresa indicada no corresponde al instanceCountryId vigente de SGI:Comando."
+            );
+        }
+
+        List<EmployeeOperationalSnapshot> employees = EmployeeOperationalSnapshot.list(
+            "instanceCountryId=?1 and employmentStatus='ACTIVE' order by fullName, employeeId",
+            instanceCountryId
+        );
+        Map<UUID, Company> companiesById = new HashMap<>();
+        for (Company company : Company.<Company>list("instanceCountryId=?1", instanceCountryId)) {
+            companiesById.put(company.id, company);
+        }
+
+        Set<MembershipKey> activeMemberships = new HashSet<>();
+        List<CompanyMembershipEntity> memberships = CompanyMembershipEntity.list(
+            "instanceCountryId=?1 and membershipType='PRIMARY' and endsAt is null",
+            instanceCountryId
+        );
+        for (CompanyMembershipEntity membership : memberships) {
+            activeMemberships.add(new MembershipKey(membership.employeeId, membership.companyId));
+        }
+
+        return employees.stream()
+            .map(employee -> activeEmployeeResponse(employee, companiesById, activeMemberships))
+            .toList();
+    }
+
+    private ActiveEmployeeResponse activeEmployeeResponse(
+        EmployeeOperationalSnapshot employee,
+        Map<UUID, Company> companiesById,
+        Set<MembershipKey> activeMemberships
+    ) {
+        Company company = companiesById.get(employee.companyId);
         if (company == null) {
             throw apiError(
                 Response.Status.INTERNAL_SERVER_ERROR,
                 "EMPLOYEE_COMPANY_NOT_FOUND",
-                "La compañía asociada al empleado no existe en esta Instancia-País."
+                "La compañía asociada al empleado no existe dentro de la empresa indicada."
             );
         }
 
-        boolean activeMembership = CompanyMembershipEntity.count(
-            "instanceCountryId=?1 and employeeId=?2 and companyId=?3 "
-                + "and membershipType='PRIMARY' and endsAt is null",
-            tenantId, employee.employeeId, employee.companyId
-        ) > 0;
+        boolean activeMembership = activeMemberships.contains(
+            new MembershipKey(employee.employeeId, employee.companyId)
+        );
 
-        return new EmployeeByPersonaResponse(
+        return new ActiveEmployeeResponse(
             employee.personaId,
             employee.employeeId,
             employee.fullName,
@@ -159,8 +190,13 @@ public class RrhhEmployeeEventResource {
         String interconnectionId,
         String contractVersion
     ) {
-        if (!InterconnectionIds.matches(interconnectionId, InterconnectionIds.RRHH_MASTER_EVENTS, InterconnectionIds.LEGACY_RRHH_MASTER_EVENTS)) {
-            throw new BadRequestException("X-Interconnection-Id no corresponde al contrato SIC:RRHH → SGI:Comando.");
+        if (!InterconnectionIds.matches(
+            interconnectionId,
+            InterconnectionIds.DHO_MASTER_EVENTS,
+            InterconnectionIds.TRANSITIONAL_RRHH_MASTER_EVENTS,
+            InterconnectionIds.LEGACY_RRHH_MASTER_EVENTS
+        )) {
+            throw new BadRequestException("X-Interconnection-Id no corresponde al contrato SIC:DHO → SGI:Comando.");
         }
         if (!CONTRACT_VERSION.equalsIgnoreCase(trim(contractVersion))) {
             throw new BadRequestException("X-Contract-Version debe ser v1.");

@@ -24,7 +24,7 @@
 | 6 | `SIC_COM_SGI_COM_0001_v001` | SIC_COM | SGI_COM | Notify SGI: Comando of commercial Service/Point/Post lifecycle changes. | UAT | READY |
 | 7 | `SGI_COM_SIC_RRHH_0001_v001` | SGI_COM | SIC_RRHH | Read employee operational context for territory, assignments and supervision. | DESIGN | MANUAL_PENDING |
 | 8 | `SGI_COM_SIC_RRHH_0002_v001` | SGI_COM | SIC_RRHH | Submit auditable operational labor events produced by SGI. | DESIGN | MANUAL_PENDING |
-| 9 | `SIC_RRHH_SGI_COM_0001_v001` | SIC_RRHH | SGI_COM | Synchronize active Seguridad Física personnel and their authoritative Persona–Compañía relationship into SGI: Comando. | UAT | UAT_PARTIAL |
+| 9 | `SIC_DHO_SGI_COM_0001_v001` | SIC_DHO | SGI_COM | Synchronize active Seguridad Física personnel and their authoritative Persona–Compañía relationship into SGI: Comando. | UAT | UAT_PARTIAL |
 | 10 | `SGI_COM_SIC_RRMM_0001_v001` | SGI_COM | SIC_RRMM | Read expected material resources/inventory for Point/Post operational configuration and Relevo. | DESIGN | BLOCKED |
 | 11 | `SIC_RRMM_SGI_COM_0001_v001` | SIC_RRMM | SGI_COM | Provide SIC_RRMM with operational Company Point/Post catalog for MARE requirements. | UAT | BLOCKED |
 | 12 | `ATS_SGI_COM_0001_v001` | ATS | SGI_COM | Deliver a published .ats security architecture package to SGI: Comando/REGESEP. | UAT | READY |
@@ -56,7 +56,7 @@ Total: **25 interconexiones / 31 interfaces**.
 ## Inbound ya presentes en la baseline de SISTEMAS
 
 - `SIC_COM_SGI_COM_0001_v001`: catálogo comercial, con recibo idempotente.
-- `SIC_RRHH_SGI_COM_0001_v001`: sincronización de empleado con auth por `credential_ref`, idempotencia persistente y resolución de Compañía fuente. Para personal nuevo SGI exige `companyCoreCatalogId` o `companyCode`; la contraparte SIC:RRHH debe homologar esos campos antes de declarar el flujo ACTIVE.
+- `SIC_DHO_SGI_COM_0001_v001`: sincronización de empleado con auth por `credential_ref`, idempotencia persistente y resolución de Compañía fuente. Para personal nuevo SGI exige `companyCoreCatalogId` o `companyCode`; la contraparte SIC:DHO debe homologar esos campos antes de declarar el flujo ACTIVE.
 - `SGI_OPR_SGI_COM_0002_v001`: relevo/evidencia UAT parcialmente implementado.
 
 ## Seguridad

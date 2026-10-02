@@ -415,23 +415,23 @@
     ]
   },
   {
-    "interconnectionRef": "SIC_RRHH_SGI_COM_0001",
-    "interconnectionId": "SIC_RRHH_SGI_COM_0001_v001",
-    "sourceProgramId": "SIC_RRHH",
+    "interconnectionRef": "SIC_DHO_SGI_COM_0001",
+    "interconnectionId": "SIC_DHO_SGI_COM_0001_v001",
+    "sourceProgramId": "SIC_DHO",
     "targetProgramId": "SGI_COM",
-    "purpose": "Synchronize the employee lifecycle from SIC: RRHH and expose the current SGI operational company and role by DHO personaId.",
+    "purpose": "Synchronize the employee lifecycle from SIC:DHO and expose the active SGI operational workforce by Empresa using instanceCountryId.",
     "interactionType": "WEBHOOK",
     "mode": "ASYNC",
     "protocol": "HTTPS",
     "contractVersion": "v1",
-    "dataOwnerProgramId": "SIC_RRHH",
+    "dataOwnerProgramId": "SIC_DHO",
     "criticality": "HIGH",
     "legacyTarget": false,
     "targetImplementationStatus": "UAT_PARTIAL",
     "status": "UAT",
     "interfaces": [
       {
-        "interfaceId": "SIC_RRHH_SGI_COM_0001_IF01",
+        "interfaceId": "SIC_DHO_SGI_COM_0001_IF01",
         "method": "POST",
         "path": "/api/v1/inbound/sic-rrhh/employee-events",
         "purpose": "Versioned employee master event with identity, role, source company and persistent idempotency.",
@@ -466,10 +466,10 @@
         }
       },
       {
-        "interfaceId": "SIC_RRHH_SGI_COM_0001_IF02",
+        "interfaceId": "SIC_DHO_SGI_COM_0001_IF02",
         "method": "GET",
-        "path": "/api/v1/employees/by-persona/{personaId}",
-        "purpose": "Read the current SGI operational employee, role and assigned company using DHO personas.id.",
+        "path": "/api/v1/employees?instanceCountryId={instanceCountryId}",
+        "purpose": "List active SGI operational employees, roles and assigned Compañías for an Empresa identified by instanceCountryId.",
         "contentType": "application/json",
         "request": {
           "headers": [
@@ -478,11 +478,12 @@
             "X-Interconnection-Id",
             "X-Contract-Version"
           ],
-          "path": [
-            "personaId"
+          "query": [
+            "instanceCountryId"
           ]
         },
         "response": {
+          "collection": true,
           "fields": [
             "personaId",
             "employeeId",
@@ -500,6 +501,7 @@
       }
     ],
     "legacyConnectionIds": [
+      "SIC_RRHH_SGI_COM_0001_v001",
       "SIC_RRHH__SGI_COM__00001__V0001",
       "SIC_RRHH__SGI_COM__00001"
     ]
