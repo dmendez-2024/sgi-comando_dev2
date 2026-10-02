@@ -28,11 +28,25 @@
 
 ## Configuración
 
-- `SGI_CORE_CATALOG_BASE_URL`: URL raíz del servidor CORE. Para el ambiente local actual, `http://192.168.20.138:5173`; el cliente agrega `/api/v1` a las rutas del catálogo.
+- `SGI_CORE_CATALOG_BASE_URL`: base del API CORE seleccionable por ambiente. El valor predeterminado para DEVELOPMENT es `https://apps.cajamarca.ec/dev.core/api/v1`; para pruebas locales se puede sobrescribir con `http://192.168.20.138:5173/api/v1` sin modificar código.
 - `SGI_CORE_COUNTRY_CODE`: código ISO alpha-2 provisional; valor por defecto `EC`.
 - `SGI_CORE_INSTANCE_COUNTRY_CODE`: código opcional para escoger la Instancia–País cuando CORE devuelva más de una para el país; si existe una sola, no hace falta configurarlo.
 - `SGI_CORE_CATALOG_TIMEOUT_MS`: timeout de las consultas, por defecto 5000 ms.
 - `SGI_CORE_COUNTRY_CACHE_SECONDS`: vigencia local de la resolución país → id, por defecto 300 segundos.
+
+## Actualización 2026-10-02
+
+- Territorios y Compañías apuntan por defecto al catálogo público de CORE en DEVELOPMENT.
+- LOCAL y DEVELOPMENT utilizan la misma variable `SGI_CORE_CATALOG_BASE_URL`; no se agrega una bandera paralela.
+- El cambio de ambiente requiere recrear el backend para que el contenedor vuelva a leer la variable.
+
+## Corrección del mapa para configuraciones en borrador
+
+- Las provincias seleccionadas en Zonas o Regiones con estado `DRAFT` se guardan en `draft_zone_id` y `draft_region_id`.
+- `zone_id` y `region_id` conservan exclusivamente la configuración territorial efectiva que utiliza el mapa.
+- La selección pendiente se promueve a la configuración efectiva únicamente cuando la Zona y la Región cumplen las condiciones de activación.
+- Al eliminar un borrador se limpian solo sus referencias `draft_*`, sin modificar el mapa vigente.
+- Flyway `V37__repair_territory_draft_assignments.sql` corrige registros borrador que hayan quedado en los campos efectivos después de aplicada `V27`.
 
 ## Archivos principales
 

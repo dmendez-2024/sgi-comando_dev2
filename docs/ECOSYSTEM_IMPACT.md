@@ -20,7 +20,7 @@
 |---|---|---|
 | CORE | SoR de reglas de Impulsos + resolver/bindings de interconexiones | Importar/validar CURRENT/delta como ESCENARIO; definir binding efectivo de `SGI_COM_CORE_0001_v001`; no activar productivo automáticamente. |
 | SIC_COM | Inbound comercial de SISTEMAS normalizado al ID v4.1 `SIC_COM_SGI_COM_0001_v001` | Homologar/confirmar mismo ID, contractVersion y credential_ref del lado SIC_COM. |
-| SIC_RRHH | Inbound de empleados normalizado a `SIC_RRHH_SGI_COM_0001_v001` y credencial por `credential_ref` | Homologar ID/contrato/idempotencia del lado RRHH; completar pruebas bilaterales. |
+| SIC_DHO | Inbound de empleados normalizado a `SIC_DHO_SGI_COM_0001_v001` y credencial por `credential_ref` | Homologar ID/contrato/idempotencia del lado DHO; completar pruebas bilaterales. |
 | SGI_OPR | Runtime/relevo conserva semántica y adopta IDs v4.1 `SGI_OPR_SGI_COM_0001_v001` / `_0002_v001` | Usar los mismos IDs en su módulo genérico; no cambia este RC la UI/flujo de Operador. |
 | VISINT | Contratos canónicos `SGI_COM_VISINT_0001_v001` / `_0002_v001` | Mantener validación visual; VISINT no decide ni almacena saldo de Impulsos. |
 | Otros Program IDs | Catálogo normalizado v4.1; varios permanecen DESIGN/MANUAL_PENDING | Adecuación por sus chats/DEVs cuando corresponda. |

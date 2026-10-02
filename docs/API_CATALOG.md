@@ -95,24 +95,26 @@ Submit auditable operational labor events produced by SGI.
 - `SGI_COM_SIC_RRHH_0002_IF01` — `POST` `/api/v1/sgi-operational-events` — Idempotent labor consequence/request event
 - aliases históricos: `SGI_COM__SIC_RRHH__00002__V0001`, `SGI_COM__SIC_RRHH__00002`
 
-## `SIC_RRHH_SGI_COM_0001_v001` — SIC_RRHH → SGI_COM
-Synchronize active Seguridad Física personnel and their authoritative Persona–Compañía relationship into SGI: Comando.
+## `SIC_DHO_SGI_COM_0001_v001` — SIC_DHO → SGI_COM
+Synchronize the ACTIVE/INACTIVE lifecycle of Seguridad Física personnel and their authoritative Persona–Compañía relationship into SGI: Comando.
 
-- SoR de identidad laboral y Persona–Compañía: `SIC_RRHH`
+- SoR de identidad laboral y Persona–Compañía: `SIC_DHO`
 - contractVersion: `v1`
 - estado SGI_COM: `UAT`
 - estado end-to-end: `UAT_PARTIAL` hasta homologar/probar contraparte
 
-- `SIC_RRHH_SGI_COM_0001_IF01` — `POST` `/api/v1/inbound/sic-rrhh/employee-events` — evento maestro versionado de empleado.
+- `SIC_DHO_SGI_COM_0001_IF01` — `POST` `/api/v1/inbound/sic-rrhh/employee-events` — evento maestro versionado de empleado.
   - Headers: `Authorization`, `X-Correlation-Id`, `X-Interconnection-Id`, `X-Contract-Version`, `Idempotency-Key`.
   - Campos: `employeeId?`, `personaId?`, `canonicalEmployeeId?`, `fullName`, `roleCode`, `employmentStatus`, `updatedFromSourceAt`, `companyCoreCatalogId?`, `companyCode?`.
   - Para un empleado **nuevo**, `companyCoreCatalogId` o `companyCode` es obligatorio. SGI deja de inventar Kaibil como compañía fuente.
   - Para un empleado ya existente, la omisión temporal de compañía conserva la compañía actual para compatibilidad de transición.
   - `Idempotency-Key` se persiste por Instancia PE: mismo key + mismo payload es retry seguro; mismo key + payload distinto responde conflicto.
-- `SIC_RRHH_SGI_COM_0001_IF02` — `GET` `/api/v1/employees/by-persona/{personaId}` — consulta de empleado, cargo y Compañía operacional por el `personas.id` de DHO.
+- `SIC_DHO_SGI_COM_0001_IF02` — `GET` `/api/v1/employees?instanceCountryId={instanceCountryId}` — lista de empleados operacionales activos de la Empresa identificada por `instanceCountryId`, con su cargo y Compañía asignada.
   - Headers: `Authorization`, `X-Correlation-Id`, `X-Interconnection-Id`, `X-Contract-Version`.
-  - Campos: `personaId`, `employeeId`, `fullName`, `roleCode`, `employmentStatus`, `company.id`, `company.coreCatalogId`, `company.code`, `company.name`, `company.status`, `companyMembershipActive`.
-- aliases históricos: `SIC_RRHH__SGI_COM__00001__V0001`, `SIC_RRHH__SGI_COM__00001`
+  - Filtro obligatorio: `instanceCountryId`; identifica la Empresa y debe coincidir con el contexto vigente de SGI: Comando.
+  - Respuesta: arreglo JSON; cada elemento contiene `personaId`, `employeeId`, `fullName`, `roleCode`, `employmentStatus`, `company.id`, `company.coreCatalogId`, `company.code`, `company.name`, `company.status`, `companyMembershipActive`.
+  - Solo devuelve filas con `employee_operational_snapshot.employment_status = 'ACTIVE'`; sin coincidencias responde `200` con `[]`.
+- aliases de transición: `SIC_RRHH_SGI_COM_0001_v001`, `SIC_RRHH__SGI_COM__00001__V0001`, `SIC_RRHH__SGI_COM__00001`
 
 ## `SGI_COM_SIC_RRMM_0001_v001` — SGI_COM → SIC_RRMM
 Read expected material resources/inventory for Point/Post operational configuration and Relevo.

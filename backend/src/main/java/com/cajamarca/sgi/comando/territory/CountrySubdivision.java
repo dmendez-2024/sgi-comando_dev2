@@ -15,6 +15,8 @@ public class CountrySubdivision extends BaseEntity {
     @Column(name="source_version", length=80) public String sourceVersion;
     @Column(name="zone_id") public UUID zoneId;
     @Column(name="region_id") public UUID regionId;
+    @Column(name="draft_zone_id") public UUID draftZoneId;
+    @Column(name="draft_region_id") public UUID draftRegionId;
     @Column(nullable=false) public String status;
     @Column(name="core_dataset_version", length=80) public String coreDatasetVersion;
     @Column(name="geometry_json", columnDefinition="text") public String geometryJson;
