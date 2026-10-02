@@ -35,7 +35,7 @@
 | 17 | `SGI_COM_STC_0002_v001` | SGI_COM | STC | Read workflow status/progress/closure for an SGI-originated STC case. | DESIGN | MANUAL_PENDING |
 | 18 | `SGI_COM_VISINT_0001_v001` | SGI_COM | VISINT | Submit task evidence/photos for visual validation by VISINT. | DESIGN | MANUAL_PENDING |
 | 19 | `SGI_COM_VISINT_0002_v001` | SGI_COM | VISINT | Read VISINT review result for Impulse eligibility and audit. | DESIGN | MANUAL_PENDING |
-| 20 | `SGI_OPR_SGI_COM_0001_v001` | SGI_OPR | SGI_COM | Synchronize the mobile operator runtime context/configuration required for the active assignment. | DESIGN | BLOCKED |
+| 20 | `SGI_OPR_SGI_COM_0001_v001` | SGI_OPR | SGI_COM | Synchronize the mobile operator runtime context/configuration required for the active assignment. BIT-INT-001 RC1 exposes only active Bitácora configuration for the assigned post. | UAT_PARTIAL | READY |
 | 21 | `SGI_OPR_SGI_COM_0002_v001` | SGI_OPR | SGI_COM | Submit idempotent operational executions, novelties and evidence captured by SGI: Operador. | UAT_PARTIAL | READY |
 | 22 | `SGI_CLT_SGI_COM_0001_v001` | SGI_CLT | SGI_COM | Read client-visible operational information after SGI moderation/authorization. | DESIGN | BLOCKED |
 | 23 | `SGI_CLT_SGI_COM_0002_v001` | SGI_CLT | SGI_COM | Submit client-originated Consigna proposals, incidents or requirements for SGI moderation/routing. | DESIGN | BLOCKED |

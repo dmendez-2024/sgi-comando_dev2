@@ -330,7 +330,7 @@ public class RrhhEmployeeSyncService {
         }
         String employmentStatus = trim(request.employmentStatus()).toUpperCase();
         if (!"ACTIVE".equals(employmentStatus) && !"INACTIVE".equals(employmentStatus)) {
-            throw new BadRequestException("employmentStatus solo admite ACTIVE o INACTIVE.");
+            throw new BadRequestException("Solo se sincronizan empleados activos de Seguridad Física.");
         }
         if (request.updatedFromSourceAt() == null) {
             throw new BadRequestException("updatedFromSourceAt es obligatorio.");

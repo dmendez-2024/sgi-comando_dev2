@@ -341,3 +341,74 @@ Ver `docs/CHANGELOG_P0P1_2026-09-27.md`. Sin cambios de UI y sin EVC.
 - Taxonomía de Incidentes sincronizada con `Incidentes(1).xlsx`: 3 categorías, 20 subcategorías, 90 incidentes.
 - Jerarquía corregida a Categoría → Subcategoría → Incidente.
 - Inasistencia programada/efectiva quedan como incidentes de Asistencia y Puntualidad.
+# 2026-09-29 — BIT-INT-001 RC1
+
+- Extiende el runtime de operador con protocolos de Bitácora `ACTIVO` del puesto asignado.
+- Añade acreditaciones y campos configurados sin migración de base de datos.
+- Mantiene la persistencia operacional fuera de alcance hasta aprobar el contrato de escritura.
+- Añade fixture UAT explícito e idempotente para `alex.chiriboga`, separado de Flyway y bloqueado si la identidad de empleado no es única.
+
+# SGI_COM - OPR-ASSIGNMENT-001 - RC2 - 2026-09-30
+
+Baseline: `SGI_COM_BIT_INT_001_RC1_2026-09-29`  
+Responsable: Sistemas / solicitud funcional UAT
+
+### Cambios realizados
+- `OPR-ASSIGNMENT-001` | APROBADO | Selección temporal del turno vigente o del próximo turno desde 59 minutos antes.
+- El turno vigente prevalece sobre el próximo; ambigüedades reales continúan bloqueadas.
+- La fecha/hora se evalúa en SGI_COM, no en el dispositivo móvil.
+
+### Archivos / migraciones
+- `backend/.../operator/OperatorAssignmentWindow.java`
+- `backend/.../operator/OperatorResource.java`
+- `backend/.../operator/OperatorAssignmentWindowTest.java`
+- Sin migración de base de datos.
+
+### Integraciones / SITC
+- Sin cambio topológico ni nueva interconexión; se mantiene `SGI_OPR -> SGI_COM`.
+- No requiere nuevo `*.sitcpack` porque no cambia arquitectura ni identidad del contrato; se agrega respuesta compatible.
+
+### Validación
+- Pruebas focalizadas y de contrato: 12/12 aprobadas (`OperatorAssignmentWindowTest` y `ReliefContractTest`).
+- Build del backend en contenedor: aprobado.
+- Arranque UAT integrado: backend y conexión PostgreSQL en estado `UP`.
+- Caso `alex.chiriboga`: la asignación vencida del 2026-09-29 queda excluida y la asignación vigente del 2026-09-30 queda seleccionada.
+- Pendiente: confirmación funcional del inicio de sesión desde el dispositivo móvil.
+- Observación de entorno: `HealthTest` aislado no inicia sin la credencial PostgreSQL ni los parámetros de apertura requeridos por el JDK local; la salud integrada en contenedor sí fue verificada.
+
+# SGI_COM - OPR-CONSIGNMENT-VISIBILITY-001 - RC1 - 2026-10-01
+
+Baseline: `SGI_COM_OPR_ASSIGNMENT_RC2_2026-09-30`  
+Versión frontend: `0.11.1`
+
+### Corrección
+- Las solicitudes reales de Consignas recibidas desde SGI Operador ya no se vuelven a filtrar en el frontend mediante los códigos de compañía del dataset DEMO.
+- El backend permanece como autoridad de alcance RBAC para `GET /api/v1/operator/consignment-review-requests`.
+- El filtro local por `scopeByUser` se conserva exclusivamente para las filas estáticas de demostración.
+
+### Impacto
+- Frontend: `frontend/src/pages/ConsignasExecution.tsx`.
+- Backend, base de datos y Flyway: sin cambios.
+- SITC: sin cambio de contrato, topología, identidad, payload ni System of Record; no requiere nuevo `*.sitcpack`.
+
+### Validación
+- Evidencia y casos UAT: `docs/VALIDATION_OPR_CONSIGNMENT_VISIBILITY_2026-10-01.md`.
+
+# SGI_COM - OPR-PATROL-HISTORY-001 - RC1 - 2026-10-01
+
+Baseline: `OPR-CONSIGNMENT-VISIBILITY-001 RC1`  
+Versión frontend: `0.11.2`
+
+### Cambios
+- Nuevo `GET /api/v1/operator/patrol-executions` de solo lectura para ejecuciones reales, hitos, contexto operacional y responsable.
+- La consulta limita resultados por tenant, identidad del Agente y alcance RBAC de Compañía para perfiles de Comando.
+- `Operaciones > Consignas > Patrullas` combina el historial real con las referencias DEMO existentes y permite inspeccionar su línea de tiempo.
+
+### Impacto
+- Backend y frontend modificados; sin migración de base de datos.
+- Contrato interno UI/backend ampliado de forma aditiva.
+- Sin nueva interconexión, cambio de topología, payload móvil, SoR o `*.sitcpack`.
+
+### Validación
+- `docs/VALIDATION_OPR_PATROL_HISTORY_2026-10-01.md`.
+

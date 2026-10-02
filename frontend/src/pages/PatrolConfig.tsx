@@ -66,6 +66,8 @@ export default function PatrolConfig({point,onBack}:{point:PointContext;onBack:(
   const [planUrl,setPlanUrl]=useState('');
   const planUrlRef=useRef('');
   const [placementMode,setPlacementMode]=useState<'NEW_ATS'|'LINK_SELECTED'|null>(null);
+  const [standardUrl,setStandardUrl]=useState('');
+  const standardUrlRef=useRef('');
   const photoInput=useRef<HTMLInputElement>(null);
 
   useEffect(()=>{
@@ -87,11 +89,11 @@ export default function PatrolConfig({point,onBack}:{point:PointContext;onBack:(
   },[tab,selectedProtocolId,draft?.code]);
 
   const revokePlan=()=>{if(planUrlRef.current)URL.revokeObjectURL(planUrlRef.current);planUrlRef.current='';setPlanUrl('')};
-  
+  const revokeStandard=()=>{if(standardUrlRef.current)URL.revokeObjectURL(standardUrlRef.current);standardUrlRef.current='';setStandardUrl('')};
   const setPlan=(url:string)=>{revokePlan();planUrlRef.current=url;setPlanUrl(url)};
-  
+  const setStandard=(url:string)=>{revokeStandard();standardUrlRef.current=url;setStandardUrl(url)};
 
-  
+  const loadImage=async(checkpoint:Checkpoint)=>{const image=checkpoint.standardImages[0];if(!image){revokeStandard();return}try{const blob=await api.patrolStandardImage(checkpoint.id,image.id) as Blob;setStandard(URL.createObjectURL(blob))}catch{revokeStandard()}};
   const load=async(preferProtocolId?:string,preferPatrolId?:string,preferCheckpointId?:string)=>{
     setLoading(true);setError('');
     try{
@@ -103,11 +105,11 @@ export default function PatrolConfig({point,onBack}:{point:PointContext;onBack:(
       const checkpoint=(preferCheckpointId?patrol?.checkpoints.find(c=>c.id===preferCheckpointId):patrol?.checkpoints.find(c=>c.id===selectedCheckpointId))??patrol?.checkpoints[0]??null;
       setSelectedProtocolId(protocol?.id??'');setDraft(protocol?normalizeProtocol(protocol):null);
       setSelectedPatrolId(patrol?.id??'');setPatrolDraft(patrol?clonePatrol(patrol):null);setSelectedCheckpointId(checkpoint?.id??'');
-      
+      if(checkpoint?.hasStandardImage)await loadImage(checkpoint);else revokeStandard();
     }catch(e){setError(errorText(e))}finally{setLoading(false)}
   };
   const loadAts=async()=>{try{const meta=await api.atsCurrent(point.pointId) as AtsMeta|null;setAts(meta);if(meta){const blob=await api.atsPlan(point.pointId) as Blob;setPlan(URL.createObjectURL(blob))}}catch{setAts(null);revokePlan()}};
-  useEffect(()=>{void load();void loadAts();return()=>{revokePlan()}},[point.pointId]);
+  useEffect(()=>{void load();void loadAts();return()=>{revokePlan();revokeStandard()}},[point.pointId]);
 
   const selectedPost=point.posts.find(p=>p.postId===selectedPostId)??point.posts[0]??null;
   const selectedCheckpoint=patrolDraft?.checkpoints.find(c=>c.id===selectedCheckpointId)??patrolDraft?.checkpoints[0]??null;
@@ -127,13 +129,13 @@ export default function PatrolConfig({point,onBack}:{point:PointContext;onBack:(
     const p=protocols.find(x=>appliesToPost(x,postId))??protocols[0]??null;
     setSelectedProtocolId(p?.id??'');setDraft(p?normalizeProtocol(p):null);
     const patrol=p?.patrols[0]??null;setSelectedPatrolId(patrol?.id??'');setPatrolDraft(patrol?clonePatrol(patrol):null);setSelectedCheckpointId(patrol?.checkpoints[0]?.id??'');
-    setTab('DEFINICION');setPlacementMode(null);setHistory(null);
+    setTab('DEFINICION');setPlacementMode(null);setHistory(null);revokeStandard();
   };
   const selectProtocol=(p:Protocol)=>{
-    setSelectedProtocolId(p.id);setDraft(normalizeProtocol(p));const patrol=p.patrols[0]??null;setSelectedPatrolId(patrol?.id??'');setPatrolDraft(patrol?clonePatrol(patrol):null);setSelectedCheckpointId(patrol?.checkpoints[0]?.id??'');setTab('DEFINICION');setPlacementMode(null);setHistory(null);
+    setSelectedProtocolId(p.id);setDraft(normalizeProtocol(p));const patrol=p.patrols[0]??null;setSelectedPatrolId(patrol?.id??'');setPatrolDraft(patrol?clonePatrol(patrol):null);setSelectedCheckpointId(patrol?.checkpoints[0]?.id??'');setTab('DEFINICION');setPlacementMode(null);setHistory(null);revokeStandard();
   };
-  const selectPatrol=(p:Patrol)=>{setSelectedPatrolId(p.id);setPatrolDraft(clonePatrol(p));setSelectedCheckpointId(p.checkpoints[0]?.id??'');setTab('PATRULLA');setPlacementMode(null)};
-  const selectCheckpoint=(cp:Checkpoint)=>{setSelectedCheckpointId(cp.id)};
+  const selectPatrol=(p:Patrol)=>{setSelectedPatrolId(p.id);setPatrolDraft(clonePatrol(p));setSelectedCheckpointId(p.checkpoints[0]?.id??'');setTab('PATRULLA');setPlacementMode(null);revokeStandard();if(p.checkpoints[0]?.hasStandardImage)void loadImage(p.checkpoints[0])};
+  const selectCheckpoint=(cp:Checkpoint)=>{setSelectedCheckpointId(cp.id);revokeStandard();if(cp.hasStandardImage)void loadImage(cp)};
   const appendCheckpoint=(created:Checkpoint)=>{
     if(!patrolDraft)return;
     const patrolId=patrolDraft.id;

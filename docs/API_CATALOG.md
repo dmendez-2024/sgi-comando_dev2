@@ -96,7 +96,7 @@ Submit auditable operational labor events produced by SGI.
 - aliases históricos: `SGI_COM__SIC_RRHH__00002__V0001`, `SGI_COM__SIC_RRHH__00002`
 
 ## `SIC_RRHH_SGI_COM_0001_v001` — SIC_RRHH → SGI_COM
-Synchronize the ACTIVE/INACTIVE lifecycle of Seguridad Física personnel and their authoritative Persona–Compañía relationship into SGI: Comando.
+Synchronize active Seguridad Física personnel and their authoritative Persona–Compañía relationship into SGI: Comando.
 
 - SoR de identidad laboral y Persona–Compañía: `SIC_RRHH`
 - contractVersion: `v1`
@@ -224,6 +224,7 @@ Synchronize the mobile operator runtime context/configuration required for the a
 - estado: `DESIGN`
 
 - `SGI_OPR_SGI_COM_0001_IF01` — `GET` `/api/v1/operator/runtime` — Assignment, Point/Post, protocols, consignments, patrols, bitacora and pending messages
+- `GET /api/v1/operator/patrol-executions` — consulta interna SGI Comando UI/backend del historial real de ejecuciones de Patrulla; aplica tenant, identidad del Operador y alcance RBAC por Compañía. No crea una nueva interconexión externa.
 - aliases históricos: `SGI_OPR__SGI_COM__00001__V0001`, `SGI_OPR__SGI_COM__00001`
 
 ## `SGI_OPR_SGI_COM_0002_v001` — SGI_OPR → SGI_COM
@@ -275,3 +276,13 @@ Read the result of a pre-shift attendance confirmation.
 
 - `SGI_COM_CM_CON_0002_IF01` — `GET` `/api/v1/shift-confirmations/{requestId}` — Confirmation result
 - aliases históricos: `SGI_COM__CM_CON__00002__V0001`, `SGI_COM__CM_CON__00002`
+
+# OPR-ASSIGNMENT-001 - Selección temporal de asignación
+
+`GET /api/v1/operator/runtime`
+
+- Sin `assignmentId`: devuelve en `assignments` únicamente el turno en curso o, si no existe, el próximo turno cuyo inicio esté a un máximo de 59 minutos.
+- Con `assignmentId`: valida nuevamente la misma ventana antes de entregar `relief`.
+- Cada opción añade `endsAt` y `accessMode` (`CURRENT_SHIFT` o `EARLY_ENTRY`) de forma compatible.
+- Más de una opción significa una ambigüedad real de planificación; el consumidor debe bloquear y solicitar corrección.
+

@@ -216,6 +216,7 @@ export default function Assignments(){
   const goWeek=(delta:number)=>setWeekAndScroll(addDays(weekStart,delta));
   const goToday=()=>{const current=monday();setWeekStart(current);scrollToDate(today)};
   const handleMatrixScroll=(e:any)=>{const left=e.currentTarget.scrollLeft||0;const first=Math.max(0,Math.min(days.length-1,Math.floor(left/DAY_WIDTH)));const next=Math.max(0,Math.min(days.length-VIRTUAL_RENDER_DAYS,first-VIRTUAL_BUFFER_DAYS));if(next!==virtualStart)setVirtualStart(next)};
+  const handleMatrixWheel=(e:any)=>{if(Math.abs(e.deltaY)<=Math.abs(e.deltaX))return;window.scrollBy({top:e.deltaY,left:0,behavior:'auto'});e.preventDefault?.();};
   useEffect(()=>{scrollToDate(weekStart)},[weekStart,companyId]);
 
   const selectionBounds=(ids=selectedShiftIds)=>{const coords=Array.from(ids).map(id=>coordByShift.get(id)).filter(Boolean) as CellCoord[];if(!coords.length)return null;return{minRow:Math.min(...coords.map(c=>c.rowIndex)),maxRow:Math.max(...coords.map(c=>c.rowIndex)),minDay:Math.min(...coords.map(c=>c.dayIndex)),maxDay:Math.max(...coords.map(c=>c.dayIndex))}};

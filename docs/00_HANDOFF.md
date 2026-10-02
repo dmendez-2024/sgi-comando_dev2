@@ -1,5 +1,7 @@
 # Handoff final — SGI: Comando — ENTREGA SISTEMAS 2026-09-28
 
+> **RC derivada 2026-10-01 — OPR-PATROL-HISTORY-001 RC1:** frontend `0.11.2`. La pestaña Patrullas consume ejecuciones reales mediante `GET /api/v1/operator/patrol-executions`, con autorización por tenant/identidad/alcance. Sin migración BD ni nueva interconexión SITC. Validación en `docs/VALIDATION_OPR_PATROL_HISTORY_2026-10-01.md`.
+
 **Freeze:** 2026-09-27.  
 **Estado:** **CLOSED / FROZEN**.  
 **Baseline final:** CSL v0.2.5 FROZEN + NEX v0.1 FROZEN, acumulativa sobre P0/P1 y verticales previamente congeladas.

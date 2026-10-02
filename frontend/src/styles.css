@@ -2142,3 +2142,29 @@
   .cns-page .cns-rules-note{flex-basis:100%;order:3}
 }
 @container cns-content (max-width:440px){.cns-page .cns-filter-grid{grid-template-columns:1fr}.cns-page .cns-tabs{flex-wrap:wrap}}
+
+/* Consignas comparte la presentación de búsqueda y resultados de Novedades. */
+.cns-page.nov-page .cns-topbar h2{font-size:26px;line-height:1.2}
+.cns-page.nov-page .cns-layout{grid-template-columns:minmax(0,1fr);gap:14px}
+.cns-page.nov-page .cns-main-card{padding:14px;border-radius:16px;box-shadow:0 2px 10px rgba(20,35,80,.04)}
+.cns-page.nov-page .cns-card-head{margin-bottom:14px}
+.cns-page.nov-page .cns-title h3{font-size:18px}
+.cns-page.nov-page .cns-tabs{flex-wrap:wrap;gap:8px}
+.cns-page.nov-page .cns-tabs button{height:36px;padding:0 13px;border-radius:10px;font-size:13px}
+.cns-page.nov-page .cns-main-search{height:50px;padding:0 14px;border-radius:12px}
+.cns-page.nov-page .cns-main-search input{font-size:15px}
+.cns-page.nov-page .cns-filter-grid{gap:13px;margin-top:14px}
+.cns-page.nov-page .cns-field{gap:6px}
+.cns-page.nov-page .cns-field span{font-size:12px}
+.cns-page.nov-page .cns-field input,.cns-page.nov-page .cns-field select{height:42px;padding:0 12px;border-radius:10px;font-size:13px}
+.cns-page.nov-page .cns-rules-note{margin-top:12px;padding:10px 12px;border:1px solid #dde6f4;border-radius:10px;background:#f5f8fd;color:#586986;font-size:12px;font-weight:600}
+.cns-page.nov-page .cns-search-actions{gap:10px;margin-top:14px;flex-wrap:wrap}
+.cns-page.nov-page .cns-search-actions button{height:42px;padding:0 16px;border-radius:10px;font-size:13px;gap:8px}
+.cns-page.nov-page .cns-results-card{margin-top:18px;border-radius:16px;box-shadow:0 2px 10px rgba(20,35,80,.04)}
+.cns-page.nov-page .cns-table th,.cns-page.nov-page .cns-table td{padding:11px}
+.cns-page.nov-page .cns-table td>button{display:inline-flex;align-items:center;gap:4px;cursor:pointer}
+.cns-page.nov-page .cns-inspector{width:min(760px,96vw)}
+.cns-page.nov-page .cns-inspector>footer{justify-content:flex-end}
+@container cns-content (max-width:1300px){.cns-page.nov-page .cns-filter-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@container cns-content (max-width:720px){.cns-page.nov-page .cns-filter-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@container cns-content (max-width:440px){.cns-page.nov-page .cns-filter-grid{grid-template-columns:1fr}}

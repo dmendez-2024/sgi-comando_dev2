@@ -84,3 +84,11 @@ Flujo técnico: `Business Adapter → GenericInterconnectionExecutor → CORE re
 Componentes: `CoreInterconnectionResolver`, `ResolutionCache`, `CredentialRefResolver`, `CircuitRegistry`, `GenericInterconnectionExecutor`, catálogo canónico e IDs. La URL bootstrap del resolver CORE se configura por ambiente; todos los demás bindings provienen de CORE.
 
 Ver `docs/INTERCONNECTIONS.md`, `docs/API_CATALOG.md`, `docs/SITCPACK.md` y `sitc/SGI_Comando_CURRENT.sitcpack`.
+# Delta BIT-INT-001 RC1 — 2026-09-29
+
+SGI_OPR consume `SGI_OPR_SGI_COM_0001_v001`; SGI_COM permanece System of Record. El runtime añade configuración de Bitácora filtrada por tenant, puesto asignado y estado `ACTIVO`. No cambia la topología ni el modelo físico. El contrato de escritura queda pendiente.
+
+# OPR-ASSIGNMENT-001 / RC2
+
+`SGI_COM` selecciona la asignación operativa usando su reloj autoritativo. Prioriza el turno en curso y, si no existe, habilita el próximo turno desde 59 minutos antes. `SGI_OPR` no calcula ni decide la vigencia temporal. La topología y el System of Record permanecen sin cambios.
+

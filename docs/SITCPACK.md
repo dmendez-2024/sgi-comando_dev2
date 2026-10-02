@@ -51,3 +51,7 @@ CURRENT contiene **23 Program IDs**, **25 interconexiones** y **31 interfaces**.
 ## CSL v0.2 — 2026-09-27
 Sin cambios de arquitectura, Program IDs o interconexiones. `sitc/SGI_Comando_CURRENT.sitcpack` se preserva byte-for-byte respecto de CSL v0.1.1 / P0P1. La Notificación de Incidentes usa capacidades internas de SGI: Comando en esta UAT y no activa nuevos contratos externos.
 
+# BIT-INT-001 RC1 (2026-09-29)
+
+Se genera `sitc/SGI_COM-BIT-INT-001-RC1-COMPONENT_DELTA.sitcpack`. Es un delta aditivo del contrato existente, sin cambio de topología ni base de datos. Requiere PREVIEW/MERGE y reconciliación con CORE antes de promoción.
+

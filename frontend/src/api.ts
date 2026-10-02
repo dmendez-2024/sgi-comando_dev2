@@ -143,6 +143,8 @@ export const api={
  uploadConsignmentStandardImage:(evidenceId:string,file:File)=>consignmentImageUpload(evidenceId,file),
  deleteConsignmentStandardImage:(evidenceId:string,imageId:string)=>request<any>(`/api/consignments/evidences/${encodeURIComponent(evidenceId)}/standard-images/${encodeURIComponent(imageId)}`,{method:'DELETE'}),
  consignments:(pointId:string)=>request<any[]>(`/api/consignments?pointId=${encodeURIComponent(pointId)}`),
+  consignmentReviewRequests:(status='PENDING')=>request<any[]>(`/api/v1/operator/consignment-review-requests?status=${encodeURIComponent(status)}`),
+  patrolExecutions:()=>request<any[]>('/api/v1/operator/patrol-executions'),
  currentRegesep:(pointId:string)=>request<any>(`/api/points/${pointId}/regesep/current`),
  assignmentWeek:(companyId:string,weekStart:string,pointId?:string)=>request<any>(`/api/assignments/week?companyId=${encodeURIComponent(companyId)}&weekStart=${weekStart}${pointId?`&pointId=${encodeURIComponent(pointId)}`:''}`),
  assignmentPersonnel:(companyId:string,weekStart:string,q='',role='',availability='',page=0,size=50,sort='PERSON',direction='ASC')=>request<any>(`/api/assignments/personnel?companyId=${encodeURIComponent(companyId)}&weekStart=${weekStart}&q=${encodeURIComponent(q)}&role=${encodeURIComponent(role)}&availability=${encodeURIComponent(availability)}&page=${page}&size=${size}&sort=${encodeURIComponent(sort)}&direction=${encodeURIComponent(direction)}`),
