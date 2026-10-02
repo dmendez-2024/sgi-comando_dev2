@@ -10,6 +10,8 @@ import jakarta.ws.rs.core.MediaType;
 import org.hibernate.query.NativeQuery;
 import java.time.*;
 import java.time.temporal.TemporalAdjusters;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
@@ -25,6 +27,68 @@ public class DashboardResource {
 
     public record Metrics(LocalDate weekStart, Instant calculatedAt, Double idAverage, Double icAverage,
                           long idSamples, long icSamples, long lateReliefs, long recordedReliefs) {}
+    public record RiskTrendPoint(LocalDate date, long scheduledPoints, long uncoveredPoints, Double riskIndex) {}
+
+    @GET @Path("/operational-risk-trend")
+    public List<RiskTrendPoint> operationalRiskTrend(@QueryParam("weekStart") String weekStart,
+            @QueryParam("companyId") UUID companyId, @QueryParam("clientId") UUID clientId) {
+        LocalDate week;
+        try {
+            week = (weekStart == null ? LocalDate.now(OPERATING_ZONE) : LocalDate.parse(weekStart))
+                .with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
+        } catch (DateTimeException error) { throw new BadRequestException("weekStart debe ser una fecha YYYY-MM-DD."); }
+        LocalDate end = week.plusDays(6);
+        LocalDate today = LocalDate.now(OPERATING_ZONE);
+        if (end.isAfter(today)) end = today;
+        LocalDate start = end.minusDays(29);
+        Set<UUID> allowed = scope.allowedCompanyIds();
+        if (companyId != null) { scope.requireCompany(companyId); allowed = Set.of(companyId); }
+        List<RiskTrendPoint> trend = new ArrayList<>(30);
+        if (allowed.isEmpty()) {
+            for (LocalDate day = start; !day.isAfter(end); day = day.plusDays(1)) trend.add(new RiskTrendPoint(day, 0, 0, null));
+            return trend;
+        }
+        String sql = """
+            with point_days as (
+                select (sh.starts_at at time zone 'America/Guayaquil')::date as day,
+                       p.id as point_id,
+                       bool_or(not exists (
+                           select 1 from operational_assignment a
+                           where a.instance_country_id=sh.instance_country_id
+                             and a.shift_occurrence_id=sh.id and a.status<>'REMOVED'
+                       )) as uncovered
+                from shift_occurrence sh
+                join post po on po.id=sh.post_id and po.instance_country_id=sh.instance_country_id
+                join point p on p.id=po.point_id and p.instance_country_id=sh.instance_country_id
+                join service sv on sv.id=p.service_id and sv.instance_country_id=p.instance_country_id
+                where sh.instance_country_id=:tenant and p.company_id in (:companies)
+                  and sh.required=true and sh.starts_at>=:from and sh.starts_at<:to
+            """ + (clientId == null ? "" : " and sv.client_id=:client") + """
+                group by day,p.id
+            )
+            select day,count(*) as scheduled_points,count(*) filter (where uncovered) as uncovered_points
+            from point_days group by day order by day
+            """;
+        NativeQuery<?> query = em.createNativeQuery(sql).unwrap(NativeQuery.class);
+        query.setParameter("tenant", tenant.instanceCountryId());
+        query.setParameterList("companies", allowed);
+        query.setParameter("from", start.atStartOfDay(OPERATING_ZONE).toInstant());
+        query.setParameter("to", end.plusDays(1).atStartOfDay(OPERATING_ZONE).toInstant());
+        if (clientId != null) query.setParameter("client", clientId);
+        java.util.Map<LocalDate, long[]> counts = new java.util.HashMap<>();
+        for (Object result : query.getResultList()) {
+            Object[] row = (Object[]) result;
+            LocalDate day = row[0] instanceof LocalDate local ? local : ((java.sql.Date) row[0]).toLocalDate();
+            counts.put(day, new long[]{((Number) row[1]).longValue(), ((Number) row[2]).longValue()});
+        }
+        for (LocalDate day = start; !day.isAfter(end); day = day.plusDays(1)) {
+            long[] values = counts.get(day);
+            long scheduled = values == null ? 0 : values[0], uncovered = values == null ? 0 : values[1];
+            trend.add(new RiskTrendPoint(day, scheduled, uncovered,
+                scheduled == 0 ? null : Math.round(1000d * uncovered / scheduled) / 10d));
+        }
+        return trend;
+    }
 
     @GET @Path("/metrics")
     public Metrics metrics(@QueryParam("weekStart") String weekStart,

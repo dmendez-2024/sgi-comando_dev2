@@ -15,7 +15,8 @@ type Coverage={companies:CoverageCompany[];totalUnassignedShifts:number;totalUnc
 type PointLocation={id:string;province?:string;city?:string};
 type Province={code:string;name:string;status?:string;geometryJson?:string;coreSubdivisionId?:string;coreDatasetVersion?:string};
 type DashboardMetrics={calculatedAt:string;idAverage:number|null;icAverage:number|null;idSamples:number;icSamples:number;lateReliefs:number;recordedReliefs:number};
-type DashboardData={companies:Company[];rows:ServiceRow[];coverage:Coverage|null;metrics:DashboardMetrics|null;locations:PointLocation[];provinces:Province[];errors:string[]};
+type RiskTrendPoint={date:string;scheduledPoints:number;uncoveredPoints:number;riskIndex:number|null};
+type DashboardData={companies:Company[];rows:ServiceRow[];coverage:Coverage|null;metrics:DashboardMetrics|null;riskTrend:RiskTrendPoint[]|null;locations:PointLocation[];provinces:Province[];errors:string[]};
 
 function dateAtLocalNoon(value:Date){return new Date(value.getFullYear(),value.getMonth(),value.getDate(),12)}
 function weekStartIso(offset=0){
@@ -33,6 +34,33 @@ function statusLabel(row:ServiceRow){
   if(row.state==='TO_CONFIGURE')return 'Por configurar';
   if(row.state==='INACTIVE')return 'Inactivo';
   return row.pendingNews>0?'Novedad pendiente':'Activo';
+}
+
+function RiskTrendChart({points}:{points:RiskTrendPoint[]}){
+  const left=40,right=590,top=24,bottom=158;
+  const plotted=points.map((point,index)=>({
+    ...point,
+    x:left+(right-left)*index/Math.max(1,points.length-1),
+    y:point.riskIndex==null?null:bottom-(bottom-top)*point.riskIndex/100
+  }));
+  const path=plotted.map((point,index)=>point.y==null?'':`${index===0||plotted[index-1].y==null?'M':'L'}${point.x.toFixed(1)} ${point.y.toFixed(1)}`).filter(Boolean).join(' ');
+  return <div className="dash-v6-line-chart">
+    <div className="dash-v6-line-legend"><i/>Riesgo operacional</div>
+    <svg viewBox="0 0 610 188" role="img" aria-label="Índice diario de riesgo operacional, de cero a cien, durante treinta días">
+      {[0,25,50,75,100].map(value=>{
+        const y=bottom-(bottom-top)*value/100;
+        return <g key={value}><line className="dash-v6-line-grid" x1={left} x2={right} y1={y} y2={y}/><text className="dash-v6-line-tick" x={left-10} y={y+3} textAnchor="end">{value}</text></g>;
+      })}
+      <line className="dash-v6-line-axis" x1={left} x2={left} y1={top} y2={bottom}/>
+      <line className="dash-v6-line-axis" x1={left} x2={right} y1={bottom} y2={bottom}/>
+      <text className="dash-v6-line-unit" transform="translate(10 102) rotate(-90)">/ 100</text>
+      <path className="dash-v6-line-path" d={path}/>
+      {plotted.map((point,index)=>point.y==null?null:<circle className="dash-v6-line-point" key={point.date} cx={point.x} cy={point.y} r={index===plotted.length-1?3:2.5}>
+        <title>{`${dateLabel(shiftDate(point.date,0))}: riesgo ${point.riskIndex}/100 · ${point.uncoveredPoints} de ${point.scheduledPoints} puntos sin cobertura`}</title>
+      </circle>)}
+      {plotted.map((point,index)=>index%7!==0&&index!==plotted.length-1?null:<text className="dash-v6-line-date" key={point.date} x={point.x} y={177} textAnchor={index===0?'start':index===plotted.length-1?'end':'middle'}>{dateLabel(shiftDate(point.date,0))}</text>)}
+    </svg>
+  </div>;
 }
 
 const visibleMetricsWithoutSource=[
@@ -62,32 +90,34 @@ export default function Dashboard(){
   const [clientSearch,setClientSearch]=useState('');
   const [clientMenuOpen,setClientMenuOpen]=useState(false);
   const [loading,setLoading]=useState(true);
-  const [data,setData]=useState<DashboardData>({companies:[],rows:[],coverage:null,metrics:null,locations:[],provinces:[],errors:[]});
+  const [data,setData]=useState<DashboardData>({companies:[],rows:[],coverage:null,metrics:null,riskTrend:null,locations:[],provinces:[],errors:[]});
 
   useEffect(()=>{
     let cancelled=false;
     setLoading(true);
     void (async()=>{
-      const [companiesResult,overviewResult,coverageResult,territoryResult,metricsResult]=await Promise.allSettled([
-        api.companies(0,100),api.serviceOverview(),api.assignmentCoverage(weekStart,companyId,clientId),api.territory(),api.dashboardMetrics(weekStart,companyId,clientId)
+      const [companiesResult,overviewResult,coverageResult,territoryResult,metricsResult,trendResult]=await Promise.allSettled([
+        api.companies(0,100),api.serviceOverview(),api.assignmentCoverage(weekStart,companyId,clientId),api.territory(),api.dashboardMetrics(weekStart,companyId,clientId),api.dashboardRiskTrend(weekStart,companyId,clientId)
       ]);
       const errors:string[]=[];
       const companies=companiesResult.status==='fulfilled'?(companiesResult.value.items??[]) as Company[]:[];
       const rows=overviewResult.status==='fulfilled'?((overviewResult.value.rows??[]) as ServiceRow[]):[];
       const coverage=coverageResult.status==='fulfilled'?coverageResult.value as Coverage:null;
       const metrics=metricsResult.status==='fulfilled'?metricsResult.value as DashboardMetrics:null;
+      const riskTrend=trendResult.status==='fulfilled'?trendResult.value as RiskTrendPoint[]:null;
       const provinces=territoryResult.status==='fulfilled'?((territoryResult.value.provinces??[]) as Province[]):[];
       if(companiesResult.status==='rejected')errors.push('No se pudieron cargar las compañías.');
       if(overviewResult.status==='rejected')errors.push('No se pudo cargar el resumen de Servicios.');
       if(coverageResult.status==='rejected')errors.push('No se pudo cargar la cobertura de la semana.');
       if(metricsResult.status==='rejected')errors.push('No se pudieron cargar los indicadores de la semana.');
+      if(trendResult.status==='rejected')errors.push('No se pudo cargar la tendencia operacional.');
       if(territoryResult.status==='rejected')errors.push('No se pudo cargar el catálogo territorial.');
 
       const serviceIds=Array.from(new Set(rows.map(row=>row.serviceId).filter(Boolean)));
       const locationGroups=await Promise.allSettled(serviceIds.map(id=>api.points(id)));
       const locations=locationGroups.flatMap(result=>result.status==='fulfilled'?result.value as PointLocation[]:[]);
       if(locationGroups.some(result=>result.status==='rejected'))errors.push('No se pudieron cargar todas las ubicaciones de los puntos.');
-      if(!cancelled){setData({companies,rows,coverage,metrics,locations,provinces,errors});setLoading(false)}
+      if(!cancelled){setData({companies,rows,coverage,metrics,riskTrend,locations,provinces,errors});setLoading(false)}
     })();
     return()=>{cancelled=true};
   },[weekStart,companyId,clientId]);
@@ -102,7 +132,6 @@ export default function Dashboard(){
   const filteredRows=useMemo(()=>data.rows.filter(row=>(!companyId||row.companyId===companyId)&&(!clientId||row.clientId===clientId)),[data.rows,companyId,clientId]);
   const pointIds=useMemo(()=>new Set(filteredRows.map(row=>row.pointId)),[filteredRows]);
   const companyOptions=useMemo(()=>data.companies.filter(company=>!clientId||filteredRows.some(row=>row.companyId===company.id)),[data.companies,filteredRows,clientId]);
-  const coverageCompanies=data.coverage?.companies??[];
   const uncoveredPoints=data.coverage?.totalUncoveredPoints??null;
   const coveragePct=data.coverage?.overallCoveragePct??null;
   const idAverage=data.metrics?.idAverage??null;
@@ -128,10 +157,6 @@ export default function Dashboard(){
     });
     return Array.from(counts.values());
   },[data.locations,data.provinces,pointIds]);
-  const chartCompanies=useMemo(()=>coverageCompanies
-    .filter(company=>!companyId||company.companyId===companyId)
-    .sort((a,b)=>b.uncoveredPoints-a.uncoveredPoints||a.companyName.localeCompare(b.companyName,'es')),[coverageCompanies,companyId]);
-  const chartMax=Math.max(1,...chartCompanies.map(company=>company.uncoveredPoints));
   const companyName=companyOptions.find(company=>company.id===companyId)?.name;
   const today=data.metrics?new Intl.DateTimeFormat('es-EC',{weekday:'long',day:'numeric',month:'long',year:'numeric',hour:'2-digit',minute:'2-digit',timeZone:'America/Guayaquil'}).format(new Date(data.metrics.calculatedAt)):'pendiente de cargar';
   const metrics=[
@@ -176,10 +201,8 @@ export default function Dashboard(){
 
       <div className="dash-v6-side-stack">
         <section className="dash-v6-panel dash-v6-trend">
-          <div className="dash-v6-panel-title"><span className="blue-icon"><Activity size={18}/></span><div><h3>Puntos sin cobertura por compañía</h3><small>Al menos un turno requerido sin asignar · semana {weekLabel(weekStart)}</small></div></div>
-          {loading?<div className="dash-v6-no-history">Cargando cobertura semanal…</div>:!data.coverage?<div className="dash-v6-no-history"><Activity size={24}/><strong>Datos no disponibles</strong><span>No se pudo cargar la cobertura semanal desde SGI Comando.</span></div>:chartCompanies.length===0?<div className="dash-v6-no-history"><Activity size={24}/><strong>Sin puntos para graficar</strong><span>No hay compañías con datos de cobertura en este alcance.</span></div>:<div className="dash-v6-bars" role="img" aria-label="Puntos sin cobertura por compañía">
-            {chartCompanies.map(company=><div className="dash-v6-bar-row" key={company.companyId} title={`${company.companyName}: ${company.uncoveredPoints} puntos sin cobertura`}><span>{company.companyName}</span><i><b style={{width:`${company.uncoveredPoints===0?0:Math.max(3,(company.uncoveredPoints/chartMax)*100)}%`}}/></i><strong>{company.uncoveredPoints}</strong></div>)}
-          </div>}
+          <div className="dash-v6-panel-title"><span className="blue-icon"><Activity size={18}/></span><div><h3>Tendencia — Índice de riesgo operacional</h3><small>Puntos sin cobertura por día · últimos 30 días del alcance seleccionado</small></div></div>
+          {loading?<div className="dash-v6-no-history">Cargando tendencia operacional…</div>:!data.riskTrend?<div className="dash-v6-no-history"><Activity size={24}/><strong>Datos no disponibles</strong><span>No se pudo cargar la tendencia desde SGI Comando.</span></div>:data.riskTrend.every(point=>point.riskIndex==null)?<div className="dash-v6-no-history"><Activity size={24}/><strong>Sin datos</strong><span>No hay turnos requeridos registrados en este período y alcance.</span></div>:<RiskTrendChart points={data.riskTrend}/>}
         </section>
         <section className="dash-v6-panel dash-v6-geography">
           <div className="dash-v6-panel-title"><span className="blue-icon"><MapPin size={18}/></span><div><h3>Mapa operacional por provincia</h3><small>{pointIds.size} puntos en el alcance seleccionado</small></div></div>
@@ -187,6 +210,6 @@ export default function Dashboard(){
         </section>
       </div>
     </div>
-    <div className="dash-v6-footnote"><FileText size={14}/><span>Cobertura, ID, IC y relevos usan la semana, compañía y cliente seleccionados. ID e IC son valores guardados en asignaciones de turnos terminados, ponderados por su duración; no acreditan ejecución real. Los indicadores sin fuente confirmada muestran «Sin datos». Atención requerida y mapa muestran el estado actual del alcance seleccionado.</span></div>
+    <div className="dash-v6-footnote"><FileText size={14}/><span>Cobertura, ID, IC y relevos usan la semana, compañía y cliente seleccionados. La tendencia muestra, por día, el porcentaje de puntos programados con al menos un turno requerido sin asignar en los 30 días que terminan en la semana elegida. Los días sin turnos registrados quedan sin valor. ID e IC son valores guardados en asignaciones de turnos terminados, ponderados por su duración; no acreditan ejecución real. Los indicadores sin fuente confirmada muestran «Sin datos». Atención requerida y mapa muestran el estado actual del alcance seleccionado.</span></div>
   </div>;
 }
