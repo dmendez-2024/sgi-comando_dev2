@@ -1,0 +1,9 @@
+{
+  "sitcpackSchema": "1.0",
+  "packageType": "COMPONENT_DELTA",
+  "packageId": "PKG-SGI-COM-BIT-INT-001-RC1-20260929",
+  "generatedAt": "2026-09-29T12:00:00-05:00",
+  "description": "SGI_COM runtime extension for active Bitácora configuration",
+  "sourceBaseline": "SGI_Comando entrega congelada 2026-09-28",
+  "status": "RC_UAT"
+}

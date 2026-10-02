@@ -1,0 +1,17 @@
+{
+  "programId": "SGI_COM",
+  "component": "SGI-09 Bitácora",
+  "interconnection": {
+    "interconnectionRef": "SGI_OPR_SGI_COM_0001",
+    "interconnectionId": "SGI_OPR_SGI_COM_0001_v001",
+    "source": "SGI_OPR",
+    "target": "SGI_COM",
+    "systemOfRecord": "SGI_COM",
+    "operation": "GET /api/v1/operator/runtime",
+    "contractState": "UAT_PARTIAL"
+  },
+  "change": "Additive response member relief.bitacoraProtocols filtered by tenant, assigned post and ACTIVO status",
+  "topologyChanged": false,
+  "databaseChanged": false,
+  "writeContractIncluded": false
+}
