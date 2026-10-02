@@ -269,24 +269,23 @@ export default function ConsignasExecution(){
     <div className="cns-layout">
       <section className="cns-main-card nov-main-card">
         <div className="cns-card-head"><div className="cns-title"><Search size={20}/><h3>Búsqueda de consignas</h3></div><div className="cns-tabs"><button className={filters.type==='ALL'?'active':''} onClick={()=>set('type','ALL')}>Todos</button><button className={filters.type==='RELIEF'?'active':''} onClick={()=>set('type','RELIEF')}><RefreshCw size={14}/>Relevos</button><button className={filters.type==='PATROL'?'active':''} onClick={()=>set('type','PATROL')}><CarFront size={14}/>Patrullas</button><button className={filters.type==='ADHOC'?'active':''} onClick={()=>set('type','ADHOC')}><FileText size={14}/>Consignas ad-hoc</button></div></div>
-        <label className="cns-main-search nov-main-search"><Search size={18}/><input value={filters.query} onChange={e=>set('query',e.target.value)} placeholder="Buscar por código, nombre, cliente, punto, responsable…"/></label>
-        <div className="cns-filter-grid row-2">
+        <div className="cns-search-row">
+          <label className="cns-main-search nov-main-search"><Search size={18}/><input value={filters.query} onChange={e=>set('query',e.target.value)} placeholder="Buscar por código, nombre, cliente, punto, responsable…"/></label>
           <Field label="Ciudad"><select value={filters.city} onChange={e=>set('city',e.target.value)}><option value="">Todas</option>{cities.map(x=><option key={x}>{x}</option>)}</select></Field>
+        </div>
+        <div className="cns-filter-grid nov-filter-grid">
           <Field label="Compañía"><select value={filters.company} onChange={e=>setCompany(e.target.value)}><option value="ALL">Todas</option>{companies.map(x=><option key={x}>{x}</option>)}</select></Field>
           <Field label="Cliente"><select value={filters.client} onChange={e=>setClient(e.target.value)}><option value="">Todos</option>{clients.map(x=><option key={x}>{x}</option>)}</select></Field>
           <Field label="Punto"><select value={filters.point} onChange={e=>setPoint(e.target.value)} disabled={!filters.client}><option value="">{filters.client?'Todos':'Seleccione un cliente primero'}</option>{points.map(x=><option key={x}>{x}</option>)}</select></Field>
           <Field label="Puesto"><select value={filters.post} onChange={e=>set('post',e.target.value)} disabled={!filters.point}><option value="">{filters.point?'Todos':'Seleccione un punto primero'}</option>{posts.map(x=><option key={x}>{x}</option>)}</select></Field>
-        </div>
-        <div className="cns-filter-grid row-3">
           <Field label="Tipo de consigna"><select value={filters.type} onChange={e=>set('type',e.target.value as Filters['type'])}><option value="ALL">Todos</option><option value="RELIEF">Relevos</option><option value="PATROL">Patrullas</option><option value="ADHOC">Consignas ad-hoc</option></select></Field>
           <Field label="Estado"><select value={filters.status} onChange={e=>set('status',e.target.value as Filters['status'])}><option value="ALL">Todos</option><option value="IN_PROGRESS">En curso</option><option value="COMPLETED">Completada</option><option value="OVERDUE">Vencida</option><option value="PENDING">Pendiente</option><option value="CRITICAL">Crítica</option></select></Field>
           <Field label="Responsable"><select value={filters.responsible} onChange={e=>set('responsible',e.target.value)} disabled={filters.company==='ALL'}><option value="">{filters.company!=='ALL'?'Todos':'Seleccione una compañía primero'}</option>{responsibles.map(x=><option key={x}>{x}</option>)}</select></Field>
           <Field label="Fecha inicio"><input type="date" value={filters.dateFrom} onChange={e=>set('dateFrom',e.target.value)}/></Field>
           <Field label="Fecha fin"><input type="date" value={filters.dateTo} onChange={e=>set('dateTo',e.target.value)}/></Field>
         </div>
-        <div className="cns-rules-note"><AlertCircle size={15}/><span>Las fechas son obligatorias. El rango consultado puede ser máximo de 1 año.</span></div>
         {dateError && <div className="cns-validation-error"><AlertTriangle size={16}/><span>{dateError}</span></div>}
-        <div className="cns-search-actions nov-actions"><button className="primary" disabled={!!dateError} onClick={()=>void loadReviewRequests()}><Search size={16}/>Buscar</button><button onClick={clear}><FilterX size={16}/>Limpiar filtros</button><button className="export" onClick={exportCsv} disabled={!!dateError || !rows.length}><Download size={16}/>Exportar</button></div>
+        <div className="cns-search-actions nov-actions"><button className="primary" disabled={!!dateError} onClick={()=>void loadReviewRequests()}><Search size={16}/>Buscar</button><button onClick={clear}><FilterX size={16}/>Limpiar filtros</button><div className="cns-rules-note"><AlertCircle size={15}/><span>Fechas obligatorias · rango máximo de 1 año</span></div><button className="export" onClick={exportCsv} disabled={!!dateError || !rows.length}><Download size={16}/>Exportar</button></div>
 
         <div className="cns-results-card nov-results-card"><div className="cns-results-head nov-results-head"><h3>Ejecuciones ({rows.length})</h3><div>Ordenar por: <strong>Fecha más reciente</strong></div></div><div className="cns-table-wrap nov-table-wrap"><table className="cns-table nov-table"><thead><tr><th>Tipo</th><th>Código</th><th>Nombre / Descripción</th><th>Cliente</th><th>Punto / Puesto</th><th>Responsable</th><th>Ventana / Hora</th><th>Estado de ejecución</th><th>Resultado / Progreso</th><th></th></tr></thead><tbody>{rows.map(row=>{
           const pct=Math.round((row.progressCurrent/Math.max(row.progressTotal,1))*100);

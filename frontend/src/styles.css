@@ -2097,6 +2097,7 @@
 /* Bitácora: misma densidad visual y ancho de resultados que Novedades. */
 .bit-global-page .bit-global-kpis{grid-template-columns:repeat(5,minmax(145px,1fr));overflow-x:auto;padding-bottom:6px}
 .bit-global-page .bit-global-search-card{min-width:0}
+.bit-global-page .bit-global-layout{grid-template-columns:minmax(0,1fr)}
 .bit-global-page .bit-global-table{min-width:1050px}
 .bit-global-page .bit-global-type,.bit-global-page .bit-global-status{font-size:10px;padding:5px 8px;white-space:nowrap}
 .bit-global-page .bit-global-table td>button{font-size:12px}
@@ -2124,7 +2125,6 @@
 .cns-page .cns-main-search svg{width:15px;height:15px}
 .cns-page .cns-main-search input{font-size:11px}
 .cns-page .cns-filter-grid{grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin-top:10px}
-.cns-page .cns-filter-grid.row-3{margin-top:9px}
 .cns-page .cns-field{gap:3px}
 .cns-page .cns-field span{font-size:10px;font-weight:750;color:#50617f}
 .cns-page .cns-field input,.cns-page .cns-field select{height:31px;padding:0 9px;border-radius:7px;font-size:11px}
@@ -2153,11 +2153,12 @@
 .cns-page.nov-page .cns-tabs button{height:36px;padding:0 13px;border-radius:10px;font-size:13px}
 .cns-page.nov-page .cns-main-search{height:50px;padding:0 14px;border-radius:12px}
 .cns-page.nov-page .cns-main-search input{font-size:15px}
-.cns-page.nov-page .cns-filter-grid{gap:13px;margin-top:14px}
+.cns-page.nov-page .cns-search-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(180px,220px);align-items:end;gap:13px}
+.cns-page.nov-page .cns-filter-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:13px;margin-top:14px}
 .cns-page.nov-page .cns-field{gap:6px}
 .cns-page.nov-page .cns-field span{font-size:12px}
 .cns-page.nov-page .cns-field input,.cns-page.nov-page .cns-field select{height:42px;padding:0 12px;border-radius:10px;font-size:13px}
-.cns-page.nov-page .cns-rules-note{margin-top:12px;padding:10px 12px;border:1px solid #dde6f4;border-radius:10px;background:#f5f8fd;color:#586986;font-size:12px;font-weight:600}
+.cns-page.nov-page .cns-search-actions .cns-rules-note{margin:0;padding:0;border:0;background:transparent;color:#6b778d;font-size:11px;font-weight:500}
 .cns-page.nov-page .cns-search-actions{gap:10px;margin-top:14px;flex-wrap:wrap}
 .cns-page.nov-page .cns-search-actions button{height:42px;padding:0 16px;border-radius:10px;font-size:13px;gap:8px}
 .cns-page.nov-page .cns-results-card{margin-top:18px;border-radius:16px;box-shadow:0 2px 10px rgba(20,35,80,.04)}
@@ -2165,6 +2166,5 @@
 .cns-page.nov-page .cns-table td>button{display:inline-flex;align-items:center;gap:4px;cursor:pointer}
 .cns-page.nov-page .cns-inspector{width:min(760px,96vw)}
 .cns-page.nov-page .cns-inspector>footer{justify-content:flex-end}
-@container cns-content (max-width:1300px){.cns-page.nov-page .cns-filter-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @container cns-content (max-width:720px){.cns-page.nov-page .cns-filter-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
-@container cns-content (max-width:440px){.cns-page.nov-page .cns-filter-grid{grid-template-columns:1fr}}
+@container cns-content (max-width:440px){.cns-page.nov-page .cns-search-row,.cns-page.nov-page .cns-filter-grid{grid-template-columns:1fr}}
