@@ -1,4 +1,0 @@
--------------------------------------------------------------------------------
-Test set: com.cajamarca.sgi.comando.visint.VisintEndpointTest
--------------------------------------------------------------------------------
-Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.471 s -- in com.cajamarca.sgi.comando.visint.VisintEndpointTest
