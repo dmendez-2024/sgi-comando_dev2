@@ -35,7 +35,7 @@ import {
   Wrench,
   X,
 } from 'lucide-react';
-import {api,ApiError} from '../api';
+import {api,ApiError,getUser} from '../api';
 import BitacoraConfig from './BitacoraConfig';
 import PatrolConfig from './PatrolConfig';
 import ConsignasConfig from './ConsignasConfig';
@@ -91,6 +91,8 @@ type AtsPackageDto={
 type PostSkillSet={attendance:number;accessControl:number;patrol:number;judgement:number;tactical:number;bearing:number;leadership:number;customerService:number};
 type PostOperationalConfig={postId:string;postType:'CAA'|'PAT'|'VIG'|'MIX';description:string;alias?:string|null;visualTitle?:string|null;standardImageId?:string|null;standardImageName?:string|null;atsLocationKey:string;atsLocationLabel:string;atsPackageId?:string|null;atsLocationX?:number|null;atsLocationY?:number|null;skills:PostSkillSet;adjustmentJustification?:string|null;configStatus:'DRAFT'|'CONFIGURED';updatedBy?:string|null};
 type PostStandardPhoto={id:string;position:number;originalName:string;contentType:string;url:string};
+type PostVisualRule={thresholdValue:number|null;referenceImageCount:number|null;effectiveReferenceImageCount:number;savedImageCount:number;historicalPresentationMonths:number|null;updatedBy?:string|null;updatedAt?:string|null};
+type PostVisualRuleHistory={thresholdValue:number|null;referenceImageCount:number|null;historicalPresentationMonths:number|null;legacyHistoricalPresentation:string|null;changedBy:string;changedAt:string};
 type CommercialPost={id:string;pointId:string;code:string;name:string;format:string;fhe:number;tier:string;rotationCode?:string|null;cycleLengthDays?:number|null};
 type CommercialShift={id:string;postId:string;shiftName:string;startsAt:string;endsAt:string};
 type CommercialWeek={posts:CommercialPost[];shifts:CommercialShift[]};
@@ -512,6 +514,7 @@ function PostLocationMap({planUrl,x,y,onSelect}:{planUrl:string;x?:number|null;y
 }
 
 function PostsPage({point,onBack}:{point:PointRow;onBack:()=>void}){
+  const canEditVisualRule=['presidente','dlatam','don','dnacional','dzonal'].includes(getUser());
   const [configs,setConfigs]=useState<PostOperationalConfig[]>([]);
   const [commercialWeek,setCommercialWeek]=useState<CommercialWeek|null>(null);
   const [atsPackage,setAtsPackage]=useState<AtsPackageDto|null>(null);
@@ -527,6 +530,10 @@ function PostsPage({point,onBack}:{point:PointRow;onBack:()=>void}){
   const [photos,setPhotos]=useState<PostStandardPhoto[]>([]);
   const [photoRevision,setPhotoRevision]=useState(0);
   const [photoLoading,setPhotoLoading]=useState(false);
+  const [visualRule,setVisualRule]=useState<PostVisualRule|null>(null);
+  const [visualRuleHistory,setVisualRuleHistory]=useState<PostVisualRuleHistory[]>([]);
+  const [visualRuleBusy,setVisualRuleBusy]=useState(false);
+  const [visualRuleStatus,setVisualRuleStatus]=useState<{kind:'error'|'success';text:string}|null>(null);
   const [photoBusy,setPhotoBusy]=useState(false);
   const photoInputRef=useRef<HTMLInputElement>(null);
 
@@ -581,6 +588,19 @@ function PostsPage({point,onBack}:{point:PointRow;onBack:()=>void}){
     })();
     return()=>{active=false;urls.forEach(url=>URL.revokeObjectURL(url))};
   },[selectedPostId,photoRevision]);
+
+  useEffect(()=>{
+    let active=true;
+    setVisualRule(null);
+    setVisualRuleHistory([]);
+    setVisualRuleStatus(null);
+    if(selectedPostId)void Promise.all([
+      api.postVisualRule(selectedPostId),
+      canEditVisualRule?api.postVisualRuleHistory(selectedPostId):Promise.resolve([]),
+    ]).then(([rule,history])=>{if(active){setVisualRule(rule);setVisualRuleHistory(history)}})
+      .catch(error=>{if(active)setPageError(errorMessage(error))});
+    return()=>{active=false};
+  },[selectedPostId,canEditVisualRule]);
 
   const filteredPosts=useMemo(()=>{
     const q=searchPost.trim().toLowerCase();
@@ -661,6 +681,29 @@ function PostsPage({point,onBack}:{point:PointRow;onBack:()=>void}){
       setPhotoRevision(value=>value+1);
       setNotice('Foto estándar eliminada.');
     }catch(error){setPageError(errorMessage(error))}finally{setPhotoBusy(false)}
+  };
+
+  const visualRuleThresholdError=visualRule?.thresholdValue!=null&&(!Number.isFinite(visualRule.thresholdValue)||visualRule.thresholdValue<0||visualRule.thresholdValue>1);
+  const visualRuleMonthsError=visualRule?.historicalPresentationMonths!=null&&(!Number.isInteger(visualRule.historicalPresentationMonths)||visualRule.historicalPresentationMonths<1||visualRule.historicalPresentationMonths>120);
+  const saveVisualRule=async()=>{
+    if(!selectedPostId||!visualRule||!canEditVisualRule)return;
+    if(visualRuleThresholdError||visualRuleMonthsError){
+      setVisualRuleStatus({kind:'error',text:'Corrige los campos señalados antes de guardar la regla visual.'});
+      return;
+    }
+    setVisualRuleBusy(true);setPageError('');setNotice('');
+    setVisualRuleStatus(null);
+    try{
+      const saved=await api.savePostVisualRule(selectedPostId,{
+        thresholdValue:visualRule.thresholdValue,
+        referenceImageCount:visualRule.referenceImageCount,
+        historicalPresentationMonths:visualRule.historicalPresentationMonths,
+      }) as PostVisualRule;
+      setVisualRule(saved);
+      setVisualRuleStatus({kind:'success',text:'Regla visual guardada en la base de datos.'});
+      try{setVisualRuleHistory(await api.postVisualRuleHistory(selectedPostId))}
+      catch{setVisualRuleStatus({kind:'success',text:'Regla visual guardada. No se pudo actualizar el historial; recarga la página para verlo.'})}
+    }catch(error){setVisualRuleStatus({kind:'error',text:`No se guardó la regla visual: ${errorMessage(error)}`})}finally{setVisualRuleBusy(false)}
   };
 
   if(!selectedRow){return <div className="services-v01"><div className="ser-empty">Este punto no tiene puestos recibidos desde SIC: COM.</div></div>}
@@ -771,6 +814,19 @@ function PostsPage({point,onBack}:{point:PointRow;onBack:()=>void}){
                   {photos.length<3&&<button type="button" className="posts-photo-add" onClick={()=>photoInputRef.current?.click()} disabled={photoBusy||photoLoading}><Camera size={20}/><strong>{photoBusy?'Procesando…':'Agregar foto estándar'}</strong><small>{photos.length} de 3 · puede agregar {3-photos.length}</small></button>}
                 </div>
                 <label><span>Notas del estándar</span><textarea value={draft.visualTitle??''} maxLength={300} onChange={event=>setDraft({...draft,visualTitle:event.target.value})} placeholder="Describe las referencias que deben verse en las fotos…"/></label>
+                <div className="posts-visual-rule">
+                <div className="posts-visual-rule-head"><div><strong>Regla visual</strong><span>Solo directores y Presidencia pueden modificarla.</span></div></div>
+                {visualRule?<>
+                  <div className="posts-visual-rule-fields">
+                    <label><span>Umbral (%) · valor entre 0 y 1</span><input type="number" min="0" max="1" step="any" value={visualRule.thresholdValue??''} aria-invalid={visualRuleThresholdError} disabled={!canEditVisualRule||visualRuleBusy} onChange={event=>{setVisualRule({...visualRule,thresholdValue:event.target.value===''?null:Number(event.target.value)});setVisualRuleStatus(null)}} placeholder="Ej. 0.80"/>{visualRuleThresholdError?<small className="posts-visual-rule-field-error" role="alert">El umbral debe estar entre 0 y 1.</small>:<small className="posts-visual-rule-hint">0,80 equivale al 80 %.</small>}</label>
+                    <label><span>Cantidad reglamentaria de fotos estándar</span><select value={visualRule.referenceImageCount??''} disabled={!canEditVisualRule||visualRuleBusy} onChange={event=>setVisualRule({...visualRule,referenceImageCount:event.target.value===''?null:Number(event.target.value)})}><option value="">Automático ({photos.length} fotos guardadas)</option>{[1,2,3].filter(count=>count<=photos.length).map(count=><option key={count} value={count}>{count} {count===1?'foto':'fotos'}</option>)}</select><small className="posts-visual-rule-hint">Cantidad efectiva: {Math.min(visualRule.referenceImageCount??photos.length,photos.length)}.</small></label>
+                  </div>
+                  <label><span>Presentación histórica (meses)</span><input type="number" min="1" max="120" step="1" value={visualRule.historicalPresentationMonths??''} aria-invalid={visualRuleMonthsError} disabled={!canEditVisualRule||visualRuleBusy} onChange={event=>{setVisualRule({...visualRule,historicalPresentationMonths:event.target.value===''?null:Number(event.target.value)});setVisualRuleStatus(null)}} placeholder="Ej. 12"/>{visualRuleMonthsError&&<small className="posts-visual-rule-field-error" role="alert">Ingresa un número entero entre 1 y 120 meses (máximo 10 años).</small>}</label>
+                  {canEditVisualRule&&<button type="button" className="posts-visual-rule-save" disabled={visualRuleBusy} onClick={()=>void saveVisualRule()}><Save size={14}/>{visualRuleBusy?'Guardando…':'Guardar regla visual'}</button>}
+                  {visualRuleStatus&&<div className={`posts-visual-rule-status ${visualRuleStatus.kind}`} role="status">{visualRuleStatus.kind==='error'?<AlertTriangle size={14}/>:<Info size={14}/>}<span>{visualRuleStatus.text}</span></div>}
+                  {canEditVisualRule&&visualRuleHistory.length>0&&<details className="posts-visual-rule-history"><summary>Historial de cambios ({visualRuleHistory.length})</summary><ul>{visualRuleHistory.map((item,index)=><li key={`${item.changedAt}-${index}`}><strong>{new Date(item.changedAt).toLocaleString('es-EC')}</strong><span>{item.changedBy} · Umbral {item.thresholdValue??'—'} · Fotos {item.referenceImageCount??'automático'} · Presentación {item.historicalPresentationMonths??'—'} meses</span>{item.legacyHistoricalPresentation&&<small>Descripción anterior: {item.legacyHistoricalPresentation}</small>}</li>)}</ul></details>}
+                </>:<span>Cargando regla visual…</span>}
+                </div>
               </div>
               <div className="posts-visint-card"><div><Sparkles size={17}/><strong>VISINT</strong><span>No aplica</span></div><p>Las fotos se guardan como referencia del puesto; el reconocimiento facial no aplica.</p></div>
             </div>
