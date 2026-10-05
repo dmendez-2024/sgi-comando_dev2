@@ -28,7 +28,6 @@ public class DashboardResource {
     public record Metrics(LocalDate weekStart, Instant calculatedAt, Double idAverage, Double icAverage,
                           long idSamples, long icSamples, long lateReliefs, long recordedReliefs) {}
     public record RiskTrendPoint(LocalDate date, long scheduledPoints, long uncoveredPoints, Double riskIndex) {}
-
     @GET @Path("/operational-risk-trend")
     public List<RiskTrendPoint> operationalRiskTrend(@QueryParam("weekStart") String weekStart,
             @QueryParam("companyId") UUID companyId, @QueryParam("clientId") UUID clientId) {
