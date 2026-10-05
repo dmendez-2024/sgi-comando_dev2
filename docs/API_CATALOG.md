@@ -227,6 +227,10 @@ Synchronize the mobile operator runtime context/configuration required for the a
 
 - `SGI_OPR_SGI_COM_0001_IF01` — `GET` `/api/v1/operator/runtime` — Assignment, Point/Post, protocols, consignments, patrols, bitacora and pending messages
 - `GET /api/v1/operator/patrol-executions` — consulta interna SGI Comando UI/backend del historial real de ejecuciones de Patrulla; aplica tenant, identidad del Operador y alcance RBAC por Compañía. No crea una nueva interconexión externa.
+- `GET /api/v1/operator/patrol-map?assignmentId={assignmentId}` — entrega autenticada del plano ATS vigente del Punto asignado, sin caché, manteniendo el aislamiento por instancia-país.
+- `POST /api/v1/operator/logbook-records` — recepción idempotente de registros de Bitácora desde SGI Operador.
+- `GET /api/v1/operator/logbook-records` — consulta interna para visualizar en SGI Comando los registros reales, filtrados por tenant, identidad y alcance RBAC.
+- `GET /api/v1/operator/relief-evidence/{eventId}/{purpose}?assignmentId={assignmentId}` — lectura autenticada de evidencia de relevo previamente recibida.
 - aliases históricos: `SGI_OPR__SGI_COM__00001__V0001`, `SGI_OPR__SGI_COM__00001`
 
 ## `SGI_OPR_SGI_COM_0002_v001` — SGI_OPR → SGI_COM
