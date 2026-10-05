@@ -8,7 +8,7 @@ type Std={id:string;position:number};
 type Cp={checkpointId:string;code:string;name:string;description:string;requiresEvidence:boolean;visintEnabled:boolean;hasStandardImage:boolean;standardImages:Std[];standardImageNotes:string;latitude:number|null;longitude:number|null};
 type Patrol={protocolCode:string;patrolId:string;code:string;name:string;checkpoints:Cp[]};
 type ConsignmentTask={consignmentId:string;code:string;title:string;instruction:string;latitude?:number|null;longitude?:number|null;evidences:{evidenceId:string;name:string;description:string;visintEnabled:boolean;standardImageNotes:string;standardImages:Std[]}[]};
-type LogbookTask={protocolId:string;code:string;name:string;fields:{fieldId:string;accreditationCode:string|null;section:string;name:string;fieldType:string;visintEnabled:boolean;standardImageNotes:string|null;standardImages:Std[]}[]};
+type LogbookTask={protocolId:string;code:string;name:string;latitude?:number|null;longitude?:number|null;fields:{fieldId:string;accreditationCode:string|null;section:string;name:string;fieldType:string;visintEnabled:boolean;standardImageNotes:string|null;standardImages:Std[]}[]};
 type Kind='PATRULLA'|'CONSIGNA'|'BITACORA'|'RELEVO';
 /** La tarea seleccionada, igual para los tres módulos. */
 type Task={kind:Kind;targetType:string;targetId:string;label:string;visint:boolean;standardImages:Std[];notes:string|null;latitude:number|null;longitude:number|null;requiresEvidence:boolean};
@@ -20,6 +20,9 @@ const REASONS:Record<string,string>={FILE_TOO_LARGE:'Supera 5 MB',UNSUPPORTED_FO
 const FLAGS:Record<string,string>={OUT_OF_RANGE:'Fuera del radio GPS'};
 const KINDS:{key:Kind;label:string}[]=[{key:'PATRULLA',label:'Patrulla'},{key:'CONSIGNA',label:'Consigna'},{key:'BITACORA',label:'Bitácora'},{key:'RELEVO',label:'Relevo'}];
 const INSTANCE='11111111-1111-1111-1111-111111111111';
+/** Ubicación simulada del agente respecto de la referencia de la tarea (Hito, consigna en modo GPS o Puesto). */
+const PLACE_AT:Record<Kind,string>={PATRULLA:'En el Hito',CONSIGNA:'En el punto de la consigna',BITACORA:'En el puesto',RELEVO:'En el puesto'};
+const PLACE_FAR:Record<Kind,string>={PATRULLA:'Lejos del Hito (~1 km)',CONSIGNA:'Lejos del punto (~1 km)',BITACORA:'Lejos del puesto (~1 km)',RELEVO:'Lejos del puesto (~1 km)'};
 const DEVICE='simulador-web';
 const STEPS=['Foto','Subida','Validación'];
 const PHASE_STEP:Record<Phase,number>={idle:0,picked:0,uploading:1,stored:2,pending:2,done:3};
@@ -219,7 +222,7 @@ export default function AgentSimulator(){
  const task=useMemo<Task|null>(()=>{
   if(kind==='PATRULLA')return checkpoint?{kind,targetType:'PATROL_CHECKPOINT',targetId:checkpoint.checkpointId,label:`Hito ${checkpoint.code}`,visint:checkpoint.visintEnabled,standardImages:checkpoint.standardImages,notes:checkpoint.standardImageNotes,latitude:checkpoint.latitude,longitude:checkpoint.longitude,requiresEvidence:checkpoint.requiresEvidence}:null;
   if(kind==='CONSIGNA')return evidence&&consignment?{kind,targetType:'CONSIGNMENT_EVIDENCE',targetId:evidence.evidenceId,label:`Consigna ${consignment.code} · ${evidence.name}`,visint:evidence.visintEnabled,standardImages:evidence.standardImages,notes:evidence.standardImageNotes,latitude:consignment.latitude??null,longitude:consignment.longitude??null,requiresEvidence:true}:null;
-  return field?{kind,targetType:'LOGBOOK_FIELD',targetId:field.fieldId,label:`Bitácora · ${field.name}`,visint:field.visintEnabled,standardImages:field.standardImages,notes:field.standardImageNotes,latitude:null,longitude:null,requiresEvidence:true}:null;
+  return field?{kind,targetType:'LOGBOOK_FIELD',targetId:field.fieldId,label:`Bitácora · ${field.name}`,visint:field.visintEnabled,standardImages:field.standardImages,notes:field.standardImageNotes,latitude:logbook?.latitude??null,longitude:logbook?.longitude??null,requiresEvidence:true}:null;
  },[kind,checkpoint,consignment,evidence,field]);
  // Una sola foto por captura: la que se ve en el teléfono, antes y después de subirla.
  const photo=photos[0];
@@ -322,14 +325,15 @@ export default function AgentSimulator(){
   picked:{label:'Subir foto',run:rejected?undefined:()=>void upload()},
   uploading:{label:`Subiendo… ${progress??0}%`},
   stored:{label:confirmLabel,run:canConfirm?()=>void confirm():undefined,go:true},
-  pending:{label:'Esperando a VISINT…'},
-  done:failed?{label:'Registro enviado'}:{label:'Siguiente tarea',run:()=>{reset();setCaptureNo(1)},go:true},
+  // VISINT y la ubicación nunca bloquean: el registro ya quedó guardado y el resultado se ve en Comando (Operación).
+  pending:{label:'Siguiente tarea',run:()=>{reset();setCaptureNo(1)},go:true},
+  done:{label:'Siguiente tarea',run:()=>{reset();setCaptureNo(1)},go:true},
  }[phase];
  const chip=rejected?{cls:'bad',label:rejected}:phase==='uploading'?{cls:'up',label:'Subiendo…'}:stored.length?{cls:'ok',label:'✓ Foto subida'}:{cls:'',label:'Lista para subir'};
- const facts:{k:string;v:string;on?:boolean}[]=kind==='RELEVO'?(relief?[{k:'Validación',v:relief.stationVisint.enabled?'VISINT compara las fotos del puesto con sus fotos estándar':'Sin VISINT: las fotos del puesto solo se guardan',on:relief.stationVisint.enabled},{k:'Modalidad',v:'Unilateral: el saliente no está presente'},{k:'Bloquea',v:'No: el relevo se recibe aunque una foto no cumpla'}]:[]):task?[{k:'Validación',v:task.visint?'VISINT compara con las fotos estándar':'Sin VISINT: la foto solo se guarda',on:task.visint}]:[];
+ const facts:{k:string;v:string;on?:boolean}[]=kind==='RELEVO'?(relief?[{k:'Validación',v:relief.stationVisint.enabled?'VISINT compara las fotos del puesto con sus fotos estándar':'Sin VISINT: las fotos del puesto solo se guardan',on:relief.stationVisint.enabled},{k:'Modalidad',v:'Unilateral: el saliente no está presente'},{k:'Bloquea',v:'No: el relevo se recibe aunque una foto no cumpla'},{k:'GPS',v:relief.postLocation?`Puesto ${relief.postLocation.latitude.toFixed(5)}, ${relief.postLocation.longitude.toFixed(5)}${far?' · el agente está lejos: Operación mostrará el aviso':''}`:'El puesto no tiene ubicación GPS'}]:[]):task?[{k:'Validación',v:task.visint?'VISINT compara con las fotos estándar':'Sin VISINT: la foto solo se guarda',on:task.visint}]:[];
  if(task&&kind==='PATRULLA'){facts.push({k:'Ronda',v:`${runId.slice(0,8)} · ronda en curso`});facts.push({k:'GPS',v:gps?`${gps.latitude.toFixed(5)}, ${gps.longitude.toFixed(5)} · ±8 m${far?' · lejos: Operación mostrará el aviso':''}`:'El Hito no tiene ubicación'})}
  if(task&&kind==='CONSIGNA'){facts.push({k:'Agrupa por',v:'Turno: una foto por evidencia'});facts.push({k:'GPS',v:gps?`${gps.latitude.toFixed(5)}, ${gps.longitude.toFixed(5)} · ±8 m${far?' · lejos: Operación mostrará el aviso':''}`:'La consigna no tiene ubicación GPS esperada'})}
- if(task&&kind==='BITACORA')facts.push({k:'Agrupa por',v:'Visitante: una foto por campo'});
+ if(task&&kind==='BITACORA'){facts.push({k:'Agrupa por',v:'Visitante: una foto por campo'});facts.push({k:'GPS',v:gps?`${gps.latitude.toFixed(5)}, ${gps.longitude.toFixed(5)} · ±8 m${far?' · lejos: Operación mostrará el aviso':''}`:'El puesto no tiene ubicación GPS'})}
 
  return <div className="agent-sim">
   <style>{STYLES}</style>
@@ -370,7 +374,7 @@ export default function AgentSimulator(){
        <label>Campo con foto<div className="agent-sim-select"><select value={fieldId} onChange={e=>setFieldId(e.target.value)}>{logbook?.fields.map(f=><option key={f.fieldId} value={f.fieldId}>{f.name}{f.visintEnabled?' · VISINT':' · sin VISINT'}</option>)}</select></div></label>
        <div className="agent-sim-entry"><span>Visitante <code>{entryId.slice(0,8)}</code></span><button type="button" onClick={newVisitor}>↻ Nuevo visitante</button></div>
       </>}
-      {task?.latitude!=null&&<label>Ubicación del agente<div className="agent-sim-select"><select aria-label="Ubicación del agente" value={far?'FAR':'AT'} onChange={e=>setFar(e.target.value==='FAR')}><option value="AT">{kind==='PATRULLA'?'En el Hito':'En el punto de la consigna'}</option><option value="FAR">{kind==='PATRULLA'?'Lejos del Hito (~1 km)':'Lejos del punto (~1 km)'}</option></select></div></label>}
+      {(kind==='RELEVO'?relief?.postLocation!=null&&!relief.reliefAlreadyRegistered:task?.latitude!=null)&&<label>Ubicación del agente<div className="agent-sim-select"><select aria-label="Ubicación del agente" value={far?'FAR':'AT'} onChange={e=>setFar(e.target.value==='FAR')}><option value="AT">{PLACE_AT[kind]}</option><option value="FAR">{PLACE_FAR[kind]}</option></select></div></label>}
       {empty&&assignmentId&&<p className="agent-sim-empty"><Info size={14}/>{kind==='PATRULLA'?'No hay patrullas activas con Hitos para este puesto.':kind==='CONSIGNA'?'No hay consignas vigentes con evidencia tipo Foto para este puesto.':kind==='RELEVO'?'El relevo no está disponible para este turno.':'No hay bitácoras activas con campos de foto para este puesto.'}</p>}
      </div>
     </div>
@@ -390,7 +394,7 @@ export default function AgentSimulator(){
         {assignment&&<span>desde {hhmm(new Date(assignment.startsAt))}</span>}
        </div>
       </div>
-      {kind==='RELEVO'?(relief?<AgentReliefSim key={`${relief.assignmentId}:${relief.reliefId??''}`} ctx={relief} employeeId={employeeId} instanceCountryId={instanceId} deviceId={DEVICE}
+      {kind==='RELEVO'?(relief?<AgentReliefSim key={`${relief.assignmentId}:${relief.reliefId??''}`} ctx={relief} employeeId={employeeId} instanceCountryId={instanceId} deviceId={DEVICE} far={far}
         onError={setError} onReceived={()=>{setDone(`Relevo de ${relief.postName} recibido.`);api.operatorRuntime(assignmentId).then(r=>setRelief(r.relief??null)).catch(e=>setError(errorText(e)))}}/>:<div className="agent-sim-idle"><p>Elige un turno para hacer el relevo.</p></div>)
       :!task?<div className="agent-sim-idle"><p>Elige una tarea a la izquierda para ver lo que verá el agente.</p></div>:<>
        <div className="agent-sim-steps">{STEPS.map((label,i)=><div key={label} className={failed&&i===2?'bad':i<step?'done':i===step?'active':''}><i/><span>{label}</span></div>)}</div>

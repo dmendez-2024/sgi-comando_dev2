@@ -108,14 +108,15 @@ public class PatrolExecutionService {
         if (!target.patrol().id.equals(r[0]) || !a.assignment().id.equals(r[1])) throw new ClientErrorException("La ronda indicada pertenece a otra patrulla o asignación", 409);
     }
 
-    /** Número de la nueva captura del Hito en la ronda: 1 si es la primera; la siguiente solo si la última "no cumple". */
+    /**
+     * Número de la nueva captura del Hito en la ronda: 1 si es la primera. VISINT nunca bloquea al agente: mientras la última está
+     * en cola, con falla técnica o "no cumple", puede enviar otra captura. Solo un Hito ya validado (o sin VISINT) se considera registrado.
+     */
     private int nextCapture(UUID t, UUID runId, UUID checkpointId) {
         TaskExecution last = TaskExecution.find("instanceCountryId=?1 and patrolExecutionId=?2 and targetId=?3 order by captureNo desc", t, runId, checkpointId).firstResult();
         if (last == null) return 1;
         String review = reviews.statusFor(last.id);
-        if ("FAILED".equals(review)) return last.captureNo + 1;
-        if ("QUEUED_FOR_VISINT".equals(review) || "ERROR_RETRYABLE".equals(review))
-            throw new ClientErrorException("La foto anterior de este Hito aún se está validando", 409);
+        if (!"PASSED".equals(review) && !"NOT_REQUESTED".equals(review)) return last.captureNo + 1;
         throw new ClientErrorException("Este Hito ya fue registrado en la ronda", 409);
     }
 

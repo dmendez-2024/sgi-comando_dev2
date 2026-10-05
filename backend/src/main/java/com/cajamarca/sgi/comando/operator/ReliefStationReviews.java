@@ -12,8 +12,9 @@ import java.time.*;
 import java.util.*;
 
 /**
- * VISINT opcional en el relevo: si el Puesto lo tiene activado y tiene fotos estándar, cada foto del puesto (station_0..2)
- * queda como una ejecución RELIEF_STATION_CAPTURED con su revisión visual. Nunca bloquea el relevo: el resultado solo se informa.
+ * Fotos del puesto del relevo (station_0..2) como ejecuciones RELIEF_STATION_CAPTURED, visibles en Operación, cuando el Puesto
+ * valida con VISINT (revisión contra sus fotos estándar) o tiene ubicación GPS (aviso "Fuera del radio GPS" con el GPS del relevo).
+ * Nunca bloquea el relevo: los resultados solo se informan.
  */
 @ApplicationScoped
 public class ReliefStationReviews {
@@ -25,6 +26,7 @@ public class ReliefStationReviews {
     @Inject EntityManager em;
     @Inject StorageService storage;
     @Inject VisualReviewService reviews;
+    @Inject com.cajamarca.sgi.comando.settings.EvidenceLocationSettings locationSettings;
 
     /** true si el relevo de este Puesto se valida con VISINT. */
     public boolean enabled(UUID tenant, UUID postId) {
@@ -32,11 +34,20 @@ public class ReliefStationReviews {
         return c != null && c.stationVisintEnabled && StandardReferenceImage.countOf(StandardReferenceImage.POST_CONFIG, postId) > 0;
     }
 
-    /** Encola las revisiones en la misma transacción del relevo. Devuelve QUEUED_FOR_VISINT o NOT_REQUESTED. */
+    /** Registra las fotos del puesto y encola sus revisiones en la misma transacción del relevo. Devuelve QUEUED_FOR_VISINT o NOT_REQUESTED. */
     @SuppressWarnings("unchecked")
     public String enqueue(UUID tenant, UUID reliefId, UUID assignmentId, UUID shiftId, UUID pointId, UUID postId, UUID employee, String username,
                           Instant executedAt, JsonNode batch) {
-        if (!enabled(tenant, postId)) return "NOT_REQUESTED";
+        boolean visint = enabled(tenant, postId);
+        double[] post = locationSettings.postReference(tenant, postId);
+        if (!visint && post == null) return "NOT_REQUESTED";
+        // GPS del agente al hacer el relevo (opcional en el evento): se compara con la ubicación del Puesto.
+        JsonNode event = batch.path("events").path(0);
+        Double lat = event.path("latitude").isNumber() ? event.path("latitude").asDouble() : null;
+        Double lng = event.path("longitude").isNumber() ? event.path("longitude").asDouble() : null;
+        Double acc = event.path("accuracyM").isNumber() ? event.path("accuracyM").asDouble() : null;
+        Integer distance = post != null && lat != null && lng != null ? (int) Math.round(GeoDistance.meters(lat, lng, post[0], post[1])) : null;
+        boolean far = distance != null && distance > post[2];
         List<Object[]> photos = em.createNativeQuery("""
             select id,purpose,sha256,content from operator_relief_evidence
             where instance_country_id=:t and event_id=:e and purpose in ('station_0','station_1','station_2') order by purpose""")
@@ -55,6 +66,8 @@ public class ReliefStationReviews {
             ZonedDateTime now = ZonedDateTime.now(ZoneOffset.UTC);
             o.objectKey = String.format("evidence/%04d/%02d/%s/%s.%s", now.getYear(), now.getMonthValue(), reliefId, o.id, ImageSniffer.extension(ct));
             o.contentType = ct; o.sizeBytes = bytes.length; o.sha256 = ((String) p[2]).trim(); o.capturedAt = executedAt;
+            o.latitude = lat; o.longitude = lng; o.accuracyM = acc; o.flags = far ? "OUT_OF_RANGE" : "";
+            o.referenceDistanceM = distance; o.referenceRadiusM = distance == null ? null : (int) post[2];
             o.source = "CAMERA"; o.status = "ATTACHED"; o.receivedAt = Instant.now();
             storage.put(o.bucket, o.objectKey, bytes, ct);
             o.persist();
@@ -64,12 +77,13 @@ public class ReliefStationReviews {
             x.pointId = pointId; x.postId = postId; x.employeeId = employee; x.username = username;
             x.targetType = StandardReferenceImage.POST_CONFIG; x.targetId = postId; x.protocolVersionNo = 0;
             x.groupId = reliefId; x.reliefEvidenceId = photoId; x.executedAt = executedAt; x.receivedAt = Instant.now();
+            x.latitude = lat; x.longitude = lng; x.accuracyM = acc;
             x.batchId = ReliefContract.uuid(batch, "batchId"); x.correlationId = ReliefContract.uuid(batch, "correlationId"); x.deviceId = ReliefContract.text(batch, "deviceId");
             x.payloadHash = o.sha256; x.payloadJson = "{\"purpose\":\"" + purpose + "\"}"; x.status = "RECEIVED";
             x.persistAndFlush();
             em.createNativeQuery("insert into task_execution_evidence(task_execution_id,evidence_id,sort_order) values(:t,:e,1)")
                 .setParameter("t", x.id).setParameter("e", o.id).executeUpdate();
-            status = reviews.enqueue(x, StandardReferenceImage.POST_CONFIG, postId, 1).status;
+            if (visint) status = reviews.enqueue(x, StandardReferenceImage.POST_CONFIG, postId, 1).status;
         }
         return status;
     }

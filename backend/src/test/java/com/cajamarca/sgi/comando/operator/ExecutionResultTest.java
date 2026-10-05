@@ -67,18 +67,22 @@ class ExecutionResultTest {
         as("coord").get("/api/operation/executions/" + retake.eventId()).then().statusCode(200).body("row.captureNo", is(2));
     }
 
-    @Test void noRetakeWhilePendingOrAfterValidated() throws Exception {
+    /** VISINT nunca bloquea al agente: con la foto anterior en cola puede enviar otra captura; solo un Hito ya validado es duplicado. */
+    @Test void retakeWhilePendingButNotAfterValidated() throws Exception {
         Map<String,Object> ids = VisintFixtures.publishVisintPatrol();
+        UUID validated = UUID.randomUUID();
+        assertEquals(200, VisintFixtures.submitWithPhoto(em, ids, SAME, validated).status());
+        mock.forceNextResult("PASS");
+        worker.processDue();
+        var afterPass = VisintFixtures.submitWithPhoto(em, ids, SAME, validated);
+        assertEquals(409, afterPass.status());
+        assertTrue(afterPass.body().contains("ya fue registrado"), afterPass.body());
+
         UUID run = UUID.randomUUID();
         assertEquals(200, VisintFixtures.submitWithPhoto(em, ids, SAME, run).status());
         var whilePending = VisintFixtures.submitWithPhoto(em, ids, SAME, run);
-        assertEquals(409, whilePending.status());
-        assertTrue(whilePending.body().contains("validando"), whilePending.body());
-        mock.forceNextResult("PASS");
-        worker.processDue();
-        var afterPass = VisintFixtures.submitWithPhoto(em, ids, SAME, run);
-        assertEquals(409, afterPass.status());
-        assertTrue(afterPass.body().contains("ya fue registrado"), afterPass.body());
+        assertEquals(200, whilePending.status(), whilePending.body());
+        result(whilePending.eventId()).statusCode(200).body("captureNo", is(2)).body("message", containsString("puede continuar"));
     }
 
     @Test void technicalErrorIsNotBlamedOnTheAgent() throws Exception {

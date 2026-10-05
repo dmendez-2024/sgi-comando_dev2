@@ -19,10 +19,11 @@ public class OperatorPatrols {
     @Inject TenantContext tenant;
     @Inject EntityManager em;
     @Inject ObjectMapper mapper;
-    @ConfigProperty(name="sgi.evidence.default-radius-m") int defaultRadius;
+    @Inject com.cajamarca.sgi.comando.settings.EvidenceLocationSettings locationSettings;
 
-    /** Radio (m) para Hitos sin radio propio. Se expone por método: los campos de un bean CDI no se leen a través de su proxy. */
-    public int defaultRadius() { return defaultRadius; }
+    /** Radio (m) predeterminado de la instancia (Configuración → Radio GPS), para referencias sin radio propio. */
+    public int defaultRadius() { return locationSettings.defaultRadius(); }
+    public com.cajamarca.sgi.comando.settings.EvidenceLocationSettings locationSettings() { return locationSettings; }
 
     @SuppressWarnings("unchecked")
     List<PatrolProtocol> activeFor(UUID postId) {

@@ -4,7 +4,8 @@ import {api,ApiError} from '../api';
 /** Contexto del relevo que entrega /operator/runtime?assignmentId (relief). */
 export type ReliefContext={assignmentId:string;shiftOccurrenceId:string;postId:string;postName:string;incomingEmployeeId:string;incomingEmployeeName?:string;
  configurationVersion:string;reliefAlreadyRegistered:boolean;reliefId?:string;reliefReceivedAt?:string;stationPhotos:string[];
- consignments:{consignmentId:string;version:string;code?:string;title?:string;instruction?:string}[];stationVisint:{enabled:boolean;standardImageIds:string[]}};
+ consignments:{consignmentId:string;version:string;code?:string;title?:string;instruction?:string}[];stationVisint:{enabled:boolean;standardImageIds:string[]};
+ postLocation?:{latitude:number;longitude:number;radiusM:number}};
 type StationResult={eventId:string;station:string|null;outcome:'NOT_REQUIRED'|'PENDING'|'VALIDATED'|'NOT_VALIDATED'|'TECHNICAL_ERROR';message:string};
 type Shot={file:File;url:string};
 const STATIONS=['station_0','station_1','station_2'];
@@ -14,7 +15,7 @@ const hhmm=(iso:string)=>new Date(iso).toLocaleTimeString('es-EC',{hour:'2-digit
 
 /** TEMPORAL (demo UAT): relevo unilateral como en SGI: Operador — foto del agente entrante, 3 fotos del puesto, lectura de consignas y envío.
  * Si el Puesto tiene "VISINT en el relevo", cada foto del puesto se valida contra sus fotos estándar; nunca bloquea el relevo. */
-export default function AgentReliefSim({ctx,employeeId,instanceCountryId,deviceId,onError,onReceived}:{ctx:ReliefContext;employeeId:string;instanceCountryId:string;deviceId:string;
+export default function AgentReliefSim({ctx,employeeId,instanceCountryId,deviceId,far=false,onError,onReceived}:{ctx:ReliefContext;employeeId:string;instanceCountryId:string;deviceId:string;far?:boolean;
  onError:(text:string)=>void;onReceived:()=>void}){
  const [guides,setGuides]=useState<string[]>([]);const [shots,setShots]=useState<Record<string,Shot>>({});const [read,setRead]=useState<Set<string>>(new Set());
  const [sending,setSending]=useState<string|null>(null);const [reliefId,setReliefId]=useState<string|null>(ctx.reliefAlreadyRegistered?ctx.reliefId??null:null);
@@ -56,15 +57,19 @@ export default function AgentReliefSim({ctx,employeeId,instanceCountryId,deviceI
    await api.submitExecution({batchId:crypto.randomUUID(),correlationId:crypto.randomUUID(),employeeId,instanceCountryId,deviceId,capturedAt:at,events:[{
     eventId:event,type:'RELIEF_SUBMITTED',assignmentId:ctx.assignmentId,postId:ctx.postId,shiftOccurrenceId:ctx.shiftOccurrenceId,incomingEmployeeId:ctx.incomingEmployeeId,
     inventoryStatus:'PENDING_SOURCE',unilateral:true,unilateralReason:'Saliente no presente (simulador UAT)',executedAt:at,configurationVersion:ctx.configurationVersion,evidence,
+    // GPS del teléfono: el del puesto, o ~1 km al norte para probar el aviso (no bloquea).
+    ...(ctx.postLocation?{latitude:ctx.postLocation.latitude+(far?0.009:0),longitude:ctx.postLocation.longitude,accuracyM:8}:{}),
     consignmentReadings:ctx.consignments.map(c=>({consignmentId:c.consignmentId,version:c.version,confirmedAt:at}))}]});
    setReliefId(event);onReceived();
   }catch(e){onError(errorText(e))}finally{setSending(null)}
  };
 
  const received=!!reliefId;
+ // Las fotos del puesto se registran si el puesto valida con VISINT o tiene ubicación GPS.
+ const tracked=ctx.stationVisint.enabled||!!ctx.postLocation;
  const pendingCount=results.filter(r=>r.outcome==='PENDING').length;
  const stepIndex=received?(pendingCount||!results.length&&ctx.stationVisint.enabled?2:3):complete?2:shots.entrant?1:0;
- const action=received?{label:pendingCount?'Esperando a VISINT…':'Relevo recibido'}:sending?{label:sending}:{label:complete?'Confirmar relevo':'Completa las fotos y consignas',run:complete?()=>void send():undefined,go:true};
+ const action=received?{label:'Relevo recibido'}:sending?{label:sending}:{label:complete?'Confirmar relevo':'Completa las fotos y consignas',run:complete?()=>void send():undefined,go:true};
  const slot=(purpose:string,title:string,hint:string,guide?:string)=><div className="agent-sim-relief-slot" key={purpose}>
   <div className="agent-sim-relief-title"><strong>{title}</strong><small>{hint}</small></div>
   <div className="agent-sim-relief-pair">
@@ -89,7 +94,7 @@ export default function AgentReliefSim({ctx,employeeId,instanceCountryId,deviceI
    {received&&<div className={`agent-sim-result ${pendingCount?'pending':'validated'}`} role="status">
     <div>{pendingCount?<span className="spin"/>:<span className="ico"><span>✓</span></span>}
      <div><strong>Relevo recibido{ctx.reliefAlreadyRegistered&&ctx.reliefReceivedAt&&reliefId===ctx.reliefId?` a las ${hhmm(ctx.reliefReceivedAt)}`:''}</strong>
-      <small>{!results.length?'Las fotos del puesto no se validan con VISINT.':pendingCount?`VISINT está validando ${pendingCount} de ${results.length} fotos del puesto…`:'Resultado de VISINT por foto del puesto'}</small></div></div>
+      <small>{!results.length?(tracked?'Registrando las fotos del puesto…':'Las fotos del puesto no se validan con VISINT.'):pendingCount?`VISINT está validando ${pendingCount} de ${results.length} fotos del puesto…`:'Resultado de VISINT por foto del puesto'}</small></div></div>
     {results.length>0&&<ul className="agent-sim-relief-results">{results.map(r=>{const i=STATIONS.indexOf(r.station??'');return <li key={r.eventId} className={r.outcome.toLowerCase()}>
      {r.outcome==='PENDING'?<span className="spin"/>:<span className="ico"><span>{ICON[r.outcome]}</span></span>}<div><b>F{i+1} · {ctx.stationPhotos[i]??'Foto del puesto'}</b><small>{r.message}</small></div></li>})}</ul>}
    </div>}

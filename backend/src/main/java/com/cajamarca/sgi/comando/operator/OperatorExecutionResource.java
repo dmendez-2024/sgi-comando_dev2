@@ -73,10 +73,12 @@ public class OperatorExecutionResource {
     static String message(String outcome, VisualReview r, boolean canRetake, boolean patrol) {
         return switch (outcome) {
             case "NOT_REQUIRED" -> patrol ? "Hito registrado." : "Foto registrada.";
-            case "PENDING" -> "Validando la foto con VISINT…";
+            case "PENDING" -> (patrol ? "Hito registrado." : "Foto registrada.") + " VISINT la está validando; puede continuar.";
             case "VALIDATED" -> patrol ? "Foto validada. Hito cumplido." : "Foto validada.";
             case "TECHNICAL_ERROR" -> "No se pudo validar la foto por un problema técnico. " + (patrol ? "El Hito queda registrado." : "La foto queda registrada.");
-            default -> "Evidencia no validada: " + reason(r) + (canRetake ? ". Tome una nueva foto." : ".");
+            // "No cumple" no bloquea: el registro queda guardado y el supervisor lo ve en Comando; la nueva foto es opcional.
+            default -> "Evidencia no validada: " + reason(r) + ". " + (patrol ? "El Hito queda registrado" : "La foto queda registrada")
+                + (canRetake ? "; puede tomar una nueva foto." : ".");
         };
     }
 

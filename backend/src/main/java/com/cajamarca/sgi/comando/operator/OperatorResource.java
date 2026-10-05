@@ -280,6 +280,9 @@ public class OperatorResource {
         ObjectNode visint=n.putObject("stationVisint").put("enabled",stationReviews.enabled(tenant.instanceCountryId(),c.post.id));
         ArrayNode images=visint.putArray("standardImageIds");
         for(var i:com.cajamarca.sgi.comando.storage.StandardReferenceImage.of(com.cajamarca.sgi.comando.storage.StandardReferenceImage.POST_CONFIG,c.post.id)) images.add(i.id.toString());
+        // Ubicación del Puesto: el relevo envía latitude/longitude/accuracyM y fuera del radio queda como aviso (nunca bloquea).
+        double[] loc=patrols.locationSettings().postReference(tenant.instanceCountryId(),c.post.id);
+        if(loc!=null) n.putObject("postLocation").put("latitude",loc[0]).put("longitude",loc[1]).put("radiusM",(int)loc[2]);
         return n;
     }
     @POST @Path("/patrol-executions") @Consumes(MediaType.APPLICATION_JSON) @Transactional
@@ -532,7 +535,9 @@ public class OperatorResource {
             .setParameter("id",eventId).setParameter("t",tenant.instanceCountryId()).getResultList();
         if(!old.isEmpty()) { Object[] r=(Object[])old.get(0); if(!r[1].equals(identity.getPrincipal().getName())) throw new ForbiddenException();
             if(!r[0].equals(digest)) throw new ClientErrorException("Identificador reutilizado con datos diferentes",409);
-            return ack(eventId,com.cajamarca.sgi.comando.execution.TaskExecution.count("instanceCountryId=?1 and groupId=?2 and executionType=?3",tenant.instanceCountryId(),eventId,ReliefStationReviews.TYPE)>0?"QUEUED_FOR_VISINT":"NOT_REQUESTED"); }
+            boolean reviewed=!em.createNativeQuery("select 1 from visual_review v join task_execution t on t.id=v.task_execution_id where t.instance_country_id=:t and t.group_id=:e and t.execution_type=:x")
+                .setParameter("t",tenant.instanceCountryId()).setParameter("e",eventId).setParameter("x",ReliefStationReviews.TYPE).setMaxResults(1).getResultList().isEmpty();
+            return ack(eventId,reviewed?"QUEUED_FOR_VISINT":"NOT_REQUESTED"); }
         if(!em.createNativeQuery("select id from operator_relief_submission where instance_country_id=:t and assignment_id=:a").setParameter("t",tenant.instanceCountryId()).setParameter("a",assignmentId).getResultList().isEmpty()) throw new ClientErrorException("La asignación ya tiene un relevo recibido",409);
         Instant execution=time(event,"executedAt");
         if(execution.isBefore(c.shift.startsAt.minusSeconds(43200)) || execution.isAfter(c.shift.endsAt.plusSeconds(43200))) throw new BadRequestException("Fecha fuera de ventana UAT del turno");

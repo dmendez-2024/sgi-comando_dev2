@@ -305,3 +305,88 @@ Read the result of a pre-shift attendance confirmation.
 - Valida evidencia y observación cuando la parametrización las declara obligatorias.
 - El resultado persistido se devuelve posteriormente en `lastComplianceResult`, `lastComplianceAt` y `lastComplianceUsername` dentro del runtime.
 
+
+# OPR-EVIDENCE-LOCATION-001 - Ubicación GPS de las fotos y validación VISINT (no bloqueantes)
+
+Cambio aditivo dentro de `SGI_OPR_SGI_COM_0001_v001` y `SGI_OPR_SGI_COM_0002_v001`: no hay interconexión nueva ni cambian autenticación, topología o credenciales.
+
+**Regla general:** ni la ubicación ni VISINT bloquean al agente. Una foto fuera del radio o que VISINT marca "no cumple" se acepta igual. SGI Comando la registra y el supervisor la ve en Servicios → Punto → Operación.
+
+## Qué envía SGI: Operador
+
+Patrulla, Consigna y Bitácora: GPS en cada foto. `POST /api/v1/operator/evidences` (multipart), dentro de `metadata.items[]`:
+
+| Campo | Tipo | Obligatorio | Uso |
+|---|---|---|---|
+| `latitude` | número (grados WGS84) | no | Se compara con la referencia de la tarea |
+| `longitude` | número (grados WGS84) | no | Se compara con la referencia de la tarea |
+| `accuracyM` | número (metros) | no | Precisión reportada por el teléfono; hoy solo se guarda |
+| `capturedAt` | ISO-8601 | sí | Momento de la captura |
+| `source` | `CAMERA` \| `GALLERY` | sí | `GALLERY` queda como marca informativa |
+
+```json
+{ "uploadBatchId": "…", "eventId": "…", "assignmentId": "…",
+  "targetType": "PATROL_CHECKPOINT | CONSIGNMENT_EVIDENCE | LOGBOOK_FIELD", "targetId": "…",
+  "items": [{ "clientEvidenceId": "…", "capturedAt": "2026-10-05T22:15:45Z",
+              "latitude": -2.154490, "longitude": -79.952253, "accuracyM": 8, "source": "CAMERA", "sha256": "…" }] }
+```
+
+- La distancia se calcula con el GPS **de la foto**. `PATROL_CHECKPOINT_COMPLETED` también acepta `latitude`, `longitude` y `accuracyM`, pero solo como dato.
+- Si la foto queda fuera del radio, la respuesta de la subida la acepta (`status: STORED`) e incluye `OUT_OF_RANGE` en `flags`.
+
+Relevo: GPS en el evento. Las fotos del relevo (`PUT /api/v1/operator/relief-evidence/{eventId}/{purpose}`) son JPEG en crudo sin metadatos, así que el GPS va en `events[0]` del `RELIEF_SUBMITTED`:
+
+```json
+{ "type": "RELIEF_SUBMITTED", "eventId": "…", "assignmentId": "…", "…": "…",
+  "latitude": -2.154490, "longitude": -79.952253, "accuracyM": 8 }
+```
+
+- Los tres campos son opcionales y se aplican a las 3 fotos del puesto (`station_0..2`).
+- El acuse añade `stationVisintStatus`: `QUEUED_FOR_VISINT` si el Puesto valida con VISINT, `NOT_REQUESTED` si no. El campo `validationStatus` existente no cambia.
+
+Sin GPS: si no se envían coordenadas, la tarea se registra igual y no se compara la ubicación.
+
+## Referencia que entrega SGI Comando
+
+En `GET /api/v1/operator/runtime?assignmentId=…`, para que la app pueda orientar al agente. El radio hoy es 50 m (`sgi.evidence.default-radius-m`), salvo que el Hito tenga uno propio.
+
+| Tarea | Dónde viene | Origen en Comando |
+|---|---|---|
+| Hito de patrulla | `patrols[].checkpoints[].latitude`, `longitude`, `radiusM` | Patrullas → Hito → Latitud/Longitud o "Capturar GPS en campo" |
+| Consigna | `consignmentTasks[].latitude`, `longitude`, `radiusM`, solo si `expectedLocationMode = GPS` | Consignas → Aplicación → Ubicación esperada "Coordenadas GPS" |
+| Bitácora | `logbookTasks[].latitude`, `longitude`, `radiusM` | Puestos → "Ubicación GPS del puesto" |
+| Relevo | `relief.postLocation.latitude`, `longitude`, `radiusM` | Puestos → "Ubicación GPS del puesto" |
+
+- Si una tarea no trae coordenadas, no tiene referencia y no se compara.
+- `relief.postLocation` y `relief.stationVisint` van fuera de `configurationVersion`: cambiarlos en Comando no invalida un relevo en curso.
+
+## Resultado para el agente
+
+`GET /api/v1/operator/executions/{eventId}` y `GET /api/v1/operator/executions?patrolRunId=…` o `?groupId=…` (en el relevo, `groupId` = `eventId` del relevo):
+
+| Campo | Valores |
+|---|---|
+| `outcome` | `NOT_REQUIRED`, `PENDING`, `VALIDATED`, `NOT_VALIDATED`, `TECHNICAL_ERROR` |
+| `message` | Texto listo para mostrar. Siempre indica que el registro quedó guardado, por ejemplo "Hito registrado. VISINT la está validando; puede continuar." |
+| `canRetake` | `true` cuando VISINT dijo "no cumple" en la última captura. Es una sugerencia, no una obligación (en el relevo siempre `false`) |
+| `validation` | `status`, `result`, `reasonCode` y puntajes `quality` y `match`, informativos |
+| `station` | Solo en el relevo: `station_0`, `station_1` o `station_2` |
+
+- La app no debe esperar a VISINT para seguir: puede pasar a la siguiente tarea con `outcome = PENDING`.
+- `matchThreshold` (umbral de coincidencia de VISINT) lo configura SGI Comando junto a las fotos estándar de cada tarea, y lo envía Comando. **SGI: Operador no lo envía.**
+
+## Nueva captura y duplicados
+
+- Mientras la última captura de la tarea está en cola de VISINT, con error técnico o "no cumple", **se acepta una nueva captura** (`captureNo` + 1). VISINT nunca bloquea.
+- Solo una tarea ya validada por VISINT, o que no usa VISINT, se considera registrada. Volver a enviarla responde `409`:
+  - "Este Hito ya fue registrado en la ronda";
+  - "Esta evidencia ya fue registrada en el turno";
+  - "Este campo ya fue registrado para este visitante".
+- El relevo se recibe una sola vez por asignación ("La asignación ya tiene un relevo recibido", `409`).
+- Reintentar el mismo `eventId` con el mismo contenido devuelve el acuse existente (idempotencia).
+
+## Lo que ve SGI Comando
+
+Servicios → Punto → Operación:
+- **Lista:** columna VISINT (Cumple, No cumple, En revisión, Error) y columna Alertas ("Fuera del radio GPS").
+- **Detalle:** "Coincidencia 0.96 de umbral 0.80" y "A 1.0 km del punto · radio 50 m".

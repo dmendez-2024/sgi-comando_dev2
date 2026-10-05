@@ -26,6 +26,7 @@ public class OperatorTasks {
 
     @Inject OperatorPatrols patrols;
     @Inject TenantContext tenant;
+    @Inject com.cajamarca.sgi.comando.settings.EvidenceLocationSettings locationSettings;
     @Inject ObjectMapper mapper;
 
     public Target require(String type, UUID id, PostEntity post) {
@@ -45,14 +46,16 @@ public class OperatorTasks {
                 if (!"PHOTO".equals(e.evidenceType)) throw new BadRequestException("Esta evidencia de la consigna no es una foto");
                 boolean gps = "GPS".equals(c.expectedLocationMode);
                 yield new Target(type, e.id, p.id, p.versionNo, true, e.visintEnabled, e.standardImageVersion,
-                    gps ? c.expectedLatitude : null, gps ? c.expectedLongitude : null, (double) patrols.defaultRadius());
+                    gps ? c.expectedLatitude : null, gps ? c.expectedLongitude : null, (double) locationSettings.radiusFor(c.expectedRadiusM, tenant.instanceCountryId()));
             }
             case StandardReferenceImage.LOGBOOK_FIELD -> {
                 LogbookProtocolField f = LogbookProtocolField.find("id=?1 and instanceCountryId=?2", id, tenant.instanceCountryId()).firstResult();
                 LogbookProtocol p = f == null ? null : LogbookProtocol.findById(f.protocolId);
                 if (f == null || p == null || !applies(p, post)) throw new BadRequestException("La bitácora no está activa en este Puesto");
                 if (!f.evidenceRequired) throw new BadRequestException("Este campo de la bitácora no lleva foto");
-                yield new Target(type, f.id, p.id, p.versionNo, true, f.visintEnabled, f.standardImageVersion, null, null, null);
+                double[] loc = locationSettings.postReference(tenant.instanceCountryId(), post.id);
+                yield new Target(type, f.id, p.id, p.versionNo, true, f.visintEnabled, f.standardImageVersion,
+                    loc == null ? null : loc[0], loc == null ? null : loc[1], loc == null ? null : loc[2]);
             }
             default -> throw new BadRequestException("Tipo de destino no soportado: " + type);
         };
@@ -70,7 +73,7 @@ public class OperatorTasks {
                 .put("protocolCode", p.code).put("protocolVersion", p.versionNo).put("expectedLocationMode", c.expectedLocationMode);
             // Ubicación esperada (solo en modo GPS): la foto se compara con ella; fuera del radio es un aviso, nunca bloquea.
             if ("GPS".equals(c.expectedLocationMode) && c.expectedLatitude != null && c.expectedLongitude != null)
-                n.put("latitude", c.expectedLatitude).put("longitude", c.expectedLongitude).put("radiusM", patrols.defaultRadius());
+                n.put("latitude", c.expectedLatitude).put("longitude", c.expectedLongitude).put("radiusM", locationSettings.radiusFor(c.expectedRadiusM, tenant.instanceCountryId()));
             ArrayNode ev = n.putArray("evidences");
             for (ConsignmentEvidence e : photos) {
                 ObjectNode x = ev.addObject().put("evidenceId", e.id.toString()).put("name", e.name).put("description", e.description).put("required", e.required)
@@ -88,6 +91,9 @@ public class OperatorTasks {
             if (!applies(p, post)) continue;
             ObjectNode n = out.addObject().put("protocolId", p.id.toString()).put("code", p.code).put("name", p.name).put("objectType", p.objectType)
                 .put("applicationType", p.applicationType).put("protocolVersion", p.versionNo);
+            // Las fotos de la Bitácora se comparan con la ubicación del Puesto (solo aviso).
+            double[] loc = locationSettings.postReference(tenant.instanceCountryId(), post.id);
+            if (loc != null) n.put("latitude", loc[0]).put("longitude", loc[1]).put("radiusM", (int) loc[2]);
             ArrayNode fields = n.putArray("fields");
             for (LogbookProtocolField f : LogbookProtocolField.<LogbookProtocolField>list("protocolId=?1 and evidenceRequired=true order by section, sortOrder, name", p.id)) {
                 LogbookAccreditation a = LogbookAccreditation.findById(f.accreditationId);

@@ -114,7 +114,9 @@ public class OperatorEvidenceResource {
         List<String> f = new ArrayList<>();
         if ("GALLERY".equals(e.source)) f.add("GALLERY");
         if (e.latitude != null && e.longitude != null && t.latitude() != null && t.longitude() != null && t.radiusM() != null) {
-            if (GeoDistance.meters(e.latitude, e.longitude, t.latitude(), t.longitude()) > t.radiusM()) f.add("OUT_OF_RANGE");
+            double meters = GeoDistance.meters(e.latitude, e.longitude, t.latitude(), t.longitude());
+            e.referenceDistanceM = (int) Math.round(meters); e.referenceRadiusM = (int) Math.round(t.radiusM());
+            if (meters > t.radiusM()) f.add("OUT_OF_RANGE");
         }
         if (EvidenceObject.count("instanceCountryId=?1 and sha256=?2 and eventId<>?3", e.instanceCountryId, e.sha256, e.eventId) > 0) f.add("SUSPECTED_REUSE");
         return f;

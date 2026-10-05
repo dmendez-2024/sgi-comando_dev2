@@ -38,7 +38,7 @@ public class OperationResource {
     @Inject EntityManager em;
     @Inject StorageService storage;
     @Inject StandardImageStore standardImages;
-    @org.eclipse.microprofile.config.inject.ConfigProperty(name="sgi.evidence.default-radius-m") int defaultRadius;
+    @Inject com.cajamarca.sgi.comando.settings.EvidenceLocationSettings locationSettings;
 
     @GET @Path("/executions")
     @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION","SUPERVISOR_SEGURIDAD"})
@@ -55,9 +55,11 @@ public class OperationResource {
         TaskExecution x = execution(id);
         VisualReview r = VisualReview.find("taskExecutionId", x.id).firstResult();
         double[] ref = reference(x);
+        // Distancia y radio con que se evaluó la foto al recibirla; si no quedaron guardados (fotos anteriores), se calculan con la referencia actual.
         List<EvidenceView> photos = photos(x.id).stream().map(o -> new EvidenceView(o.id, o.capturedAt, o.latitude, o.longitude, o.source, flags(o.flags),
-            ref == null || o.latitude == null || o.longitude == null ? null : (int) Math.round(com.cajamarca.sgi.comando.operator.GeoDistance.meters(o.latitude, o.longitude, ref[0], ref[1])),
-            ref == null ? null : (int) ref[2])).toList();
+            o.referenceDistanceM != null ? o.referenceDistanceM
+                : ref == null || o.latitude == null || o.longitude == null ? null : (Integer) (int) Math.round(com.cajamarca.sgi.comando.operator.GeoDistance.meters(o.latitude, o.longitude, ref[0], ref[1])),
+            o.referenceRadiusM != null ? o.referenceRadiusM : ref == null ? null : (Integer) (int) ref[2])).toList();
         List<StandardView> standards = r != null ? VisualReviewStandard.of(r.id).stream().map(s -> new StandardView(s.standardImageId, s.position)).toList()
             : StandardReferenceImage.of(x.targetType, x.targetId).stream().map(i -> new StandardView(i.id, i.position)).toList();
         return new ExecutionDetail(row(x), x.observation, x.latitude, x.longitude, standardNotes(x), photos, standards, r == null ? null : detail(r));
@@ -164,16 +166,20 @@ public class OperationResource {
         };
     }
 
-    /** Punto de referencia de la tarea: [latitud, longitud, radio en m] del Hito, o de la consigna en modo GPS; null si no tiene. */
+    /** Punto de referencia de la tarea: [latitud, longitud, radio en m] del Hito, de la consigna en modo GPS o del Puesto (Bitácora, Relevo); null si no tiene. */
     private double[] reference(TaskExecution x) {
         if (StandardReferenceImage.PATROL_CHECKPOINT.equals(x.targetType)) {
             PatrolCheckpoint cp = PatrolCheckpoint.findById(x.targetId);
-            return cp == null || cp.latitude == null || cp.longitude == null ? null : new double[]{cp.latitude, cp.longitude, cp.radiusM == null ? defaultRadius : cp.radiusM};
+            return cp == null || cp.latitude == null || cp.longitude == null ? null : new double[]{cp.latitude, cp.longitude, locationSettings.radiusFor(cp.radiusM, x.instanceCountryId)};
         }
         if (StandardReferenceImage.CONSIGNMENT_EVIDENCE.equals(x.targetType)) {
             com.cajamarca.sgi.comando.consignments.ConsignmentEvidence e = com.cajamarca.sgi.comando.consignments.ConsignmentEvidence.findById(x.targetId);
             com.cajamarca.sgi.comando.consignments.Consignment c = e == null ? null : com.cajamarca.sgi.comando.consignments.Consignment.findById(e.consignmentId);
-            return c == null || !"GPS".equals(c.expectedLocationMode) || c.expectedLatitude == null || c.expectedLongitude == null ? null : new double[]{c.expectedLatitude, c.expectedLongitude, defaultRadius};
+            return c == null || !"GPS".equals(c.expectedLocationMode) || c.expectedLatitude == null || c.expectedLongitude == null ? null : new double[]{c.expectedLatitude, c.expectedLongitude, locationSettings.radiusFor(c.expectedRadiusM, x.instanceCountryId)};
+        }
+        // Bitácora y fotos del puesto del relevo: la referencia es la ubicación del Puesto.
+        if (StandardReferenceImage.LOGBOOK_FIELD.equals(x.targetType) || StandardReferenceImage.POST_CONFIG.equals(x.targetType)) {
+            return locationSettings.postReference(x.instanceCountryId, x.postId);
         }
         return null;
     }
