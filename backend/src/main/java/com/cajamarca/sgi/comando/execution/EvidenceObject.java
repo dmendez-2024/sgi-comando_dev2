@@ -30,6 +30,9 @@ public class EvidenceObject extends PanacheEntityBase {
     @Column(name="accuracy_m") public Double accuracyM;
     @Column(name="source", nullable=false, length=16) public String source;
     @Column(name="flags", nullable=false, length=200) public String flags = "";
+    /** Radio (m) y distancia (m) a la referencia con que se evaluó la foto al recibirla; null si no hubo referencia o GPS. */
+    @Column(name="reference_radius_m") public Integer referenceRadiusM;
+    @Column(name="reference_distance_m") public Integer referenceDistanceM;
     @Column(name="status", nullable=false, length=16) public String status;
     @Column(name="received_at", nullable=false) public Instant receivedAt;
 

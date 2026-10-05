@@ -32,6 +32,7 @@ import {
   Upload,
   Users,
   Warehouse,
+  Navigation,
   Wrench,
   X,
 } from 'lucide-react';
@@ -41,6 +42,7 @@ import PatrolConfig from './PatrolConfig';
 import ConsignasConfig from './ConsignasConfig';
 import NexusConfig from './NexusConfig';
 import OperationPage from './OperationPage';
+import MatchThresholdField from '../components/MatchThresholdField';
 
 type State='ACTIVE'|'INACTIVE'|'TO_CONFIGURE'|'PENDING_ASSIGNMENT';
 type Row={
@@ -89,7 +91,7 @@ type AtsPackageDto={
 };
 
 type PostSkillSet={attendance:number;accessControl:number;patrol:number;judgement:number;tactical:number;bearing:number;leadership:number;customerService:number};
-type PostOperationalConfig={postId:string;postType:'CAA'|'PAT'|'VIG'|'MIX';description:string;alias?:string|null;visualTitle?:string|null;standardImageId?:string|null;standardImageName?:string|null;atsLocationKey:string;atsLocationLabel:string;atsPackageId?:string|null;atsLocationX?:number|null;atsLocationY?:number|null;skills:PostSkillSet;adjustmentJustification?:string|null;configStatus:'DRAFT'|'CONFIGURED';updatedBy?:string|null};
+type PostOperationalConfig={postId:string;postType:'CAA'|'PAT'|'VIG'|'MIX';description:string;alias?:string|null;visualTitle?:string|null;standardImageId?:string|null;standardImageName?:string|null;atsLocationKey:string;atsLocationLabel:string;atsPackageId?:string|null;atsLocationX?:number|null;atsLocationY?:number|null;skills:PostSkillSet;adjustmentJustification?:string|null;configStatus:'DRAFT'|'CONFIGURED';updatedBy?:string|null;stationVisintEnabled?:boolean;stationMatchThreshold?:number|null;latitude?:number|null;longitude?:number|null};
 type PostStandardPhoto={id:string;position:number;originalName:string;contentType:string;url:string};
 type PostVisualRule={thresholdValue:number|null;referenceImageCount:number|null;effectiveReferenceImageCount:number;savedImageCount:number;historicalPresentationMonths:number|null;updatedBy?:string|null;updatedAt?:string|null};
 type PostVisualRuleHistory={thresholdValue:number|null;referenceImageCount:number|null;historicalPresentationMonths:number|null;legacyHistoricalPresentation:string|null;changedBy:string;changedAt:string};
@@ -619,6 +621,14 @@ function PostsPage({point,onBack}:{point:PointRow;onBack:()=>void}){
   const template=draft?POST_TEMPLATES[draft.postType]:POST_TEMPLATES.VIG;
   const adjusted=draft?!skillsEqual(draft.skills,template):false;
   const hasPlanLocation=!!draft&&(atsPackage?(draft.atsLocationX!=null&&draft.atsLocationY!=null&&draft.atsPackageId===atsPackage.id):!!draft.atsLocationKey);
+  /** Toma la ubicación actual del dispositivo como ubicación GPS del puesto (se guarda con «Guardar configuración»). */
+  const capturePostGps=()=>{
+    if(!draft)return;
+    if(!navigator.geolocation){setPageError('Este dispositivo no ofrece geolocalización. Escribe la latitud y la longitud.');return}
+    setNotice('Capturando GPS actual…');
+    navigator.geolocation.getCurrentPosition(pos=>{setDraft(d=>d&&{...d,latitude:Number(pos.coords.latitude.toFixed(6)),longitude:Number(pos.coords.longitude.toFixed(6))});setNotice('GPS capturado. Pulsa «Guardar configuración» para guardarlo.')},
+      err=>setPageError(`No se pudo capturar GPS: ${err.message}`),{enableHighAccuracy:true,timeout:15000,maximumAge:0});
+  };
   const postValidationMessages=(status:'DRAFT'|'CONFIGURED')=>{
     if(!draft)return [] as string[];
     const messages:string[]=[];
@@ -626,6 +636,9 @@ function PostsPage({point,onBack}:{point:PointRow;onBack:()=>void}){
     if(status==='CONFIGURED'&&!hasPlanLocation)messages.push('Selecciona la ubicación del Puesto directamente en el plano ATS.');
     if(currentRuleError)messages.push(currentRuleError);
     if(adjusted&&!draft.adjustmentJustification?.trim())messages.push('Ingresa una justificación para los ajustes de habilidades.');
+    const la=draft.latitude??null,lo=draft.longitude??null;
+    if((la==null)!==(lo==null))messages.push('Ingresa latitud y longitud del Puesto, o deja ambas vacías.');
+    else if(la!=null&&lo!=null&&(Number.isNaN(la)||Number.isNaN(lo)||la<-90||la>90||lo<-180||lo>180))messages.push('Coordenadas GPS del Puesto fuera de rango: latitud entre -90 y 90, longitud entre -180 y 180.');
     return messages;
   };
 
@@ -828,7 +841,16 @@ function PostsPage({point,onBack}:{point:PointRow;onBack:()=>void}){
                 </>:<span>Cargando regla visual…</span>}
                 </div>
               </div>
-              <div className="posts-visint-card"><div><Sparkles size={17}/><strong>VISINT</strong><span>No aplica</span></div><p>Las fotos se guardan como referencia del puesto; el reconocimiento facial no aplica.</p></div>
+              <div className="posts-gps-field"><div className="posts-photo-heading"><strong>Ubicación GPS del puesto</strong><button type="button" className="posts-gps-capture" onClick={capturePostGps}><Navigation size={13}/>Capturar GPS</button></div>
+                <span>Referencia para Bitácora y Relevo: si la foto del agente llega a más de 50 m, Operación muestra el aviso «Fuera del radio GPS». Nunca bloquea.</span>
+                <div className="posts-gps-inputs"><label><span>Latitud</span><input type="number" step="0.000001" min={-90} max={90} placeholder="-2.154490" value={draft.latitude??''} onChange={event=>setDraft({...draft,latitude:event.target.value===''?null:Number(event.target.value)})}/></label>
+                <label><span>Longitud</span><input type="number" step="0.000001" min={-180} max={180} placeholder="-79.952253" value={draft.longitude??''} onChange={event=>setDraft({...draft,longitude:event.target.value===''?null:Number(event.target.value)})}/></label></div>
+                {draft.latitude==null&&<small className="posts-gps-empty">Sin ubicación: las fotos de Bitácora y Relevo de este puesto no se comparan por distancia.</small>}
+              </div>
+              <div className={`posts-visint-card${draft.stationVisintEnabled?' on':''}`}><div className="posts-visint-head"><Sparkles size={17}/><strong>VISINT en el relevo</strong><span>{draft.stationVisintEnabled?'Activo':'Opcional'}</span></div>
+                <label className="posts-visint-toggle"><input type="checkbox" checked={!!draft.stationVisintEnabled} disabled={photos.length===0&&!draft.stationVisintEnabled} onChange={event=>setDraft({...draft,stationVisintEnabled:event.target.checked})}/><span>Validar las fotos del puesto del relevo</span></label>
+                {draft.stationVisintEnabled&&<MatchThresholdField value={draft.stationMatchThreshold} onChange={v=>setDraft({...draft,stationMatchThreshold:v})}/>}
+                <p>{photos.length===0?'Agrega al menos 1 foto estándar para activarlo.':'Las fotos del puesto que toma el agente en el relevo se comparan con estas fotos estándar. No bloquea el relevo: el resultado se ve en Operación.'} El reconocimiento facial no aplica.</p></div>
             </div>
           </section>
 

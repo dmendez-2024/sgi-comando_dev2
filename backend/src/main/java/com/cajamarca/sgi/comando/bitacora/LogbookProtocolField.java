@@ -28,4 +28,6 @@ public class LogbookProtocolField extends BaseEntity {
     @Column(name="standard_image_version", nullable=false) public int standardImageVersion;
     @Column(name="standard_image_notes", length=1000) public String standardImageNotes;
     @Column(name="visint_enabled", nullable=false) public boolean visintEnabled;
+    /** Umbral de coincidencia de VISINT (0.00 a 1.00); null = predeterminado. */
+    @Column(name="match_threshold") public Double matchThreshold;
 }

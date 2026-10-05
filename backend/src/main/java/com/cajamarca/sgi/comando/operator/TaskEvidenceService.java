@@ -88,13 +88,12 @@ public class TaskEvidenceService {
         return ack(eventId, 1, validation);
     }
 
-    /** Número de la nueva captura en el turno (Consigna) o registro (Bitácora): la siguiente solo si la última "no cumple". */
+    /** Número de la nueva captura en el turno (Consigna) o registro (Bitácora). VISINT nunca bloquea: solo una ya validada (o sin VISINT) cuenta como registrada. */
     private int nextCapture(UUID t, UUID group, UUID targetId, String targetType) {
         TaskExecution last = TaskExecution.find("instanceCountryId=?1 and groupId=?2 and targetId=?3 and patrolExecutionId is null order by captureNo desc", t, group, targetId).firstResult();
         if (last == null) return 1;
         String review = reviews.statusFor(last.id);
-        if ("FAILED".equals(review)) return last.captureNo + 1;
-        if ("QUEUED_FOR_VISINT".equals(review) || "ERROR_RETRYABLE".equals(review)) throw new ClientErrorException("La foto anterior aún se está validando", 409);
+        if (!"PASSED".equals(review) && !"NOT_REQUESTED".equals(review)) return last.captureNo + 1;
         throw new ClientErrorException(StandardReferenceImage.CONSIGNMENT_EVIDENCE.equals(targetType)
             ? "Esta evidencia ya fue registrada en el turno" : "Este campo ya fue registrado para este visitante", 409);
     }

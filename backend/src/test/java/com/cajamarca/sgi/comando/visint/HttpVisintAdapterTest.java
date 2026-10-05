@@ -126,6 +126,7 @@ class HttpVisintAdapterTest {
             assertTrue(b.contains("name=\"" + f + "\""), "falta el campo " + f);
         assertTrue(b.contains("\r\n\r\nSGI_COM\r\n"));
         assertTrue(b.contains("\r\n\r\nPATRULLA\r\n"));
+        assertTrue(b.contains("name=\"matchThreshold\"\r\n\r\n0.80\r\n"), "matchThreshold con dos decimales");
         assertTrue(b.contains("name=\"evidenceId\"\r\n\r\n" + EVIDENCE + "\r\n"), "evidenceId = foto del agente");
         assertEquals(1, count(b, "name=\"image\""));
         assertTrue(b.contains("name=\"image\"; filename=\"" + EVIDENCE + ".jpg\""), "image = foto del agente");
@@ -190,6 +191,6 @@ class HttpVisintAdapterTest {
             UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(),
             new VisintPort.EvidenceRef(EVIDENCE, "b", "k", "a".repeat(64), "image/jpeg", Instant.parse("2026-09-30T15:00:00Z"), -2.19, -79.88),
             List.of(new VisintPort.StandardRef(STD1, 1, "s", "std1", "b".repeat(64), "image/jpeg"), new VisintPort.StandardRef(STD2, 2, "s", "std2", "c".repeat(64), "image/png")),
-            UUID.randomUUID());
+            UUID.randomUUID(), 0.8);
     }
 }

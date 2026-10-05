@@ -27,5 +27,15 @@ public class PostOperationalConfig extends BaseEntity {
     @Column(name="skill_customer_service", nullable=false) public int skillCustomerService;
     @Column(name="adjustment_justification", length=600) public String adjustmentJustification;
     @Column(name="config_status", nullable=false, length=24) public String configStatus;
+    /** VISINT opcional en el relevo: compara las fotos del puesto con las fotos estándar del Puesto. */
+    @Column(name="station_visint_enabled", nullable=false) public boolean stationVisintEnabled;
+    /** Umbral de coincidencia de VISINT para las fotos del puesto del relevo (0.00 a 1.00); null = predeterminado. */
+    @Column(name="station_match_threshold") public Double stationMatchThreshold;
+    /** Ubicación GPS del Puesto: referencia de Bitácora y Relevo para el aviso "Fuera del radio GPS" (nunca bloquea). */
+    @Column(name="latitude") public Double latitude;
+    @Column(name="longitude") public Double longitude;
+
+    /** Radio propio (m) de la ubicación del Puesto; null = predeterminado de la instancia. */
+    @Column(name="radius_m") public Integer radiusM;
     @Column(name="updated_by_username", nullable=false, length=80) public String updatedByUsername;
 }

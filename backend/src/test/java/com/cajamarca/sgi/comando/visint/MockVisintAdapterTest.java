@@ -19,7 +19,7 @@ class MockVisintAdapterTest {
         for (int i = 0; i < shas.length; i++) std.add(new VisintPort.StandardRef(UUID.randomUUID(), i + 1, "b", "s" + i, shas[i], "image/jpeg"));
         return new VisintPort.ReviewRequest(UUID.randomUUID(), 1, UUID.randomUUID(), "PATROL_CHECKPOINT", UUID.randomUUID(), UUID.randomUUID(),
             UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(),
-            new VisintPort.EvidenceRef(UUID.randomUUID(), "b", "k", evidenceSha, "image/jpeg", Instant.now(), null, null), std, UUID.randomUUID());
+            new VisintPort.EvidenceRef(UUID.randomUUID(), "b", "k", evidenceSha, "image/jpeg", Instant.now(), null, null), std, UUID.randomUUID(), 0.8);
     }
 
     @Test void photoIdenticalToAStandardPassesAndPointsToIt() {

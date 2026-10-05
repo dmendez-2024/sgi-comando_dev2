@@ -57,6 +57,13 @@ export const api={
  submitExecution:(batch:any)=>request<any>("/api/v1/operator/executions",{method:"POST",body:JSON.stringify(batch)},SIMULATOR_USER),
  operatorStandardImage:(imageId:string,assignmentId:string)=>binaryRequest(`/api/v1/operator/standard-images/${encodeURIComponent(imageId)}?assignmentId=${encodeURIComponent(assignmentId)}`,undefined,SIMULATOR_USER),
  operatorExecution:(eventId:string)=>request<any>(`/api/v1/operator/executions/${encodeURIComponent(eventId)}`,undefined,SIMULATOR_USER),
+ operatorExecutionsByGroup:(groupId:string)=>request<any[]>(`/api/v1/operator/executions?groupId=${encodeURIComponent(groupId)}`,undefined,SIMULATOR_USER),
+ /** Foto del relevo (rostro, cuerpo o puesto): JPEG en crudo, una por propósito. */
+ uploadReliefEvidence:async(eventId:string,purpose:string,assignmentId:string,photo:Blob)=>{
+  const res=await fetch(`${API}/api/v1/operator/relief-evidence/${encodeURIComponent(eventId)}/${encodeURIComponent(purpose)}?assignmentId=${encodeURIComponent(assignmentId)}`,
+   {method:'PUT',headers:{Authorization:authHeader(SIMULATOR_USER),'Content-Type':'image/jpeg'},body:photo});
+  if(!res.ok)throw new ApiError(res.status,await res.text()); return res.json() as Promise<{evidenceId:string;sha256:string}>;
+ },
  operatorCheckpointImage:(checkpointId:string,imageId:string,assignmentId:string)=>binaryRequest(`/api/v1/operator/checkpoints/${encodeURIComponent(checkpointId)}/standard-images/${encodeURIComponent(imageId)}?assignmentId=${encodeURIComponent(assignmentId)}`,undefined,SIMULATOR_USER),
  context:()=>request<any>('/api/context'),
  companies:(page=0,size=50)=>request<any>(`/api/companies?page=${page}&size=${size}`),

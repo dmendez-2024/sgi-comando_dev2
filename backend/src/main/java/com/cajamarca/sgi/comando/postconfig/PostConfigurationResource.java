@@ -29,8 +29,8 @@ public class PostConfigurationResource {
     @Inject StandardReferenceImages references;
 
     public record SkillSet(int attendance,int accessControl,int patrol,int judgement,int tactical,int bearing,int leadership,int customerService) {}
-    public record ConfigDto(UUID postId,String postType,String description,String alias,String visualTitle,UUID standardImageId,String standardImageName,String atsLocationKey,String atsLocationLabel,UUID atsPackageId,Double atsLocationX,Double atsLocationY,SkillSet skills,String adjustmentJustification,String configStatus,String updatedBy) {}
-    public record SaveRequest(String postType,String description,String alias,String visualTitle,String atsLocationKey,String atsLocationLabel,UUID atsPackageId,Double atsLocationX,Double atsLocationY,SkillSet skills,String adjustmentJustification,String configStatus) {}
+    public record ConfigDto(UUID postId,String postType,String description,String alias,String visualTitle,UUID standardImageId,String standardImageName,String atsLocationKey,String atsLocationLabel,UUID atsPackageId,Double atsLocationX,Double atsLocationY,SkillSet skills,String adjustmentJustification,String configStatus,String updatedBy,boolean stationVisintEnabled,Double stationMatchThreshold,Double latitude,Double longitude,Integer radiusM) {}
+    public record SaveRequest(String postType,String description,String alias,String visualTitle,String atsLocationKey,String atsLocationLabel,UUID atsPackageId,Double atsLocationX,Double atsLocationY,SkillSet skills,String adjustmentJustification,String configStatus,Boolean stationVisintEnabled,Double stationMatchThreshold,Double latitude,Double longitude,Integer radiusM) {}
 
     @GET
     @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION","SUPERVISOR_SEGURIDAD","AGENTE_SEGURIDAD","CLIENTE"})
@@ -91,6 +91,16 @@ public class PostConfigurationResource {
         config.skillCustomerService=s.customerService();
         config.adjustmentJustification=blankToNull(request.adjustmentJustification());
         config.configStatus=normalizeStatus(request.configStatus());
+        if(Boolean.TRUE.equals(request.stationVisintEnabled())&&StandardReferenceImage.countOf(StandardReferenceImage.POST_CONFIG,postId)==0)
+            throw validationResponse("Agrega al menos 1 foto estándar para validar el relevo con VISINT");
+        if(request.stationVisintEnabled()!=null) config.stationVisintEnabled=request.stationVisintEnabled();
+        // Ubicación GPS del Puesto: ambas o ninguna; se guarda tal como viene (vacías = sin ubicación).
+        if((request.latitude()==null)!=(request.longitude()==null)) throw validationResponse("Ingresa latitud y longitud del Puesto, o deja ambas vacías");
+        if(request.latitude()!=null&&(request.latitude()<-90||request.latitude()>90||request.longitude()<-180||request.longitude()>180))
+            throw validationResponse("Coordenadas GPS fuera de rango: latitud entre -90 y 90, longitud entre -180 y 180");
+        config.latitude=request.latitude();config.longitude=request.longitude();
+        try{config.radiusM=com.cajamarca.sgi.comando.settings.EvidenceLocationSettings.validRadius(request.radiusM(),"del Puesto");}catch(BadRequestException e){throw validationResponse(e.getMessage());}
+        if(request.stationMatchThreshold()!=null) config.stationMatchThreshold=com.cajamarca.sgi.comando.visint.MatchThreshold.normalize(request.stationMatchThreshold());
         config.updatedByUsername=identity.getPrincipal().getName();
         if(config.id==null) config.persist();
         post.configStatus="CONFIGURED".equals(config.configStatus)?"CONFIGURED":"PENDING";
@@ -210,7 +220,7 @@ public class PostConfigurationResource {
         String type=post.name!=null&&post.name.toLowerCase(Locale.ROOT).contains("acceso")?"CAA":post.name!=null&&post.name.toLowerCase(Locale.ROOT).contains("perímetro")?"PAT":"VIG";
         SkillSet skills=template(type);
         StandardReferenceImage image=standardImage(post.id);
-        return new ConfigDto(post.id,type,"",null,null,image==null?null:image.id,image==null?null:image.originalName,"","",null,null,null,skills,null,"DRAFT",null);
+        return new ConfigDto(post.id,type,"",null,null,image==null?null:image.id,image==null?null:image.originalName,"","",null,null,null,skills,null,"DRAFT",null,false,null,null,null,null);
     }
 
     private SkillSet template(String type){
@@ -226,7 +236,7 @@ public class PostConfigurationResource {
         StandardReferenceImage image=standardImage(c.postId);
         return new ConfigDto(c.postId,c.postType,c.description,c.alias,c.visualTitle,image==null?null:image.id,image==null?null:image.originalName,c.atsLocationKey,c.atsLocationLabel,c.atsPackageId,c.atsLocationX,c.atsLocationY,
             new SkillSet(c.skillAttendance,c.skillAccessControl,c.skillPatrol,c.skillJudgement,c.skillTactical,c.skillBearing,c.skillLeadership,c.skillCustomerService),
-            c.adjustmentJustification,c.configStatus,c.updatedByUsername);
+            c.adjustmentJustification,c.configStatus,c.updatedByUsername,c.stationVisintEnabled,c.stationMatchThreshold,c.latitude,c.longitude,c.radiusM);
     }
 
     private String blankToNull(String value){return value==null||value.isBlank()?null:value.trim();}

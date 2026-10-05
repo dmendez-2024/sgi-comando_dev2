@@ -92,14 +92,15 @@ public class OperatorEvidenceResource {
         return new UploadResponse(results);
     }
 
-    /** Foto estándar de un Hito, evidencia de Consigna o campo de Bitácora de su Puesto, para que el agente la use como guía. */
+    /** Foto estándar de un Hito, evidencia de Consigna, campo de Bitácora o del propio Puesto (relevo), para que el agente la use como guía. */
     @GET @Path("/standard-images/{imageId}")
     public Response standardImage(@PathParam("imageId") UUID imageId, @QueryParam("assignmentId") UUID assignmentId) {
         if (assignmentId == null) throw new BadRequestException("assignmentId es obligatorio");
         OperatorContext.Assignment a = ctx.assignment(assignmentId, ctx.employee());
         StandardReferenceImage img = StandardReferenceImage.find("id=?1 and instanceCountryId=?2", imageId, tenant.instanceCountryId()).firstResult();
         if (img == null) throw new NotFoundException("Foto estándar no encontrada");
-        tasks.require(img.targetType, img.targetId, a.post());
+        if (StandardReferenceImage.POST_CONFIG.equals(img.targetType)) { if (!img.targetId.equals(a.post().id)) throw new NotFoundException("Foto estándar no encontrada"); }
+        else tasks.require(img.targetType, img.targetId, a.post());
         return Response.ok(references.read(img)).type(img.contentType).header(HttpHeaders.CACHE_CONTROL, "no-store").build();
     }
 
@@ -113,7 +114,9 @@ public class OperatorEvidenceResource {
         List<String> f = new ArrayList<>();
         if ("GALLERY".equals(e.source)) f.add("GALLERY");
         if (e.latitude != null && e.longitude != null && t.latitude() != null && t.longitude() != null && t.radiusM() != null) {
-            if (GeoDistance.meters(e.latitude, e.longitude, t.latitude(), t.longitude()) > t.radiusM()) f.add("OUT_OF_RANGE");
+            double meters = GeoDistance.meters(e.latitude, e.longitude, t.latitude(), t.longitude());
+            e.referenceDistanceM = (int) Math.round(meters); e.referenceRadiusM = (int) Math.round(t.radiusM());
+            if (meters > t.radiusM()) f.add("OUT_OF_RANGE");
         }
         if (EvidenceObject.count("instanceCountryId=?1 and sha256=?2 and eventId<>?3", e.instanceCountryId, e.sha256, e.eventId) > 0) f.add("SUSPECTED_REUSE");
         return f;

@@ -32,6 +32,8 @@ public class Consignment extends BaseEntity {
  @Column(name="ats_y") public Double atsY;
  @Column(name="expected_latitude") public Double expectedLatitude;
  @Column(name="expected_longitude") public Double expectedLongitude;
+ /** Radio propio (m) de la ubicación esperada; null = predeterminado de la instancia. */
+ @Column(name="expected_radius_m") public Integer expectedRadiusM;
  @Column(name="published_at") public Instant publishedAt;
  @Column(name="updated_by_username",nullable=false) public String updatedByUsername;
 }

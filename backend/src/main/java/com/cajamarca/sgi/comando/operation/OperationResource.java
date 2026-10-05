@@ -16,18 +16,19 @@ import jakarta.ws.rs.core.*;
 import java.time.Instant;
 import java.util.*;
 
-/** Vista Operación: tareas con foto ejecutadas en el Punto (Hitos de patrulla, Consignas, Bitácora), sus fotos y el veredicto de VISINT. */
+/** Vista Operación: tareas con foto ejecutadas en el Punto (Hitos de patrulla, Consignas, Bitácora, fotos del puesto del relevo), sus fotos y el veredicto de VISINT. */
 @Path("/api/operation") @Produces(MediaType.APPLICATION_JSON)
 public class OperationResource {
     public record ReviewSummary(UUID id, String status, String result, boolean simulated) {}
-    /** module: PATRULLA | CONSIGNA | BITACORA. group: patrulla / consigna / acreditación; task: Hito / evidencia / campo. */
+    /** module: PATRULLA | CONSIGNA | BITACORA | RELEVO. group: patrulla / consigna / acreditación / relevo; task: Hito / evidencia / campo / foto del puesto. */
     public record ExecutionRow(UUID id, Instant executedAt, String module, String postCode, String postName, String protocolCode, int protocolVersion,
                                String groupCode, String groupName, String taskCode, String taskName, String employeeName, int captureNo,
                                List<UUID> evidenceIds, List<String> flags, ReviewSummary review) {}
-    public record EvidenceView(UUID id, Instant capturedAt, Double latitude, Double longitude, String source, List<String> flags) {}
+    /** distanceM / radiusM: distancia de la foto al punto de referencia (Hito o consigna con GPS) y radio esperado; null si falta alguna coordenada. Solo informativo. */
+    public record EvidenceView(UUID id, Instant capturedAt, Double latitude, Double longitude, String source, List<String> flags, Integer distanceM, Integer radiusM) {}
     public record ReviewDetail(UUID id, String status, String result, String findings, UUID matchedStandardImageId, String reasonCode, String modelVersion,
                                int standardImageVersion, boolean simulated, int attempts, String lastError,
-                               Instant createdAt, Instant requestedAt, Instant reviewedAt) {}
+                               Instant createdAt, Instant requestedAt, Instant reviewedAt, Double matchThreshold, Double matchScore) {}
     public record StandardView(UUID id, int position) {}
     public record ExecutionDetail(ExecutionRow row, String observation, Double latitude, Double longitude, String standardNotes, List<EvidenceView> evidences,
                                   List<StandardView> standards, ReviewDetail review) {}
@@ -37,6 +38,7 @@ public class OperationResource {
     @Inject EntityManager em;
     @Inject StorageService storage;
     @Inject StandardImageStore standardImages;
+    @Inject com.cajamarca.sgi.comando.settings.EvidenceLocationSettings locationSettings;
 
     @GET @Path("/executions")
     @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION","SUPERVISOR_SEGURIDAD"})
@@ -52,7 +54,12 @@ public class OperationResource {
     public ExecutionDetail detail(@PathParam("id") UUID id) {
         TaskExecution x = execution(id);
         VisualReview r = VisualReview.find("taskExecutionId", x.id).firstResult();
-        List<EvidenceView> photos = photos(x.id).stream().map(o -> new EvidenceView(o.id, o.capturedAt, o.latitude, o.longitude, o.source, flags(o.flags))).toList();
+        double[] ref = reference(x);
+        // Distancia y radio con que se evaluó la foto al recibirla; si no quedaron guardados (fotos anteriores), se calculan con la referencia actual.
+        List<EvidenceView> photos = photos(x.id).stream().map(o -> new EvidenceView(o.id, o.capturedAt, o.latitude, o.longitude, o.source, flags(o.flags),
+            o.referenceDistanceM != null ? o.referenceDistanceM
+                : ref == null || o.latitude == null || o.longitude == null ? null : (Integer) (int) Math.round(com.cajamarca.sgi.comando.operator.GeoDistance.meters(o.latitude, o.longitude, ref[0], ref[1])),
+            o.referenceRadiusM != null ? o.referenceRadiusM : ref == null ? null : (Integer) (int) ref[2])).toList();
         List<StandardView> standards = r != null ? VisualReviewStandard.of(r.id).stream().map(s -> new StandardView(s.standardImageId, s.position)).toList()
             : StandardReferenceImage.of(x.targetType, x.targetId).stream().map(i -> new StandardView(i.id, i.position)).toList();
         return new ExecutionDetail(row(x), x.observation, x.latitude, x.longitude, standardNotes(x), photos, standards, r == null ? null : detail(r));
@@ -122,9 +129,14 @@ public class OperationResource {
             select po.code, po.name, e.full_name from task_execution t join post po on po.id=t.post_id
             left join employee_operational_snapshot e on e.employee_id=t.employee_id and e.instance_country_id=t.instance_country_id where t.id=:id""")
             .setParameter("id", x.id).getSingleResult();
-        String[] label = LABELS.get(x.targetType);
-        List<Object[]> found = label == null ? List.of() : em.createNativeQuery(label[1]).setParameter("t", x.targetId).getResultList();
+        boolean relief = com.cajamarca.sgi.comando.operator.ReliefStationReviews.TYPE.equals(x.executionType);
+        String[] label = relief ? new String[]{"RELEVO", null} : LABELS.get(x.targetType);
+        List<Object[]> found = label == null || relief ? List.of() : em.createNativeQuery(label[1]).setParameter("t", x.targetId).getResultList();
         Object[] m = found.isEmpty() ? new Object[6] : found.get(0);
+        if (relief) {
+            String[] station = com.cajamarca.sgi.comando.operator.ReliefStationReviews.station(x);
+            m = new Object[]{"Relevo", 0, null, "Fotos del puesto", station[0], station[1]};
+        }
         List<EvidenceObject> photos = photos(x.id);
         Set<String> flags = new TreeSet<>();
         photos.forEach(o -> flags.addAll(flags(o.flags)));
@@ -146,12 +158,34 @@ public class OperationResource {
                 com.cajamarca.sgi.comando.bitacora.LogbookProtocolField f = com.cajamarca.sgi.comando.bitacora.LogbookProtocolField.findById(x.targetId);
                 yield f == null ? null : f.standardImageNotes;
             }
+            case StandardReferenceImage.POST_CONFIG -> {
+                com.cajamarca.sgi.comando.postconfig.PostOperationalConfig c = com.cajamarca.sgi.comando.postconfig.PostOperationalConfig.find("postId=?1 and instanceCountryId=?2", x.postId, x.instanceCountryId).firstResult();
+                yield c == null ? null : c.visualTitle;
+            }
             default -> null;
         };
     }
 
+    /** Punto de referencia de la tarea: [latitud, longitud, radio en m] del Hito, de la consigna en modo GPS o del Puesto (Bitácora, Relevo); null si no tiene. */
+    private double[] reference(TaskExecution x) {
+        if (StandardReferenceImage.PATROL_CHECKPOINT.equals(x.targetType)) {
+            PatrolCheckpoint cp = PatrolCheckpoint.findById(x.targetId);
+            return cp == null || cp.latitude == null || cp.longitude == null ? null : new double[]{cp.latitude, cp.longitude, locationSettings.radiusFor(cp.radiusM, x.instanceCountryId)};
+        }
+        if (StandardReferenceImage.CONSIGNMENT_EVIDENCE.equals(x.targetType)) {
+            com.cajamarca.sgi.comando.consignments.ConsignmentEvidence e = com.cajamarca.sgi.comando.consignments.ConsignmentEvidence.findById(x.targetId);
+            com.cajamarca.sgi.comando.consignments.Consignment c = e == null ? null : com.cajamarca.sgi.comando.consignments.Consignment.findById(e.consignmentId);
+            return c == null || !"GPS".equals(c.expectedLocationMode) || c.expectedLatitude == null || c.expectedLongitude == null ? null : new double[]{c.expectedLatitude, c.expectedLongitude, locationSettings.radiusFor(c.expectedRadiusM, x.instanceCountryId)};
+        }
+        // Bitácora y fotos del puesto del relevo: la referencia es la ubicación del Puesto.
+        if (StandardReferenceImage.LOGBOOK_FIELD.equals(x.targetType) || StandardReferenceImage.POST_CONFIG.equals(x.targetType)) {
+            return locationSettings.postReference(x.instanceCountryId, x.postId);
+        }
+        return null;
+    }
+
     private ReviewDetail detail(VisualReview r) {
-        return new ReviewDetail(r.id, r.status, r.result, r.findings, r.matchedStandardImageId, r.reasonCode, r.modelVersion, r.standardImageVersion, r.simulated, r.attempts, r.lastError, r.createdAt, r.requestedAt, r.reviewedAt);
+        return new ReviewDetail(r.id, r.status, r.result, r.findings, r.matchedStandardImageId, r.reasonCode, r.modelVersion, r.standardImageVersion, r.simulated, r.attempts, r.lastError, r.createdAt, r.requestedAt, r.reviewedAt, r.matchThreshold, r.matchScore);
     }
 
     @SuppressWarnings("unchecked")
