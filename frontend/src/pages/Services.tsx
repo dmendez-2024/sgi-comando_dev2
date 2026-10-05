@@ -5,6 +5,7 @@ import {
   ArrowLeft,
   BarChart3,
   Building2,
+  Camera,
   ChevronLeft,
   ChevronRight,
   ClipboardList,
@@ -26,6 +27,8 @@ import {
   Search,
   Settings2,
   ShieldCheck,
+  Sparkles,
+  Trash2,
   Upload,
   Users,
   Warehouse,
@@ -87,6 +90,7 @@ type AtsPackageDto={
 
 type PostSkillSet={attendance:number;accessControl:number;patrol:number;judgement:number;tactical:number;bearing:number;leadership:number;customerService:number};
 type PostOperationalConfig={postId:string;postType:'CAA'|'PAT'|'VIG'|'MIX';description:string;alias?:string|null;visualTitle?:string|null;standardImageId?:string|null;standardImageName?:string|null;atsLocationKey:string;atsLocationLabel:string;atsPackageId?:string|null;atsLocationX?:number|null;atsLocationY?:number|null;skills:PostSkillSet;adjustmentJustification?:string|null;configStatus:'DRAFT'|'CONFIGURED';updatedBy?:string|null};
+type PostStandardPhoto={id:string;position:number;originalName:string;contentType:string;url:string};
 type CommercialPost={id:string;pointId:string;code:string;name:string;format:string;fhe:number;tier:string;rotationCode?:string|null;cycleLengthDays?:number|null};
 type CommercialShift={id:string;postId:string;shiftName:string;startsAt:string;endsAt:string};
 type CommercialWeek={posts:CommercialPost[];shifts:CommercialShift[]};
@@ -520,7 +524,9 @@ function PostsPage({point,onBack}:{point:PointRow;onBack:()=>void}){
   const [notice,setNotice]=useState('');
   const [pageError,setPageError]=useState('');
   const [searchPost,setSearchPost]=useState('');
-  const [photoUrl,setPhotoUrl]=useState('');
+  const [photos,setPhotos]=useState<PostStandardPhoto[]>([]);
+  const [photoRevision,setPhotoRevision]=useState(0);
+  const [photoLoading,setPhotoLoading]=useState(false);
   const [photoBusy,setPhotoBusy]=useState(false);
   const photoInputRef=useRef<HTMLInputElement>(null);
 
@@ -557,16 +563,24 @@ function PostsPage({point,onBack}:{point:PointRow;onBack:()=>void}){
 
   useEffect(()=>{
     let active=true;
-    let url='';
-    setPhotoUrl('');
-    const imageId=configs.find((item:PostOperationalConfig)=>item.postId===selectedPostId)?.standardImageId;
-    if(imageId)void api.postStandardImage(selectedPostId,imageId).then(blob=>{
-      if(!active)return;
-      url=URL.createObjectURL(blob as Blob);
-      setPhotoUrl(url);
-    }).catch(error=>{if(active)setPageError(errorMessage(error))});
-    return()=>{active=false;if(url)URL.revokeObjectURL(url)};
-  },[configs,selectedPostId]);
+    const urls:string[]=[];
+    setPhotos([]);
+    setPhotoLoading(!!selectedPostId);
+    if(selectedPostId)void (async()=>{
+      try{
+        const images=await api.postStandardImages(selectedPostId);
+        const loaded=await Promise.all(images.map(async image=>{
+          const blob=await api.postStandardImage(selectedPostId,image.id) as Blob;
+          const url=URL.createObjectURL(blob);
+          if(active)urls.push(url);else URL.revokeObjectURL(url);
+          return {...image,url};
+        }));
+        if(active)setPhotos(loaded);
+      }catch(error){if(active)setPageError(errorMessage(error))}
+      finally{if(active)setPhotoLoading(false)}
+    })();
+    return()=>{active=false;urls.forEach(url=>URL.revokeObjectURL(url))};
+  },[selectedPostId,photoRevision]);
 
   const filteredPosts=useMemo(()=>{
     const q=searchPost.trim().toLowerCase();
@@ -629,22 +643,22 @@ function PostsPage({point,onBack}:{point:PointRow;onBack:()=>void}){
 
   const uploadPhoto=async(file:File)=>{
     if(!draft)return;
+    if(photos.length>=3){setPageError('El puesto admite máximo 3 fotos estándar.');return}
+    if(!['image/jpeg','image/png','image/webp'].includes(file.type)){setPageError('Selecciona una imagen JPG, PNG o WebP.');return}
+    if(file.size>5*1024*1024){setPageError('La foto estándar no puede superar 5 MB.');return}
     setPhotoBusy(true);setPageError('');setNotice('');
     try{
-      const image=await api.uploadPostStandardImage(draft.postId,file) as {id:string;originalName:string};
-      const next={...draft,standardImageId:image.id,standardImageName:image.originalName};
-      setDraft(next);
-      setConfigs(previous=>previous.map(item=>item.postId===draft.postId?{...item,standardImageId:image.id,standardImageName:image.originalName}:item));
+      await api.uploadPostStandardImage(draft.postId,file);
+      setPhotoRevision(value=>value+1);
       setNotice('Foto estándar guardada.');
     }catch(error){setPageError(errorMessage(error))}finally{setPhotoBusy(false);if(photoInputRef.current)photoInputRef.current.value=''}
   };
-  const removePhoto=async()=>{
-    if(!draft?.standardImageId)return;
+  const removePhoto=async(imageId:string)=>{
+    if(!draft)return;
     setPhotoBusy(true);setPageError('');
     try{
-      await api.deletePostStandardImage(draft.postId,draft.standardImageId);
-      setDraft({...draft,standardImageId:null,standardImageName:null});
-      setConfigs(previous=>previous.map(item=>item.postId===draft.postId?{...item,standardImageId:null,standardImageName:null}:item));
+      await api.deletePostStandardImage(draft.postId,imageId);
+      setPhotoRevision(value=>value+1);
       setNotice('Foto estándar eliminada.');
     }catch(error){setPageError(errorMessage(error))}finally{setPhotoBusy(false)}
   };
@@ -746,17 +760,19 @@ function PostsPage({point,onBack}:{point:PointRow;onBack:()=>void}){
           </section>
 
           <section className="posts-section posts-visual-identity">
-            <header><div><h4>D. Identificación del puesto</h4><span>Alias, foto estándar y título o descripción</span></div></header>
+            <header><div><h4>D. Identificación del puesto</h4><span>Alias y fotos estándar de referencia</span></div></header>
             <div className="posts-visual-form">
               <label><span>Alias de puesto</span><input value={draft.alias??''} maxLength={120} onChange={event=>setDraft({...draft,alias:event.target.value})} placeholder="Ej. Acceso principal"/></label>
-              <label><span>Título o descripción</span><textarea value={draft.visualTitle??''} maxLength={300} onChange={event=>setDraft({...draft,visualTitle:event.target.value})} placeholder="Describe lo que muestra la foto o identifica este puesto…"/></label>
-              <div className="posts-photo-field"><strong>Foto estándar</strong><span>Imagen de referencia del puesto · máximo 5 MB</span>
-                {photoUrl&&<img src={photoUrl} alt={draft.visualTitle||draft.alias||'Foto estándar del puesto'}/>}
-                {draft.standardImageId&&!photoUrl&&<span>Cargando foto…</span>}
-                <input ref={photoInputRef} type="file" accept="image/*" hidden onChange={event=>{const file=event.target.files?.[0];if(file)void uploadPhoto(file)}}/>
-                <div className="posts-photo-actions"><button type="button" onClick={()=>photoInputRef.current?.click()} disabled={photoBusy}><Upload size={14}/>{photoBusy?'Procesando…':draft.standardImageId?'Reemplazar foto':'Seleccionar foto'}</button>{draft.standardImageId&&<button type="button" onClick={()=>void removePhoto()} disabled={photoBusy}>Eliminar</button>}</div>
-                {draft.standardImageName&&<small>{draft.standardImageName}</small>}
+              <div className="posts-photo-field"><div className="posts-photo-heading"><strong>Fotos estándar</strong><Info size={14}/></div><span>Hasta 3 · JPG, PNG o WebP · máximo 5 MB por foto.</span>
+                <input ref={photoInputRef} type="file" accept="image/jpeg,image/png,image/webp" hidden onChange={event=>{const file=event.target.files?.[0];if(file)void uploadPhoto(file)}}/>
+                {photoLoading&&<small>Cargando fotos estándar…</small>}
+                <div className="posts-photo-gallery">
+                  {photos.map(photo=><figure key={photo.id}><img src={photo.url} alt={`Foto estándar ${photo.position} del puesto`} title={photo.originalName}/><figcaption><span>{photo.position}</span><button type="button" aria-label={`Eliminar foto ${photo.position}`} title="Eliminar foto" onClick={()=>void removePhoto(photo.id)} disabled={photoBusy}><Trash2 size={14}/></button></figcaption></figure>)}
+                  {photos.length<3&&<button type="button" className="posts-photo-add" onClick={()=>photoInputRef.current?.click()} disabled={photoBusy||photoLoading}><Camera size={20}/><strong>{photoBusy?'Procesando…':'Agregar foto estándar'}</strong><small>{photos.length} de 3 · puede agregar {3-photos.length}</small></button>}
+                </div>
+                <label><span>Notas del estándar</span><textarea value={draft.visualTitle??''} maxLength={300} onChange={event=>setDraft({...draft,visualTitle:event.target.value})} placeholder="Describe las referencias que deben verse en las fotos…"/></label>
               </div>
+              <div className="posts-visint-card"><div><Sparkles size={17}/><strong>VISINT</strong><span>No aplica</span></div><p>Las fotos se guardan como referencia del puesto; el reconocimiento facial no aplica.</p></div>
             </div>
           </section>
 

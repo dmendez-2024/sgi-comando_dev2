@@ -111,6 +111,26 @@ public class PostConfigurationResource {
     }
 
     @GET
+    @Path("/{postId}/standard-images")
+    @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION","SUPERVISOR_SEGURIDAD","AGENTE_SEGURIDAD","CLIENTE"})
+    public List<StandardReferenceImages.Dto> listStandardImages(@PathParam("postId") UUID postId){
+        authorizedPost(postId);
+        return references.dtos(StandardReferenceImage.POST_CONFIG,postId);
+    }
+
+    @POST
+    @Path("/{postId}/standard-images")
+    @Consumes(MediaType.MULTIPART_FORM_DATA)
+    @Transactional
+    @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
+    public StandardReferenceImages.Dto addStandardImage(@PathParam("postId") UUID postId,@org.jboss.resteasy.reactive.RestForm("file") org.jboss.resteasy.reactive.multipart.FileUpload file){
+        authorizedPost(postId);
+        if(StandardReferenceImage.countOf(StandardReferenceImage.POST_CONFIG,postId)>=3) throw new BadRequestException("El puesto admite máximo 3 fotos estándar");
+        StandardReferenceImage image=references.add(tenant.instanceCountryId(),StandardReferenceImage.POST_CONFIG,postId,"post",file);
+        return new StandardReferenceImages.Dto(image.id,image.position,image.originalName,image.contentType);
+    }
+
+    @GET
     @Path("/{postId}/standard-image/{imageId}")
     @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION","SUPERVISOR_SEGURIDAD","AGENTE_SEGURIDAD","CLIENTE"})
     public Response readStandardImage(@PathParam("postId") UUID postId,@PathParam("imageId") UUID imageId){
