@@ -9,9 +9,10 @@ public interface VisintPort {
     record EvidenceRef(UUID evidenceId, String bucket, String objectKey, String sha256, String contentType, Instant capturedAt, Double latitude, Double longitude) {}
     /** Una foto estándar del Hito, en su posición (1..5). */
     record StandardRef(UUID imageId, int position, String bucket, String objectKey, String sha256, String contentType) {}
-    /** serviceId: ronda de patrulla; activityId: Hito. attempt: número de intento (1, 2…). */
+    /** serviceId: ronda de patrulla; activityId: Hito. attempt: número de intento (1, 2…). matchThreshold: umbral de decisión (0 a 1) que fija SGI. */
     record ReviewRequest(UUID reviewId, int attempt, UUID taskExecutionId, String taskType, UUID employeeId, UUID companyId,
-                         UUID pointId, UUID postId, UUID serviceId, UUID activityId, EvidenceRef evidence, List<StandardRef> standards, UUID correlationId) {}
+                         UUID pointId, UUID postId, UUID serviceId, UUID activityId, EvidenceRef evidence, List<StandardRef> standards, UUID correlationId,
+                         double matchThreshold) {}
     /**
      * result: "PASS" (cumple), "FAIL" (no cumple) o "ERROR" (VISINT no pudo evaluar).
      * matchedStandardImageId: foto estándar que coincidió (matchedReferenceId); reasonCode y modelVersion tal como los devuelve VISINT.

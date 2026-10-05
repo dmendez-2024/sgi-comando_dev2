@@ -41,6 +41,7 @@ import PatrolConfig from './PatrolConfig';
 import ConsignasConfig from './ConsignasConfig';
 import NexusConfig from './NexusConfig';
 import OperationPage from './OperationPage';
+import MatchThresholdField from '../components/MatchThresholdField';
 
 type State='ACTIVE'|'INACTIVE'|'TO_CONFIGURE'|'PENDING_ASSIGNMENT';
 type Row={
@@ -89,7 +90,7 @@ type AtsPackageDto={
 };
 
 type PostSkillSet={attendance:number;accessControl:number;patrol:number;judgement:number;tactical:number;bearing:number;leadership:number;customerService:number};
-type PostOperationalConfig={postId:string;postType:'CAA'|'PAT'|'VIG'|'MIX';description:string;alias?:string|null;visualTitle?:string|null;standardImageId?:string|null;standardImageName?:string|null;atsLocationKey:string;atsLocationLabel:string;atsPackageId?:string|null;atsLocationX?:number|null;atsLocationY?:number|null;skills:PostSkillSet;adjustmentJustification?:string|null;configStatus:'DRAFT'|'CONFIGURED';updatedBy?:string|null};
+type PostOperationalConfig={postId:string;postType:'CAA'|'PAT'|'VIG'|'MIX';description:string;alias?:string|null;visualTitle?:string|null;standardImageId?:string|null;standardImageName?:string|null;atsLocationKey:string;atsLocationLabel:string;atsPackageId?:string|null;atsLocationX?:number|null;atsLocationY?:number|null;skills:PostSkillSet;adjustmentJustification?:string|null;configStatus:'DRAFT'|'CONFIGURED';updatedBy?:string|null;stationVisintEnabled?:boolean;stationMatchThreshold?:number|null};
 type PostStandardPhoto={id:string;position:number;originalName:string;contentType:string;url:string};
 type CommercialPost={id:string;pointId:string;code:string;name:string;format:string;fhe:number;tier:string;rotationCode?:string|null;cycleLengthDays?:number|null};
 type CommercialShift={id:string;postId:string;shiftName:string;startsAt:string;endsAt:string};
@@ -772,7 +773,10 @@ function PostsPage({point,onBack}:{point:PointRow;onBack:()=>void}){
                 </div>
                 <label><span>Notas del estándar</span><textarea value={draft.visualTitle??''} maxLength={300} onChange={event=>setDraft({...draft,visualTitle:event.target.value})} placeholder="Describe las referencias que deben verse en las fotos…"/></label>
               </div>
-              <div className="posts-visint-card"><div><Sparkles size={17}/><strong>VISINT</strong><span>No aplica</span></div><p>Las fotos se guardan como referencia del puesto; el reconocimiento facial no aplica.</p></div>
+              <div className={`posts-visint-card${draft.stationVisintEnabled?' on':''}`}><div><Sparkles size={17}/><strong>VISINT en el relevo</strong><span>{draft.stationVisintEnabled?'Activo':'Opcional'}</span></div>
+                <label className="posts-visint-toggle"><input type="checkbox" checked={!!draft.stationVisintEnabled} disabled={photos.length===0&&!draft.stationVisintEnabled} onChange={event=>setDraft({...draft,stationVisintEnabled:event.target.checked})}/><span>Validar las fotos del puesto del relevo</span></label>
+                {draft.stationVisintEnabled&&<MatchThresholdField value={draft.stationMatchThreshold} onChange={v=>setDraft({...draft,stationMatchThreshold:v})}/>}
+                <p>{photos.length===0?'Agrega al menos 1 foto estándar para activarlo.':'Las fotos del puesto que toma el agente en el relevo se comparan con estas fotos estándar. No bloquea el relevo: el resultado se ve en Operación.'} El reconocimiento facial no aplica.</p></div>
             </div>
           </section>
 

@@ -30,6 +30,8 @@ public class VisualReview extends PanacheEntityBase {
     @Column(name="quality_score") public Double qualityScore;
     @Column(name="match_compatible") public Boolean matchCompatible;
     @Column(name="match_score") public Double matchScore;
+    /** Umbral de coincidencia enviado a VISINT (snapshot de la tarea al ejecutar). */
+    @Column(name="match_threshold") public Double matchThreshold;
     @Column(name="correlation_id", nullable=false) public UUID correlationId;
     @Column(name="created_at", nullable=false) public Instant createdAt;
     @Column(name="requested_at") public Instant requestedAt;

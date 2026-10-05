@@ -4,16 +4,18 @@ import {api,ApiError} from '../api';
 
 type Review={id:string;status:string;result:string|null;simulated:boolean};
 type Row={id:string;executedAt:string;postCode:string;postName:string;protocolCode:string;protocolVersion:number;module:string;groupCode:string|null;groupName:string|null;taskCode:string|null;taskName:string|null;employeeName:string;captureNo:number;evidenceIds:string[];flags:string[];review:Review|null};
-type Evidence={id:string;capturedAt:string;latitude:number|null;longitude:number|null;source:string;flags:string[]};
-type ReviewDetail=Review&{findings:string|null;matchedStandardImageId:string|null;reasonCode:string|null;modelVersion:string|null;standardImageVersion:number;attempts:number;lastError:string|null;createdAt:string;requestedAt:string|null;reviewedAt:string|null};
+type Evidence={id:string;capturedAt:string;latitude:number|null;longitude:number|null;source:string;flags:string[];distanceM:number|null;radiusM:number|null};
+type ReviewDetail=Review&{matchThreshold:number|null;matchScore:number|null;findings:string|null;matchedStandardImageId:string|null;reasonCode:string|null;modelVersion:string|null;standardImageVersion:number;attempts:number;lastError:string|null;createdAt:string;requestedAt:string|null;reviewedAt:string|null};
 type Standard={id:string;position:number};
 type Detail={row:Row;observation:string|null;standardNotes:string|null;evidences:Evidence[];standards:Standard[];review:ReviewDetail|null};
 type Point={pointId:string;pointName:string;clientName:string;companyName:string};
 
 /** Módulo de la tarea con foto. */
-const MODULES:Record<string,string>={PATRULLA:'Patrulla',CONSIGNA:'Consigna',BITACORA:'Bitácora'};
+const MODULES:Record<string,string>={PATRULLA:'Patrulla',CONSIGNA:'Consigna',BITACORA:'Bitácora',RELEVO:'Relevo'};
 const taskLabel=(r:Row)=>[r.taskCode,r.taskName].filter(Boolean).join(' · ');
-const FLAGS:Record<string,string>={OUT_OF_RANGE:'Fuera de GPS'};
+const FLAGS:Record<string,string>={OUT_OF_RANGE:'Fuera del radio GPS'};
+/** Distancia de la foto al punto configurado (solo aviso: nunca bloquea). */
+const distance=(e?:Evidence)=>e?.distanceM==null?null:{out:e.radiusM!=null&&e.distanceM>e.radiusM,text:`A ${e.distanceM>=1000?`${(e.distanceM/1000).toFixed(1)} km`:`${e.distanceM} m`} del punto · radio ${e.radiusM} m`};
 /** Alertas que se registran pero no se muestran: GALLERY (foto elegida de la galería) y SUSPECTED_REUSE (el mismo archivo ya se usó en otra ejecución). */
 const shown=(flags:string[]|undefined)=>(flags??[]).filter(f=>f in FLAGS);
 const PENDING=new Set(['QUEUED_FOR_VISINT','ERROR_RETRYABLE']);
@@ -62,7 +64,7 @@ export default function OperationPage({point,onBack}:{point:Point;onBack:()=>voi
 
  return <div className="services-v01 opr-page">
   <div className="ser-breadcrumbs"><button onClick={onBack}><ArrowLeft size={15}/>Volver a Servicios</button><span>/</span><small>Operación</small></div>
-  <div className="opr-title"><div><h2>Operación · {point.pointName}</h2><span>{point.clientName} · {point.companyName} · Tareas con foto (Patrullas, Consignas, Bitácora) y validación visual (VISINT)</span></div><button onClick={()=>void load()}><RefreshCw size={14}/>Actualizar</button></div>
+  <div className="opr-title"><div><h2>Operación · {point.pointName}</h2><span>{point.clientName} · {point.companyName} · Tareas con foto (Patrullas, Consignas, Bitácora, Relevo) y validación visual (VISINT)</span></div><button onClick={()=>void load()}><RefreshCw size={14}/>Actualizar</button></div>
   <div className="opr-kpis">
    <article><small>Ejecuciones</small><strong>{rows.length}</strong></article>
    <article className="good"><small>Cumplen</small><strong>{count('PASSED')}</strong></article>
@@ -76,7 +78,7 @@ export default function OperationPage({point,onBack}:{point:Point;onBack:()=>voi
    <tbody>{loading?<tr><td colSpan={7}>Cargando…</td></tr>:rows.length?rows.map(r=><tr key={r.id} className={r.id===openId?'selected':''} onClick={()=>open(r.id)}>
     <td>{when(r.executedAt)}</td>
     <td><em className={`opr-module ${r.module.toLowerCase()}`}>{MODULES[r.module]??r.module}</em><strong>{taskLabel(r)}</strong><small>{r.postCode}{r.captureNo>1&&` · Captura ${r.captureNo}`}</small></td>
-    <td>{r.protocolCode} v{r.protocolVersion}<small>{[r.groupCode,r.groupName].filter(Boolean).join(' ')}</small></td>
+    <td>{r.protocolCode}{r.protocolVersion>0&&` v${r.protocolVersion}`}<small>{[r.groupCode,r.groupName].filter(Boolean).join(' ')}</small></td>
     <td>{r.employeeName}</td>
     <td><div className="opr-thumbs">{r.evidenceIds.slice(0,3).map(id=><Img key={id} load={()=>api.operationEvidenceImage(id)} alt="" className="opr-thumb"/>)}{r.evidenceIds.length>3&&<span>+{r.evidenceIds.length-3}</span>}</div></td>
     <td><Verdict review={r.review}/></td>
@@ -87,13 +89,14 @@ export default function OperationPage({point,onBack}:{point:Point;onBack:()=>voi
    <header><div><h3>{detail?`${MODULES[detail.row.module]??detail.row.module} · ${taskLabel(detail.row)}`:'Cargando…'}</h3>{detail&&<span>{detail.row.employeeName} · {detail.row.postCode} · {when(detail.row.executedAt)}</span>}</div><button onClick={close} aria-label="Cerrar"><X size={18}/></button></header>
    {detail&&<div className="opr-drawer-body">
     <div className="opr-result"><Verdict review={detail.review}/>
+     {detail.review?.matchThreshold!=null&&<span className={`opr-threshold${detail.review.matchScore!=null&&detail.review.matchScore<detail.review.matchThreshold?' below':''}`}>Coincidencia <b>{detail.review.matchScore!=null?detail.review.matchScore.toFixed(2):'—'}</b> de umbral <b>{detail.review.matchThreshold.toFixed(2)}</b>{detail.review.matchThreshold<=0.4&&<em>umbral bajo</em>}</span>}
      {detail.review&&<span>Foto estándar v{detail.review.standardImageVersion}{detail.review.simulated&&" · VISINT simulado"}{!detail.review.simulated&&detail.review.modelVersion&&` · modelo ${detail.review.modelVersion}`}</span>}
      {detail.review&&(detail.review.status==='ERROR_FINAL'||detail.review.status==='ERROR_RETRYABLE')&&<button onClick={()=>void retry()}><RefreshCw size={13}/>Reintentar VISINT</button>}
     </div>
     {detail.review?.findings&&<p className="opr-findings">{detail.review.findings}</p>}
     {detail.review?.lastError&&<p className="opr-error-note"><AlertTriangle size={13}/>{detail.review.lastError} (intentos: {detail.review.attempts})</p>}
     <div className="opr-compare">
-     <figure><figcaption>Foto del agente{shown(detail.evidences[0]?.flags).map(f=><em key={f} className="opr-flag">{FLAGS[f]??f}</em>)}</figcaption>{detail.evidences[0]?<Img key={detail.evidences[0].id} load={()=>api.operationEvidenceImage(detail.evidences[0].id)} alt="Foto del agente" className="opr-big"/>:<div className="opr-img-loading opr-big"/>}</figure>
+     <figure><figcaption>Foto del agente{shown(detail.evidences[0]?.flags).map(f=><em key={f} className="opr-flag">{FLAGS[f]??f}</em>)}{(()=>{const d=distance(detail.evidences[0]);return d&&<em className={`opr-distance${d.out?' out':''}`}>{d.text}</em>})()}</figcaption>{detail.evidences[0]?<Img key={detail.evidences[0].id} load={()=>api.operationEvidenceImage(detail.evidences[0].id)} alt="Foto del agente" className="opr-big"/>:<div className="opr-img-loading opr-big"/>}</figure>
      <figure><figcaption>Foto estándar {detail.standards.find(x=>x.id===selected)?.position??""}{selected&&selected===detail.review?.matchedStandardImageId&&<em className="opr-match">Coincide</em>}</figcaption>{selected?<Img key={selected} load={()=>api.operationStandardImage(detail.row.id,selected)} alt="Foto estándar" className="opr-big"/>:<div className="opr-img-loading opr-big"/>}{detail.standardNotes&&<small>{detail.standardNotes}</small>}</figure>
     </div>
     <div className="opr-gallery">{detail.standards.map(x=><button key={x.id} className={x.id===selected?'selected':''} onClick={()=>setSelected(x.id)}>

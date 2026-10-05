@@ -41,6 +41,8 @@ public class HttpVisintAdapter implements VisintPort {
         form.field("activityId", r.activityId());
         EvidenceRef photo = r.evidence();
         form.field("evidenceId", photo.evidenceId());
+        // Umbral de decisión que exige VISINT en cada petición: PASS si la mejor coincidencia lo alcanza o supera.
+        form.field("matchThreshold", MatchThreshold.format(r.matchThreshold()));
         form.field("capturedAt", photo.capturedAt());
         form.field("latitude", photo.latitude());
         form.field("longitude", photo.longitude());
@@ -104,7 +106,7 @@ public class HttpVisintAdapter implements VisintPort {
     }
 
     static String serviceType(String taskType) {
-        return switch (taskType) { case "PATROL_CHECKPOINT" -> "PATRULLA"; case "CONSIGNMENT_EVIDENCE" -> "CONSIGNA"; case "LOGBOOK_FIELD" -> "BITACORA"; default -> taskType; };
+        return switch (taskType) { case "PATROL_CHECKPOINT" -> "PATRULLA"; case "CONSIGNMENT_EVIDENCE" -> "CONSIGNA"; case "LOGBOOK_FIELD" -> "BITACORA"; case "POST_CONFIG" -> "RELEVO"; default -> taskType; };
     }
     private static Boolean bool(JsonNode n, String f) { return n.path(f).isBoolean() ? n.path(f).asBoolean() : null; }
     private static Double number(JsonNode n, String f) { return n.path(f).isNumber() ? n.path(f).asDouble() : null; }

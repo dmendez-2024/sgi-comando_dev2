@@ -67,7 +67,10 @@ public class OperatorTasks {
             List<ConsignmentEvidence> photos = ConsignmentEvidence.list("consignmentId=?1 and evidenceType='PHOTO' order by sortOrder", c.id);
             if (photos.isEmpty()) continue;
             ObjectNode n = out.addObject().put("consignmentId", c.id.toString()).put("code", c.code).put("title", c.title).put("instruction", c.instruction)
-                .put("protocolCode", p.code).put("protocolVersion", p.versionNo);
+                .put("protocolCode", p.code).put("protocolVersion", p.versionNo).put("expectedLocationMode", c.expectedLocationMode);
+            // Ubicación esperada (solo en modo GPS): la foto se compara con ella; fuera del radio es un aviso, nunca bloquea.
+            if ("GPS".equals(c.expectedLocationMode) && c.expectedLatitude != null && c.expectedLongitude != null)
+                n.put("latitude", c.expectedLatitude).put("longitude", c.expectedLongitude).put("radiusM", patrols.defaultRadius());
             ArrayNode ev = n.putArray("evidences");
             for (ConsignmentEvidence e : photos) {
                 ObjectNode x = ev.addObject().put("evidenceId", e.id.toString()).put("name", e.name).put("description", e.description).put("required", e.required)

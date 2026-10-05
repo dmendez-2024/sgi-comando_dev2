@@ -23,6 +23,7 @@ public class VisualReviewWorker {
     @Inject VisintClient visint;
     @ConfigProperty(name="sgi.visint.worker-enabled") boolean enabled;
     @ConfigProperty(name="sgi.visint.max-attempts") int maxAttempts;
+    @ConfigProperty(name="sgi.visint.match-threshold", defaultValue="0.8") double defaultThreshold;
 
     @Scheduled(every="2s", delayed="10s", concurrentExecution=Scheduled.ConcurrentExecution.SKIP)
     void tick() {
@@ -62,7 +63,7 @@ public class VisualReviewWorker {
         r.requestedAt = Instant.now();
         try {
             VisintPort.ReviewResult res = visint.review(new VisintPort.ReviewRequest(r.id, r.attempts, x.id, x.targetType, x.employeeId,
-                point == null ? null : point.companyId, x.pointId, x.postId, serviceId(x), x.targetId, photo, standards, r.correlationId));
+                point == null ? null : point.companyId, x.pointId, x.postId, serviceId(x), x.targetId, photo, standards, r.correlationId, r.matchThreshold != null ? r.matchThreshold : defaultThreshold));
             r.visintExternalId = cut(res.externalId(), 120);
             r.result = res.result();
             r.findings = cut(res.findings(), 1000);
@@ -83,7 +84,7 @@ public class VisualReviewWorker {
         return true;
     }
 
-    /** Servicio que se informa a VISINT: la ronda (Patrullas), la consigna (Consignas) o el registro del visitante (Bitácora). */
+    /** Servicio que se informa a VISINT: la ronda (Patrullas), la consigna (Consignas), el registro del visitante (Bitácora) o el relevo. */
     static UUID serviceId(TaskExecution x) {
         if ("CONSIGNMENT_EVIDENCE".equals(x.targetType)) {
             com.cajamarca.sgi.comando.consignments.ConsignmentEvidence e = com.cajamarca.sgi.comando.consignments.ConsignmentEvidence.findById(x.targetId);

@@ -33,6 +33,7 @@ public class OperatorResource {
     @Inject PatrolExecutionService patrolExecutions;
     @Inject TaskEvidenceService taskEvidences;
     @Inject OperatorTasks tasks;
+    @Inject ReliefStationReviews stationReviews;
 
     @org.jboss.resteasy.reactive.server.ServerExceptionMapper
     public Response mapError(WebApplicationException e) { return OperatorErrors.withMessage(e); }
@@ -275,6 +276,10 @@ public class OperatorResource {
         n.set("patrolProtocols",patrols(c));
         n.putArray("stationPhotos").add("Vista general del puesto").add("Área de trabajo o garita").add("Acceso principal");
         n.put("configurationVersion",hash(n.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+        // Fuera de configurationVersion: activar VISINT en el Puesto no invalida un relevo en curso.
+        ObjectNode visint=n.putObject("stationVisint").put("enabled",stationReviews.enabled(tenant.instanceCountryId(),c.post.id));
+        ArrayNode images=visint.putArray("standardImageIds");
+        for(var i:com.cajamarca.sgi.comando.storage.StandardReferenceImage.of(com.cajamarca.sgi.comando.storage.StandardReferenceImage.POST_CONFIG,c.post.id)) images.add(i.id.toString());
         return n;
     }
     @POST @Path("/patrol-executions") @Consumes(MediaType.APPLICATION_JSON) @Transactional
@@ -466,7 +471,12 @@ public class OperatorResource {
             AssignmentContext selected=assignment(assignmentId,employee);
             var candidate=new OperatorAssignmentWindow.Candidate<>(selected,selected.shift.startsAt,selected.shift.endsAt);
             if(OperatorAssignmentWindow.select(List.of(candidate),now).isEmpty()) throw new ForbiddenException("Asignación fuera de la ventana operativa");
-            response.set("relief",context(selected)); return response;
+            response.set("relief",context(selected));
+            // Tareas con foto del Puesto: Hitos de patrulla, evidencias de Consigna y campos de Bitácora.
+            response.set("patrols",patrols.runtime(selected.post.id));
+            response.set("consignmentTasks",tasks.consignmentTasks(selected.post));
+            response.set("logbookTasks",tasks.logbookTasks(selected.post));
+            return response;
         }
         ArrayNode choices=response.putArray("assignments");
         @SuppressWarnings("unchecked")
@@ -510,6 +520,9 @@ public class OperatorResource {
     }
     @POST @Path("/executions") @Consumes(MediaType.APPLICATION_JSON) @Transactional
     public ObjectNode submit(JsonNode batch) {
+        // Hito de patrulla y tarea con foto (Consigna/Bitácora) tienen su propio servicio; el resto es el relevo.
+        if(PatrolExecutionContract.TYPE.equals(batch.path("events").path(0).path("type").asText())) return patrolExecutions.submit(batch);
+        if(TaskEvidenceService.TYPE.equals(batch.path("events").path(0).path("type").asText())) return taskEvidences.submit(batch);
         UUID employee=employee(); validate(batch,employee,tenant.instanceCountryId(),Instant.now());
         JsonNode event=batch.path("events").get(0); UUID eventId=uuid(event,"eventId"), assignmentId=uuid(event,"assignmentId");
         AssignmentContext c=assignment(assignmentId,employee); lock(assignmentId);
@@ -518,7 +531,8 @@ public class OperatorResource {
         List<?> old=em.createNativeQuery("select payload_hash,username from operator_relief_submission where id=:id and instance_country_id=:t")
             .setParameter("id",eventId).setParameter("t",tenant.instanceCountryId()).getResultList();
         if(!old.isEmpty()) { Object[] r=(Object[])old.get(0); if(!r[1].equals(identity.getPrincipal().getName())) throw new ForbiddenException();
-            if(!r[0].equals(digest)) throw new ClientErrorException("Identificador reutilizado con datos diferentes",409); return ack(eventId); }
+            if(!r[0].equals(digest)) throw new ClientErrorException("Identificador reutilizado con datos diferentes",409);
+            return ack(eventId,com.cajamarca.sgi.comando.execution.TaskExecution.count("instanceCountryId=?1 and groupId=?2 and executionType=?3",tenant.instanceCountryId(),eventId,ReliefStationReviews.TYPE)>0?"QUEUED_FOR_VISINT":"NOT_REQUESTED"); }
         if(!em.createNativeQuery("select id from operator_relief_submission where instance_country_id=:t and assignment_id=:a").setParameter("t",tenant.instanceCountryId()).setParameter("a",assignmentId).getResultList().isEmpty()) throw new ClientErrorException("La asignación ya tiene un relevo recibido",409);
         Instant execution=time(event,"executedAt");
         if(execution.isBefore(c.shift.startsAt.minusSeconds(43200)) || execution.isAfter(c.shift.endsAt.plusSeconds(43200))) throw new BadRequestException("Fecha fuera de ventana UAT del turno");
@@ -548,16 +562,19 @@ public class OperatorResource {
             .setParameter("id",eventId).setParameter("t",tenant.instanceCountryId()).setParameter("a",assignmentId).setParameter("e",employee).setParameter("u",identity.getPrincipal().getName())
             .setParameter("d",text(batch,"deviceId")).setParameter("b",uuid(batch,"batchId")).setParameter("c",uuid(batch,"correlationId"))
             .setParameter("h",digest).setParameter("payload",event.toString()).setParameter("context",snapshot.toString()).executeUpdate();
-        return ack(eventId);
+        // VISINT opcional: las fotos del puesto se comparan con las fotos estándar del Puesto; el resultado no bloquea el relevo.
+        String stationVisint=stationReviews.enqueue(tenant.instanceCountryId(),eventId,assignmentId,c.shift.id,c.point.id,c.post.id,employee,identity.getPrincipal().getName(),execution,batch);
+        return ack(eventId,stationVisint);
     }
     private JsonNode canonical(JsonNode n) {
         if(n.isObject()) { ObjectNode out=mapper.createObjectNode(); TreeSet<String> names=new TreeSet<>(); n.fieldNames().forEachRemaining(names::add); for(String name:names) out.set(name,canonical(n.get(name))); return out; }
         if(n.isArray()) { ArrayNode out=mapper.createArrayNode(); for(JsonNode v:n) out.add(canonical(v)); return out; } return n;
     }
-    private ObjectNode ack(UUID id) {
+    /** stationVisintStatus: QUEUED_FOR_VISINT si las fotos del puesto se validan con VISINT, NOT_REQUESTED si el Puesto no lo tiene activado. */
+    private ObjectNode ack(UUID id,String stationVisintStatus) {
         ObjectNode n=mapper.createObjectNode().put("serverVersion","relief-uat-v1"); n.putArray("acknowledgedEventIds").add(id.toString()); n.putArray("rejectedEvents");
         n.putArray("pendingMessages").add("Inventario y novedades pendientes de fuente; revisión visual pendiente");
-        n.putArray("results").addObject().put("eventId",id.toString()).put("reliefId",id.toString()).put("status","PENDIENTE").put("inventoryStatus","PENDING_SOURCE").put("validationStatus","PENDING_REVIEW"); return n;
+        n.putArray("results").addObject().put("eventId",id.toString()).put("reliefId",id.toString()).put("status","PENDIENTE").put("inventoryStatus","PENDING_SOURCE").put("validationStatus","PENDING_REVIEW").put("stationVisintStatus",stationVisintStatus); return n;
     }
     @POST @Path("/consignment-review-requests") @Consumes(MediaType.APPLICATION_JSON) @Transactional
     public ObjectNode submitConsignmentReviewRequest(@HeaderParam("Idempotency-Key") String idempotencyKey, JsonNode request) {

@@ -27,5 +27,9 @@ public class PostOperationalConfig extends BaseEntity {
     @Column(name="skill_customer_service", nullable=false) public int skillCustomerService;
     @Column(name="adjustment_justification", length=600) public String adjustmentJustification;
     @Column(name="config_status", nullable=false, length=24) public String configStatus;
+    /** VISINT opcional en el relevo: compara las fotos del puesto con las fotos estándar del Puesto. */
+    @Column(name="station_visint_enabled", nullable=false) public boolean stationVisintEnabled;
+    /** Umbral de coincidencia de VISINT para las fotos del puesto del relevo (0.00 a 1.00); null = predeterminado. */
+    @Column(name="station_match_threshold") public Double stationMatchThreshold;
     @Column(name="updated_by_username", nullable=false, length=80) public String updatedByUsername;
 }

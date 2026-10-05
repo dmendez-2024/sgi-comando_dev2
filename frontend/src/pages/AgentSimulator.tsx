@@ -2,13 +2,14 @@ import {useEffect,useMemo,useState} from 'react';
 import {AlertTriangle,CheckCircle2,Info} from 'lucide-react';
 import {api,ApiError} from '../api';
 import {buildEvidenceForm,pickPhotos,type PickedPhoto} from '../lib/evidenceUpload';
+import AgentReliefSim,{type ReliefContext} from './AgentReliefSim';
 
 type Std={id:string;position:number};
 type Cp={checkpointId:string;code:string;name:string;description:string;requiresEvidence:boolean;visintEnabled:boolean;hasStandardImage:boolean;standardImages:Std[];standardImageNotes:string;latitude:number|null;longitude:number|null};
 type Patrol={protocolCode:string;patrolId:string;code:string;name:string;checkpoints:Cp[]};
-type ConsignmentTask={consignmentId:string;code:string;title:string;instruction:string;evidences:{evidenceId:string;name:string;description:string;visintEnabled:boolean;standardImageNotes:string;standardImages:Std[]}[]};
+type ConsignmentTask={consignmentId:string;code:string;title:string;instruction:string;latitude?:number|null;longitude?:number|null;evidences:{evidenceId:string;name:string;description:string;visintEnabled:boolean;standardImageNotes:string;standardImages:Std[]}[]};
 type LogbookTask={protocolId:string;code:string;name:string;fields:{fieldId:string;accreditationCode:string|null;section:string;name:string;fieldType:string;visintEnabled:boolean;standardImageNotes:string|null;standardImages:Std[]}[]};
-type Kind='PATRULLA'|'CONSIGNA'|'BITACORA';
+type Kind='PATRULLA'|'CONSIGNA'|'BITACORA'|'RELEVO';
 /** La tarea seleccionada, igual para los tres módulos. */
 type Task={kind:Kind;targetType:string;targetId:string;label:string;visint:boolean;standardImages:Std[];notes:string|null;latitude:number|null;longitude:number|null;requiresEvidence:boolean};
 type Outcome={eventId:string;captureNo:number;outcome:'NOT_REQUIRED'|'PENDING'|'VALIDATED'|'NOT_VALIDATED'|'TECHNICAL_ERROR';message:string;canRetake:boolean};
@@ -17,7 +18,7 @@ type Result={clientEvidenceId:string;evidenceId?:string;status:string;reason?:st
 type Phase='idle'|'picked'|'uploading'|'stored'|'pending'|'done';
 const REASONS:Record<string,string>={FILE_TOO_LARGE:'Supera 5 MB',UNSUPPORTED_FORMAT:'Formato no permitido',CHECKSUM_MISMATCH:'El archivo se dañó en el envío',TOO_MANY_PHOTOS:'Solo se permite 1 foto por tarea'};
 const FLAGS:Record<string,string>={OUT_OF_RANGE:'Fuera del radio GPS'};
-const KINDS:{key:Kind;label:string}[]=[{key:'PATRULLA',label:'Patrulla'},{key:'CONSIGNA',label:'Consigna'},{key:'BITACORA',label:'Bitácora'}];
+const KINDS:{key:Kind;label:string}[]=[{key:'PATRULLA',label:'Patrulla'},{key:'CONSIGNA',label:'Consigna'},{key:'BITACORA',label:'Bitácora'},{key:'RELEVO',label:'Relevo'}];
 const INSTANCE='11111111-1111-1111-1111-111111111111';
 const DEVICE='simulador-web';
 const STEPS=['Foto','Subida','Validación'];
@@ -57,7 +58,7 @@ const STYLES=`
 .agent-sim-select::after{content:"▼";position:absolute;right:14px;top:50%;transform:translateY(-50%);pointer-events:none;color:var(--muted);font-size:11px}
 .agent-sim-select select{width:100%;appearance:none;padding:11px 36px 11px 12px;border:1px solid var(--line2);border-radius:10px;background:#fff;font:inherit;font-size:14px;color:var(--ink);cursor:pointer}
 .agent-sim-bench label{display:grid;gap:6px;font-size:12px;color:var(--muted)}
-.agent-sim-kinds{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;padding:4px;background:var(--soft);border-radius:12px}
+.agent-sim-kinds{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;padding:4px;background:var(--soft);border-radius:12px}
 .agent-sim-kinds button{padding:9px 8px;border:0;border-radius:9px;font:inherit;font-size:13.5px;font-weight:600;cursor:pointer;background:transparent;color:var(--text2)}
 .agent-sim-kinds button.selected{background:var(--ink);color:var(--green)}
 .agent-sim-entry{display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--soft2);border:1px solid var(--line);border-radius:10px;padding:9px 10px 9px 12px;font-size:13px;color:var(--text3)}
@@ -160,6 +161,34 @@ const STYLES=`
 .agent-sim-sheet button:focus-visible{outline:3px solid var(--green);outline-offset:2px}
 @keyframes agent-sim-fade{from{opacity:0}}
 @keyframes agent-sim-rise{from{transform:translateY(24px);opacity:0}}
+.agent-sim-relief-slot{margin:0 20px;display:grid;gap:7px}
+.agent-sim-relief-title{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.agent-sim-relief-title strong{font-size:13.5px}
+.agent-sim-relief-title small{font-size:11px;color:var(--muted);text-align:right}
+.agent-sim-relief-pair{display:flex;gap:8px}
+.agent-sim-relief-pair>*{flex:1;min-width:0;height:118px;border-radius:12px}
+.agent-sim-relief-pair>img{object-fit:cover;border:1px solid #dfe5dc}
+.agent-sim-relief-noguide{display:grid;place-items:center;font-size:12px;color:var(--muted);background:repeating-linear-gradient(135deg,#ebefe9 0 8px,#e2e8df 8px 16px)}
+.agent-sim-relief-shot{position:relative;display:grid;place-items:center;overflow:hidden;border:1.5px dashed var(--green);background:#fff;cursor:pointer;color:var(--green-dd);font-size:13px;font-weight:600}
+.agent-sim-relief-shot:hover{background:#f0fdf4}
+.agent-sim-relief-shot span{display:grid;justify-items:center;gap:6px}
+.agent-sim-relief-shot span i{width:20px;height:15px;border:2.5px solid var(--green-d);border-radius:4px}
+.agent-sim-relief-shot.ok{border:2px solid var(--green-d)}
+.agent-sim-relief-shot img{width:100%;height:100%;object-fit:cover}
+.agent-sim-relief-read{margin:0 20px;display:flex!important;gap:10px!important;align-items:flex-start;padding:12px;border:1px solid var(--line);border-radius:12px;background:#fff;cursor:pointer;color:var(--ink)!important}
+.agent-sim-relief-read input{margin-top:3px;accent-color:var(--green-d);width:18px;height:18px}
+.agent-sim-relief-read span{display:grid;gap:3px;font-size:13px}
+.agent-sim-relief-read small{font-size:12px;color:var(--text2);line-height:1.45}
+.agent-sim-relief-read em{font-style:normal;font-size:11.5px;font-weight:700;color:var(--green-dd)}
+.agent-sim-relief-results{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.agent-sim-relief-results li{display:grid;grid-template-columns:auto minmax(0,1fr);gap:10px;align-items:start;padding:10px;border-radius:10px;background:#fff;color:var(--ink)}
+.agent-sim-relief-results li b{font-size:13px}
+.agent-sim-relief-results li small{opacity:1;color:var(--text2)}
+.agent-sim-relief-results li.validated .ico{background:var(--green-d)}
+.agent-sim-relief-results li.not_validated .ico{background:#dc2626}
+.agent-sim-relief-results li.technical_error .ico{background:#d97706}
+.agent-sim-relief-results li .spin{color:var(--ink)}
+.agent-sim-note.bad{background:#fef2f2;color:#991b1b}
 @media (prefers-reduced-motion:reduce){.agent-sim-modal,.agent-sim-sheet{animation:none}.agent-sim-result .spin{animation-duration:3s}.agent-sim-progress i{transition:none}}
 @media (max-width:900px){.agent-sim-left{position:static}}
 @media (max-width:480px){.agent-sim{padding:18px 14px 28px}.agent-sim-bezel{padding:0;background:none;box-shadow:none}.agent-sim-card.agent-sim-screen{border:1px solid var(--line);border-radius:18px;height:auto;min-height:640px}}
@@ -177,6 +206,8 @@ export default function AgentSimulator(){
  const [guideUrls,setGuideUrls]=useState<string[]>([]);const [photos,setPhotos]=useState<PickedPhoto[]>([]);const [results,setResults]=useState<Result[]>([]);
  const [progress,setProgress]=useState<number|null>(null);const [error,setError]=useState('');const [done,setDone]=useState('');const [confirming,setConfirming]=useState(false);
  const [eventId,setEventId]=useState(()=>crypto.randomUUID());const [outcome,setOutcome]=useState<Outcome|null>(null);const [runId,setRunId]=useState(()=>crypto.randomUUID());
+ const [relief,setRelief]=useState<ReliefContext|null>(null);const [instanceId,setInstanceId]=useState(INSTANCE);
+ const [far,setFar]=useState(false);
  const [captureNo,setCaptureNo]=useState(1);const [duplicate,setDuplicate]=useState<string|null>(null);const [now,setNow]=useState(()=>new Date());
 
  const patrol=patrols.find(p=>p.patrolId===patrolId);
@@ -187,7 +218,7 @@ export default function AgentSimulator(){
  const field=logbook?.fields.find(f=>f.fieldId===fieldId);
  const task=useMemo<Task|null>(()=>{
   if(kind==='PATRULLA')return checkpoint?{kind,targetType:'PATROL_CHECKPOINT',targetId:checkpoint.checkpointId,label:`Hito ${checkpoint.code}`,visint:checkpoint.visintEnabled,standardImages:checkpoint.standardImages,notes:checkpoint.standardImageNotes,latitude:checkpoint.latitude,longitude:checkpoint.longitude,requiresEvidence:checkpoint.requiresEvidence}:null;
-  if(kind==='CONSIGNA')return evidence&&consignment?{kind,targetType:'CONSIGNMENT_EVIDENCE',targetId:evidence.evidenceId,label:`Consigna ${consignment.code} · ${evidence.name}`,visint:evidence.visintEnabled,standardImages:evidence.standardImages,notes:evidence.standardImageNotes,latitude:null,longitude:null,requiresEvidence:true}:null;
+  if(kind==='CONSIGNA')return evidence&&consignment?{kind,targetType:'CONSIGNMENT_EVIDENCE',targetId:evidence.evidenceId,label:`Consigna ${consignment.code} · ${evidence.name}`,visint:evidence.visintEnabled,standardImages:evidence.standardImages,notes:evidence.standardImageNotes,latitude:consignment.latitude??null,longitude:consignment.longitude??null,requiresEvidence:true}:null;
   return field?{kind,targetType:'LOGBOOK_FIELD',targetId:field.fieldId,label:`Bitácora · ${field.name}`,visint:field.visintEnabled,standardImages:field.standardImages,notes:field.standardImageNotes,latitude:null,longitude:null,requiresEvidence:true}:null;
  },[kind,checkpoint,consignment,evidence,field]);
  // Una sola foto por captura: la que se ve en el teléfono, antes y después de subirla.
@@ -195,7 +226,8 @@ export default function AgentSimulator(){
  const photoResult=photo?results.find(r=>r.clientEvidenceId===photo.clientEvidenceId):undefined;
  const rejected=photo?.problem??(photoResult?.status==='REJECTED'?REASONS[photoResult.reason??'']??photoResult.reason??'Foto rechazada':null);
  const stored=results.filter(r=>r.status==='STORED'||r.status==='ALREADY_STORED');
- const gps=useMemo(()=>task?.latitude!=null&&task?.longitude!=null?{latitude:task.latitude,longitude:task.longitude,accuracyM:8}:undefined,[task]);
+ // GPS que manda el teléfono: el del Hito, o ~1 km al norte para probar el aviso "Fuera del radio GPS" en Operación (no bloquea).
+ const gps=useMemo(()=>task?.latitude!=null&&task?.longitude!=null?{latitude:task.latitude+(far?0.009:0),longitude:task.longitude,accuracyM:8}:undefined,[task,far]);
 
  useEffect(()=>{const t=setInterval(()=>setNow(new Date()),30000);return()=>clearInterval(t)},[]);
  useEffect(()=>{
@@ -208,6 +240,7 @@ export default function AgentSimulator(){
  useEffect(()=>{
   if(!assignmentId)return;
   api.operatorRuntime(assignmentId).then(r=>{
+   setRelief(r.relief??null);if(r.instanceCountryId)setInstanceId(r.instanceCountryId);
    const list:Patrol[]=(r.patrols??[]).filter((p:Patrol)=>p.checkpoints.length);setPatrols(list);setPatrolId(list[0]?.patrolId??'');setCheckpointId(list[0]?.checkpoints[0]?.checkpointId??'');
    const cons:ConsignmentTask[]=r.consignmentTasks??[];setConsignments(cons);setConsignmentId(cons[0]?.consignmentId??'');setConsignmentEvidenceId(cons[0]?.evidences[0]?.evidenceId??'');
    const logs:LogbookTask[]=(r.logbookTasks??[]).filter((l:LogbookTask)=>l.fields.length);setLogbooks(logs);setLogbookId(logs[0]?.protocolId??'');setFieldId(logs[0]?.fields[0]?.fieldId??'');
@@ -245,7 +278,7 @@ export default function AgentSimulator(){
    const event=task.kind==='PATRULLA'
     ?{type:'PATROL_CHECKPOINT_COMPLETED',eventId,assignmentId,patrolRunId:runId,patrolId:patrol!.patrolId,checkpointId:task.targetId,executedAt:at,...(gps??{}),evidenceIds}
     :{type:'TASK_EVIDENCE_SUBMITTED',eventId,assignmentId,targetType:task.targetType,targetId:task.targetId,...(task.kind==='BITACORA'?{groupId:entryId}:{}),executedAt:at,evidenceIds};
-   const r=await api.submitExecution({batchId:crypto.randomUUID(),correlationId:crypto.randomUUID(),employeeId,instanceCountryId:INSTANCE,deviceId:DEVICE,capturedAt:at,events:[event]});
+   const r=await api.submitExecution({batchId:crypto.randomUUID(),correlationId:crypto.randomUUID(),employeeId,instanceCountryId:instanceId,deviceId:DEVICE,capturedAt:at,events:[event]});
    setDone(`${task.label} registrado con ${r.results[0].evidenceCount} foto(s). Estado: recibido.`);
    const o:Outcome=await api.operatorExecution(eventId);setOutcome(o);setCaptureNo(o.captureNo);
   }catch(e){const dup=duplicateText(e);if(dup)setDuplicate(dup);else setError(errorText(e))}finally{setConfirming(false)}
@@ -272,7 +305,7 @@ export default function AgentSimulator(){
   const onKey=(e:KeyboardEvent)=>{if(e.key==='Escape')setDuplicate(null)};
   window.addEventListener('keydown',onKey);return()=>window.removeEventListener('keydown',onKey);
  },[duplicate]);
- const empty=kind==='PATRULLA'?!patrols.length:kind==='CONSIGNA'?!consignments.length:!logbooks.length;
+ const empty=kind==='PATRULLA'?!patrols.length:kind==='CONSIGNA'?!consignments.length:kind==='RELEVO'?!relief:!logbooks.length;
 
  const assignment=assignments.find(a=>a.assignmentId===assignmentId);
  const shiftLabel=(iso:string)=>new Date(iso).toLocaleString('es-EC',{weekday:'short',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
@@ -293,9 +326,9 @@ export default function AgentSimulator(){
   done:failed?{label:'Registro enviado'}:{label:'Siguiente tarea',run:()=>{reset();setCaptureNo(1)},go:true},
  }[phase];
  const chip=rejected?{cls:'bad',label:rejected}:phase==='uploading'?{cls:'up',label:'Subiendo…'}:stored.length?{cls:'ok',label:'✓ Foto subida'}:{cls:'',label:'Lista para subir'};
- const facts:{k:string;v:string;on?:boolean}[]=task?[{k:'Validación',v:task.visint?'VISINT compara con las fotos estándar':'Sin VISINT: la foto solo se guarda',on:task.visint}]:[];
- if(task&&kind==='PATRULLA'){facts.push({k:'Ronda',v:`${runId.slice(0,8)} · ronda en curso`});facts.push({k:'GPS',v:gps?`${gps.latitude.toFixed(5)}, ${gps.longitude.toFixed(5)} · ±8 m`:'El Hito no tiene ubicación'})}
- if(task&&kind==='CONSIGNA')facts.push({k:'Agrupa por',v:'Turno: una foto por evidencia'});
+ const facts:{k:string;v:string;on?:boolean}[]=kind==='RELEVO'?(relief?[{k:'Validación',v:relief.stationVisint.enabled?'VISINT compara las fotos del puesto con sus fotos estándar':'Sin VISINT: las fotos del puesto solo se guardan',on:relief.stationVisint.enabled},{k:'Modalidad',v:'Unilateral: el saliente no está presente'},{k:'Bloquea',v:'No: el relevo se recibe aunque una foto no cumpla'}]:[]):task?[{k:'Validación',v:task.visint?'VISINT compara con las fotos estándar':'Sin VISINT: la foto solo se guarda',on:task.visint}]:[];
+ if(task&&kind==='PATRULLA'){facts.push({k:'Ronda',v:`${runId.slice(0,8)} · ronda en curso`});facts.push({k:'GPS',v:gps?`${gps.latitude.toFixed(5)}, ${gps.longitude.toFixed(5)} · ±8 m${far?' · lejos: Operación mostrará el aviso':''}`:'El Hito no tiene ubicación'})}
+ if(task&&kind==='CONSIGNA'){facts.push({k:'Agrupa por',v:'Turno: una foto por evidencia'});facts.push({k:'GPS',v:gps?`${gps.latitude.toFixed(5)}, ${gps.longitude.toFixed(5)} · ±8 m${far?' · lejos: Operación mostrará el aviso':''}`:'La consigna no tiene ubicación GPS esperada'})}
  if(task&&kind==='BITACORA')facts.push({k:'Agrupa por',v:'Visitante: una foto por campo'});
 
  return <div className="agent-sim">
@@ -303,7 +336,7 @@ export default function AgentSimulator(){
   <div className="agent-sim-head">
    <div>
     <h2>Simulador de Agente <span>UAT</span></h2>
-    <p>Prueba lo que hará la app del agente: elige el turno y la tarea, toma la foto y mira el resultado de VISINT. Se registra como el usuario agente, sin cambiar tu sesión.</p>
+    <p>Prueba lo que hará la app del agente: elige el turno y la tarea (o el relevo), toma la foto y mira el resultado de VISINT. Se registra como el usuario agente, sin cambiar tu sesión.</p>
    </div>
    <div className="agent-sim-session"><i/>Sesión simulada · <span className="mono">{DEVICE}</span></div>
   </div>
@@ -331,12 +364,14 @@ export default function AgentSimulator(){
        <label>Consigna vigente<div className="agent-sim-select"><select value={consignmentId} onChange={e=>{setConsignmentId(e.target.value);setConsignmentEvidenceId(consignments.find(c=>c.consignmentId===e.target.value)?.evidences[0]?.evidenceId??'')}}>{consignments.map(c=><option key={c.consignmentId} value={c.consignmentId}>{c.code} · {c.title}</option>)}</select></div></label>
        <label>Evidencia (una foto por turno)<div className="agent-sim-select"><select value={consignmentEvidenceId} onChange={e=>setConsignmentEvidenceId(e.target.value)}>{consignment?.evidences.map(ev=><option key={ev.evidenceId} value={ev.evidenceId}>{ev.name}</option>)}</select></div></label>
       </>}
+      {kind==='RELEVO'&&relief&&<div className="agent-sim-entry"><span>{relief.reliefAlreadyRegistered?'Este turno ya tiene un relevo recibido':`Relevo de ${relief.postName}`}</span><code>{relief.stationPhotos.length} fotos del puesto</code></div>}
       {kind==='BITACORA'&&<>
        <label>Bitácora<div className="agent-sim-select"><select value={logbookId} onChange={e=>{setLogbookId(e.target.value);setFieldId(logbooks.find(l=>l.protocolId===e.target.value)?.fields[0]?.fieldId??'')}}>{logbooks.map(l=><option key={l.protocolId} value={l.protocolId}>{l.code} · {l.name}</option>)}</select></div></label>
        <label>Campo con foto<div className="agent-sim-select"><select value={fieldId} onChange={e=>setFieldId(e.target.value)}>{logbook?.fields.map(f=><option key={f.fieldId} value={f.fieldId}>{f.name}{f.visintEnabled?' · VISINT':' · sin VISINT'}</option>)}</select></div></label>
        <div className="agent-sim-entry"><span>Visitante <code>{entryId.slice(0,8)}</code></span><button type="button" onClick={newVisitor}>↻ Nuevo visitante</button></div>
       </>}
-      {empty&&assignmentId&&<p className="agent-sim-empty"><Info size={14}/>{kind==='PATRULLA'?'No hay patrullas activas con Hitos para este puesto.':kind==='CONSIGNA'?'No hay consignas vigentes con evidencia tipo Foto para este puesto.':'No hay bitácoras activas con campos de foto para este puesto.'}</p>}
+      {task?.latitude!=null&&<label>Ubicación del agente<div className="agent-sim-select"><select aria-label="Ubicación del agente" value={far?'FAR':'AT'} onChange={e=>setFar(e.target.value==='FAR')}><option value="AT">{kind==='PATRULLA'?'En el Hito':'En el punto de la consigna'}</option><option value="FAR">{kind==='PATRULLA'?'Lejos del Hito (~1 km)':'Lejos del punto (~1 km)'}</option></select></div></label>}
+      {empty&&assignmentId&&<p className="agent-sim-empty"><Info size={14}/>{kind==='PATRULLA'?'No hay patrullas activas con Hitos para este puesto.':kind==='CONSIGNA'?'No hay consignas vigentes con evidencia tipo Foto para este puesto.':kind==='RELEVO'?'El relevo no está disponible para este turno.':'No hay bitácoras activas con campos de foto para este puesto.'}</p>}
      </div>
     </div>
     {facts.length>0&&<div className="agent-sim-facts">
@@ -355,7 +390,9 @@ export default function AgentSimulator(){
         {assignment&&<span>desde {hhmm(new Date(assignment.startsAt))}</span>}
        </div>
       </div>
-      {!task?<div className="agent-sim-idle"><p>Elige una tarea a la izquierda para ver lo que verá el agente.</p></div>:<>
+      {kind==='RELEVO'?(relief?<AgentReliefSim key={`${relief.assignmentId}:${relief.reliefId??''}`} ctx={relief} employeeId={employeeId} instanceCountryId={instanceId} deviceId={DEVICE}
+        onError={setError} onReceived={()=>{setDone(`Relevo de ${relief.postName} recibido.`);api.operatorRuntime(assignmentId).then(r=>setRelief(r.relief??null)).catch(e=>setError(errorText(e)))}}/>:<div className="agent-sim-idle"><p>Elige un turno para hacer el relevo.</p></div>)
+      :!task?<div className="agent-sim-idle"><p>Elige una tarea a la izquierda para ver lo que verá el agente.</p></div>:<>
        <div className="agent-sim-steps">{STEPS.map((label,i)=><div key={label} className={failed&&i===2?'bad':i<step?'done':i===step?'active':''}><i/><span>{label}</span></div>)}</div>
        <div className="agent-sim-body">
         <div className="agent-sim-task">

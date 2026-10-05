@@ -20,12 +20,14 @@ public class TaskExecution extends PanacheEntityBase {
     @Column(name="username", nullable=false, length=80) public String username;
     @Column(name="target_type", nullable=false, length=40) public String targetType;
     @Column(name="target_id", nullable=false) public UUID targetId;
-    @Column(name="protocol_id", nullable=false) public UUID protocolId;
+    @Column(name="protocol_id") public UUID protocolId;
     @Column(name="protocol_version_no", nullable=false) public int protocolVersionNo;
     @Column(name="patrol_execution_id") public UUID patrolExecutionId;
     @Column(name="capture_no", nullable=false) public int captureNo = 1;
-    /** Agrupa ejecuciones que no son de patrulla: asignación (turno) en Consignas, registro del visitante en Bitácora. */
+    /** Agrupa ejecuciones que no son de patrulla: asignación (turno) en Consignas, registro del visitante en Bitácora, relevo en las fotos del puesto. */
     @Column(name="group_id") public UUID groupId;
+    /** Foto del relevo de origen (solo RELIEF_STATION_CAPTURED). */
+    @Column(name="relief_evidence_id") public UUID reliefEvidenceId;
     @Column(name="executed_at", nullable=false) public Instant executedAt;
     @Column(name="received_at", nullable=false) public Instant receivedAt;
     @Column(name="latitude") public Double latitude;
