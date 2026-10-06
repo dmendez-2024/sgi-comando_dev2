@@ -22,6 +22,7 @@ public final class InterconnectionIds {
     public static final String CORE_RESOLVER = "SGI_COM_CORE_0003_v001";
 
     public static final String IDENT_AUTH = "SGI_COM_IDENT_0001_v001";
+    public static final String IDENT_EMPLOYEE_QUERY = "IDENT_SGI_COM_0001_v001";
 
     public static final String SIC_COM_RECONCILIATION = "SGI_COM_SIC_COM_0001_v001";
     public static final String SIC_COM_EVENTS = "SIC_COM_SGI_COM_0001_v001";

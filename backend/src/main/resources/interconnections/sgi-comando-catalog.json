@@ -461,7 +461,7 @@
     "interconnectionId": "SIC_DHO_SGI_COM_0001_v001",
     "sourceProgramId": "SIC_DHO",
     "targetProgramId": "SGI_COM",
-    "purpose": "Synchronize the employee lifecycle from SIC:DHO and expose the active SGI operational workforce by Empresa using instanceCountryId.",
+    "purpose": "Synchronize the employee lifecycle from SIC:DHO.",
     "interactionType": "WEBHOOK",
     "mode": "ASYNC",
     "protocol": "HTTPS",
@@ -506,9 +506,32 @@
             "correlationId"
           ]
         }
-      },
+      }
+    ],
+    "legacyConnectionIds": [
+      "SIC_RRHH_SGI_COM_0001_v001",
+      "SIC_RRHH__SGI_COM__00001__V0001",
+      "SIC_RRHH__SGI_COM__00001"
+    ]
+  },
+  {
+    "interconnectionRef": "IDENT_SGI_COM_0001",
+    "interconnectionId": "IDENT_SGI_COM_0001_v001",
+    "sourceProgramId": "IDENT",
+    "targetProgramId": "SGI_COM",
+    "purpose": "Expose the active SGI operational workforce by Empresa to IDENT.",
+    "interactionType": "REST_API",
+    "mode": "SYNC",
+    "protocol": "HTTPS",
+    "contractVersion": "v1",
+    "dataOwnerProgramId": "SGI_COM",
+    "criticality": "HIGH",
+    "legacyTarget": false,
+    "targetImplementationStatus": "READY",
+    "status": "UAT",
+    "interfaces": [
       {
-        "interfaceId": "SIC_DHO_SGI_COM_0001_IF02",
+        "interfaceId": "IDENT_SGI_COM_0001_IF01",
         "method": "GET",
         "path": "/api/v1/employees?instanceCountryId={instanceCountryId}",
         "purpose": "List active SGI operational employees, roles and assigned Compañías for an Empresa identified by instanceCountryId.",
@@ -542,11 +565,7 @@
         }
       }
     ],
-    "legacyConnectionIds": [
-      "SIC_RRHH_SGI_COM_0001_v001",
-      "SIC_RRHH__SGI_COM__00001__V0001",
-      "SIC_RRHH__SGI_COM__00001"
-    ]
+    "legacyConnectionIds": []
   },
   {
     "interconnectionRef": "SGI_COM_SIC_RRMM_0001",
