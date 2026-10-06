@@ -49,7 +49,7 @@ export default function Sidebar({active,onChange,uatTools}:{active:string;onChan
   // Herramientas UAT (Simulador de Agente) solo visibles con la bandera UAT del backend.
   const ops={...operations,children:operations.children.filter(c=>uatTools||c.name!==SIMULATOR_MENU)};
   return <aside className="sidebar">
-    <div className="brand"><img className="brand-logo" src="/sgi-comando-logo-sidebar.png" alt="SGI Comando"/></div>
+    <div className="brand"><img className="brand-logo" src={`${import.meta.env.BASE_URL}sgi-comando-logo-sidebar.png`} alt="SGI Comando"/></div>
     <nav>
       <button onClick={()=>onChange('Dashboard')} className={active==='Dashboard'?'active':''}><Gauge size={18}/><span>Dashboard</span></button>
       <Group group={ops} active={active} onChange={onChange}/>
