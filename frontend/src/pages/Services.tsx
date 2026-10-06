@@ -43,6 +43,7 @@ import ConsignasConfig from './ConsignasConfig';
 import NexusConfig from './NexusConfig';
 import OperationPage from './OperationPage';
 import MatchThresholdField from '../components/MatchThresholdField';
+import RadiusField from '../components/RadiusField';
 
 type State='ACTIVE'|'INACTIVE'|'TO_CONFIGURE'|'PENDING_ASSIGNMENT';
 type Row={
@@ -91,7 +92,7 @@ type AtsPackageDto={
 };
 
 type PostSkillSet={attendance:number;accessControl:number;patrol:number;judgement:number;tactical:number;bearing:number;leadership:number;customerService:number};
-type PostOperationalConfig={postId:string;postType:'CAA'|'PAT'|'VIG'|'MIX';description:string;alias?:string|null;visualTitle?:string|null;standardImageId?:string|null;standardImageName?:string|null;atsLocationKey:string;atsLocationLabel:string;atsPackageId?:string|null;atsLocationX?:number|null;atsLocationY?:number|null;skills:PostSkillSet;adjustmentJustification?:string|null;configStatus:'DRAFT'|'CONFIGURED';updatedBy?:string|null;stationVisintEnabled?:boolean;stationMatchThreshold?:number|null;latitude?:number|null;longitude?:number|null};
+type PostOperationalConfig={postId:string;postType:'CAA'|'PAT'|'VIG'|'MIX';description:string;alias?:string|null;visualTitle?:string|null;standardImageId?:string|null;standardImageName?:string|null;atsLocationKey:string;atsLocationLabel:string;atsPackageId?:string|null;atsLocationX?:number|null;atsLocationY?:number|null;skills:PostSkillSet;adjustmentJustification?:string|null;configStatus:'DRAFT'|'CONFIGURED';updatedBy?:string|null;stationVisintEnabled?:boolean;stationMatchThreshold?:number|null;latitude?:number|null;longitude?:number|null;radiusM?:number|null};
 type PostStandardPhoto={id:string;position:number;originalName:string;contentType:string;url:string};
 type CommercialPost={id:string;pointId:string;code:string;name:string;format:string;fhe:number;tier:string;rotationCode?:string|null;cycleLengthDays?:number|null};
 type CommercialShift={id:string;postId:string;shiftName:string;startsAt:string;endsAt:string};
@@ -786,9 +787,9 @@ function PostsPage({point,onBack}:{point:PointRow;onBack:()=>void}){
                 <label><span>Notas del estándar</span><textarea value={draft.visualTitle??''} maxLength={300} onChange={event=>setDraft({...draft,visualTitle:event.target.value})} placeholder="Describe las referencias que deben verse en las fotos…"/></label>
               </div>
               <div className="posts-gps-field"><div className="posts-photo-heading"><strong>Ubicación GPS del puesto</strong><button type="button" className="posts-gps-capture" onClick={capturePostGps}><Navigation size={13}/>Capturar GPS</button></div>
-                <span>Referencia para Bitácora y Relevo: si la foto del agente llega a más de 50 m, Operación muestra el aviso «Fuera del radio GPS». Nunca bloquea.</span>
+                <span>Referencia para Bitácora y Relevo: si la foto del agente llega fuera del radio, Operación muestra el aviso «Fuera del radio GPS». Nunca bloquea.</span>
                 <div className="posts-gps-inputs"><label><span>Latitud</span><input type="number" step="0.000001" min={-90} max={90} placeholder="-2.154490" value={draft.latitude??''} onChange={event=>setDraft({...draft,latitude:event.target.value===''?null:Number(event.target.value)})}/></label>
-                <label><span>Longitud</span><input type="number" step="0.000001" min={-180} max={180} placeholder="-79.952253" value={draft.longitude??''} onChange={event=>setDraft({...draft,longitude:event.target.value===''?null:Number(event.target.value)})}/></label></div>
+                <label><span>Longitud</span><input type="number" step="0.000001" min={-180} max={180} placeholder="-79.952253" value={draft.longitude??''} onChange={event=>setDraft({...draft,longitude:event.target.value===''?null:Number(event.target.value)})}/></label><RadiusField className="full" value={draft.radiusM} onChange={v=>setDraft({...draft,radiusM:v})}/></div>
                 {draft.latitude==null&&<small className="posts-gps-empty">Sin ubicación: las fotos de Bitácora y Relevo de este puesto no se comparan por distancia.</small>}
               </div>
               <div className={`posts-visint-card${draft.stationVisintEnabled?' on':''}`}><div className="posts-visint-head"><Sparkles size={17}/><strong>VISINT en el relevo</strong><span>{draft.stationVisintEnabled?'Activo':'Opcional'}</span></div>

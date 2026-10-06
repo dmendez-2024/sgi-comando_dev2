@@ -50,7 +50,7 @@ public class OperatorPatrols {
                         .put("sortOrder", c.sortOrder).put("requiresEvidence", c.requiresEvidence)
                         .put("maxPhotos", 1).put("visintEnabled", c.visintEnabled)
                                                 .put("standardImageVersion", c.standardImageVersion).put("standardImageNotes", c.standardImageNotes)
-                        .put("latitude", c.latitude).put("longitude", c.longitude).put("radiusM", c.radiusM == null ? defaultRadius : c.radiusM);
+                        .put("latitude", c.latitude).put("longitude", c.longitude).put("radiusM", c.radiusM == null ? defaultRadius() : c.radiusM);
                     List<com.cajamarca.sgi.comando.storage.StandardReferenceImage> images = com.cajamarca.sgi.comando.storage.StandardReferenceImage.of("PATROL_CHECKPOINT", c.id);
                     cn.put("hasStandardImage", !images.isEmpty());
                     ArrayNode std = cn.putArray("standardImages");
