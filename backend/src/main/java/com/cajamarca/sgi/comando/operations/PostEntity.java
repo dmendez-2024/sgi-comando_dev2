@@ -7,6 +7,7 @@ import java.util.UUID;
 public class PostEntity extends BaseEntity {
     @Column(name="point_id",nullable=false) public UUID pointId;
     @Column(nullable=false) public String code;
+    @Column(name="code2", length=64) public String code2;
     @Column(nullable=false) public String name;
     @Column(nullable=false) public String format;
     @Column(precision=8,scale=2,nullable=false) public BigDecimal fhe;
