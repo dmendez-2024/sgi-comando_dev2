@@ -435,3 +435,24 @@ Baseline: `OPR-PATROL-HISTORY-001 RC1`
 - Cada patrulla contiene tres Hitos y cada Hito exige inspección visual, fotografía y confirmación.
 - La carga es transaccional, idempotente y acotada al tenant/puesto UAT.
 
+# SGI_COM - OPR-EVIDENCE-LOCATION-001 / VISINT fases 5–9 - 2026-10-06
+
+Rama `acordova` · commits `5ac2f76`, `28b566c`, `bc0fafd`. Estado detallado: `docs/VISINT_ESTADO_IMPLEMENTACION.md`.
+
+### Cambios
+- **Relevo con VISINT opcional:** casilla por Puesto; las 3 fotos del puesto se validan contra sus fotos estándar y se ven en Operación (módulo Relevo). Nunca bloquea el relevo (`V55`).
+- **Umbral de coincidencia `matchThreshold`:** VISINT lo exige; Comando lo configura por tarea junto a las fotos estándar (Hito, Consigna, Bitácora, Puesto) con un control 0–1 que marca como bajo hasta 0.40. Se guarda en cada revisión (`V56`).
+- **Ubicación GPS de referencia:** latitud/longitud editables en Hito, Consigna (modo GPS) y Puesto (referencia de Bitácora y Relevo, `V57`). Operación muestra "Fuera del radio GPS" y la distancia.
+- **No bloqueante:** se acepta una nueva captura mientras la anterior está pendiente, con error o "no cumple"; mensajes al agente actualizados.
+- **Radio GPS configurable desde la base:** nuevo menú Configuración (`/api/settings/evidence-location`, tabla `operational_setting`) y radio propio por Hito, Consigna y Puesto; cada foto guarda su distancia y radio (`V58`).
+- Correcciones: estilos del control de umbral en Puestos y Consignas; regresiones restauradas (`/executions`, tareas del runtime, galería de Consignas); el Simulador usa el `instanceCountryId` del runtime.
+- Contrato para SGI: Operador documentado en `docs/API_CATALOG.md` → `OPR-EVIDENCE-LOCATION-001`.
+
+### Impacto SITC
+- Cambio aditivo en `SGI_OPR_SGI_COM_0001_v001` / `0002_v001` (campos opcionales `latitude`, `longitude`, `accuracyM`, `radiusM`, `postLocation`, `stationVisintStatus`, `station`). Sin interconexión, credencial ni topología nuevas.
+- `SGI_COM_VISINT_0001_v002`: campo nuevo `matchThreshold` en el formulario (requerido por VISINT).
+- Migraciones `V55`–`V58`. Variable nueva `SGI_VISINT_MATCH_THRESHOLD` (0.8).
+
+### Validación
+- Builds de backend y frontend en Docker; pruebas E2E por API y Playwright contra el VISINT real.
+- Videos en `C:/Proyectos/sgi_comando/evidencias_playwright/`: `v6` (relevo), `v7` (GPS Hito, parcial), `v8` (umbral), `v9` (GPS consigna), `v10` (GPS Bitácora y Relevo), `v11` (radio configurable).
