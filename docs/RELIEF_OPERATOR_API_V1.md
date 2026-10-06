@@ -27,3 +27,11 @@ Mientras no exista fuente integrada de materiales y novedades, el request exige 
 La propiedad `SGI_OPERATOR_RELIEF_UAT_ENABLED=true` habilita el contrato. Además debe existir un registro explícito en `operator_employee_binding` para el usuario autenticado. La propiedad permanece deshabilitada por defecto.
 
 > Compatibilidad transitoria: los IDs v3 históricos pueden aceptarse como aliases donde esté documentado, pero no deben usarse para nuevos bindings CORE.
+
+## Ubicación GPS y VISINT del puesto (2026-10-05/06, aditivo)
+
+- El evento `RELIEF_SUBMITTED` acepta `latitude`, `longitude` y `accuracyM` (opcionales); se aplican a las 3 fotos del puesto (`station_0..2`), porque esas fotos se suben como JPEG sin metadatos.
+- El runtime entrega `relief.postLocation` (`latitude`, `longitude`, `radiusM`) y `relief.stationVisint`, fuera de `configurationVersion`: cambiarlos en Comando no invalida un relevo en curso.
+- Si el Puesto tiene "Validar las fotos del puesto del relevo", cada foto del puesto se valida con VISINT contra las fotos estándar del Puesto. El acuse añade `stationVisintStatus` (`QUEUED_FOR_VISINT` | `NOT_REQUESTED`); `validationStatus` no cambia.
+- Ni la ubicación ni VISINT bloquean el relevo: fuera del radio solo queda el aviso "Fuera del radio GPS" en Operación. Resultado por foto: `GET /api/v1/operator/executions?groupId={eventId}` (`station`, `canRetake=false`).
+- Detalle: `docs/API_CATALOG.md` → `OPR-EVIDENCE-LOCATION-001`.

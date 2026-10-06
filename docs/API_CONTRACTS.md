@@ -201,6 +201,7 @@ Campos del formulario:
 | `image` (archivo) | **foto del agente** (una) |
 | `referenceImages` (archivos, repetido 1..5) | **fotos estándar** del Hito, en orden (las guardadas en la revisión) |
 | `referenceIds` (repetido) | id de cada foto estándar, en el mismo orden |
+| `matchThreshold` | umbral de coincidencia con dos decimales (`"0.80"`); obligatorio desde 2026-10-05 (ver Fases 5–9) |
 
 Cabeceras: `X-API-Key: <SGI_VISINT_TOKEN>` (sin esquema; configurable con `SGI_VISINT_AUTH_HEADER` / `SGI_VISINT_AUTH_SCHEME`), `X-Correlation-Id`. El token va solo en variables de entorno (`.env`, no versionado).
 
@@ -299,3 +300,40 @@ Se envía como un Hito normal (`POST /evidences` + `POST /executions`) con un **
 ### VISINT y Operación
 - `serviceType`: `CONSIGNA` / `BITACORA`; `serviceId`: consigna / registro del visitante; `activityId`: evidencia / campo.
 - `GET /api/operation/executions` lista las tres: `module` (`PATRULLA|CONSIGNA|BITACORA`), `groupCode/groupName` (patrulla, consigna o acreditación), `taskCode/taskName` (Hito, evidencia o campo). Reemplaza `patrolCode/patrolName/checkpointCode/checkpointName`.
+
+## Fases 5–9 · Relevo, umbral, ubicación GPS y radio (2026-10-05/06)
+
+Contrato completo para SGI: Operador: `docs/API_CATALOG.md` → `OPR-EVIDENCE-LOCATION-001`. Regla general: **ni VISINT ni la ubicación bloquean al agente**.
+
+### VISINT: `matchThreshold` (obligatorio desde 2026-10-05)
+- Campo adicional del formulario a VISINT: `matchThreshold`, texto con dos decimales entre `0.00` y `1.00` (p. ej. `"0.80"`). Lo envía **Comando**; SGI: Operador no lo envía.
+- Se toma del umbral de la tarea (`patrol_checkpoint.match_threshold`, `consignment_evidence.match_threshold`, `logbook_protocol_field.match_threshold`, `post_operational_config.station_match_threshold`) o, si es `NULL`, de `SGI_VISINT_MATCH_THRESHOLD` (0.80). Se guarda en `visual_review.match_threshold`.
+- Los endpoints de configuración aceptan `matchThreshold` (Hito, evidencia de Consigna, campo de Bitácora) y `stationMatchThreshold` (Puesto): número 0–1, se redondea a dos decimales; fuera de rango → 400. `null` = predeterminado.
+- `serviceType` admite además `RELEVO` (fotos del puesto del relevo).
+
+### Relevo con VISINT opcional
+- `PUT /api/post-configurations/{postId}` acepta `stationVisintEnabled` (por defecto `false`) y `stationMatchThreshold`.
+- Si está activo, cada foto `station_0..2` del `RELIEF_SUBMITTED` se registra como ejecución `RELIEF_STATION_CAPTURED` con revisión visual contra las fotos estándar del Puesto. El acuse añade `stationVisintStatus` (`QUEUED_FOR_VISINT` | `NOT_REQUESTED`).
+- Resultado: `GET /api/v1/operator/executions?groupId={eventId del relevo}`; cada captura trae `station` y `canRetake=false`.
+
+### Ubicación GPS de referencia
+| Referencia | Configuración (Comando) | Runtime del agente |
+|---|---|---|
+| Hito | `PUT /api/patrols/checkpoints/{id}`: `latitude`, `longitude`, `radiusM` | `patrols[].checkpoints[].latitude/longitude/radiusM` |
+| Consigna (`expectedLocationMode = GPS`) | `expectedLatitude`, `expectedLongitude`, `expectedRadiusM` | `consignmentTasks[].latitude/longitude/radiusM` |
+| Puesto (Bitácora y Relevo) | `PUT /api/post-configurations/{postId}`: `latitude`, `longitude`, `radiusM` | `logbookTasks[].latitude/longitude/radiusM`, `relief.postLocation` |
+
+- Radios: enteros entre 5 y 5000 m. `null` = usa el predeterminado (en Patrullas `null` = no cambia y `0` = usa el predeterminado).
+- Si la foto queda fuera del radio, la subida responde `STORED` con `OUT_OF_RANGE` en `flags`. Operación lista la alerta y el detalle incluye `distanceM` y `radiusM` (snapshot de la foto).
+
+### Radio predeterminado por país (`/api/settings/evidence-location`)
+| Método | Roles | Cuerpo / respuesta |
+|---|---|---|
+| `GET` | Presidente, Directores, Director Zonal, Jefe Regional, Coordinador, Asistente, Supervisor | `{defaultRadiusM, systemRadiusM, configured, updatedBy, updatedAt, canEdit, minRadiusM, maxRadiusM}` |
+| `PUT` | Presidente, Director de Operaciones LATAM, Director de Operaciones Nacional, Director Nacional | `{"defaultRadiusM": 120}` → mismo DTO. Fuera de 5–5000 → `400 {"message": "…"}`; otro rol → 403 |
+
+Se guarda en `operational_setting` (`setting_key = 'evidence.default_radius_m'`). Sin fila rige `sgi.evidence.default-radius-m` (50).
+
+### Nueva captura (reemplaza la regla de la Fase 3)
+- Se acepta una nueva captura (`captureNo` + 1) mientras la anterior esté en cola de VISINT, con error técnico o "no cumple".
+- `409` solo si la anterior está `PASSED` o no usa VISINT. El relevo sigue siendo uno por asignación.
