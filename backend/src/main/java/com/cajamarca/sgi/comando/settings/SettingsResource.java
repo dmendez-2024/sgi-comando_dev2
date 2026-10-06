@@ -31,8 +31,14 @@ public class SettingsResource {
     @PUT @Consumes(MediaType.APPLICATION_JSON) @Transactional
     @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL"})
     public EvidenceLocationDto save(SaveEvidenceLocation req) {
-        if (req == null || req.defaultRadiusM() == null) throw new BadRequestException("Ingresa el radio predeterminado en metros");
-        settings.saveDefaultRadius(tenant.instanceCountryId(), req.defaultRadiusM(), identity.getPrincipal().getName());
+        try {
+            if (req == null || req.defaultRadiusM() == null) throw new BadRequestException("Ingresa el radio predeterminado en metros");
+            settings.saveDefaultRadius(tenant.instanceCountryId(), req.defaultRadiusM(), identity.getPrincipal().getName());
+        } catch (BadRequestException e) {
+            // El motivo viaja en el cuerpo para que la pantalla lo muestre.
+            throw new WebApplicationException(e.getMessage(), jakarta.ws.rs.core.Response.status(400).type(MediaType.APPLICATION_JSON)
+                .entity(java.util.Map.of("message", e.getMessage())).build());
+        }
         return dto();
     }
 

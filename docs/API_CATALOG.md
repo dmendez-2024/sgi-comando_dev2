@@ -352,7 +352,12 @@ Sin GPS: si no se envían coordenadas, la tarea se registra igual y no se compar
 
 ## Referencia que entrega SGI Comando
 
-En `GET /api/v1/operator/runtime?assignmentId=…`, para que la app pueda orientar al agente. El radio hoy es 50 m (`sgi.evidence.default-radius-m`), salvo que el Hito tenga uno propio.
+En `GET /api/v1/operator/runtime?assignmentId=…`, para que la app pueda orientar al agente. `radiusM` ya viene resuelto:
+1. el radio propio de la referencia (Hito, Consigna o Puesto), si lo tiene;
+2. si no, el predeterminado de la instancia (Configuración → Radio GPS, `GET/PUT /api/settings/evidence-location`, entre 5 y 5000 m);
+3. si nunca se configuró, 50 m (`sgi.evidence.default-radius-m`).
+
+Cada foto guarda la distancia y el radio con que se evaluó (`evidence_object.reference_distance_m` y `reference_radius_m`): cambiar el radio no altera los avisos pasados.
 
 | Tarea | Dónde viene | Origen en Comando |
 |---|---|---|

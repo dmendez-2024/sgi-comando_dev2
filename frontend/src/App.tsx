@@ -6,6 +6,7 @@ import Header from './components/Header';
 import Dashboard from './pages/Dashboard';
 import Companies from './pages/Companies';
 import Services from './pages/Services';
+import SettingsPage from './pages/SettingsPage';
 import Coordination from './pages/Coordination';
 import Assignments from './pages/Assignments';
 import Territory from './pages/Territory';
@@ -59,6 +60,8 @@ export default function App() {
         ? <ConsignasExecution />
       : active === 'Novedades'
         ? <NovedadesExecution />
+      : active === 'Configuración'
+        ? <SettingsPage />
       : active === SIMULATOR_MENU
         ? (uatTools ? <AgentSimulator /> : <Placeholder name="Herramienta UAT deshabilitada" />)
         : <Placeholder name={active} />;

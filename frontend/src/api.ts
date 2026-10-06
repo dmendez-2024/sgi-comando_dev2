@@ -125,6 +125,9 @@ export const api={
  deletePatrolStandardImage:(checkpointId:string,imageId:string)=>request<any>(`/api/patrols/checkpoints/${encodeURIComponent(checkpointId)}/standard-images/${encodeURIComponent(imageId)}`,{method:'DELETE'}),
 
  postConfigurations:(pointId:string)=>request<any[]>(`/api/post-configurations?pointId=${encodeURIComponent(pointId)}`),
+ /** Configuración → radio GPS predeterminado de la instancia (m). */
+ evidenceLocationSettings:()=>request<{defaultRadiusM:number;systemRadiusM:number;configured:boolean;updatedBy:string|null;updatedAt:string|null;canEdit:boolean;minRadiusM:number;maxRadiusM:number}>('/api/settings/evidence-location'),
+ saveEvidenceLocationSettings:(defaultRadiusM:number)=>request<any>('/api/settings/evidence-location',{method:'PUT',body:JSON.stringify({defaultRadiusM})}),
  savePostConfiguration:(postId:string,body:any)=>request<any>(`/api/post-configurations/${encodeURIComponent(postId)}`,{method:'PUT',body:JSON.stringify(body)}),
  postStandardImage:(postId:string,imageId:string)=>binaryRequest(`/api/post-configurations/${encodeURIComponent(postId)}/standard-image/${encodeURIComponent(imageId)}`),
  postStandardImages:(postId:string)=>request<{id:string;position:number;originalName:string;contentType:string}[]>(`/api/post-configurations/${encodeURIComponent(postId)}/standard-images`),
