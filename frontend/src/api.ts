@@ -1,4 +1,5 @@
-const API=import.meta.env.VITE_API_URL ?? 'http://localhost:8080';
+const API = import.meta.env.VITE_API_URL || '/dev.comando';
+// const API=import.meta.env.VITE_API_URL ?? 'http://localhost:8080';
 export type UatUser='presidente'|'dlatam'|'don'|'dnacional'|'dzonal'|'jregional'|'coord'|'asistente'|'supervisor'|'agente'|'cliente';
 let currentUser:UatUser=(localStorage.getItem('sgi-uat-user') as UatUser)||'coord';
 const PASSWORD='CajamarcaUAT!2026';
