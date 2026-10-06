@@ -1101,7 +1101,28 @@
             "consignments",
             "regesepVersion",
             "pendingMessages",
-            "configurationVersion"
+            "configurationVersion",
+            "activePatrolProtocol",
+            "nextActions"
+          ]
+        }
+      },
+      {
+        "interfaceId": "SGI_OPR_SGI_COM_0001_IF15",
+        "method": "GET",
+        "path": "/api/v1/operator/incident-taxonomy",
+        "purpose": "Obtain the canonical incident subcategories owned by SGI_COM for the selected category",
+        "contentType": "application/json",
+        "request": {
+          "query": [
+            "category"
+          ]
+        },
+        "response": {
+          "fields": [
+            "category",
+            "source",
+            "subcategories"
           ]
         }
       }
