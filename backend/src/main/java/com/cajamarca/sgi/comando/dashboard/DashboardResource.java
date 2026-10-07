@@ -30,7 +30,8 @@ public class DashboardResource {
     public record RiskTrendPoint(LocalDate date, long scheduledPoints, long uncoveredPoints, Double riskIndex) {}
     @GET @Path("/operational-risk-trend")
     public List<RiskTrendPoint> operationalRiskTrend(@QueryParam("weekStart") String weekStart,
-            @QueryParam("companyId") UUID companyId, @QueryParam("clientId") UUID clientId) {
+            @QueryParam("companyId") UUID companyId, @QueryParam("clientId") UUID clientId,
+            @QueryParam("period") @DefaultValue("30d") String period) {
         LocalDate week;
         try {
             week = (weekStart == null ? LocalDate.now(OPERATING_ZONE) : LocalDate.parse(weekStart))
@@ -39,10 +40,15 @@ public class DashboardResource {
         LocalDate end = week.plusDays(6);
         LocalDate today = LocalDate.now(OPERATING_ZONE);
         if (end.isAfter(today)) end = today;
-        LocalDate start = end.minusDays(29);
+        LocalDate start = switch (period) {
+            case "7d" -> end.minusDays(6);
+            case "30d" -> end.minusDays(29);
+            case "6m" -> end.minusMonths(6).plusDays(1);
+            default -> throw new BadRequestException("period debe ser 7d, 30d o 6m.");
+        };
         Set<UUID> allowed = scope.allowedCompanyIds();
         if (companyId != null) { scope.requireCompany(companyId); allowed = Set.of(companyId); }
-        List<RiskTrendPoint> trend = new ArrayList<>(30);
+        List<RiskTrendPoint> trend = new ArrayList<>((int) (end.toEpochDay() - start.toEpochDay() + 1));
         if (allowed.isEmpty()) {
             for (LocalDate day = start; !day.isAfter(end); day = day.plusDays(1)) trend.add(new RiskTrendPoint(day, 0, 0, null));
             return trend;

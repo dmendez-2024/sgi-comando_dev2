@@ -1,10 +1,10 @@
-import {useMemo, useState, type ReactNode} from 'react';
+import {useEffect, useMemo, useState, type ReactNode} from 'react';
 import {
-  AlertTriangle, BellRing, Building2, CalendarDays, ClipboardList, Clock3,
+  AlertTriangle, ArrowLeft, BellRing, Building2, CalendarDays, ClipboardList, Clock3,
   Download, FileWarning, FilterX, MapPin, Monitor,
   RefreshCw, Save, Search, ShieldAlert, ShieldCheck, UserRound, Zap, CircleAlert, ChevronRight, Filter, ChevronDown, Plus, X
 } from 'lucide-react';
-import {getUser, type UatUser} from '../api';
+import {api, getUser, type UatUser} from '../api';
 import IncidentNotificationPanel, {type IncidentRecord, type LocationOption, type IncidentSeverity} from '../components/IncidentNotificationPanel';
 import {OperationalDrawer} from '../components/OperationalDrawer';
 
@@ -20,6 +20,7 @@ type ConsoleItem={
   title:string;
   company:string;
   companyCode:string;
+  companyId?:string;
   client:string;
   city:string;
   point:string;
@@ -38,6 +39,8 @@ type ConsoleItem={
 };
 
 type Scope={label:string;companies:string[]|null;region?:string;zone?:string};
+type ClientOption={id:string;code:string;name:string};
+type ServiceLocationRow={clientId:string;pointId:string;postId:string;companyId:string|null;companyName:string;clientName:string;pointName:string;postName:string};
 type Filters={
   category:'ALL'|ItemCategory;
   query:string;
@@ -97,13 +100,13 @@ const priorityLabel=(value:Priority)=>({LOW:'Baja',MEDIUM:'Media',HIGH:'Alta',CR
 const formatDateTime=(value:string)=>new Intl.DateTimeFormat('es-EC',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}).format(new Date(value));
 const dateOnly=(value:string)=>value.slice(0,10);
 const unique=(values:string[])=>Array.from(new Set(values)).sort((a,b)=>a.localeCompare(b,'es'));
-function withinScope(row:ConsoleItem,scope:Scope){ if(scope.companies && !scope.companies.includes(row.companyCode)) return false; if(scope.zone && row.zone!==scope.zone) return false; if(scope.region && row.region!==scope.region) return false; return true; }
+function withinScope(row:ConsoleItem,scope:Scope,allowedCompanyIds?:Set<string>){ if(row.companyId)return allowedCompanyIds?.has(row.companyId)??false; if(scope.companies && !scope.companies.includes(row.companyCode)) return false; if(scope.zone && row.zone!==scope.zone) return false; if(scope.region && row.region!==scope.region) return false; return true; }
 function validateRange(from:string,to:string){ if(!from||!to) return 'Debe elegir siempre una fecha inicio y una fecha fin.'; if(to<from) return 'La fecha fin no puede ser menor que la fecha inicio.'; const start=new Date(`${from}T00:00:00`); const max=new Date(start); max.setFullYear(max.getFullYear()+1); const end=new Date(`${to}T23:59:59`); return end>max?'El período consultado no puede ser mayor a 1 año.':''; }
 
 const severityToPriority=(value:IncidentSeverity|''):Priority=>value==='CRITICAL'?'CRITICAL':value==='MAJOR'?'HIGH':value==='MODERATE'?'MEDIUM':'LOW';
 const incidentToConsoleItem=(record:IncidentRecord):ConsoleItem=>({
   id:`incident:${record.id}`,category:'NOVEDADES',subtype:'Incidente',code:record.code,title:record.title||'Incidente sin título',
-  company:record.company||'—',companyCode:record.companyCode||'GAL',client:record.client||'—',city:record.city||'—',point:record.point||'—',post:record.post||'—',
+  company:record.company||'—',companyCode:record.companyCode||'',companyId:record.companyId,client:record.client||'—',city:record.city||'—',point:record.point||'—',post:record.post||'—',
   responsible:record.collaboratorNames.join(', ')||'Operador de Consola',zone:'Zona Costa',region:'Costa Sur',status:record.status,priority:severityToPriority(record.severity),
   createdAt:record.createdAt||record.updatedAt,updatedAt:record.updatedAt,summary:record.description||'Incidente en elaboración.',source:'NOV',originLabel:`Novedades · Incidentes · ${record.incidentType||record.subcategory||'Sin clasificar'}`,
   recommendedAction:record.status==='DRAFT'?'Completar y finalizar la notificación del incidente.':'Incidente finalizado; puede reabrirse para edición desde Consola.'
@@ -119,19 +122,38 @@ export default function ConsolaMonitor(){
   const [incidents,setIncidents]=useState<IncidentRecord[]>([]);
   const [incidentEditorOpen,setIncidentEditorOpen]=useState(false);
   const [editingIncidentId,setEditingIncidentId]=useState('');
+  const [locationOptions,setLocationOptions]=useState<LocationOption[]>([]);
+  const [locationsLoading,setLocationsLoading]=useState(true);
+  const [locationsError,setLocationsError]=useState('');
+  const [locationsRefresh,setLocationsRefresh]=useState(0);
+
+  useEffect(()=>{
+    let current=true;
+    setLocationsLoading(true);
+    setLocationsError('');
+    void Promise.all([api.clients(),api.serviceOverview()]).then(([catalog,overview])=>{
+      if(!current)return;
+      const clients=new Map((catalog as ClientOption[]).map(client=>[client.id,client]));
+      const seen=new Set<string>();
+      const locations=(overview.rows as ServiceLocationRow[]).flatMap(row=>{
+        const client=clients.get(row.clientId);
+        if(!client||!row.postId||seen.has(row.postId))return [];
+        seen.add(row.postId);
+        return [{clientId:client.id,client:client.name,pointId:row.pointId,point:row.pointName,postId:row.postId,post:row.postName,companyId:row.companyId,company:row.companyName,companyCode:'',city:''}];
+      }).sort((a,b)=>a.client.localeCompare(b.client,'es')||a.point.localeCompare(b.point,'es')||a.post.localeCompare(b.post,'es'));
+      setLocationOptions(locations);
+    }).catch(()=>{
+      if(!current)return;
+      setLocationOptions([]);
+      setLocationsError('No se pudo cargar el catálogo de clientes y ubicaciones.');
+    }).finally(()=>{if(current)setLocationsLoading(false)});
+    return ()=>{current=false};
+  },[user,locationsRefresh]);
 
   const incidentRows=useMemo(()=>incidents.map(incidentToConsoleItem),[incidents]);
   const allRows=useMemo(()=>[...DATA,...incidentRows],[incidentRows]);
-  const scoped=useMemo(()=>allRows.filter(x=>withinScope(x,scope)),[allRows,scope]);
-  const locationOptions=useMemo<LocationOption[]>(()=>{
-    const seen=new Set<string>();
-    return DATA.filter(x=>withinScope(x,scope)).flatMap(row=>{
-      const key=`${row.client}|${row.point}|${row.post}`;
-      if(seen.has(key))return [];
-      seen.add(key);
-      return [{client:row.client,point:row.point,post:row.post,company:row.company,companyCode:row.companyCode,city:row.city}];
-    });
-  },[scope]);
+  const allowedCompanyIds=useMemo(()=>new Set(locationOptions.map(x=>x.companyId).filter((id):id is string=>!!id)),[locationOptions]);
+  const scoped=useMemo(()=>allRows.filter(x=>withinScope(x,scope,allowedCompanyIds)),[allRows,scope,allowedCompanyIds]);
   const cities=useMemo(()=>unique(scoped.map(x=>x.city)),[scoped]);
   const companies=useMemo(()=>unique(scoped.map(x=>x.company)),[scoped]);
   const clients=useMemo(()=>unique(scoped.map(x=>x.client)),[scoped]);
@@ -187,8 +209,7 @@ export default function ConsolaMonitor(){
     setDetailId(row.id);setEditingIncidentId('');setIncidentEditorOpen(false);
   }
   function saveIncident(record:IncidentRecord){
-    const fallback=locationOptions[0];
-    const normalized:IncidentRecord=record.companyCode||!fallback?record:{...record,company:fallback.company,companyCode:fallback.companyCode,city:fallback.city};
+    const normalized=record;
     setIncidents(prev=>prev.some(x=>x.id===normalized.id)?prev.map(x=>x.id===normalized.id?normalized:x):[normalized,...prev]);
     const rowId=`incident:${normalized.id}`;
     setSelectedId(rowId);
@@ -200,6 +221,31 @@ export default function ConsolaMonitor(){
     setFilters(prev=>({...prev,category:'ALL',query:'',status:'ALL',dateFrom:start.toISOString().slice(0,10),dateTo:today}));
   }
   const nextIncidentCode=`INC-${new Date().getFullYear()}-${String(incidents.length+1).padStart(4,'0')}`;
+
+  if(incidentEditorOpen) return <div className="csl-page csl-incident-page">
+    <div className="ser-breadcrumbs"><button type="button" onClick={()=>{setIncidentEditorOpen(false);setEditingIncidentId('');setDetailId('')}}><ArrowLeft size={15}/>Volver a Consola</button><span>/</span><small>Notificación de Incidente</small></div>
+    <div className="ser-config-hero">
+      <div><div className="ser-title-row"><h2>Notificar Incidente</h2><span>Registro operativo</span></div><small>Operaciones · Consola</small></div>
+      <span className={`csl-incident-page-status ${editingIncident?.status.toLowerCase()??'new'}`}><i/>{editingIncident?statusLabel(editingIncident.status):'Nuevo'}</span>
+    </div>
+    <div className="ser-config-context panel csl-incident-context">
+      <div><span>Código</span><strong>{editingIncident?.code??nextIncidentCode}</strong></div>
+      <div><span>Estado</span><strong>{editingIncident?statusLabel(editingIncident.status):'Sin registrar'}</strong></div>
+      <div><span>Origen</span><strong>Operaciones · Consola</strong></div>
+      <div><span>Alcance</span><strong>{scope.label.replace('Alcance: ','')}</strong></div>
+    </div>
+    <IncidentNotificationPanel
+      key={editingIncident?.id??`new-${nextIncidentCode}`}
+      initial={editingIncident}
+      nextCode={nextIncidentCode}
+      locations={locationOptions}
+      locationsLoading={locationsLoading}
+      locationsError={locationsError}
+      onRetryLocations={()=>setLocationsRefresh(value=>value+1)}
+      onCancel={()=>{setIncidentEditorOpen(false);setEditingIncidentId('');setDetailId('')}}
+      onSave={saveIncident}
+    />
+  </div>;
 
   return <div className="csl-page nov-page">
     <div className="csl-topbar nov-topbar">
@@ -219,11 +265,11 @@ export default function ConsolaMonitor(){
     <div className="csl-workspace">
       <section className="csl-main-card nov-main-card">
         <div className="csl-card-head">
-          <div className="csl-title"><Search size={20}/><h3>Bandeja operativa unificada</h3></div>
+          <div className="csl-title"><Search size={20}/><h3>Bandeja operativa unificada</h3></div> {/* <img src="/assets/csl-incidents/incident.png" alt=""/> */}
           <div className="csl-head-actions">
-            <button type="button" className="csl-notify-incident" onClick={openNewIncident}><img src="/assets/csl-incidents/incident.png" alt=""/><span><Plus size={14}/>Notificar Incidente</span></button>
             <div className="csl-tabs">
               <button className={filters.category==='ALL'?'active':''} onClick={()=>set('category','ALL')}>Todos</button>
+              <button type="button" className="csl-notify-incident" onClick={openNewIncident}><span className="orange"><AlertTriangle size={14}/></span><span><Plus size={14}/>Notificar Incidente</span></button>
               <button className={filters.category==='CONSIGNAS'?'active':''} onClick={()=>set('category','CONSIGNAS')}><ClipboardList size={14}/>Consignas</button>
               <button className={filters.category==='NOVEDADES'?'active':''} onClick={()=>set('category','NOVEDADES')}><FileWarning size={14}/>Novedades</button>
               <button className={filters.category==='ALARMAS'?'active':''} onClick={()=>set('category','ALARMAS')}><BellRing size={14}/>Alarmas electrónicas</button>
@@ -290,15 +336,7 @@ export default function ConsolaMonitor(){
         </div>
       </section>
 
-      {incidentEditorOpen?
-        <IncidentNotificationPanel
-          key={editingIncident?.id??`new-${nextIncidentCode}`}
-          initial={editingIncident}
-          nextCode={nextIncidentCode}
-          locations={locationOptions}
-          onCancel={()=>{setIncidentEditorOpen(false);setEditingIncidentId('')}}
-          onSave={saveIncident}
-        />:inspected&&<OperationalDrawer title={`${inspected.code} · ${categoryLabel(inspected.category)}`} subtitle={`${inspected.originLabel} · Detalle operativo`} onClose={()=>setDetailId('')} className="csl-view-modal" bodyClassName="csl-view-body" footer={<>
+      {inspected&&<OperationalDrawer title={`${inspected.code} · ${categoryLabel(inspected.category)}`} subtitle={`${inspected.originLabel} · Detalle operativo`} onClose={()=>setDetailId('')} className="csl-view-modal" bodyClassName="csl-view-body" footer={<>
           {inspected.id.startsWith('incident:')&&<button type="button" onClick={()=>{setEditingIncidentId(inspected.id.slice('incident:'.length));setIncidentEditorOpen(true)}}><Save size={15}/>Editar incidente</button>}
           <button className="close" type="button" onClick={()=>setDetailId('')}><X size={15}/>Cerrar</button>
         </>}>

@@ -1,7 +1,8 @@
 import {useMemo, useState, type ChangeEvent, type ReactNode} from 'react';
 import {
-  AlertTriangle, CalendarClock, CheckCircle2, Clock3, ImagePlus, MapPin, Save,
-  Send, Trash2, UserCheck, Users, X
+  AlertTriangle, CalendarClock, CheckCircle2, CircleAlert, ClipboardCheck, Clock3,
+  FileText, ImagePlus, Info, MapPin, OctagonAlert, Save, Send, ShieldAlert,
+  Trash2, UserCheck, Users, X
 } from 'lucide-react';
 import {INCIDENT_TAXONOMY} from '../data/incidentTaxonomy';
 
@@ -9,7 +10,7 @@ export type IncidentCategory='SERVICE'|'SECURITY'|'ADMINISTRATIVE';
 export type IncidentSeverity='INFORMATIVE'|'MINOR'|'MODERATE'|'MAJOR'|'CRITICAL';
 export type IncidentLifecycle='DRAFT'|'FINALIZED';
 export type AttachmentMeta={id:string;name:string;size:number;type:string};
-export type LocationOption={client:string;point:string;post:string;company:string;companyCode:string;city:string};
+export type LocationOption={clientId:string;client:string;pointId:string;point:string;postId:string;post:string;companyId:string|null;company:string;companyCode:string;city:string};
 
 export type IncidentRecord={
   id:string;
@@ -20,9 +21,13 @@ export type IncidentRecord={
   incidentType:string;
   severity:IncidentSeverity|'';
   client:string;
+  clientId?:string;
   point:string;
+  pointId?:string;
   post:string;
+  postId?:string;
   company:string;
+  companyId?:string;
   companyCode:string;
   city:string;
   collaboratorIds:string[];
@@ -47,6 +52,9 @@ type Props={
   initial?:IncidentRecord|null;
   nextCode:string;
   locations:LocationOption[];
+  locationsLoading:boolean;
+  locationsError:string;
+  onRetryLocations:()=>void;
   onCancel:()=>void;
   onSave:(record:IncidentRecord)=>void;
 };
@@ -62,18 +70,18 @@ type DemoHistory={employeeId:string;point:string;post:string;workedAt:string};
 const UAT_NOW=new Date('2026-09-27T09:00:00-05:00');
 const TWO_WEEKS_MS=14*24*60*60*1000;
 
-const CATEGORY_META:Record<IncidentCategory,{label:string;asset:string;description:string}>={
-  SERVICE:{label:'Servicio',asset:'/assets/csl-incidents/service.png',description:'Cumplimiento del servicio y desempeño operativo.'},
-  SECURITY:{label:'Seguridad',asset:'/assets/csl-incidents/security.png',description:'Eventos que afectan personas, bienes o instalaciones.'},
-  ADMINISTRATIVE:{label:'Administrativo',asset:'/assets/csl-incidents/administrative.png',description:'Asuntos administrativos, logísticos o tecnológicos.'}
+const CATEGORY_META:Record<IncidentCategory,{label:string;icon:ReactNode;description:string}>={
+  SERVICE:{label:'Servicio',icon:<ClipboardCheck size={24}/>,description:'Cumplimiento del servicio y desempeño operativo.'},
+  SECURITY:{label:'Seguridad',icon:<ShieldAlert size={24}/>,description:'Eventos que afectan personas, bienes o instalaciones.'},
+  ADMINISTRATIVE:{label:'Administrativo',icon:<FileText size={24}/>,description:'Asuntos administrativos, logísticos o tecnológicos.'}
 };
 
 const SEVERITIES:{value:IncidentSeverity;label:string;tone:string;icon:ReactNode}[]=[
-  {value:'INFORMATIVE',label:'Informativo',tone:'informative',icon:<span>i</span>},
-  {value:'MINOR',label:'Menor',tone:'minor',icon:<span>•</span>},
-  {value:'MODERATE',label:'Moderado',tone:'moderate',icon:<AlertTriangle size={17}/>},
-  {value:'MAJOR',label:'Mayor',tone:'major',icon:<span>!</span>},
-  {value:'CRITICAL',label:'Crítico',tone:'critical',icon:<span>!</span>},
+  {value:'INFORMATIVE',label:'Informativo',tone:'informative',icon:<Info size={26}/>},
+  {value:'MINOR',label:'Menor',tone:'minor',icon:<CheckCircle2 size={26}/>},
+  {value:'MODERATE',label:'Moderado',tone:'moderate',icon:<AlertTriangle size={26}/>},
+  {value:'MAJOR',label:'Mayor',tone:'major',icon:<CircleAlert size={26}/>},
+  {value:'CRITICAL',label:'Crítico',tone:'critical',icon:<OctagonAlert size={26}/>},
 ];
 
 const POINT_COORDS:Record<string,{lat:number;lng:number}>={
@@ -118,7 +126,7 @@ const SHIFT_OPTIONS=[
 const CURRENT_SHIFT={id:'CURRENT',label:'Turno en curso · 27/09/2026 07:00–19:00',slot:'current',previous:'previous'};
 
 const emptyRecord=(nextCode:string):IncidentRecord=>({
-  id:'',code:nextCode,title:'',category:'',subcategory:'',incidentType:'',severity:'',client:'',point:'',post:'',company:'',companyCode:'',city:'',
+  id:'',code:nextCode,title:'',category:'',subcategory:'',incidentType:'',severity:'',client:'',clientId:'',point:'',pointId:'',post:'',postId:'',company:'',companyId:'',companyCode:'',city:'',
   collaboratorIds:[],collaboratorNames:[],description:'',descriptionImages:[],resolution:'',resolutionImages:[],sanction:false,
   sanctionDescription:'',absenceMode:'',targetShiftId:'',targetShiftLabel:'',replacementEmployeeId:'',replacementEmployeeName:'',
   status:'DRAFT',createdAt:'',updatedAt:''
@@ -134,14 +142,14 @@ function distanceKm(a:{lat:number;lng:number},b:{lat:number;lng:number}){
   return 2*r*Math.asin(Math.sqrt(h));
 }
 
-export default function IncidentNotificationPanel({initial,nextCode,locations,onCancel,onSave}:Props){
+export default function IncidentNotificationPanel({initial,nextCode,locations,locationsLoading,locationsError,onRetryLocations,onCancel,onSave}:Props){
   const [form,setForm]=useState<IncidentRecord>(initial?{...emptyRecord(nextCode),...structuredClone(initial)}:emptyRecord(nextCode));
   const [error,setError]=useState('');
   const [fileError,setFileError]=useState('');
 
-  const clients=useMemo(()=>uniq(locations.map(x=>x.client)).sort((a,b)=>a.localeCompare(b,'es')),[locations]);
-  const points=useMemo(()=>form.client?uniq(locations.filter(x=>x.client===form.client).map(x=>x.point)).sort((a,b)=>a.localeCompare(b,'es')):[],[locations,form.client]);
-  const posts=useMemo(()=>form.client&&form.point?uniq(locations.filter(x=>x.client===form.client&&x.point===form.point).map(x=>x.post)).filter(Boolean).sort((a,b)=>a.localeCompare(b,'es')):[],[locations,form.client,form.point]);
+  const clients=useMemo(()=>Array.from(new Map(locations.map(x=>[x.clientId,{id:x.clientId,name:x.client}])).values()),[locations]);
+  const points=useMemo(()=>Array.from(new Map(locations.filter(x=>x.clientId===form.clientId).map(x=>[x.pointId,{id:x.pointId,name:x.point}])).values()),[locations,form.clientId]);
+  const posts=useMemo(()=>locations.filter(x=>x.pointId===form.pointId).map(x=>({id:x.postId,name:x.post})),[locations,form.pointId]);
   const subcategories=form.category?Object.keys(INCIDENT_TAXONOMY[form.category]):[];
   const incidentTypes=form.category&&form.subcategory?(INCIDENT_TAXONOMY[form.category][form.subcategory]??[]):[];
   const absenceMode=absenceModeFromIncidentType(form.incidentType);
@@ -156,7 +164,7 @@ export default function IncidentNotificationPanel({initial,nextCode,locations,on
     return [...latest.values()].map(h=>({history:h,person:PEOPLE.find(p=>p.id===h.employeeId)!})).filter(x=>!!x.person);
   },[form.point]);
 
-  const selectedLocation=useMemo(()=>locations.find(x=>x.client===form.client&&x.point===form.point&&(form.post?x.post===form.post:true)),[locations,form.client,form.point,form.post]);
+  const selectedLocation=useMemo(()=>locations.find(x=>x.clientId===form.clientId&&x.pointId===form.pointId&&(form.postId?x.postId===form.postId:true)),[locations,form.clientId,form.pointId,form.postId]);
   const targetShift=absenceMode==='EFFECTIVE'?CURRENT_SHIFT:SHIFT_OPTIONS.find(x=>x.id===form.targetShiftId);
 
   const replacementCandidates=useMemo(()=>{
@@ -177,11 +185,12 @@ export default function IncidentNotificationPanel({initial,nextCode,locations,on
 
   function patch<K extends keyof IncidentRecord>(key:K,value:IncidentRecord[K]){setForm(prev=>({...prev,[key]:value}));}
   function chooseCategory(value:IncidentCategory){setForm(prev=>({...prev,category:value,subcategory:'',incidentType:'',absenceMode:'',targetShiftId:'',targetShiftLabel:'',replacementEmployeeId:'',replacementEmployeeName:''}));}
-  function chooseClient(value:string){setForm(prev=>({...prev,client:value,point:'',post:'',collaboratorIds:[],collaboratorNames:[],company:'',companyCode:'',city:'',replacementEmployeeId:'',replacementEmployeeName:''}));}
+  function chooseClient(value:string){const loc=locations.find(x=>x.clientId===value);setForm(prev=>({...prev,clientId:value,client:loc?.client??'',pointId:'',point:'',postId:'',post:'',collaboratorIds:[],collaboratorNames:[],companyId:'',company:'',companyCode:'',city:'',replacementEmployeeId:'',replacementEmployeeName:''}));}
   function choosePoint(value:string){
-    const loc=locations.find(x=>x.client===form.client&&x.point===value);
-    setForm(prev=>({...prev,point:value,post:'',collaboratorIds:[],collaboratorNames:[],company:loc?.company??'',companyCode:loc?.companyCode??'',city:loc?.city??'',replacementEmployeeId:'',replacementEmployeeName:''}));
+    const loc=locations.find(x=>x.clientId===form.clientId&&x.pointId===value);
+    setForm(prev=>({...prev,pointId:value,point:loc?.point??'',postId:'',post:'',collaboratorIds:[],collaboratorNames:[],companyId:loc?.companyId??'',company:loc?.company??'',companyCode:loc?.companyCode??'',city:loc?.city??'',replacementEmployeeId:'',replacementEmployeeName:''}));
   }
+  function choosePost(value:string){const loc=locations.find(x=>x.pointId===form.pointId&&x.postId===value);setForm(prev=>({...prev,postId:value,post:loc?.post??''}));}
   function toggleCollaborator(person:DemoPerson){
     setForm(prev=>{
       const selected=prev.collaboratorIds.includes(person.id);
@@ -229,28 +238,28 @@ export default function IncidentNotificationPanel({initial,nextCode,locations,on
     setError('');
     if(status==='FINALIZED'){const validation=validateFinal();if(validation){setError(validation);return;}}
     const now=new Date().toISOString();
-    const location=locations.find(x=>x.client===form.client&&x.point===form.point&&(form.post?x.post===form.post:true));
-    onSave({...form,id:form.id||crypto.randomUUID(),code:form.code||nextCode,status,absenceMode,company:location?.company??form.company,companyCode:location?.companyCode??form.companyCode,city:location?.city??form.city,createdAt:form.createdAt||now,updatedAt:now});
+    const location=selectedLocation;
+    onSave({...form,id:form.id||crypto.randomUUID(),code:form.code||nextCode,status,absenceMode,companyId:location?.companyId??form.companyId,company:location?.company??form.company,companyCode:location?.companyCode??form.companyCode,city:location?.city??form.city,createdAt:form.createdAt||now,updatedAt:now});
   }
 
   return <aside className="csl-detail-card csl-incident-panel" aria-label="Notificación de Incidente">
     <div className="csl-incident-head">
-      <div className="csl-incident-brand"><img src="/assets/csl-incidents/incident.png" alt=""/><div><span>Incidentes</span><h3>Notificación de Incidente</h3><small>{initial?`${initial.code} · Editar`:'Nuevo caso operativo'}</small></div></div>
+      <div className="csl-incident-brand"><span className="csl-incident-brand-icon" aria-hidden="true"><AlertTriangle size={24}/></span><div><span>Incidentes</span><h3>Notificación de Incidente</h3><small>{initial?`${initial.code} · Editar`:'Nuevo caso operativo'}</small></div></div>
       <button type="button" className="csl-icon-button" aria-label="Cerrar" onClick={onCancel}><X size={18}/></button>
     </div>
 
     <div className="csl-incident-scroll">
       <Field label="Título *"><input value={form.title} maxLength={140} onChange={e=>patch('title',e.target.value)} placeholder="Título del incidente"/></Field>
 
-      <section className="csl-incident-section"><SectionTitle step="1" title="Categoría"/><div className="csl-incident-categories">{(Object.keys(CATEGORY_META) as IncidentCategory[]).map(value=>{const meta=CATEGORY_META[value];return <button type="button" key={value} className={form.category===value?'selected':''} onClick={()=>chooseCategory(value)}><img src={meta.asset} alt=""/><strong>{meta.label}</strong><small>{meta.description}</small><i aria-hidden="true"/></button>})}</div></section>
+      <section className="csl-incident-section"><SectionTitle step="1" title="Categoría"/><div className="csl-incident-categories">{(Object.keys(CATEGORY_META) as IncidentCategory[]).map(value=>{const meta=CATEGORY_META[value];return <button type="button" key={value} className={form.category===value?'selected':''} onClick={()=>chooseCategory(value)}><span className="csl-category-symbol" aria-hidden="true">{meta.icon}</span><strong>{meta.label}</strong><small>{meta.description}</small><i aria-hidden="true"/></button>})}</div></section>
 
       <section className="csl-incident-section"><SectionTitle step="2" title="Subcategoría"/><Field label=""><select value={form.subcategory} disabled={!form.category} onChange={e=>chooseSubcategory(e.target.value)}><option value="">{form.category?'Seleccione una subcategoría':'Seleccione primero una categoría'}</option>{subcategories.map(x=><option key={x} value={x}>{x}</option>)}</select></Field></section>
 
       <section className="csl-incident-section"><SectionTitle step="3" title="Incidente"/><Field label=""><select value={form.incidentType} disabled={!form.subcategory} onChange={e=>chooseIncidentType(e.target.value)}><option value="">{form.subcategory?'Seleccione el incidente':'Seleccione primero una subcategoría'}</option>{incidentTypes.map(x=><option key={x} value={x}>{x}</option>)}</select></Field>{form.category==='SERVICE'&&form.subcategory==='Asistencia y Puntualidad'&&<p className="csl-incident-hint">Según el Excel vigente, Inasistencia programada e Inasistencia efectiva son tipos de incidente dentro de Asistencia y Puntualidad; ambos activan el flujo especial de cobertura/reasignación.</p>}</section>
 
-      <section className="csl-incident-section"><SectionTitle step="4" title="Criticidad"/><div className="csl-severity-grid">{SEVERITIES.map(item=><button key={item.value} type="button" className={`${item.tone} ${form.severity===item.value?'selected':''}`} onClick={()=>patch('severity',item.value)}><b>{item.icon}</b><span>{item.label}</span><i/></button>)}</div></section>
+      <section className="csl-incident-section"><SectionTitle step="4" title="Criticidad"/><div className="csl-severity-grid">{SEVERITIES.map(item=><button key={item.value} type="button" className={`${item.tone} ${form.severity===item.value?'selected':''}`} aria-pressed={form.severity===item.value} onClick={()=>patch('severity',item.value)}><span className="csl-severity-icon" aria-hidden="true">{item.icon}</span><strong>{item.label}</strong></button>)}</div></section>
 
-      <section className="csl-incident-section"><SectionTitle step="5" title="Ubicación"/><div className="csl-incident-grid two"><Field label="Cliente *"><select value={form.client} onChange={e=>chooseClient(e.target.value)}><option value="">Seleccione cliente</option>{clients.map(x=><option key={x}>{x}</option>)}</select></Field><Field label="Punto *"><select value={form.point} disabled={!form.client} onChange={e=>choosePoint(e.target.value)}><option value="">{form.client?'Seleccione punto':'Seleccione cliente primero'}</option>{points.map(x=><option key={x}>{x}</option>)}</select></Field></div><Field label="Puesto (opcional)"><select value={form.post} disabled={!form.point} onChange={e=>patch('post',e.target.value)}><option value="">Todos / No aplica</option>{posts.map(x=><option key={x}>{x}</option>)}</select></Field></section>
+      <section className="csl-incident-section"><SectionTitle step="5" title="Ubicación"/>{locationsError&&<div className="csl-incident-error"><AlertTriangle size={16}/>{locationsError}<button type="button" onClick={onRetryLocations}>Reintentar</button></div>}<div className="csl-incident-grid two"><Field label="Cliente *"><select value={form.clientId??''} disabled={locationsLoading||!!locationsError} onChange={e=>chooseClient(e.target.value)}><option value="">{locationsLoading?'Cargando clientes…':locationsError?'Clientes no disponibles':clients.length?'Seleccione cliente':'No hay clientes en su alcance'}</option>{clients.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></Field><Field label="Punto *"><select value={form.pointId??''} disabled={!form.clientId||locationsLoading||!!locationsError} onChange={e=>choosePoint(e.target.value)}><option value="">{form.clientId?'Seleccione punto':'Seleccione cliente primero'}</option>{points.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></Field></div><Field label="Puesto (opcional)"><select value={form.postId??''} disabled={!form.pointId||locationsLoading||!!locationsError} onChange={e=>choosePost(e.target.value)}><option value="">Todos / No aplica</option>{posts.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></Field></section>
 
       <section className="csl-incident-section"><SectionTitle step="6" title="Colaboradores involucrados"/><p className="csl-incident-hint">Solo aparecen personas que trabajaron en este Punto durante las últimas dos semanas; cada persona aparece una sola vez.</p><div className="csl-collaborator-list">{form.point&&collaborators.map(({person,history})=><label key={person.id} className={form.collaboratorIds.includes(person.id)?'selected':''}><input type="checkbox" checked={form.collaboratorIds.includes(person.id)} onChange={()=>toggleCollaborator(person)}/><span><strong>{person.name}</strong><small>{person.role} · Último servicio: {fmtDate(history.workedAt)} · {history.post}</small></span></label>)}{form.point&&!collaborators.length&&<div className="csl-inline-empty"><Users size={17}/>No hay colaboradores con servicio en este Punto dentro de las últimas dos semanas.</div>}{!form.point&&<div className="csl-inline-empty"><MapPin size={17}/>Seleccione Cliente y Punto para obtener la lista.</div>}</div></section>
 
