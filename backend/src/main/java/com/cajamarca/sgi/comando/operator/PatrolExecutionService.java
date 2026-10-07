@@ -94,7 +94,11 @@ public class PatrolExecutionService {
     }
 
     private void upsertPatrolRun(UUID runId, OperatorPatrols.Applicable target, OperatorContext.Assignment a, UUID employee, Instant executed) {
-        List<?> rows = em.createNativeQuery("select patrol_definition_id, assignment_id from patrol_execution where id=:id and instance_country_id=:t")
+        // Una ronda iniciada con START (POST /patrol-executions) guarda la patrulla en su patrol_plan, no en patrol_definition_id.
+        List<?> rows = em.createNativeQuery("""
+            select coalesce(pe.patrol_definition_id, pp.patrol_definition_id), pe.assignment_id from patrol_execution pe
+            left join patrol_plan pp on pp.id=pe.patrol_plan_id and pp.instance_country_id=pe.instance_country_id
+            where pe.id=:id and pe.instance_country_id=:t""")
             .setParameter("id", runId).setParameter("t", tenant.instanceCountryId()).getResultList();
         if (rows.isEmpty()) {
             em.createNativeQuery("""
