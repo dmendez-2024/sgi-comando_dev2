@@ -7,7 +7,11 @@ SIC:COM conserva el SoR de Cliente, Servicio, Punto, Puesto, estado comercial, t
 ### Estado en el código revisado
 
 - Flyway V33 crea `client`, relaciona `service.client_id`, agrega `post.commercial_status` y crea `sic_com_commercial_event_receipt` para idempotencia.
+- Flyway V55 establece que SGI:Comando asigna el `post.code` para las altas: SIC:COM puede omitirlo o enviarlo vacío. El código se forma con las iniciales de Provincia, Ciudad, Cliente y Nombre del Puesto; ante colisiones se usan variantes `A`…`Z`, `AA`, `AB`…, y un consecutivo que nunca se reutiliza. La respuesta del evento devuelve el código asignado.
+- Flyway V56 agrega `post.code2` para conservar el campo opcional `code2` recibido desde SIC:COM; también se admite el alias histórico `Code2`. V57 lo vuelve único por `instance_country_id` cuando tiene valor y retira la unicidad de `post.code`; los registros históricos pueden permanecer temporalmente con `code2 = NULL`.
+- Un `posts.code` no vacío solo identifica un Puesto ya existente de SGI para actualizarlo; no puede crear un Puesto con un código impuesto por SIC:COM. Para actualizaciones futuras, SIC:COM debe conservar el código devuelto por SGI o acordar un identificador externo estable.
 - Existe el receptor local `POST /api/v1/inbound/sic-com/commercial-events` descrito en `docs/API_CATALOG.md`.
+- El receptor acepta un catálogo por Cliente con `services[]`; cada servicio incluye su propia lista `points[]` y cada punto su lista `posts[]`. El formato previo de un solo `service` más `points` en la raíz continúa aceptado. Los dos formatos no pueden mezclarse en el mismo evento. Todo el lote se aplica o se revierte como una única transacción.
 - SIC:COM continúa siendo la contraparte; el catálogo local de interconexiones mantiene el estado de destino como BLOCKED. La implementación del receptor SGI no equivale a integración end-to-end READY.
 - `cambios/CHANGELOG_JTO_IMPLEMENTACION_CATALOGO_SIC_COM.md` reporta la migración como V27; el código actual la identifica como V33. La bitácora debe corregirse.
 

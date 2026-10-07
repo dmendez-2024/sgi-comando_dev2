@@ -3,7 +3,7 @@ import {
   Building2, Briefcase, CalendarDays, CarFront, Clock3, Container, Download, Eye, FileSearch2,
   FilterX, MapPin, Search, ShieldCheck, UserRound, X, ChevronRight
 } from 'lucide-react';
-import {getUser, type UatUser} from '../api';
+import {api, getUser, type UatUser} from '../api';
 
 type RecordType='PERSON'|'VEHICLE'|'CONTAINER';
 type RecordStatus='AUTHORIZED'|'REGISTERED'|'RELEASED'|'UNDER_REVIEW'|'RETAINED';
@@ -204,6 +204,9 @@ export default function BitacoraGlobal(){
   const [userRevision,setUserRevision]=useState(0);
   const [filters,setFilters]=useState<Filters>(EMPTY_FILTERS);
   const [viewedId,setViewedId]=useState('');
+  const [liveData,setLiveData]=useState<BitRecord[]>([]);
+  const [liveLoaded,setLiveLoaded]=useState(false);
+  const [loadError,setLoadError]=useState('');
 
   useEffect(()=>{
     const onStorage=()=>setUserRevision(x=>x+1);
@@ -213,7 +216,16 @@ export default function BitacoraGlobal(){
 
   const user=getUser();
   const scope=scopeByUser[user];
-  const scopedData=useMemo(()=>DATA.filter(record=>withinScope(record,scope)),[scope,userRevision]);
+  useEffect(()=>{
+    let active=true;
+    setLiveLoaded(false);
+    setLoadError('');
+    api.logbookRecords()
+      .then(records=>{if(active){setLiveData(records as BitRecord[]);setLiveLoaded(true)}})
+      .catch(error=>{if(active){setLiveData([]);setLiveLoaded(true);setLoadError(error instanceof Error?error.message:'No se pudo consultar Bitácora')}});
+    return()=>{active=false};
+  },[user,userRevision]);
+  const scopedData=useMemo(()=>liveLoaded?liveData:DATA.filter(record=>withinScope(record,scope)),[liveLoaded,liveData,scope]);
 
   const companyOptions=useMemo(()=>Array.from(new Map(scopedData.map(r=>[r.companyCode,r.company])).values()),[scopedData]);
   const cityOptions=useMemo(()=>Array.from(new Set(scopedData.map(r=>r.city))).sort(),[scopedData]);
@@ -270,6 +282,7 @@ export default function BitacoraGlobal(){
       </div>
       <div className="bit-global-scope nov-scope"><ShieldCheck size={16}/><span>{scope.label}</span></div>
     </div>
+    {loadError&&<div className="form-error">No fue posible cargar los registros reales: {loadError}</div>}
 
     <div className="bit-global-kpis coord-kpis nov-kpis">
       <Metric icon={<FileSearch2 size={22}/>} label="Resultados" value={metrics.total} subtitle="registros encontrados" tone="blue"/>

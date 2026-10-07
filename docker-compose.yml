@@ -6,7 +6,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-sgi}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
     ports:
-      - "56432:5432"
+      - "9040:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -19,9 +19,6 @@ services:
     #image: minio/minio:latest
     #image: quay.io/minio/aistor/minio:RELEASE.2026-03-26T21-24-40Z
     #command: server /data --console-address ":9001"
-    #environment:
-      #MINIO_ROOT_USER: ${MINIO_ROOT_USER:-sgiadmin}
-      #MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD in .env}
     # MinIO comunitario (Bitnami). La imagen AIStor (quay.io/minio/aistor) requiere licencia comercial
     # y las imágenes comunitarias minio/minio ya no se publican.
     image: bitnamilegacy/minio:2025.7.23
@@ -30,16 +27,19 @@ services:
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD in .env}
       MINIO_CONSOLE_PORT_NUMBER: "9001"
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "9041:9000"
+      - "9042:9001"
     volumes:
       #- minio_data:/data
       - minio_data:/bitnami/minio/data
+
   backend:
     env_file:
       - .env
     build:
       context: ./backend
+    extra_hosts:
+      - "apps.seminter.com.ec:172.18.1.110"
     environment:
       QUARKUS_DATASOURCE_JDBC_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-sgi_comando}
       QUARKUS_DATASOURCE_USERNAME: ${POSTGRES_USER:-sgi}
@@ -47,25 +47,22 @@ services:
       SGI_MINIO_ENDPOINT: http://minio:9000
       SGI_MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-sgiadmin}
       SGI_MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD in .env}
-      SGI_CORE_CATALOG_BASE_URL: ${SGI_CORE_CATALOG_BASE_URL:-https://apps.cajamarca.ec/dev.core/api/v1}
-      SGI_CORE_COUNTRY_CODE: ${SGI_CORE_COUNTRY_CODE:-EC}
-      SGI_CORE_INSTANCE_COUNTRY_CODE: ${SGI_CORE_INSTANCE_COUNTRY_CODE:-ECU-CM}
-      SGI_CORE_CATALOG_TIMEOUT_MS: ${SGI_CORE_CATALOG_TIMEOUT_MS:-5000}
-      SGI_CORE_COUNTRY_CACHE_SECONDS: ${SGI_CORE_COUNTRY_CACHE_SECONDS:-300}
       SGI_INTERCONNECTIONS_CORE_RESOLVER_URL: ${SGI_INTERCONNECTIONS_CORE_RESOLVER_URL:-}
       SGI_INTERCONNECTIONS_ENVIRONMENT: ${SGI_INTERCONNECTIONS_ENVIRONMENT:-UAT}
-      SGI_INTERCONNECTIONS_INSTANCE_COUNTRY_ID: ${SGI_INTERCONNECTIONS_INSTANCE_COUNTRY_ID:-}
       SGI_INTERCONNECTIONS_CORE_TIMEOUT_MS: ${SGI_INTERCONNECTIONS_CORE_TIMEOUT_MS:-2500}
       SGI_INTERCONNECTIONS_CACHE_TTL_SECONDS: ${SGI_INTERCONNECTIONS_CACHE_TTL_SECONDS:-300}
       SGI_INTERCONNECTIONS_ALLOW_STALE_SECONDS: ${SGI_INTERCONNECTIONS_ALLOW_STALE_SECONDS:-3600}
       SGI_INTERCONNECTIONS_CIRCUIT_FAILURE_THRESHOLD: ${SGI_INTERCONNECTIONS_CIRCUIT_FAILURE_THRESHOLD:-5}
       SGI_INTERCONNECTIONS_CIRCUIT_OPEN_SECONDS: ${SGI_INTERCONNECTIONS_CIRCUIT_OPEN_SECONDS:-30}
       SGI_RRHH_INBOUND_CREDENTIAL_REF: ${SGI_RRHH_INBOUND_CREDENTIAL_REF:-SIC_RRHH_SGI_COM_0001_v001}
+      SGI_IDENT_EMPLOYEES_INBOUND_CREDENTIAL_REF: ${SGI_IDENT_EMPLOYEES_INBOUND_CREDENTIAL_REF:-IDENT_SGI_COM_0001_v001}
       SGI_RRHH_USE_CANONICAL_EMPLOYEE_ID: ${SGI_RRHH_USE_CANONICAL_EMPLOYEE_ID:-false}
       SGI_SIC_COM_INBOUND_CREDENTIAL_REF: ${SGI_SIC_COM_INBOUND_CREDENTIAL_REF:-}
       SGI_CREDENTIAL_SIC_COM_SGI_COM_0001_V001: ${SGI_CREDENTIAL_SIC_COM_SGI_COM_0001_V001:-}
       SGI_CREDENTIAL_SIC_RRHH_SGI_COM_0001_V001: ${SGI_CREDENTIAL_SIC_RRHH_SGI_COM_0001_V001:-}
+      SGI_CREDENTIAL_IDENT_SGI_COM_0001_V001: ${SGI_CREDENTIAL_IDENT_SGI_COM_0001_V001:-}
       SGI_OPERATOR_RELIEF_UAT_ENABLED: ${SGI_OPERATOR_RELIEF_UAT_ENABLED:-false}
+      SGI_CORE_CATALOG_BASE_URL: ${SGI_CORE_CATALOG_BASE_URL:-}
       # VISINT real (HTTP) por defecto; MOCK solo con SGI_UAT_FEATURES_ENABLED=true.
       SGI_VISINT_MODE: ${SGI_VISINT_MODE:-HTTP}
       SGI_VISINT_URL: ${SGI_VISINT_URL:-}
@@ -73,7 +70,7 @@ services:
       SGI_VISINT_TOKEN: ${SGI_VISINT_TOKEN:-}
       SGI_UAT_FEATURES_ENABLED: ${SGI_UAT_FEATURES_ENABLED:-false}
     ports:
-      - "8080:8080"
+      - "9043:8080"
     depends_on:
       postgres:
         condition: service_healthy
@@ -83,10 +80,14 @@ services:
   frontend:
     build:
       context: ./frontend
+    extra_hosts:
+      - "apps.cajamarca.ec:172.18.1.10"
+      - "apps.seminter.com.ec:172.18.1.110"
     environment:
-      VITE_API_URL: http://localhost:8080
+      #VITE_API_URL: http://localhost:8080
+      VITE_API_URL: /dev.comando
     ports:
-      - "5173:80"
+      - "9044:80"
     depends_on:
       - backend
 

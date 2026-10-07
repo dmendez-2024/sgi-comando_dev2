@@ -1,4 +1,5 @@
-const API=import.meta.env.VITE_API_URL ?? 'http://localhost:8080';
+const API = import.meta.env.VITE_API_URL || '/dev.comando';
+// const API=import.meta.env.VITE_API_URL ?? 'http://localhost:8080';
 export type UatUser='presidente'|'dlatam'|'don'|'dnacional'|'dzonal'|'jregional'|'coord'|'asistente'|'supervisor'|'agente'|'cliente';
 let currentUser:UatUser=(localStorage.getItem('sgi-uat-user') as UatUser)||'coord';
 const PASSWORD='CajamarcaUAT!2026';
@@ -131,6 +132,9 @@ export const api={
  savePostConfiguration:(postId:string,body:any)=>request<any>(`/api/post-configurations/${encodeURIComponent(postId)}`,{method:'PUT',body:JSON.stringify(body)}),
  postStandardImage:(postId:string,imageId:string)=>binaryRequest(`/api/post-configurations/${encodeURIComponent(postId)}/standard-image/${encodeURIComponent(imageId)}`),
  postStandardImages:(postId:string)=>request<{id:string;position:number;originalName:string;contentType:string}[]>(`/api/post-configurations/${encodeURIComponent(postId)}/standard-images`),
+ postVisualRule:(postId:string)=>request<{thresholdValue:number|null;referenceImageCount:number|null;effectiveReferenceImageCount:number;savedImageCount:number;historicalPresentationMonths:number|null;updatedBy:string|null;updatedAt:string|null}>(`/api/post-configurations/${encodeURIComponent(postId)}/visual-rule`),
+ savePostVisualRule:(postId:string,body:{thresholdValue:number|null;referenceImageCount:number|null;historicalPresentationMonths:number|null})=>request<any>(`/api/post-configurations/${encodeURIComponent(postId)}/visual-rule`,{method:'PUT',body:JSON.stringify(body)}),
+ postVisualRuleHistory:(postId:string)=>request<{thresholdValue:number|null;referenceImageCount:number|null;historicalPresentationMonths:number|null;legacyHistoricalPresentation:string|null;changedBy:string;changedAt:string}[]>(`/api/post-configurations/${encodeURIComponent(postId)}/visual-rule/history`),
  uploadPostStandardImage:postImageUpload,
  deletePostStandardImage:(postId:string,imageId:string)=>request<void>(`/api/post-configurations/${encodeURIComponent(postId)}/standard-image/${encodeURIComponent(imageId)}`,{method:'DELETE'}),
  points:(serviceId:string)=>request<any[]>(`/api/services/${serviceId}/points`),
@@ -156,6 +160,7 @@ export const api={
  consignments:(pointId:string)=>request<any[]>(`/api/consignments?pointId=${encodeURIComponent(pointId)}`),
   consignmentReviewRequests:(status='PENDING')=>request<any[]>(`/api/v1/operator/consignment-review-requests?status=${encodeURIComponent(status)}`),
   patrolExecutions:()=>request<any[]>('/api/v1/operator/patrol-executions'),
+ logbookRecords:()=>request<any[]>('/api/v1/operator/logbook-records'),
  currentRegesep:(pointId:string)=>request<any>(`/api/points/${pointId}/regesep/current`),
  assignmentWeek:(companyId:string,weekStart:string,pointId?:string)=>request<any>(`/api/assignments/week?companyId=${encodeURIComponent(companyId)}&weekStart=${weekStart}${pointId?`&pointId=${encodeURIComponent(pointId)}`:''}`),
  assignmentPersonnel:(companyId:string,weekStart:string,q='',role='',availability='',page=0,size=50,sort='PERSON',direction='ASC')=>request<any>(`/api/assignments/personnel?companyId=${encodeURIComponent(companyId)}&weekStart=${weekStart}&q=${encodeURIComponent(q)}&role=${encodeURIComponent(role)}&availability=${encodeURIComponent(availability)}&page=${page}&size=${size}&sort=${encodeURIComponent(sort)}&direction=${encodeURIComponent(direction)}`),

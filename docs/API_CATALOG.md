@@ -109,12 +109,20 @@ Synchronize the ACTIVE/INACTIVE lifecycle of Seguridad Física personnel and the
   - Para un empleado **nuevo**, `companyCoreCatalogId` o `companyCode` es obligatorio. SGI deja de inventar Kaibil como compañía fuente.
   - Para un empleado ya existente, la omisión temporal de compañía conserva la compañía actual para compatibilidad de transición.
   - `Idempotency-Key` se persiste por Instancia PE: mismo key + mismo payload es retry seguro; mismo key + payload distinto responde conflicto.
-- `SIC_DHO_SGI_COM_0001_IF02` — `GET` `/api/v1/employees?instanceCountryId={instanceCountryId}` — lista de empleados operacionales activos de la Empresa identificada por `instanceCountryId`, con su cargo y Compañía asignada.
-  - Headers: `Authorization`, `X-Correlation-Id`, `X-Interconnection-Id`, `X-Contract-Version`.
-  - Filtro obligatorio: `instanceCountryId`; identifica la Empresa y debe coincidir con el contexto vigente de SGI: Comando.
-  - Respuesta: arreglo JSON; cada elemento contiene `personaId`, `employeeId`, `fullName`, `roleCode`, `employmentStatus`, `company.id`, `company.coreCatalogId`, `company.code`, `company.name`, `company.status`, `companyMembershipActive`.
-  - Solo devuelve filas con `employee_operational_snapshot.employment_status = 'ACTIVE'`; sin coincidencias responde `200` con `[]`.
 - aliases de transición: `SIC_RRHH_SGI_COM_0001_v001`, `SIC_RRHH__SGI_COM__00001__V0001`, `SIC_RRHH__SGI_COM__00001`
+
+## `IDENT_SGI_COM_0001_v001` — IDENT → SGI_COM
+Consulta de empleados operacionales activos de SGI: Comando para IDENT.
+
+- SoR de la respuesta operacional: `SGI_COM`
+- contractVersion: `v1`
+- estado SGI_COM: `UAT`
+
+- `IDENT_SGI_COM_0001_IF01` — `GET` `/api/v1/employees?instanceCountryId={instanceCountryId}`.
+  - Headers: `Authorization`, `X-Correlation-Id`, `X-Interconnection-Id`, `X-Contract-Version`.
+  - `X-Interconnection-Id` debe ser `IDENT_SGI_COM_0001_v001`; no se aceptan aliases de RRHH/DHO.
+  - Filtro obligatorio: `instanceCountryId`; debe coincidir con el contexto vigente de SGI: Comando.
+  - Solo devuelve `employee_operational_snapshot.employment_status = 'ACTIVE'`; sin coincidencias responde `200` con `[]`.
 
 ## `SGI_COM_SIC_RRMM_0001_v001` — SGI_COM → SIC_RRMM
 Read expected material resources/inventory for Point/Post operational configuration and Relevo.
@@ -225,8 +233,14 @@ Synchronize the mobile operator runtime context/configuration required for the a
 - contractVersion: `v1`
 - estado: `DESIGN`
 
-- `SGI_OPR_SGI_COM_0001_IF01` — `GET` `/api/v1/operator/runtime` — Assignment, Point/Post, protocols, consignments, patrols, bitacora and pending messages
+- `SGI_OPR_SGI_COM_0001_IF01` — `GET` `/api/v1/operator/runtime` — Assignment, Point/Post, protocols, consignments, patrols, bitacora, próximas acciones y mensajes pendientes
+- `SGI_OPR_SGI_COM_0001_IF15` — `GET` `/api/v1/operator/incident-taxonomy?category={category}` — taxonomía canónica de subcategorías de incidentes administrada por SGI Comando
+- `POST /api/v1/operator/patrol-executions` — inicio/finalización de Patrullas; las no programadas de secuencia flexible admiten hitos creados en campo con fotografía y GPS opcional.
 - `GET /api/v1/operator/patrol-executions` — consulta interna SGI Comando UI/backend del historial real de ejecuciones de Patrulla; aplica tenant, identidad del Operador y alcance RBAC por Compañía. No crea una nueva interconexión externa.
+- `GET /api/v1/operator/patrol-map?assignmentId={assignmentId}` — entrega autenticada del plano ATS vigente del Punto asignado, sin caché, manteniendo el aislamiento por instancia-país.
+- `POST /api/v1/operator/logbook-records` — recepción idempotente de registros de Bitácora desde SGI Operador.
+- `GET /api/v1/operator/logbook-records` — consulta interna para visualizar en SGI Comando los registros reales, filtrados por tenant, identidad y alcance RBAC.
+- `GET /api/v1/operator/relief-evidence/{eventId}/{purpose}?assignmentId={assignmentId}` — lectura autenticada de evidencia de relevo previamente recibida.
 - aliases históricos: `SGI_OPR__SGI_COM__00001__V0001`, `SGI_OPR__SGI_COM__00001`
 
 ## `SGI_OPR_SGI_COM_0002_v001` — SGI_OPR → SGI_COM

@@ -6,7 +6,7 @@ Estado: UAT local. No habilitado por defecto. Versión contractual: `v1`.
 
 - `SGI_OPR_SGI_COM_0001_v001`, interfaz `SGI_OPR_SGI_COM_0001_IF01`: consulta de contexto mediante `GET /api/v1/operator/runtime`.
 - `SGI_OPR_SGI_COM_0002_v001`, interfaz `SGI_OPR_SGI_COM_0002_IF01`: recepción idempotente mediante `POST /api/v1/operator/executions`.
-- `SGI_OPR_SGI_COM_0002_v001`, interfaz `SGI_OPR_SGI_COM_0002_IF02`: carga de evidencia mediante `PUT /api/v1/operator/relief-evidence/{eventId}/{purpose}`.
+- `SGI_OPR_SGI_COM_0002_v001`, interfaz `SGI_OPR_SGI_COM_0002_IF02`: carga y lectura autenticada de evidencia mediante `PUT` y `GET /api/v1/operator/relief-evidence/{eventId}/{purpose}?assignmentId={assignmentId}`.
 
 La URL efectiva y las credenciales se resuelven mediante CORE. CORE no transporta el tráfico funcional. Operador no accede a la base de datos de Comando.
 
@@ -16,7 +16,7 @@ El evento admitido es `RELIEF_SUBMITTED`. Comando valida la instancia, el víncu
 
 Cada relevo mantiene el mismo `eventId` al reintentarse. Un reintento idéntico devuelve la misma aceptación; el mismo identificador con contenido diferente responde `409`. Solo puede existir un relevo recibido por asignación.
 
-Las evidencias UAT se guardan como JPEG, hasta 5 MB cada una, vinculadas a evento, asignación, usuario, instancia y propósito. No se generan fotografías DEMO.
+Las evidencias UAT se guardan como JPEG, hasta 5 MB cada una, vinculadas a evento, asignación, usuario, instancia y propósito. Su lectura vuelve a validar identidad y asignación, y responde con `Cache-Control: no-store`. No se generan fotografías DEMO.
 
 ## Estado pendiente obligatorio
 
