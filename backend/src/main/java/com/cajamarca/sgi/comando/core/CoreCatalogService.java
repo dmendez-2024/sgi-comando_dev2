@@ -53,9 +53,7 @@ public class CoreCatalogService {
     @Inject ObjectMapper mapper;
     @Inject TenantContext tenant;
 
-    private final HttpClient httpClient = HttpClient.newBuilder()
-        .connectTimeout(Duration.ofSeconds(5))
-        .build();
+    private final HttpClient httpClient = CoreHttp.client(Duration.ofSeconds(5));
 
     private volatile CountryReference cachedCountry;
     private volatile Instant countryCachedAt;
@@ -313,7 +311,7 @@ public class CoreCatalogService {
                 .header("X-Correlation-Id", UUID.randomUUID().toString())
                 .GET()
                 .build();
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> response = CoreHttp.send(httpClient, request, "catálogo");
             if (response.statusCode() < 200 || response.statusCode() >= 300) {
                 throw new IllegalStateException("CORE respondió HTTP " + response.statusCode() + " al consultar " + path + ".");
             }

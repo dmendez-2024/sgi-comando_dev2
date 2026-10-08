@@ -525,7 +525,7 @@ SGI-05 se difiere hasta construir ATS. El paquete `.ats` deberá transportar al 
 - **SGI-EVI-DEC-008:** Cada foto guarda la distancia y el radio con que se evaluó (`evidence_object.reference_distance_m`, `reference_radius_m`): cambiar coordenadas o radios no reescribe los avisos pasados.
 
 ## Impulsos sin CORE (2026-10-08)
-- **SGI-IMP-DEC-010:** Mientras CORE no publique reglas, las reglas versionadas de Impulsos se guardan en la tabla `impulse_rule` de cada Instancia PE de SGI: Comando (Flyway `V70`). Un cambio de valores es una versión nueva. Complementa DEC-009: CORE sigue siendo el SoR objetivo.
+- **SGI-IMP-DEC-010:** Mientras CORE no publique reglas, las reglas versionadas de Impulsos se guardan en la tabla `impulse_rule` de cada Instancia PE de SGI: Comando (Flyway `V71`). Un cambio de valores es una versión nueva. Complementa DEC-009: CORE sigue siendo el SoR objetivo.
 - **SGI-IMP-DEC-011:** El motor `ImpulseEngine` (cada 30 s) evalúa los hechos ya guardados (relevos, bitácoras, patrullas, consignas), espera 60 s a que lleguen sus fotos y el resultado de VISINT, y guarda **una** evaluación por (regla, hecho) en `impulse_evaluation`, que es el ledger. VISINT `FAILED` → `NOT_ELIGIBLE`; un error de VISINT se espera hasta 24 h y luego se cierra sin Impulsos.
 - **SGI-IMP-DEC-012:** SGI: Operador recibe el saldo en el bloque `impulses` de `/runtime` (`SGI_OPR_SGI_COM_0003_v002`): no se crea interconexión nueva. La app no suma ni inventa Impulsos y solo muestra la animación cuando Comando confirma una adjudicación.
 - **SGI-IMP-DEC-013:** Escala de nivel: 100 Impulsos = 0,1 de habilidad, tope 5,0 (1.000 Impulsos/PH de la hoja AdS). Índice del perfil = promedio de los niveles de las ocho habilidades × 2. Pendiente de aprobación de Gerencia.

@@ -2,7 +2,7 @@
 
 ## SGI Comando
 
-- Flyway `V70`: tablas `impulse_rule` (reglas versionadas por Instancia PE) e `impulse_evaluation` (evaluaciones = ledger), con las reglas iniciales de la hoja AdS. Novedades, km de patrulla, Liderazgo y QR de cliente quedan inactivas: no tienen productor.
+- Flyway `V71`: tablas `impulse_rule` (reglas versionadas por Instancia PE) e `impulse_evaluation` (evaluaciones = ledger), con las reglas iniciales de la hoja AdS. Novedades, km de patrulla, Liderazgo y QR de cliente quedan inactivas: no tienen productor.
 - Motor `ImpulseEngine` (paquete `impulses`), configurable con `sgi.impulses.engine-enabled`, `sgi.impulses.settle-seconds` (60) y `sgi.impulses.visint-wait-hours` (24).
 - `GET /api/v1/operator/runtime` añade el bloque `impulses` (saldo del agente).
 - Endpoints nuevos: `GET /api/v1/operator/impulses` (sin uso por la app), `GET /api/impulses/rules`, `GET /api/impulses/evaluations` y `GET /api/impulses/employees/{employeeId}`.

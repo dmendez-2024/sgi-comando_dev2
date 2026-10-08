@@ -33,9 +33,7 @@ public class CoreInterconnectionResolver {
 
     @Inject ObjectMapper objectMapper;
 
-    private final HttpClient httpClient = HttpClient.newBuilder()
-        .connectTimeout(Duration.ofSeconds(3))
-        .build();
+    private final HttpClient httpClient = com.cajamarca.sgi.comando.core.CoreHttp.client(Duration.ofSeconds(3));
 
     public ResolvedInterconnection resolve(String interconnectionId, String interfaceId, UUID instanceCountryId) {
         if (coreResolverUrl.isEmpty() || coreResolverUrl.get().isBlank()) {
@@ -55,7 +53,7 @@ public class CoreInterconnectionResolver {
                 .GET()
                 .build();
 
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> response = com.cajamarca.sgi.comando.core.CoreHttp.send(httpClient, request, "resolución " + interconnectionId);
             if (response.statusCode() < 200 || response.statusCode() >= 300) {
                 String detail = remoteMessage(response.body());
                 String message = "CORE no pudo resolver la interconexión (HTTP " + response.statusCode() + ")";
