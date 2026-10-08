@@ -10,6 +10,7 @@ import jakarta.persistence.Table;
 public class ClientEntity extends BaseEntity {
   @Column(nullable=false, length=80) public String code;
   @Column(nullable=false, length=180) public String name;
+  @Column(name="tax_identifier", length=32) public String taxIdentifier;
   @Column(name="commercial_status", nullable=false, length=32) public String commercialStatus;
   @Column(name="source_system", nullable=false, length=32) public String sourceSystem;
   @Column(name="source_version", length=80) public String sourceVersion;

@@ -55,7 +55,11 @@ public class SicComCommercialCatalogService {
       List<PointInput> points,
       List<ServiceInput> services) {}
 
-  public record ClientInput(String code, String name, String commercialStatus) {}
+  public record ClientInput(
+      String code,
+      String name,
+      @JsonInclude(JsonInclude.Include.NON_NULL) String taxIdentifier,
+      String commercialStatus) {}
   /**
    * {@code points} is used by the batch contract ({@code services[]}).  The
    * top-level points field remains available for the original one-service
@@ -164,6 +168,9 @@ public class SicComCommercialCatalogService {
     }
     client.code = input.code();
     client.name = input.name();
+    if (input.taxIdentifier() != null && !input.taxIdentifier().isBlank()) {
+      client.taxIdentifier = input.taxIdentifier().trim();
+    }
     client.commercialStatus = commercialStatus(input.commercialStatus());
     client.sourceSystem = SIC_COM;
     client.sourceVersion = version;
@@ -363,6 +370,9 @@ public class SicComCommercialCatalogService {
     if (!List.of(CREATED, UPDATED, INACTIVATED).contains(request.eventType())) throw validation("eventType no soportado.");
     if (request.client() == null) throw validation("client es obligatorio.");
     required(request.client().code(), "client.code"); required(request.client().name(), "client.name");
+    if (request.client().taxIdentifier() != null && request.client().taxIdentifier().trim().length() > 32) {
+      throw unprocessable("client.taxIdentifier admite máximo 32 caracteres.");
+    }
     boolean batchRequest = !safe(request.services()).isEmpty();
     if (batchRequest && (request.service() != null || !safe(request.points()).isEmpty())) {
       throw validation("Use service y points, o services, pero no ambos formatos en el mismo evento.");

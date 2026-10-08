@@ -39,8 +39,12 @@ type ConsoleItem={
 };
 
 type Scope={label:string;companies:string[]|null;region?:string;zone?:string};
+<<<<<<< HEAD
 type ClientOption={id:string;code:string;name:string};
 type ServiceLocationRow={clientId:string;pointId:string;postId:string;companyId:string|null;companyName:string;clientName:string;pointName:string;postName:string};
+=======
+type OperatorReport={reportId:string;type:'INCIDENT'|'FINDING'|'VULNERABILITY';category:string;subcategory?:string;title:string;description:string;severity:Priority;status:string;occurredAt:string;createdAt:string;username:string;pointName:string;postName:string};
+>>>>>>> Ambiente_dev
 type Filters={
   category:'ALL'|ItemCategory;
   query:string;
@@ -111,6 +115,14 @@ const incidentToConsoleItem=(record:IncidentRecord):ConsoleItem=>({
   createdAt:record.createdAt||record.updatedAt,updatedAt:record.updatedAt,summary:record.description||'Incidente en elaboración.',source:'NOV',originLabel:`Novedades · Incidentes · ${record.incidentType||record.subcategory||'Sin clasificar'}`,
   recommendedAction:record.status==='DRAFT'?'Completar y finalizar la notificación del incidente.':'Incidente finalizado; puede reabrirse para edición desde Consola.'
 });
+const operatorReportToConsoleItem=(record:OperatorReport):ConsoleItem=>({
+  id:`operator:${record.reportId}`,category:'NOVEDADES',subtype:record.type==='INCIDENT'?'Incidente':record.type==='FINDING'?'Hallazgo':'Vulnerabilidad',
+  code:`OPR-${record.reportId.slice(0,8).toUpperCase()}`,title:record.title,company:'Galvarino',companyCode:'GAL',client:'—',city:'Cajamarca',
+  point:record.pointName||'—',post:record.postName||'—',responsible:record.username||'SGI Operador',zone:'Zona Costa',region:'Costa Sur',
+  status:record.severity==='CRITICAL'?'CRITICAL':'PENDING',priority:record.severity,createdAt:record.createdAt,updatedAt:record.occurredAt,
+  summary:record.description,source:'NOV',originLabel:`Novedades · ${record.type==='INCIDENT'?'Incidentes':record.type==='FINDING'?'Hallazgos':'Vulnerabilidades'} · ${record.category}`,
+  recommendedAction:'Validar el reporte recibido desde SGI Operador.'
+});
 
 export default function ConsolaMonitor(){
   const user=getUser();
@@ -120,8 +132,12 @@ export default function ConsolaMonitor(){
   const [detailId,setDetailId]=useState('');
   const [filtersOpen,setFiltersOpen]=useState(false);
   const [incidents,setIncidents]=useState<IncidentRecord[]>([]);
+<<<<<<< HEAD
   const [incidentsError,setIncidentsError]=useState('');
   const [incidentsRefresh,setIncidentsRefresh]=useState(0);
+=======
+  const [operatorReports,setOperatorReports]=useState<OperatorReport[]>([]);
+>>>>>>> Ambiente_dev
   const [incidentEditorOpen,setIncidentEditorOpen]=useState(false);
   const [editingIncidentId,setEditingIncidentId]=useState('');
   const [locationOptions,setLocationOptions]=useState<LocationOption[]>([]);
@@ -161,9 +177,28 @@ export default function ConsolaMonitor(){
   },[user,locationsRefresh]);
 
   const incidentRows=useMemo(()=>incidents.map(incidentToConsoleItem),[incidents]);
+<<<<<<< HEAD
   const allRows=useMemo(()=>[...DATA,...incidentRows],[incidentRows]);
   const allowedCompanyIds=useMemo(()=>new Set(locationOptions.map(x=>x.companyId).filter((id):id is string=>!!id)),[locationOptions]);
   const scoped=useMemo(()=>allRows.filter(x=>withinScope(x,scope,allowedCompanyIds)),[allRows,scope,allowedCompanyIds]);
+=======
+  const operatorRows=useMemo(()=>operatorReports.map(operatorReportToConsoleItem),[operatorReports]);
+  const allRows=useMemo(()=>[...operatorRows,...DATA,...incidentRows],[operatorRows,incidentRows]);
+  useEffect(()=>{api.operationalReports().then(data=>{
+    setOperatorReports(data);
+    if(data.length){const latest=data.reduce((max,row)=>row.occurredAt>max?row.occurredAt:max,data[0].occurredAt).slice(0,10);const start=new Date(`${latest}T00:00:00`);start.setDate(start.getDate()-30);setFilters(prev=>({...prev,dateFrom:start.toISOString().slice(0,10),dateTo:latest}));}
+  }).catch(()=>setOperatorReports([]));},[]);
+  const scoped=useMemo(()=>allRows.filter(x=>withinScope(x,scope)),[allRows,scope]);
+  const locationOptions=useMemo<LocationOption[]>(()=>{
+    const seen=new Set<string>();
+    return DATA.filter(x=>withinScope(x,scope)).flatMap(row=>{
+      const key=`${row.client}|${row.point}|${row.post}`;
+      if(seen.has(key))return [];
+      seen.add(key);
+      return [{client:row.client,point:row.point,post:row.post,company:row.company,companyCode:row.companyCode,city:row.city}];
+    });
+  },[scope]);
+>>>>>>> Ambiente_dev
   const cities=useMemo(()=>unique(scoped.map(x=>x.city)),[scoped]);
   const companies=useMemo(()=>unique(scoped.map(x=>x.company)),[scoped]);
   const clients=useMemo(()=>unique(scoped.map(x=>x.client)),[scoped]);

@@ -1,0 +1,73 @@
+Habilitar una cuenta supervisor existente en SGI: Operador
+
+ACLARACIÓN POSTERIOR: Ciro ya existe en employee_operational_snapshot en la base
+del usuario, pero no tiene username. Para una cuenta personal equivalente al
+perfil supervisor usar 07_ciro_mismo_perfil_supervisor_DEV.sql, no el script 05.
+Identidad CORREGIDA por el resultado del diagnóstico: Ciro tiene persona_id 7008
+y employee_id 882a874b-b6a6-36ed-93a6-9671881abb66. El persona_id 3286 es de Carlos
+Manolo Peñarrieta Manzaba. El 07 valida nombre, persona_id y employee_id de Ciro.
+El vínculo previo de Ciro con agente.prueba se desactiva y se vincula ciro.chavez
+en la misma transacción. La cuenta agente.prueba conserva su contraseña y estado;
+su vínculo desactivado deja de autorizarla para operar como Ciro.
+El 07 propone ciro.chavez, copia rol y alcances de supervisor al tenant vigente,
+crea/reactiva el vínculo con Ciro y crea su membresía primaria si falta sin
+conflictos. Para una cuenta nueva usa inicialmente la contraseña de supervisor
+en desarrollo/UAT, o el bcrypt propio indicado en new_password_hash. No modifica
+la cuenta supervisor y no copia sus turnos. La ficha de Ciro debe existir.
+El 07 admite que la cuenta base supervisor siga en el tenant antiguo: resuelve
+sus compañías en el tenant vigente, sin migrar la cuenta base.
+
+Destino configurado: Ciro Antonio Chavez Molina, username supervisor, compañía Galvarino.
+La consulta local encontró la cuenta activa con SUPERVISOR_SEGURIDAD, sin vínculo
+empleado y sin ficha de Ciro. Primero incorporar su ficha y membresía desde SIC/RRHH.
+Para un alta manual de desarrollo se necesita su personas.id real; no se inventa.
+
+Si el error indica cuenta en 11111111-1111-1111-1111-111111111111 y backend en
+398233d2-293a-4709-ac30-b74c4269e22d: ejecutar ROLLBACK para liberar la sesión
+fallida, luego 06_corregir_tenant_supervisor.sql completo y después el script 05.
+El 06 corrige solo la cuenta supervisor y su alcance de Galvarino. Conserva la
+contraseña y aborta si tiene vínculos empleados antiguos o alcances distintos.
+Corregir el tenant no crea la ficha de Ciro; esa ficha sigue siendo necesaria.
+
+1. En DBeaver, conectarse a la base PostgreSQL usada por el backend de SGI Comando.
+   Ejecutar 04_diagnosticar_supervisor.sql. Si la conexión quedó en una transacción
+   fallida (25P02), ejecutar ROLLBACK antes de repetir el diagnóstico.
+
+2. Abrir 05_habilitar_supervisor_operador.sql. Username predeterminado: supervisor;
+   compañía predeterminada: Galvarino. Si ya hay vínculo al empleado correcto,
+   el script comprueba además el nombre de Ciro. Si no hay vínculo,
+   completar UNO con la identidad real encontrada en el diagnóstico 04.
+   Ejemplo: reemplazar NULL::bigint AS persona_id por 1234::bigint AS persona_id
+   SOLO si 1234 es el personas.id confirmado de esa persona en SIC/RRHH.
+   No elegir al primer supervisor de la lista ni inventar un empleado.
+
+3. Ejecutar el archivo 05 COMPLETO en una sola sesión (DBeaver: ejecutar script).
+   La transacción activa la cuenta, fija SUPERVISOR_SEGURIDAD, añade el alcance
+   COMPANY y crea/reactiva el vínculo empleado. Conserva la contraseña existente.
+   Aborta ante identidad, tenant, membresía, alcance o vínculos contradictorios.
+   No crea fichas RRHH ni turnos. Es repetible para la misma identidad.
+
+4. En el servidor de SGI Comando debe estar SGI_OPERATOR_RELIEF_UAT_ENABLED=true.
+   Esta opción controla la API del operador, no es un permiso de base de datos.
+   Si cambia la variable, recrear/reiniciar el backend con la configuración aplicada.
+
+5. Volver a iniciar sesión en SGI Operador con la contraseña propia del supervisor.
+   Verificar la respuesta autenticada de GET /api/v1/operator/runtime en el backend
+   configurado en esa app (puede llevar un prefijo de proxy, por ejemplo /dev.comando).
+   Esta API usa Basic con username y contraseña de app_user.
+   Si responde con employeeId y assignments=[], la cuenta tiene acceso pero no hay
+   turno utilizable en ese momento. Publicar la asignación de esa persona desde
+   Asignaciones; no copiar las asignaciones del agente. El runtime prioriza turnos
+   actuales y, si no hay, el más cercano dentro de los siguientes 59 minutos.
+
+Diagnóstico por respuesta HTTP:
+- 401: revisar contraseña, username, servidor y Authorization Basic. Asignar un
+  rol no cambia una contraseña incorrecta. Para restablecerla, puede colocar un
+  bcrypt MCF nuevo en new_password_hash del script 05; nunca texto plano.
+- 403: leer el mensaje: usuario inactivo/otro tenant, rol, vínculo o asignación.
+- 404: si el mensaje dice Integración de relevo UAT deshabilitada, activar la
+  variable del punto 4. Si es un 404 del proxy, comprobar URL/prefijo de la app.
+- 5xx: revisar backend/integraciones; un cambio de roles puede no resolverlo.
+
+El formulario de acceso de SGI Operador está en otro proyecto. Estos scripts
+configuran su acceso al backend SGI Comando; no modifican ese formulario.

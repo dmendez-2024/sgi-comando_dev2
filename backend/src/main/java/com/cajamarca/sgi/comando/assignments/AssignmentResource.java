@@ -52,7 +52,7 @@ public class AssignmentResource {
     public record SummaryDto(int requiredShifts, int assignedShifts, int unassignedShifts, double coveragePct, int warningsCount, double plannedIcAvg,
                              Integer publishedRequiredShifts, Integer publishedAssignedShifts, Double publishedCoveragePct) {}
     public record WeekResponse(PlanDto plan, List<PointDto> points, List<PostDto> posts, List<ShiftDto> shifts, List<AssignmentDto> assignments, SummaryDto summary) {}
-    public record UnavailabilityDto(String type, Instant startsAt, Instant endsAt, String sourceRef) {}
+    public record UnavailabilityDto(String type, Instant startsAt, Instant endsAt, String sourceRef, String sourceReasonLabel) {}
     public record TransferMiniDto(UUID id,String direction,String status,UUID originCompanyId,String originCompanyName,UUID destinationCompanyId,String destinationCompanyName,String reasonCode,String reasonLabel,String observations,String initiatedBy,Instant initiatedAt,Instant effectiveAt,int releasedFutureAssignments) {}
     public record PersonnelDto(UUID employeeId, String fullName, String roleCode, String employmentStatus, BigDecimal idScore, String preferredShift,
                                String photoKey, boolean requiredChange, double assignedHours, List<UnavailabilityDto> unavailability, TransferMiniDto transfer) {}
@@ -188,7 +188,7 @@ public class AssignmentResource {
         }
         String availabilityKey=availability==null?"":availability.trim().toUpperCase(Locale.ROOT);
         if("REQUIRED_CHANGE".equals(availabilityKey))hql.append(" and requiredChange=true");
-        else if("MEDICAL_LEAVE".equals(availabilityKey)||"VACATION".equals(availabilityKey)){
+        else if("MEDICAL_LEAVE".equals(availabilityKey)||"VACATION".equals(availabilityKey)||"PERMISSION".equals(availabilityKey)){
             List<EmployeeUnavailabilitySnapshot> matching=EmployeeUnavailabilitySnapshot.list("instanceCountryId=?1 and type=?2 and sourceStatus='ACTIVE' and startsAt<?3 and endsAt>?4",tenant.instanceCountryId(),availabilityKey,to,from);
             Set<UUID> ids=matching.stream().map(u->u.employeeId).collect(Collectors.toSet());
             if(ids.isEmpty())return new PersonnelPage(List.of(),0,safePage,safeSize);
@@ -718,7 +718,7 @@ public class AssignmentResource {
     private List<PostRequirementDto> postRequirementDtos(PostSkillRequirement r){ if(r==null)return List.of(); return List.of(
         new PostRequirementDto("ATTENDANCE","Asistencia",r.skillDiscipline),new PostRequirementDto("TACTICAL","Condición táctica",r.skillTactical),new PostRequirementDto("ACCESS","Control de acceso",r.skillAccess),new PostRequirementDto("PORTE","Porte Cajamarca",r.skillCommunication),new PostRequirementDto("PATROL","Patrullas operativas",r.skillPatrol),new PostRequirementDto("LEADERSHIP","Liderazgo",r.skillResponse),new PostRequirementDto("CRITERION","Criterio operativo",r.skillObservation),new PostRequirementDto("CUSTOMER","Atención al cliente",r.skillCustomer)); }
 
-    private UnavailabilityDto unavailabilityDto(EmployeeUnavailabilitySnapshot u){return new UnavailabilityDto(u.type,u.startsAt,u.endsAt,u.sourceRef);}
+    private UnavailabilityDto unavailabilityDto(EmployeeUnavailabilitySnapshot u){return new UnavailabilityDto(u.type,u.startsAt,u.endsAt,u.sourceRef,u.sourceReasonLabel);}
     private PlanDto planDto(AssignmentPlanEntity p){return new PlanDto(p.id,p.companyId,p.weekStart,p.status,p.publishedAt,p.publishedByUsername,p.draftSavedAt,p.draftSavedByUsername);}
     private AssignmentPlanEntity plan(UUID id){AssignmentPlanEntity p=AssignmentPlanEntity.find("id=?1 and instanceCountryId=?2",id,tenant.instanceCountryId()).firstResult();if(p==null)throw new NotFoundException("Plan no encontrado");closeIfExpired(p);return p;}
     private void closeIfExpired(AssignmentPlanEntity p){if(!"PUBLISHED".equals(p.status))return;Instant end=p.weekStart.plusDays(7).atStartOfDay(OPERATING_ZONE).toInstant();if(Instant.now().isBefore(end))return;p.status="CLOSED";p.closedAt=Instant.now();recordEvent(p,null,null,"ASSIGNMENT_PLAN_CLOSED",null,null,"SYSTEM","Cierre automático al finalizar la semana operativa",Map.of("reason","WEEK_ENDED"));OutboxEvent.of(p.instanceCountryId,"ASSIGNMENT_PLAN",p.id,"ASSIGNMENT_PLAN_CLOSED",json(Map.of("planId",p.id,"reason","WEEK_ENDED"))).persist();}

@@ -515,6 +515,115 @@
     ]
   },
   {
+    "interconnectionRef": "SIC_DHO_SGI_COM_0002",
+    "interconnectionId": "SIC_DHO_SGI_COM_0002_v001",
+    "sourceProgramId": "SIC_DHO",
+    "targetProgramId": "SGI_COM",
+    "purpose": "Synchronize employee unavailability from SIC:DHO.",
+    "interactionType": "WEBHOOK",
+    "mode": "ASYNC",
+    "protocol": "HTTPS",
+    "contractVersion": "v1",
+    "dataOwnerProgramId": "SIC_DHO",
+    "criticality": "HIGH",
+    "legacyTarget": false,
+    "targetImplementationStatus": "READY",
+    "status": "UAT",
+    "interfaces": [
+      {
+        "interfaceId": "SIC_DHO_SGI_COM_0002_IF01",
+        "method": "POST",
+        "path": "/api/v1/inbound/sic-rrhh/unavailability-events",
+        "purpose": "Synchronize an employee permission, vacation or other operational unavailability.",
+        "contentType": "application/json",
+        "request": {
+          "headers": [
+            "Authorization",
+            "X-Correlation-Id",
+            "X-Interconnection-Id",
+            "X-Contract-Version",
+            "Idempotency-Key"
+          ],
+          "fields": [
+            "sourceRecordId",
+            "personaId",
+            "type",
+            "startsAt",
+            "endsAt",
+            "sourceStatus",
+            "sourceReasonId",
+            "sourceReasonLabel",
+            "sourceState",
+            "updatedFromSourceAt"
+          ]
+        },
+        "response": {
+          "fields": [
+            "accepted",
+            "correlationId",
+            "sourceRef",
+            "processingStatus"
+          ]
+        }
+      }
+    ],
+    "legacyConnectionIds": []
+  },
+  {
+    "interconnectionRef": "SIC_DHO_SGI_COM_0003",
+    "interconnectionId": "SIC_DHO_SGI_COM_0003_v001",
+    "sourceProgramId": "SIC_DHO",
+    "targetProgramId": "SGI_COM",
+    "purpose": "Query SGI:Comando shifts for SIC:DHO payroll consolidation.",
+    "interactionType": "REST_API",
+    "mode": "SYNC",
+    "protocol": "HTTPS",
+    "contractVersion": "v1",
+    "dataOwnerProgramId": "SGI_COM",
+    "criticality": "HIGH",
+    "legacyTarget": false,
+    "targetImplementationStatus": "READY",
+    "status": "UAT",
+    "interfaces": [
+      {
+        "interfaceId": "SIC_DHO_SGI_COM_0003_IF01",
+        "method": "POST",
+        "path": "/api/v1/inbound/sic-rrhh/payroll-shifts/query",
+        "purpose": "Query published operational shifts for one employee and payroll period.",
+        "contentType": "application/json",
+        "request": {
+          "headers": [
+            "Authorization",
+            "X-Correlation-Id",
+            "X-Interconnection-Id",
+            "X-Contract-Version"
+          ],
+          "fields": [
+            "personaId",
+            "startsAt",
+            "endsAt"
+          ]
+        },
+        "response": {
+          "fields": [
+            "successful",
+            "correlationId",
+            "items[].assignmentId",
+            "items[].shiftOccurrenceId",
+            "items[].personaId",
+            "items[].clientTaxIdentifier",
+            "items[].clientName",
+            "items[].tier",
+            "items[].rotationCode",
+            "items[].startsAt",
+            "items[].endsAt"
+          ]
+        }
+      }
+    ],
+    "legacyConnectionIds": []
+  },
+  {
     "interconnectionRef": "IDENT_SGI_COM_0001",
     "interconnectionId": "IDENT_SGI_COM_0001_v001",
     "sourceProgramId": "IDENT",
@@ -1454,5 +1563,57 @@
       "SGI_COM__CM_CON__00002__V0001",
       "SGI_COM__CM_CON__00002"
     ]
+  },
+  {
+    "interconnectionRef": "SGI_OPR_SGI_COM_0018",
+    "interconnectionId": "SGI_OPR_SGI_COM_0018_v001",
+    "sourceProgramId": "SGI_OPR",
+    "targetProgramId": "SGI_COM",
+    "purpose": "Crear de forma idempotente un incidente, hallazgo o vulnerabilidad reportado por SGI Operador.",
+    "interactionType": "REST_API",
+    "mode": "ASYNC",
+    "protocol": "HTTPS",
+    "contractVersion": "v1",
+    "dataOwnerProgramId": "SGI_COM",
+    "criticality": "HIGH",
+    "legacyTarget": false,
+    "targetImplementationStatus": "TEMPORARY_LOCAL",
+    "status": "UAT",
+    "interfaces": [{
+      "interfaceId": "SGI_OPR_SGI_COM_0018_IF01",
+      "method": "POST",
+      "path": "/api/v1/operator/reports",
+      "purpose": "Registrar novedad operativa",
+      "contentType": "application/json",
+      "request": {"fields": ["reportId","assignmentId","type","category","subcategory","title","description","severity","occurredAt"]},
+      "response": {"fields": ["reportId","status","acknowledged","duplicate"]}
+    }],
+    "legacyConnectionIds": []
+  },
+  {
+    "interconnectionRef": "SGI_OPR_SGI_COM_0019",
+    "interconnectionId": "SGI_OPR_SGI_COM_0019_v001",
+    "sourceProgramId": "SGI_OPR",
+    "targetProgramId": "SGI_COM",
+    "purpose": "Consultar los incidentes, hallazgos y vulnerabilidades del operador autenticado.",
+    "interactionType": "REST_API",
+    "mode": "SYNC",
+    "protocol": "HTTPS",
+    "contractVersion": "v1",
+    "dataOwnerProgramId": "SGI_COM",
+    "criticality": "MEDIUM",
+    "legacyTarget": false,
+    "targetImplementationStatus": "TEMPORARY_LOCAL",
+    "status": "UAT",
+    "interfaces": [{
+      "interfaceId": "SGI_OPR_SGI_COM_0019_IF01",
+      "method": "GET",
+      "path": "/api/v1/operator/reports",
+      "purpose": "Listar novedades operativas propias",
+      "contentType": "application/json",
+      "request": {"query": ["type"]},
+      "response": {"fields": ["reportId","type","category","subcategory","title","description","severity","status","occurredAt"]}
+    }],
+    "legacyConnectionIds": []
   }
 ]

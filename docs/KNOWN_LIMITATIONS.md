@@ -22,9 +22,11 @@
 
 ## Impulsos
 
-- **CORE es SoR de las reglas versionadas de Impulsos.** `SGI_COM_CORE_0001_v001` está definido para consumirlas.
-- Cada Instancia PE de SGI: Comando aplica las reglas a hechos operativos y es **SoR de evaluación/adjudicación y ledger/saldo por Operador**.
-- El adapter runtime completo para reglas CORE/ledger puede requerir trabajo funcional posterior; esta RC corrige arquitectura, contratos y SoR sin introducir EVC ni rediseñar UI.
+- **Implementado sin CORE (2026-10-08):** las reglas viven en `impulse_rule` de cada Instancia PE (versionadas, editables en la base); el motor `ImpulseEngine` evalúa y guarda el ledger en `impulse_evaluation`. Cuando CORE publique las reglas, `impulse_rule` se alimentará desde CORE (SGI-IMP-DEC-009).
+- **Valores iniciales sin aprobar:** tomados de la hoja AdS (Rango = mínimo–máximo del premio, Promedio = referencia, probabilidad 1). Escala: 100 Impulsos por 0,1 de nivel (1.000 Impulsos/PH). Con 0–1 Impulso por acción, subir 0,1 toma unas 200 acciones. Gerencia debe confirmar.
+- **Reglas activas:** Asistencia (relevo a tiempo, tolerancia 15 min), Porte (foto de cuerpo completo), Control de Acceso (bitácora), Patrullas (completa) y Criterio (consigna cumplida). **Inactivas, sin productor:** Novedades aprobadas, km de patrulla, Liderazgo y QR de cliente. SGI: Operador documenta otras reglas para Condición Táctica y Liderazgo (`IMPULSOS_RULES_FROZEN.md`) que no coinciden con la hoja AdS.
+- No hay vista de Impulsos en el front de SGI: Comando; solo los endpoints `/api/impulses/*`.
+- El relevo y la patrulla no se probaron de punta a punta en dispositivo; sí la consigna (app → motor) y bitácoras de prueba.
 
 ## Seguridad / reproducibilidad
 

@@ -1,7 +1,9 @@
 # SGI: Operador → SGI: Comando → VISINT → Impulsos
 
 
-> **Estado de implementación (2026-09-30):** la validación visual de Hitos de patrulla está implementada y probada contra el VISINT real (foto del agente vs 1–5 fotos estándar, vía `POST /v1/evidence/validate`). Impulsos sigue sin implementar. Ver `docs/VISINT_ESTADO_IMPLEMENTACION.md`.
+> **Estado de implementación (2026-09-30):** la validación visual de Hitos de patrulla está implementada y probada contra el VISINT real (foto del agente vs 1–5 fotos estándar, vía `POST /v1/evidence/validate`). Impulsos: ver la nota siguiente. Ver `docs/VISINT_ESTADO_IMPLEMENTACION.md`.
+
+> **Impulsos (2026-10-08):** implementado en SGI: Comando **sin CORE por ahora**. Las reglas viven en la tabla `impulse_rule` de cada Instancia PE (versionadas, editables en la base; valores iniciales de la hoja AdS: Rango = `amount_min`–`amount_max`, Promedio = `reference_average`, probabilidad 1). El motor `ImpulseEngine` evalúa cada 30 s relevos (Asistencia a tiempo con tolerancia de 15 min, Porte con foto de cuerpo completo), bitácoras (Control de Acceso), patrullas completas (Patrullas Operativas) y consignas cumplidas (Criterio Operativo); espera el resultado de VISINT cuando la tarea lo tiene (FAIL = sin Impulsos) y guarda una evaluación por (regla, hecho) en `impulse_evaluation`, que es el ledger. Novedades, km de patrulla, Liderazgo y QR de cliente tienen regla inactiva: no hay hecho que las produzca. SGI: Operador recibe el saldo en el bloque `impulses` de `GET /api/v1/operator/runtime` (también `GET /api/v1/operator/impulses`); SGI: Comando consulta `GET /api/impulses/rules`, `/api/impulses/evaluations` y `/api/impulses/employees/{employeeId}`. Cuando CORE publique reglas versionadas, `impulse_rule` se alimentará desde CORE (SGI-IMP-DEC-009).
 
 **Estado:** definición funcional/arquitectónica aprobada para incorporación al handoff de SGI: Comando.  
 **Fecha:** 2026-09-20.  

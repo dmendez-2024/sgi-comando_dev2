@@ -35,9 +35,7 @@ public class CoreCatalogAdapter implements ExternalPorts.CorePort {
 
     @Inject ObjectMapper mapper;
 
-    private final HttpClient httpClient = HttpClient.newBuilder()
-        .connectTimeout(Duration.ofSeconds(5))
-        .build();
+    private final HttpClient httpClient = com.cajamarca.sgi.comando.core.CoreHttp.client(Duration.ofSeconds(5));
 
     /**
      * The SGI tenant ID is local. This port accepts the CORE country ID and
@@ -131,7 +129,7 @@ public class CoreCatalogAdapter implements ExternalPorts.CorePort {
                 .header("Accept", accept)
                 .GET()
                 .build();
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> response = com.cajamarca.sgi.comando.core.CoreHttp.send(httpClient, request, "catálogo (adaptador)");
             if (response.statusCode() < 200 || response.statusCode() >= 300) {
                 String detail = remoteMessage(response.body());
                 String message = "CORE respondió HTTP " + response.statusCode() + " al consultar " + pathAndQuery.split("\\?", 2)[0];

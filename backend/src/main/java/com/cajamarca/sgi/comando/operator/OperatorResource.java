@@ -42,7 +42,11 @@ public class OperatorResource {
     @Inject TaskEvidenceService taskEvidences;
     @Inject OperatorTasks tasks;
     @Inject ReliefStationReviews stationReviews;
+<<<<<<< HEAD
     @Inject InventoryService inventory;
+=======
+    @Inject com.cajamarca.sgi.comando.impulses.ImpulseLedger impulses;
+>>>>>>> Ambiente_dev
 
     @org.jboss.resteasy.reactive.server.ServerExceptionMapper
     public Response mapError(WebApplicationException e) { return OperatorErrors.withMessage(e); }
@@ -76,6 +80,8 @@ public class OperatorResource {
     private AssignmentContext assignment(UUID id,UUID employee) {
         OperationalAssignmentEntity a=OperationalAssignmentEntity.find("id=?1 and instanceCountryId=?2",id,tenant.instanceCountryId()).firstResult();
         if(a==null || "REMOVED".equals(a.status) || !employee.equals(a.effectiveEmployeeId())) throw new ForbiddenException("Asignación no autorizada");
+        AssignmentPlanEntity plan=AssignmentPlanEntity.find("id=?1 and instanceCountryId=?2",a.assignmentPlanId,tenant.instanceCountryId()).firstResult();
+        if(plan==null || !("PUBLISHED".equals(plan.status) || "CLOSED".equals(plan.status))) throw new ForbiddenException("Tu asignación aún no ha sido publicada en SGI COMANDO. Comunícate con tu supervisor.");
         ShiftOccurrenceEntity s=ShiftOccurrenceEntity.find("id=?1 and instanceCountryId=?2",a.shiftOccurrenceId,tenant.instanceCountryId()).firstResult();
         if(s==null) throw new NotFoundException("Turno no disponible");
         PostEntity post=PostEntity.find("id=?1 and instanceCountryId=?2",s.postId,tenant.instanceCountryId()).firstResult();
@@ -719,6 +725,8 @@ public class OperatorResource {
             response.set("patrols",patrols.runtime(selected.post.id));
             response.set("consignmentTasks",tasks.consignmentTasks(selected.post));
             response.set("logbookTasks",tasks.logbookTasks(selected.post));
+            // Saldo de Impulsos adjudicado por SGI: Comando (Mi Perfil); la app lo muestra sin recalcular.
+            response.set("impulses",impulses.summary(tenant.instanceCountryId(),employee));
             return response;
         }
         ArrayNode choices=response.putArray("assignments");
@@ -726,7 +734,9 @@ public class OperatorResource {
         List<Object> assignmentIds=em.createNativeQuery("""
           select a.id from operational_assignment a
           join shift_occurrence s on s.id=a.shift_occurrence_id and s.instance_country_id=a.instance_country_id
+          join assignment_plan p on p.id=a.assignment_plan_id and p.instance_country_id=a.instance_country_id
           where a.instance_country_id=:tenant and a.status<>'REMOVED'
+          and p.status in ('PUBLISHED','CLOSED')
           and coalesce(a.actual_employee_id,a.employee_id)=:employee
           and s.ends_at>:now and s.starts_at<=:latestStart
           order by s.starts_at,a.id
@@ -739,6 +749,20 @@ public class OperatorResource {
             .put("assignmentId",c.assignment.id.toString()).put("postName",c.post.name)
             .put("startsAt",c.shift.startsAt.toString()).put("endsAt",c.shift.endsAt.toString())
             .put("accessMode",now.isBefore(c.shift.startsAt)?"EARLY_ENTRY":"CURRENT_SHIFT");
+        if(choices.isEmpty()) {
+            Number draftCount=(Number)em.createNativeQuery("""
+              select count(*) from operational_assignment a
+              join shift_occurrence s on s.id=a.shift_occurrence_id and s.instance_country_id=a.instance_country_id
+              join assignment_plan p on p.id=a.assignment_plan_id and p.instance_country_id=a.instance_country_id
+              where a.instance_country_id=:tenant and a.status<>'REMOVED' and p.status='DRAFT'
+              and coalesce(a.actual_employee_id,a.employee_id)=:employee
+              and s.ends_at>:now and s.starts_at<=:latestStart
+              """).setParameter("tenant",tenant.instanceCountryId()).setParameter("employee",employee)
+                .setParameter("now",now).setParameter("latestStart",now.plus(OperatorAssignmentWindow.EARLY_ENTRY)).getSingleResult();
+            if(draftCount.longValue()>0) response
+                .put("accessDeniedReason","ASSIGNMENT_NOT_PUBLISHED")
+                .put("accessMessage","Tu asignación aún no ha sido publicada en SGI COMANDO. Comunícate con tu supervisor.");
+        }
         return response;
     }
     @GET @Path("/patrol-map") @Produces({"image/png","image/jpeg","image/webp"})
