@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.*;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
+import org.jboss.logging.Logger;
 import java.io.ByteArrayOutputStream;
 import java.net.URI;
 import java.net.http.*;
@@ -19,6 +20,7 @@ import java.util.*;
  */
 @ApplicationScoped
 public class HttpVisintAdapter implements VisintPort {
+    private static final Logger LOG = Logger.getLogger(HttpVisintAdapter.class);
     @Inject StorageService storage;
     @Inject ObjectMapper mapper;
     @Inject VisintEndpoint endpoint;
@@ -62,7 +64,10 @@ public class HttpVisintAdapter implements VisintPort {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new VisintUnavailableException("VISINT no disponible: llamada interrumpida", e);
-        } catch (Exception e) { throw new VisintUnavailableException("VISINT no disponible: " + e.getMessage(), e); }
+        } catch (Exception e) {
+            LOG.warnf("VISINT no respondió en %s (requestId %s-%d): %s", url, r.reviewId(), r.attempt(), e.getMessage());
+            throw new VisintUnavailableException("VISINT no disponible: " + e.getMessage(), e);
+        }
         if (res.statusCode() / 100 != 2) {
             // VISINT puede responder un veredicto estructurado con código de error (p. ej. 500 + ERROR_VISINT): se respeta.
             if (hasStatus(res.body(), mapper)) return parseResult(res.body(), mapper);
