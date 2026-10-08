@@ -64,7 +64,7 @@ public final class OperatorFixtures {
                 .setParameter("post", POST_GGTT01).getSingleResult();
             em.createNativeQuery("""
                 insert into assignment_plan(id,instance_country_id,company_id,week_start,status,created_at,updated_at)
-                select gen_random_uuid(),s.instance_country_id,'20000000-0000-0000-0000-000000000001',date_trunc('week',s.starts_at)::date,'DRAFT',now(),now()
+                select gen_random_uuid(),s.instance_country_id,'20000000-0000-0000-0000-000000000001',date_trunc('week',s.starts_at)::date,'PUBLISHED',now(),now()
                 from shift_occurrence s where s.id=:s
                 and not exists (select 1 from assignment_plan ap where ap.instance_country_id=s.instance_country_id
                   and ap.company_id='20000000-0000-0000-0000-000000000001' and ap.week_start=date_trunc('week',s.starts_at)::date)""")
