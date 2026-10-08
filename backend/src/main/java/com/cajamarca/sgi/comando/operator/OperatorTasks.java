@@ -4,6 +4,7 @@ import com.cajamarca.sgi.comando.bitacora.*;
 import com.cajamarca.sgi.comando.common.TenantContext;
 import com.cajamarca.sgi.comando.consignments.*;
 import com.cajamarca.sgi.comando.operations.PostEntity;
+import com.cajamarca.sgi.comando.inventory.InventoryService;
 import com.cajamarca.sgi.comando.patrols.PatrolCheckpoint;
 import com.cajamarca.sgi.comando.storage.StandardReferenceImage;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -28,6 +29,7 @@ public class OperatorTasks {
     @Inject TenantContext tenant;
     @Inject com.cajamarca.sgi.comando.settings.EvidenceLocationSettings locationSettings;
     @Inject ObjectMapper mapper;
+    @Inject InventoryService inventory;
 
     public Target require(String type, UUID id, PostEntity post) {
         if (type == null || id == null) throw new BadRequestException("Destino obligatorio");
@@ -56,6 +58,10 @@ public class OperatorTasks {
                 double[] loc = locationSettings.postReference(tenant.instanceCountryId(), post.id);
                 yield new Target(type, f.id, p.id, p.versionNo, true, f.visintEnabled, f.standardImageVersion,
                     loc == null ? null : loc[0], loc == null ? null : loc[1], loc == null ? null : loc[2]);
+            }
+            case InventoryService.EVIDENCE_TARGET -> {
+                if(!inventory.isExpectedAsset(post.id,id)) throw new BadRequestException("El activo no pertenece al inventario vigente del Puesto");
+                yield new Target(type,id,id,1,true,false,0,null,null,null);
             }
             default -> throw new BadRequestException("Tipo de destino no soportado: " + type);
         };

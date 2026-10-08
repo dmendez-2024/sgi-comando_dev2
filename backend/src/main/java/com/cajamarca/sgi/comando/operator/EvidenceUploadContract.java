@@ -32,7 +32,7 @@ public final class EvidenceUploadContract {
 
     /** Devuelve clientEvidenceId → índice del archivo en la lista recibida. */
     public static Map<UUID,Integer> matchFiles(Metadata m, List<String> fileNames, int maxFiles, Instant now) {
-        if (!Set.of("PATROL_CHECKPOINT", "CONSIGNMENT_EVIDENCE", "LOGBOOK_FIELD").contains(m.targetType())) throw new BadRequestException("Tipo de destino no soportado: " + m.targetType());
+        if (!Set.of("PATROL_CHECKPOINT", "CONSIGNMENT_EVIDENCE", "LOGBOOK_FIELD", "INVENTORY_ASSET").contains(m.targetType())) throw new BadRequestException("Tipo de destino no soportado: " + m.targetType());
         if (m.items().isEmpty() || m.items().size() > maxFiles) throw new BadRequestException("Se admiten entre 1 y " + maxFiles + " fotos por envío");
         if (fileNames.size() != m.items().size()) throw new BadRequestException("La cantidad de archivos no coincide con los metadatos");
         Map<String,Integer> byName = new HashMap<>();

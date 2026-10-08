@@ -1,20 +1,33 @@
 # Guía para SGI: Operador — fotos, ubicación GPS y VISINT
 
-**Para:** equipo de la app SGI: Operador (agente) · **Desde:** SGI: Comando · **Fecha:** 2026-10-06 · **Versión del contrato:** `v1` (cambios aditivos)
+**Para:** equipo de la app SGI: Operador (agente) · **Desde:** SGI: Comando · **Fecha:** 2026-10-07 · **Versión del contrato:** `v1` (cambios aditivos)
 
 Esta guía resume qué servicios de SGI: Comando debe usar la app del agente para las tareas con foto: **Hitos de patrulla, Consignas, Bitácora y Relevo**, con validación de ubicación GPS y validación visual VISINT. Cada servicio trae un request y un response de ejemplo. Los responses de los servicios 1 y 6 se tomaron del ambiente local de SGI: Comando, recortados donde se indica (`…`); los acuses de los servicios 3 a 5 siguen el formato que construye el código. Contrato detallado: `docs/API_CATALOG.md` → `OPR-EVIDENCE-LOCATION-001`.
+
+> **Actualización 2026-10-07.** La app ya está implementada (rama `acordova` de `sgi-operador_dev`): ver **Cómo lo implementa la app**. Solo falta que CORE registre la interconexión **`EVIDENCE_UPLOAD`** (tabla de **Conexión**). El resultado de VISINT **ya no se muestra en la app**: el servicio 6 queda disponible pero la app no lo usa; el supervisor ve el resultado en SGI: Comando.
 
 ## Lo más importante
 
 1. **Nada bloquea al agente.** Ni la ubicación ni VISINT impiden registrar una tarea. Una foto lejos del punto o que VISINT marca "no cumple" se guarda igual; el supervisor ve el aviso en SGI: Comando (Servicios → Punto → Operación).
 2. **Envía el GPS de cada foto** (`latitude`, `longitude`, `accuracyM`). Si el teléfono no da ubicación, envía la foto sin ellos: se registra igual y no se compara la distancia.
-3. **No esperes a VISINT.** La confirmación responde al instante; el resultado llega en segundos y se consulta aparte. El agente puede pasar a la siguiente tarea mientras tanto.
+3. **No esperes a VISINT.** La confirmación responde al instante y la app sigue. El resultado de VISINT **no se muestra en la app**: lo revisa el supervisor en Operación.
 4. **La app no envía umbrales ni radios.** El umbral de VISINT (`matchThreshold`) y el radio GPS los configura y aplica SGI: Comando.
-5. **No hay servicios nuevos.** Son los mismos endpoints `v1` con campos adicionales opcionales: una app que todavía no los envíe sigue funcionando.
+5. **Una sola interconexión nueva en CORE:** `EVIDENCE_UPLOAD` (subida de fotos). Todo lo demás usa interconexiones ya registradas, con campos adicionales opcionales.
 
 ## Conexión
 
-- Base: `/api/v1/operator`. La URL efectiva y las credenciales se resuelven mediante CORE (interconexiones `SGI_OPR_SGI_COM_0001_v001` y `SGI_OPR_SGI_COM_0002_v001`). No cambian autenticación, topología ni credenciales.
+- Base: `/dev.comando/api/v1/operator` (desarrollo). Cada operación es **una interconexión en CORE**; la app pide a CORE la URL antes de llamar. No cambian autenticación, topología ni credenciales.
+
+| Servicio | Interconexión en CORE | Estado |
+|---|---|---|
+| `GET /runtime` | `SGI_OPR_SGI_COM_0003_v002` | Registrada |
+| `GET /standard-images/{imageId}` | — | No registrada (opcional, la app no la usa) |
+| `POST /evidences` | **`SGI_OPR_SGI_COM_0015_v001` · `EVIDENCE_UPLOAD`** | **Pendiente de registrar** (ID propuesto; si CORE asigna otro, se actualiza en `SgiOprInterconnectionCatalog.kt`) |
+| `POST /executions` | `SGI_OPR_SGI_COM_0006_v002` | Registrada (Relevo, Hito, Consigna y Bitácora: Comando distingue por `type`) |
+| `PUT /relief-evidence/{eventId}/{purpose}` | `SGI_OPR_SGI_COM_0004_v002` | Registrada |
+| `GET /executions…` | `POST_ACTION_FEEDBACK` | No se registrará: la app no muestra el resultado de VISINT |
+
+Ficha para CORE de `EVIDENCE_UPLOAD`: `POST` · `WRITE` · BASE_PATH `/dev.comando/api/v1/operator/evidences` · `HTTPS apps.cajamarca.ec:443` · `multipart/form-data` · `Idempotency-Key` · AUTH `NONE` · TIMEOUT `30000` · RETRIES `2` · ECU-CM `398233d2-…` · DEVELOPMENT · `ACTIVE`.
 - Todas las llamadas van autenticadas con el usuario del agente (cabecera `Authorization`). El usuario debe estar vinculado a un empleado (`operator_employee_binding`) y tener una asignación vigente.
 - Fechas en ISO-8601 UTC (`2026-10-06T14:15:45Z`). Identificadores en UUID; los `eventId`, `batchId`, `uploadBatchId`, `clientEvidenceId`, `patrolRunId` y `groupId` de Bitácora los **genera la app**.
 
@@ -27,7 +40,7 @@ Esta guía resume qué servicios de SGI: Comando debe usar la app del agente par
 | 3 | `POST /evidences` (multipart) | Subir la foto de Patrulla, Consigna o Bitácora con su GPS |
 | 4 | `POST /executions` | Confirmar la tarea (Hito, Consigna, Bitácora o Relevo) |
 | 5 | `PUT /relief-evidence/{eventId}/{purpose}?assignmentId={id}` | Subir las fotos del relevo (JPEG) |
-| 6 | `GET /executions/{eventId}` · `GET /executions?patrolRunId=` · `GET /executions?groupId=` | Consultar el resultado de VISINT |
+| 6 | `GET /executions/{eventId}` · `GET /executions?patrolRunId=` · `GET /executions?groupId=` | Consultar el resultado de VISINT (disponible; **la app no lo usa**) |
 
 Los servicios propios de cada módulo no cambian (`/patrol-executions` para iniciar y cerrar la ronda, `/consignment-compliances`, etc.).
 
@@ -36,11 +49,11 @@ Los servicios propios de cada módulo no cambian (`/patrol-executions` para inic
 ```text
 Patrulla / Consigna / Bitácora                     Relevo
 ──────────────────────────────                     ──────
-1  GET  /runtime                                   1  GET  /runtime
-2  GET  /standard-images/{id}   (opcional)         5  PUT  /relief-evidence/{eventId}/{purpose}   × cada foto
-3  POST /evidences      (foto + GPS)               4  POST /executions   RELIEF_SUBMITTED (+ GPS)
-4  POST /executions     (confirmar)                6  GET  /executions?groupId={eventId del relevo}
-6  GET  /executions/{eventId}  cada 3 s mientras outcome = PENDING
+La pantalla registra la tarea como siempre         1  GET  /runtime
+(patrol-executions, consignment-compliances,       5  PUT  /relief-evidence/{eventId}/{purpose}   × cada foto
+ logbook-records) y, en segundo plano, por foto:   4  POST /executions   RELIEF_SUBMITTED (+ GPS)
+3  POST /evidences      (foto + GPS)  EVIDENCE_UPLOAD
+4  POST /executions     (mismo eventId)  0006
 ```
 
 ## 1. Leer el turno — `GET /runtime`
@@ -266,7 +279,7 @@ Todas las confirmaciones usan el mismo sobre, con **un evento por lote**:
   }]
 }
 ```
-- `patrolRunId`: UUID de la ronda, generado por la app; el **mismo** para todos los Hitos de esa ronda.
+- `patrolRunId`: el **`executionId` del `START`** de la patrulla (`POST /patrol-executions`); el mismo para todos los Hitos de esa ronda. Comando reconoce las rondas iniciadas con `START`.
 - `evidenceIds`: el `evidenceId` devuelto por el servicio 3 (una foto; vacío si el Hito no requiere evidencia).
 - `observation` (máx. 1000) y `latitude`/`longitude`/`accuracyM` son opcionales. La distancia se calcula con el GPS **de la foto**; el del evento es solo un dato.
 
@@ -309,7 +322,7 @@ Una foto por evidencia de consigna y **turno**.
   }]
 }
 ```
-`groupId` es **obligatorio**: un UUID por registro de visitante, generado por la app. Todos los campos con foto del mismo visitante (cédula, rostro…) usan el mismo `groupId`; otro visitante, otro `groupId`.
+`groupId` es **obligatorio**: un UUID por registro de visitante. La app usa el **`recordId`** del registro de Bitácora (`POST /logbook-records`). Todos los campos con foto del mismo visitante (cédula, rostro…) usan el mismo `groupId`; otro visitante, otro `groupId`.
 
 ### Response `200` (Hito, Consigna y Bitácora)
 ```json
@@ -411,6 +424,8 @@ Content-Type: image/jpeg
 - Solo JPEG (`400` "Fotografía JPEG…" si no lo es o supera 5 MB).
 
 ## 6. Resultado de VISINT — `GET /executions…`
+
+> **La app no usa este servicio** (el resultado no se muestra al agente). Queda documentado por si se habilita más adelante; requeriría registrar `POST_ACTION_FEEDBACK` en CORE.
 
 | Servicio | Devuelve |
 |---|---|
@@ -578,6 +593,37 @@ Servicios → Punto → Operación:
 - **Lista:** módulo (Patrulla, Consigna, Bitácora, Relevo), resultado VISINT (Cumple, No cumple, En revisión, Error) y alerta **"Fuera del radio GPS"**.
 - **Detalle:** foto del agente frente a la foto estándar, "Coincidencia 0.96 de umbral 0.80" y "A 1.0 km del punto · radio 50 m".
 
+## Cómo lo implementa la app
+
+Rama `acordova` de `sgi-operador_dev` (2026-10-07). **No cambia la parte visual**: lo único nuevo que puede ver el agente es el permiso de ubicación del sistema la primera vez.
+
+| Pantalla | Qué hace |
+|---|---|
+| **Patrullas** | Al confirmar un Hito con foto: `POST /evidences` (`PATROL_CHECKPOINT`) y `PATROL_CHECKPOINT_COMPLETED` con `patrolRunId` = `executionId` del `START`, el comentario como `observation` y el GPS. Los hitos de campo (patrullas flexibles) no cambian. |
+| **Consignas** | Tras `POST /consignment-compliances`: la foto n va a la evidencia tipo Foto n de la consigna (`consignmentTasks[].evidences[]` del runtime) como `TASK_EVIDENCE_SUBMITTED` (`CONSIGNMENT_EVIDENCE`). |
+| **Bitácora** | Tras `POST /logbook-records`: una foto por campo como `TASK_EVIDENCE_SUBMITTED` (`LOGBOOK_FIELD`) con `groupId` = `recordId`. |
+| **Relevo** | `latitude`, `longitude` y `accuracyM` en `RELIEF_SUBMITTED`. Las fotos se toman completas (no la miniatura de la cámara). |
+
+Archivos:
+- `relief/TaskEvidence.kt`: foto completa reducida a 1024 px (orientación EXIF corregida), GPS al capturar (`getLastKnownLocation`), envío en segundo plano. Nunca bloquea; los fallos quedan en el log `SGI_OPR_EVIDENCE`.
+- `relief/MultipartBody.kt`: `multipart/form-data` armado byte a byte; `ReliefClient.uploadTaskEvidence()` lo envía por `EVIDENCE_UPLOAD`.
+- `integration/HttpTransport.kt`: `Content-Length` fijo, sin `chunked`.
+- `integration/SgiOprInterconnectionCatalog.kt`: `EVIDENCE_UPLOAD = SGI_OPR_SGI_COM_0015_v001`.
+
+### Reglas del multipart
+
+El cuerpo **no pasa por ninguna librería** que lo transforme (el caso de axios que convertía el FormData en JSON `{"_parts":[...]}` no aplica):
+- `Content-Type: multipart/form-data; boundary=sgi-opr-<32 hex>`: el mismo boundary que separa las partes.
+- Parte `metadata` (`application/json; charset=UTF-8`) y parte `files` (`image/jpeg`, nombre `{clientEvidenceId}.jpg`).
+- `Content-Length` exacto; sin `Transfer-Encoding: chunked`.
+- `MultipartBody.build()` rechaza boundary inválido, metadata que no sea JSON y archivos que no sean JPEG.
+
+Verificado con el código compilado de la app (2026-10-07): bytes en la red idénticos a los armados; SGI Comando local respondió `200 STORED`; el WAF de `apps.cajamarca.ec/dev.comando` dejó pasar el multipart (llegó a Comando: `401` sin credenciales).
+
+### Limitaciones
+- Hasta que CORE registre `EVIDENCE_UPLOAD`, las fotos no llegan (la tarea se registra igual).
+- Las fotos no pasan por el outbox offline: sin conexión en ese momento, no se reenvían.
+
 ## Checklist para la app
 
 - [ ] Pedir permiso de ubicación y tomar `latitude`, `longitude` y `accuracyM` al capturar cada foto.
@@ -585,13 +631,14 @@ Servicios → Punto → Operación:
 - [ ] Sin GPS: enviar la foto igual, sin los campos.
 - [ ] Usar el mismo `eventId` en `POST /evidences` y `POST /executions`.
 - [ ] Usar `radiusM` del runtime solo como orientación, nunca como bloqueo.
-- [ ] No esperar a VISINT para pasar a la siguiente tarea; consultar el resultado cada 3 s mientras `outcome = PENDING`.
-- [ ] Mostrar `message` tal como llega.
-- [ ] Ofrecer otra foto (con `eventId` nuevo) cuando `canRetake = true`, sin obligar.
+- [ ] No esperar a VISINT para pasar a la siguiente tarea (el resultado no se muestra en la app).
+- [ ] Multipart armado a mano, con boundary en el `Content-Type` y `Content-Length` exacto.
 - [ ] Tratar `409` "ya registrado" como tarea completada.
 - [ ] Reintentar con los mismos identificadores ante errores de red.
 - [ ] No enviar `matchThreshold` ni radios.
-- [ ] Bitácora: un `groupId` por visitante.
+- [ ] Bitácora: `groupId` = `recordId` del registro.
+- [ ] Patrullas: `patrolRunId` = `executionId` del `START`.
+- [ ] Pedir a CORE el registro de `EVIDENCE_UPLOAD` y confirmar su ID.
 
 ## Referencias
 

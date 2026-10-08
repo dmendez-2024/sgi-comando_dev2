@@ -233,7 +233,9 @@ Synchronize the mobile operator runtime context/configuration required for the a
 - contractVersion: `v1`
 - estado: `DESIGN`
 
-- `SGI_OPR_SGI_COM_0001_IF01` — `GET` `/api/v1/operator/runtime` — Assignment, Point/Post, protocols, consignments, patrols, bitacora and pending messages
+- `SGI_OPR_SGI_COM_0001_IF01` — `GET` `/api/v1/operator/runtime` — Assignment, Point/Post, protocols, consignments, patrols, bitacora, próximas acciones y mensajes pendientes
+- `SGI_OPR_SGI_COM_0001_IF15` — `GET` `/api/v1/operator/incident-taxonomy?category={category}` — taxonomía canónica de subcategorías de incidentes administrada por SGI Comando
+- `POST /api/v1/operator/patrol-executions` — inicio/finalización de Patrullas; las no programadas de secuencia flexible admiten hitos creados en campo con fotografía y GPS opcional.
 - `GET /api/v1/operator/patrol-executions` — consulta interna SGI Comando UI/backend del historial real de ejecuciones de Patrulla; aplica tenant, identidad del Operador y alcance RBAC por Compañía. No crea una nueva interconexión externa.
 - `GET /api/v1/operator/patrol-map?assignmentId={assignmentId}` — entrega autenticada del plano ATS vigente del Punto asignado, sin caché, manteniendo el aislamiento por instancia-país.
 - `POST /api/v1/operator/logbook-records` — recepción idempotente de registros de Bitácora desde SGI Operador.

@@ -9,6 +9,6 @@
 
 ## Configuración
 
-- Referencia: `SGI_IDENT_EMPLOYEES_INBOUND_CREDENTIAL_REF=IDENT_SGI_COM_0001_v001`.
-- Secreto de runtime: `SGI_CREDENTIAL_IDENT_SGI_COM_0001_V001`.
+- Referencia compartida: `SGI_IDENT_EMPLOYEES_INBOUND_CREDENTIAL_REF=SIC_SGI_COM_0001_v001`.
+- Secreto de runtime compartido: `SGI_CREDENTIAL_SIC_SGI_COM_0001_V001`.
 - Los secretos efectivos no forman parte del contrato ni del catálogo portable.

@@ -1,8 +1,13 @@
 package com.cajamarca.sgi.comando.operation;
 
 import com.cajamarca.sgi.comando.common.TenantContext;
+import com.cajamarca.sgi.comando.assignments.AssignmentPlanEntity;
+import com.cajamarca.sgi.comando.assignments.EmployeeOperationalSnapshot;
+import com.cajamarca.sgi.comando.assignments.OperationalAssignmentEntity;
+import com.cajamarca.sgi.comando.assignments.ShiftOccurrenceEntity;
 import com.cajamarca.sgi.comando.execution.*;
 import com.cajamarca.sgi.comando.operations.PointEntity;
+import com.cajamarca.sgi.comando.operations.PostEntity;
 import com.cajamarca.sgi.comando.patrols.*;
 import com.cajamarca.sgi.comando.storage.*;
 import com.cajamarca.sgi.comando.territory.OperationalScopeService;
@@ -13,6 +18,7 @@ import jakarta.persistence.EntityManager;
 import jakarta.transaction.Transactional;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.*;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.*;
 
@@ -32,6 +38,8 @@ public class OperationResource {
     public record StandardView(UUID id, int position) {}
     public record ExecutionDetail(ExecutionRow row, String observation, Double latitude, Double longitude, String standardNotes, List<EvidenceView> evidences,
                                   List<StandardView> standards, ReviewDetail review) {}
+    public record CollaboratorRow(UUID employeeId, String fullName, String roleCode, String postName, Instant lastAt, String source) {}
+    private record CollaboratorActivity(UUID employeeId, UUID postId, Instant lastAt, String source) {}
 
     @Inject TenantContext tenant;
     @Inject OperationalScopeService scope;
@@ -47,6 +55,63 @@ public class OperationResource {
         requirePoint(pointId);
         return TaskExecution.<TaskExecution>find("instanceCountryId=?1 and pointId=?2 order by executedAt desc", tenant.instanceCountryId(), pointId)
             .page(0, Math.max(1, Math.min(200, limit))).list().stream().map(this::row).toList();
+    }
+
+    @GET @Path("/points/{pointId}/collaborators")
+    @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION","SUPERVISOR_SEGURIDAD"})
+    public List<CollaboratorRow> collaborators(@PathParam("pointId") UUID pointId) {
+        requirePoint(pointId);
+        Instant now = Instant.now(), from = now.minus(Duration.ofDays(14)), upcomingUntil = now.plus(Duration.ofDays(14));
+        List<PostEntity> posts = PostEntity.list("instanceCountryId=?1 and pointId=?2", tenant.instanceCountryId(), pointId);
+        if (posts.isEmpty()) return List.of();
+        Map<UUID,String> postNames = new HashMap<>();
+        for (PostEntity post : posts) postNames.put(post.id, post.name);
+        Map<UUID,CollaboratorActivity> latest = new LinkedHashMap<>();
+
+        List<TaskExecution> executions = TaskExecution.list("instanceCountryId=?1 and pointId=?2 and executedAt>=?3 and executedAt<=?4 order by executedAt desc",
+                tenant.instanceCountryId(), pointId, from, now);
+        for (TaskExecution execution : executions) {
+            latest.putIfAbsent(execution.employeeId,
+                    new CollaboratorActivity(execution.employeeId, execution.postId, execution.executedAt, "EXECUTION"));
+        }
+
+        Set<UUID> postIds = postNames.keySet();
+        List<ShiftOccurrenceEntity> shifts = ShiftOccurrenceEntity.list(
+                "instanceCountryId=?1 and postId in ?2 and endsAt>=?3 and startsAt<=?4 order by endsAt desc",
+                tenant.instanceCountryId(), postIds, from, upcomingUntil);
+        if (!shifts.isEmpty()) {
+            Map<UUID,ShiftOccurrenceEntity> shiftById = new HashMap<>();
+            for (ShiftOccurrenceEntity shift : shifts) shiftById.put(shift.id, shift);
+            List<OperationalAssignmentEntity> assignments = OperationalAssignmentEntity.list(
+                    "instanceCountryId=?1 and shiftOccurrenceId in ?2 and status<>'REMOVED'",
+                    tenant.instanceCountryId(), shiftById.keySet());
+            Set<UUID> planIds = new HashSet<>();
+            for (OperationalAssignmentEntity assignment : assignments) planIds.add(assignment.assignmentPlanId);
+            Set<UUID> publishedPlanIds = new HashSet<>();
+            if (!planIds.isEmpty()) {
+                List<AssignmentPlanEntity> plans = AssignmentPlanEntity.list("instanceCountryId=?1 and id in ?2", tenant.instanceCountryId(), planIds);
+                for (AssignmentPlanEntity plan : plans) if ("PUBLISHED".equals(plan.status) || "CLOSED".equals(plan.status)) publishedPlanIds.add(plan.id);
+            }
+            assignments.sort(Comparator.comparing((OperationalAssignmentEntity assignment) -> shiftById.get(assignment.shiftOccurrenceId).endsAt).reversed());
+            for (OperationalAssignmentEntity assignment : assignments) {
+                UUID employeeId = assignment.effectiveEmployeeId();
+                if (employeeId == null || !publishedPlanIds.contains(assignment.assignmentPlanId)) continue;
+                ShiftOccurrenceEntity shift = shiftById.get(assignment.shiftOccurrenceId);
+                String source = shift.startsAt.isAfter(now) ? "UPCOMING_SHIFT" : shift.endsAt.isAfter(now) ? "CURRENT_SHIFT" : "PUBLISHED_SHIFT";
+                latest.putIfAbsent(employeeId, new CollaboratorActivity(employeeId, shift.postId, shift.startsAt, source));
+            }
+        }
+        if (latest.isEmpty()) return List.of();
+        Map<UUID,EmployeeOperationalSnapshot> people = new HashMap<>();
+        List<EmployeeOperationalSnapshot> snapshots = EmployeeOperationalSnapshot.list(
+                "instanceCountryId=?1 and employeeId in ?2 order by updatedFromSourceAt desc", tenant.instanceCountryId(), latest.keySet());
+        for (EmployeeOperationalSnapshot person : snapshots) people.putIfAbsent(person.employeeId, person);
+        return latest.values().stream().map(activity -> {
+            EmployeeOperationalSnapshot person = people.get(activity.employeeId);
+            String name = person == null ? "Empleado " + activity.employeeId.toString().substring(0, 8) : person.fullName;
+            String role = person == null ? "" : person.roleCode;
+            return new CollaboratorRow(activity.employeeId, name, role, postNames.getOrDefault(activity.postId, "Puesto"), activity.lastAt, activity.source);
+        }).sorted(Comparator.comparing(CollaboratorRow::lastAt).reversed().thenComparing(CollaboratorRow::fullName)).toList();
     }
 
     @GET @Path("/executions/{id}")

@@ -6,6 +6,7 @@ import com.cajamarca.sgi.comando.security.AppUser;
 import com.cajamarca.sgi.comando.assignments.*;
 import com.cajamarca.sgi.comando.operations.*;
 import com.cajamarca.sgi.comando.ats.AtsPointPackage;
+import com.cajamarca.sgi.comando.inventory.InventoryService;
 import com.cajamarca.sgi.comando.territory.OperationalScopeService;
 import com.fasterxml.jackson.databind.*;
 import com.fasterxml.jackson.databind.node.*;
@@ -17,13 +18,19 @@ import jakarta.transaction.Transactional;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.*;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
-import java.time.Instant;
+import java.time.*;
 import java.util.*;
 import java.security.MessageDigest;
 import static com.cajamarca.sgi.comando.operator.ReliefContract.*;
 
 @Path("/api/v1/operator") @Authenticated @Produces(MediaType.APPLICATION_JSON)
 public class OperatorResource {
+    private static final ZoneId OPERATING_ZONE = ZoneId.of("America/Guayaquil");
+    private static final Map<String,List<String>> INCIDENT_SUBCATEGORIES=Map.of(
+        "Servicio",List.of("Asistencia y Puntualidad","Presentación Personal","Disciplina","Cumplimiento Operativo","Competencia Profesional","Atención al Cliente"),
+        "Seguridad",List.of("Delitos","Accesos No Autorizados","Emergencias Médicas","Incendios y Riesgos","Seguridad Física","Desastres Naturales","Riesgos Operacionales","Infraestructura"),
+        "Administrativo",List.of("Talento Humano","Logística MARE","Logística Vehículos","Tecnología","Documentacion","Comercial")
+    );
     @Inject TenantContext tenant;
     @Inject SecurityIdentity identity;
     @Inject OperationalScopeService scope;
@@ -35,10 +42,12 @@ public class OperatorResource {
     @Inject TaskEvidenceService taskEvidences;
     @Inject OperatorTasks tasks;
     @Inject ReliefStationReviews stationReviews;
+    @Inject InventoryService inventory;
 
     @org.jboss.resteasy.reactive.server.ServerExceptionMapper
     public Response mapError(WebApplicationException e) { return OperatorErrors.withMessage(e); }
     record AssignmentContext(OperationalAssignmentEntity assignment,ShiftOccurrenceEntity shift,PostEntity post,PointEntity point) {}
+    private record NextAction(String type,UUID targetId,String title,Instant scheduledAt,Instant endsAt) {}
 
     private AppUser actor() {
         if(!enabled) throw new NotFoundException("Integración de relevo UAT deshabilitada");
@@ -53,6 +62,16 @@ public class OperatorResource {
             .setParameter("tenant",tenant.instanceCountryId()).setParameter("user",u.username).getResultList();
         if(rows.size()!=1) throw new ForbiddenException("Vínculo usuario empleado pendiente de configuración");
         return UUID.fromString(rows.get(0).toString());
+    }
+    @GET @Path("/incident-taxonomy")
+    public ObjectNode incidentTaxonomy(@QueryParam("category") String category) {
+        actor();
+        String selected=category==null?"":category.trim();
+        List<String> subcategories=INCIDENT_SUBCATEGORIES.get(selected);
+        if(subcategories==null) throw new BadRequestException("Categoría de incidente inválida");
+        ObjectNode response=mapper.createObjectNode().put("category",selected).put("source","SGI_COMANDO");
+        ArrayNode items=response.putArray("subcategories"); subcategories.forEach(items::add);
+        return response;
     }
     private AssignmentContext assignment(UUID id,UUID employee) {
         OperationalAssignmentEntity a=OperationalAssignmentEntity.find("id=?1 and instanceCountryId=?2",id,tenant.instanceCountryId()).firstResult();
@@ -207,6 +226,7 @@ public class OperatorResource {
               from patrol_definition where instance_country_id=:tenant and protocol_id=:protocol and status='ACTIVO' order by code
               """).setParameter("tenant",tenant.instanceCountryId()).setParameter("protocol",protocolId).getResultList();
             for(Object[] patrolRow:patrolRows) {
+                if(!withinAssignmentWindow(c,patrolRow[5],patrolRow[7],patrolRow[8])) continue;
                 UUID patrolId=UUID.fromString(patrolRow[0].toString());
                 ObjectNode patrol=definitions.addObject().put("patrolId",patrolId.toString()).put("code",patrolRow[1].toString())
                     .put("name",patrolRow[2].toString()).put("description",patrolRow[3].toString())
@@ -240,6 +260,71 @@ public class OperatorResource {
         }
         return result;
     }
+    private boolean withinAssignmentWindow(AssignmentContext c,Object scheduleType,Object windowStart,Object windowEnd) {
+        if(!"PROGRAMMED".equals(String.valueOf(scheduleType))) return true;
+        if(windowStart==null || windowEnd==null) return false;
+        LocalTime start,end;
+        try { start=LocalTime.parse(windowStart.toString()); end=LocalTime.parse(windowEnd.toString()); }
+        catch(DateTimeException ignored) { return false; }
+        LocalDate firstDate=c.shift.startsAt.atZone(OPERATING_ZONE).toLocalDate();
+        LocalDate lastDate=c.shift.endsAt.minusNanos(1).atZone(OPERATING_ZONE).toLocalDate();
+        for(LocalDate date=firstDate;!date.isAfter(lastDate);date=date.plusDays(1)) {
+            ZonedDateTime patrolStart=ZonedDateTime.of(date,start,OPERATING_ZONE);
+            ZonedDateTime patrolEnd=ZonedDateTime.of(date,end,OPERATING_ZONE);
+            if(!patrolEnd.isAfter(patrolStart)) patrolEnd=patrolEnd.plusDays(1);
+            if(!patrolStart.toInstant().isBefore(c.shift.startsAt) && !patrolEnd.toInstant().isAfter(c.shift.endsAt)) return true;
+        }
+        return false;
+    }
+    private ArrayNode nextActions(AssignmentContext c,ArrayNode consignments) {
+        Instant now=Instant.now();
+        List<NextAction> actions=new ArrayList<>();
+        LocalDate firstDate=c.shift.startsAt.atZone(OPERATING_ZONE).toLocalDate();
+        LocalDate lastDate=c.shift.endsAt.minusNanos(1).atZone(OPERATING_ZONE).toLocalDate();
+        for(JsonNode consignment:consignments) {
+            if(!"CALENDAR".equals(consignment.path("applicationType").asText())) continue;
+            String from=consignment.path("applicationTimeFrom").asText(""),to=consignment.path("applicationTimeTo").asText("");
+            if(from.isBlank()||to.isBlank()) continue;
+            LocalTime startsAt,endsAt;
+            try { startsAt=LocalTime.parse(from); endsAt=LocalTime.parse(to); } catch(DateTimeException ignored) { continue; }
+            Set<String> days=calendarDays(consignment.path("applicationDaysJson").asText("[]"));
+            for(LocalDate date=firstDate;!date.isAfter(lastDate);date=date.plusDays(1))
+                if(days.contains(dayCode(date))) addAction(actions,"CONSIGNMENT",UUID.fromString(consignment.path("consignmentId").asText()),consignment.path("title").asText(),date,startsAt,endsAt,c,now);
+        }
+        @SuppressWarnings("unchecked") List<Object[]> scheduledPatrols=em.createNativeQuery("""
+          select d.id,d.name,d.window_start,d.window_end from patrol_definition d
+          join patrol_protocol p on p.id=d.protocol_id and p.instance_country_id=d.instance_country_id
+          join patrol_protocol_post_scope s on s.protocol_id=p.id and s.instance_country_id=p.instance_country_id
+          where d.instance_country_id=:tenant and s.post_id=:post and p.status='ACTIVO' and d.status='ACTIVO'
+            and d.schedule_type='PROGRAMMED' and d.window_start is not null and d.window_end is not null order by d.code
+          """).setParameter("tenant",tenant.instanceCountryId()).setParameter("post",c.post.id).getResultList();
+        for(Object[] patrol:scheduledPatrols) {
+            LocalTime startsAt,endsAt;
+            try { startsAt=LocalTime.parse(patrol[2].toString()); endsAt=LocalTime.parse(patrol[3].toString()); } catch(DateTimeException ignored) { continue; }
+            for(LocalDate date=firstDate;!date.isAfter(lastDate);date=date.plusDays(1))
+                addAction(actions,"PATROL",UUID.fromString(patrol[0].toString()),patrol[1].toString(),date,startsAt,endsAt,c,now);
+        }
+        ArrayNode result=mapper.createArrayNode();
+        actions.stream().sorted(Comparator.comparing(NextAction::scheduledAt).thenComparing(NextAction::type).thenComparing(NextAction::title)).limit(3)
+            .forEach(action->result.addObject().put("type",action.type()).put("targetId",action.targetId().toString()).put("title",action.title())
+                .put("scheduledAt",action.scheduledAt().toString()).put("activeNow",!now.isBefore(action.scheduledAt())&&now.isBefore(action.endsAt())));
+        return result;
+    }
+    private void addAction(List<NextAction> actions,String type,UUID targetId,String title,LocalDate date,LocalTime start,LocalTime end,AssignmentContext c,Instant now) {
+        ZonedDateTime startAt=ZonedDateTime.of(date,start,OPERATING_ZONE),endAt=ZonedDateTime.of(date,end,OPERATING_ZONE);
+        if(!endAt.isAfter(startAt)) endAt=endAt.plusDays(1);
+        Instant scheduledAt=startAt.toInstant(),endsAt=endAt.toInstant();
+        if(scheduledAt.isBefore(c.shift.startsAt)||endsAt.isAfter(c.shift.endsAt)||!endsAt.isAfter(now)) return;
+        actions.add(new NextAction(type,targetId,title,scheduledAt,endsAt));
+    }
+    private Set<String> calendarDays(String raw) {
+        try {
+            JsonNode value=mapper.readTree(raw); if(!value.isArray()) return Set.of();
+            Set<String> days=new HashSet<>(); for(JsonNode item:value) if(item.isTextual()) days.add(item.asText().trim().toUpperCase(Locale.ROOT));
+            return days;
+        } catch(Exception ignored) { return Set.of(); }
+    }
+    private String dayCode(LocalDate date) { return date.getDayOfWeek().name().substring(0,3); }
     @SuppressWarnings("unchecked")
     private List<Object[]> employeeProfile(UUID employeeId) {
         return em.createNativeQuery("select full_name,persona_id,role_code from employee_operational_snapshot where instance_country_id=:tenant and employee_id=:employee and employment_status='ACTIVE' limit 1")
@@ -247,11 +332,13 @@ public class OperatorResource {
     }
     private ObjectNode context(AssignmentContext c) {
         ObjectNode n=mapper.createObjectNode();
+        ObjectNode inventoryContext=inventory.runtime(c.post.id);
         n.put("assignmentId",c.assignment.id.toString()).put("shiftOccurrenceId",c.shift.id.toString()).put("postId",c.post.id.toString())
             .put("pointId",c.point.id.toString()).put("postName",c.post.name).put("pointName",c.point.name).put("clientName",c.point.clientName)
             .put("incomingEmployeeId",c.assignment.effectiveEmployeeId().toString()).put("plannedAt",c.shift.startsAt.toString())
             .put("shiftStartsAt",c.shift.startsAt.toString()).put("shiftEndsAt",c.shift.endsAt.toString())
-            .put("inventoryStatus","PENDING_SOURCE").put("noveltiesStatus","PENDING_SOURCE").put("validationStatus","PENDING_REVIEW");
+            .put("inventoryStatus",inventoryContext.path("status").asText("PENDING_SOURCE")).put("noveltiesStatus","PENDING_SOURCE").put("validationStatus","PENDING_REVIEW");
+        n.set("inventory",inventoryContext);
         List<Object[]> employeeProfile=employeeProfile(c.assignment.effectiveEmployeeId());
         if(!employeeProfile.isEmpty()) {
             Object[] employee=employeeProfile.get(0);
@@ -275,11 +362,34 @@ public class OperatorResource {
             if(row[1]!=null) n.put("expectedOutgoingEmployeeName",row[1].toString());
             if(row[2]!=null) n.put("expectedOutgoingShiftEndsAt",row[2].toString());
         }
-        n.set("consignments",consignments(c));
+        ArrayNode assignmentConsignments=consignments(c);
+        n.set("consignments",assignmentConsignments);
         n.set("bitacoraProtocols",bitacora(c));
-        n.set("patrolProtocols",patrols(c));
+        ArrayNode patrolProtocols=patrols(c);
+        n.set("patrolProtocols",patrolProtocols);
+        if(!patrolProtocols.isEmpty()) {
+            ObjectNode activeProtocol=(ObjectNode)patrolProtocols.get(0);
+            ObjectNode protocolContext=activeProtocol.deepCopy(); protocolContext.remove("patrols");
+            n.set("activePatrolProtocol",protocolContext);
+            ArrayNode activePatrols=n.putArray("patrols");
+            for(JsonNode patrolNode:activeProtocol.path("patrols")) {
+                ObjectNode patrol=patrolNode.deepCopy();
+                patrol.put("protocolId",activeProtocol.path("protocolId").asText());
+                patrol.put("protocolCode",activeProtocol.path("code").asText());
+                patrol.put("protocolName",activeProtocol.path("name").asText());
+                activePatrols.add(patrol);
+            }
+        } else n.putArray("patrols");
+        n.set("nextActions",nextActions(c,assignmentConsignments));
         n.putArray("stationPhotos").add("Vista general del puesto").add("Área de trabajo o garita").add("Acceso principal");
-        n.put("configurationVersion",hash(n.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+        // fetchedAt/warning/status cambian por disponibilidad de red y no deben invalidar una confirmación del mismo inventario.
+        ObjectNode versionedContext=n.deepCopy();
+        if(versionedContext.path("inventory").isObject()) {
+            ObjectNode versionedInventory=(ObjectNode)versionedContext.path("inventory");
+            versionedInventory.remove(List.of("fetchedAt","warning","status"));
+        }
+        versionedContext.remove("inventoryStatus");
+        n.put("configurationVersion",hash(versionedContext.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8)));
         // Fuera de configurationVersion: activar VISINT en el Puesto no invalida un relevo en curso.
         ObjectNode visint=n.putObject("stationVisint").put("enabled",stationReviews.enabled(tenant.instanceCountryId(),c.post.id));
         ArrayNode images=visint.putArray("standardImageIds");
@@ -383,11 +493,13 @@ public class OperatorResource {
         UUID employee=employee(), assignmentId=uuid(event,"assignmentId"), executionId=uuid(event,"executionId"), patrolId=uuid(event,"patrolId");
         AssignmentContext c=assignment(assignmentId,employee); lock(assignmentId);
         List<?> allowed=em.createNativeQuery("""
-          select d.id from patrol_definition d join patrol_protocol p on p.id=d.protocol_id and p.instance_country_id=d.instance_country_id
+          select d.id,d.schedule_type,d.sequence_type from patrol_definition d join patrol_protocol p on p.id=d.protocol_id and p.instance_country_id=d.instance_country_id
           join patrol_protocol_post_scope s on s.protocol_id=p.id and s.instance_country_id=p.instance_country_id
           where d.id=:patrol and d.instance_country_id=:tenant and d.status='ACTIVO' and p.status='ACTIVO' and s.post_id=:post
           """).setParameter("patrol",patrolId).setParameter("tenant",tenant.instanceCountryId()).setParameter("post",c.post.id).getResultList();
         if(allowed.isEmpty()) throw new BadRequestException("Patrulla no activa para el puesto asignado");
+        Object[] patrolRules=(Object[])allowed.get(0);
+        boolean fieldCheckpointsAllowed="UNPROGRAMMED".equals(patrolRules[1]) && "FLEXIBLE".equals(patrolRules[2]);
         List<?> plans=em.createNativeQuery("select id from patrol_plan where instance_country_id=:tenant and patrol_definition_id=:patrol and post_id=:post and active=true limit 1")
             .setParameter("tenant",tenant.instanceCountryId()).setParameter("patrol",patrolId).setParameter("post",c.post.id).getResultList();
         UUID planId;
@@ -410,7 +522,8 @@ public class OperatorResource {
                 .setParameter("patrol",patrolId).setParameter("post",c.post.id).getResultList();
             if(!active.isEmpty()) return executionState((Object[])active.get(0));
             Instant started=Instant.now();
-            if(started.isBefore(c.shift.startsAt.minusSeconds(43200)) || started.isAfter(c.shift.endsAt.plusSeconds(43200))) throw new BadRequestException("Inicio de patrulla fuera de la ventana UAT del turno");
+            if(fieldCheckpointsAllowed && (started.isBefore(c.shift.startsAt) || started.isAfter(c.shift.endsAt))) throw new BadRequestException("La patrulla no programada solo puede iniciarse dentro del turno asignado");
+            if(!fieldCheckpointsAllowed && (started.isBefore(c.shift.startsAt.minusSeconds(43200)) || started.isAfter(c.shift.endsAt.plusSeconds(43200)))) throw new BadRequestException("Inicio de patrulla fuera de la ventana UAT del turno");
             em.createNativeQuery("insert into patrol_execution(id,instance_country_id,patrol_plan_id,assignment_id,employee_id,started_at,finished_at,result,created_at,updated_at) values(:id,:tenant,:plan,:assignment,:employee,:started,null,null,current_timestamp,current_timestamp)")
                 .setParameter("id",executionId).setParameter("tenant",tenant.instanceCountryId()).setParameter("plan",planId).setParameter("assignment",assignmentId).setParameter("employee",employee).setParameter("started",started).executeUpdate();
             return mapper.createObjectNode().put("executionId",executionId.toString()).put("status","IN_PROGRESS").put("startedAt",started.toString()).put("completedCheckpoints",0);
@@ -420,7 +533,9 @@ public class OperatorResource {
         if(finishing && old.isEmpty()) throw new NotFoundException("La ejecución de patrulla no fue iniciada");
         Instant started=finishing?Instant.parse(((Object[])old.get(0))[1].toString()):time(event,"startedAt"), finished=Instant.now();
         if(!finishing) finished=time(event,"finishedAt");
-        if(finished.isBefore(started) || started.isBefore(c.shift.startsAt.minusSeconds(43200)) || finished.isAfter(c.shift.endsAt.plusSeconds(43200))) throw new BadRequestException("Fechas de patrulla fuera de la ventana UAT del turno");
+        if(finished.isBefore(started)) throw new BadRequestException("Fechas de patrulla inválidas");
+        if(fieldCheckpointsAllowed && (started.isBefore(c.shift.startsAt) || finished.isAfter(c.shift.endsAt))) throw new BadRequestException("La patrulla no programada debe ejecutarse dentro del turno asignado");
+        if(!fieldCheckpointsAllowed && (started.isBefore(c.shift.startsAt.minusSeconds(43200)) || finished.isAfter(c.shift.endsAt.plusSeconds(43200)))) throw new BadRequestException("Fechas de patrulla fuera de la ventana UAT del turno");
         JsonNode results=event.path("checkpointResults"); if(!results.isArray()) throw new BadRequestException("Resultados de hitos obligatorios");
         Set<UUID> seen=new HashSet<>(); boolean complete=true;
         for(JsonNode item:results) {
@@ -434,6 +549,25 @@ public class OperatorResource {
         Number required=(Number)em.createNativeQuery("select count(*) from patrol_checkpoint where instance_country_id=:tenant and patrol_definition_id=:patrol")
             .setParameter("tenant",tenant.instanceCountryId()).setParameter("patrol",patrolId).getSingleResult();
         if(required.intValue()!=seen.size()) complete=false;
+        JsonNode suppliedFieldCheckpoints=event.get("fieldCheckpoints");
+        JsonNode fieldCheckpoints=suppliedFieldCheckpoints==null?mapper.createArrayNode():suppliedFieldCheckpoints;
+        if(!fieldCheckpoints.isArray()) throw new BadRequestException("Listado de hitos de campo inválido");
+        if(!fieldCheckpointsAllowed && !fieldCheckpoints.isEmpty()) throw new BadRequestException("Esta patrulla no permite hitos creados en campo");
+        if(fieldCheckpointsAllowed && fieldCheckpoints.isEmpty()) throw new BadRequestException("Registra al menos un hito de campo antes de finalizar la patrulla");
+        if(fieldCheckpoints.size()>30) throw new BadRequestException("Máximo 30 hitos de campo por patrulla");
+        for(JsonNode item:fieldCheckpoints) {
+            String description=text(item,"description").trim(),observation=text(item,"observation").trim(),photo=text(item,"photoBase64").trim();
+            if(description.length()>500 || observation.length()>2000) throw new BadRequestException("Descripción u observación de hito demasiado extensa");
+            byte[] jpeg;
+            try { jpeg=Base64.getDecoder().decode(photo); } catch(IllegalArgumentException e) { throw new BadRequestException("Fotografía de hito inválida"); }
+            if(jpeg.length<4 || jpeg.length>1_500_000 || (jpeg[0]&0xff)!=0xff || (jpeg[1]&0xff)!=0xd8) throw new BadRequestException("La evidencia debe ser una fotografía JPEG de máximo 1.5 MB");
+            JsonNode coordinates=item.path("coordinates");
+            if(!coordinates.isMissingNode() && !coordinates.isNull()) {
+                if(!coordinates.path("latitude").isNumber() || !coordinates.path("longitude").isNumber()) throw new BadRequestException("Coordenadas de hito incompletas");
+                double latitude=coordinates.path("latitude").asDouble(),longitude=coordinates.path("longitude").asDouble();
+                if(latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) throw new BadRequestException("Coordenadas de hito inválidas");
+            }
+        }
         String finalResult=complete?"COMPLETA":"INCOMPLETA";
         if(finishing) {
             int updated=em.createNativeQuery("update patrol_execution set finished_at=:finished,result=:result,updated_at=current_timestamp where id=:id and instance_country_id=:tenant and assignment_id=:assignment and employee_id=:employee and patrol_plan_id=:plan and finished_at is null")
@@ -444,7 +578,18 @@ public class OperatorResource {
         for(JsonNode item:results) em.createNativeQuery("insert into patrol_checkpoint_execution(id,instance_country_id,patrol_execution_id,checkpoint_id,result,validated_at,evidence_json,created_at) values(:id,:tenant,:execution,:checkpoint,:result,:validated,:evidence,current_timestamp)")
             .setParameter("id",UUID.randomUUID()).setParameter("tenant",tenant.instanceCountryId()).setParameter("execution",executionId).setParameter("checkpoint",uuid(item,"checkpointId"))
             .setParameter("result",text(item,"result")).setParameter("validated",time(item,"validatedAt")).setParameter("evidence",item.path("evidence").toString()).executeUpdate();
-        ObjectNode response=mapper.createObjectNode().put("executionId",executionId.toString()).put("status","RECEIVED").put("result",finalResult); response.put("persistedCheckpointCount",seen.size()); return response;
+        for(JsonNode item:fieldCheckpoints) {
+            Instant capturedAt=item.hasNonNull("capturedAt")?time(item,"capturedAt"):finished;
+            ObjectNode evidence=mapper.createObjectNode().put("originMode","FIELD_CREATED").put("observation",text(item,"observation").trim()).put("photoBase64",text(item,"photoBase64").trim());
+            if(item.has("coordinates")) evidence.set("coordinates",item.path("coordinates"));
+            em.createNativeQuery("insert into patrol_checkpoint_execution(id,instance_country_id,patrol_execution_id,checkpoint_id,dynamic_name,result,validated_at,evidence_json,created_at) values(:id,:tenant,:execution,null,:name,'CUMPLIDO',:validated,:evidence,current_timestamp)")
+                .setParameter("id",UUID.randomUUID()).setParameter("tenant",tenant.instanceCountryId()).setParameter("execution",executionId).setParameter("name",text(item,"description").trim()).setParameter("validated",capturedAt).setParameter("evidence",evidence.toString()).executeUpdate();
+            JsonNode coordinates=item.path("coordinates");
+            if(coordinates.isObject()) em.createNativeQuery("insert into patrol_gps_sample(instance_country_id,patrol_execution_id,captured_at,latitude,longitude,accuracy_m) values(:tenant,:execution,:captured,:latitude,:longitude,:accuracy)")
+                .setParameter("tenant",tenant.instanceCountryId()).setParameter("execution",executionId).setParameter("captured",capturedAt).setParameter("latitude",coordinates.path("latitude").asDouble()).setParameter("longitude",coordinates.path("longitude").asDouble()).setParameter("accuracy",coordinates.has("accuracyMeters")?coordinates.path("accuracyMeters").asDouble():null).executeUpdate();
+        }
+        ObjectNode response=mapper.createObjectNode().put("executionId",executionId.toString()).put("status","RECEIVED").put("result",finalResult);
+        response.put("persistedCheckpointCount",seen.size()).put("persistedFieldCheckpointCount",fieldCheckpoints.size()); return response;
     }
     private ObjectNode executionState(Object[] row) {
         ObjectNode state=mapper.createObjectNode().put("executionId",row[0].toString()).put("startedAt",row[1].toString());
@@ -567,7 +712,9 @@ public class OperatorResource {
             AssignmentContext selected=assignment(assignmentId,employee);
             var candidate=new OperatorAssignmentWindow.Candidate<>(selected,selected.shift.startsAt,selected.shift.endsAt);
             if(OperatorAssignmentWindow.select(List.of(candidate),now).isEmpty()) throw new ForbiddenException("Asignación fuera de la ventana operativa");
-            response.set("relief",context(selected));
+            ObjectNode relief=context(selected);
+            response.set("relief",relief);
+            response.set("inventory",relief.path("inventory").deepCopy());
             // Tareas con foto del Puesto: Hitos de patrulla, evidencias de Consigna y campos de Bitácora.
             response.set("patrols",patrols.runtime(selected.post.id));
             response.set("consignmentTasks",tasks.consignmentTasks(selected.post));
@@ -655,7 +802,8 @@ public class OperatorResource {
             if(!r[0].equals(digest)) throw new ClientErrorException("Identificador reutilizado con datos diferentes",409);
             boolean reviewed=!em.createNativeQuery("select 1 from visual_review v join task_execution t on t.id=v.task_execution_id where t.instance_country_id=:t and t.group_id=:e and t.execution_type=:x")
                 .setParameter("t",tenant.instanceCountryId()).setParameter("e",eventId).setParameter("x",ReliefStationReviews.TYPE).setMaxResults(1).getResultList().isEmpty();
-            return ack(eventId,reviewed?"QUEUED_FOR_VISINT":"NOT_REQUESTED"); }
+            String inventoryStatus=reliefInventoryStatus(eventId);
+            return ack(eventId,reviewed?"QUEUED_FOR_VISINT":"NOT_REQUESTED",inventoryStatus,inventory.reportStatus(eventId)); }
         if(!em.createNativeQuery("select id from operator_relief_submission where instance_country_id=:t and assignment_id=:a").setParameter("t",tenant.instanceCountryId()).setParameter("a",assignmentId).getResultList().isEmpty()) throw new ClientErrorException("La asignación ya tiene un relevo recibido",409);
         Instant execution=time(event,"executedAt");
         if(execution.isBefore(c.shift.startsAt.minusSeconds(43200)) || execution.isAfter(c.shift.endsAt.plusSeconds(43200))) throw new BadRequestException("Fecha fuera de ventana UAT del turno");
@@ -677,27 +825,40 @@ public class OperatorResource {
                 .setParameter("id",uuid(photo,"evidenceId")).setParameter("t",tenant.instanceCountryId()).setParameter("e",eventId).setParameter("a",assignmentId).setParameter("u",identity.getPrincipal().getName()).setParameter("p",text(photo,"purpose")).getResultList();
             if(rows.isEmpty()) throw new BadRequestException("Evidencia no autorizada o no cargada");
         }
-        em.createNativeQuery("insert into relief_event(id,instance_country_id,post_id,shift_occurrence_id,outgoing_employee_id,incoming_employee_id,status,planned_at,executed_at,unilateral,inventory_result,consignments_confirmed,created_at,updated_at) values(:id,:t,:p,:s,:o,:i,'PENDIENTE',:planned,:executed,:unilateral,'PENDING_SOURCE',true,current_timestamp,current_timestamp)")
+        String inventoryStatus=text(event,"inventoryStatus").toUpperCase(Locale.ROOT);
+        em.createNativeQuery("insert into relief_event(id,instance_country_id,post_id,shift_occurrence_id,outgoing_employee_id,incoming_employee_id,status,planned_at,executed_at,unilateral,inventory_result,consignments_confirmed,created_at,updated_at) values(:id,:t,:p,:s,:o,:i,'PENDIENTE',:planned,:executed,:unilateral,:inventory,true,current_timestamp,current_timestamp)")
             .setParameter("id",eventId).setParameter("t",tenant.instanceCountryId()).setParameter("p",c.post.id).setParameter("s",c.shift.id)
             .setParameter("o",event.path("unilateral").asBoolean()?null:uuid(event,"outgoingEmployeeId")).setParameter("i",employee).setParameter("planned",c.shift.startsAt)
-            .setParameter("executed",execution).setParameter("unilateral",event.path("unilateral").asBoolean()).executeUpdate();
+            .setParameter("executed",execution).setParameter("unilateral",event.path("unilateral").asBoolean()).setParameter("inventory",inventoryStatus).executeUpdate();
         em.createNativeQuery("insert into operator_relief_submission(id,instance_country_id,assignment_id,employee_id,username,device_id,batch_id,correlation_id,payload_hash,payload_json,context_json,received_at) values(:id,:t,:a,:e,:u,:d,:b,:c,:h,:payload,:context,current_timestamp)")
             .setParameter("id",eventId).setParameter("t",tenant.instanceCountryId()).setParameter("a",assignmentId).setParameter("e",employee).setParameter("u",identity.getPrincipal().getName())
             .setParameter("d",text(batch,"deviceId")).setParameter("b",uuid(batch,"batchId")).setParameter("c",uuid(batch,"correlationId"))
             .setParameter("h",digest).setParameter("payload",event.toString()).setParameter("context",snapshot.toString()).executeUpdate();
+        String inventoryDelivery=inventory.recordReport(event,snapshot.path("inventory"),eventId,assignmentId,c.post.id,c.point.id,employee,
+            identity.getPrincipal().getName(),uuid(batch,"correlationId"));
         // VISINT opcional: las fotos del puesto se comparan con las fotos estándar del Puesto; el resultado no bloquea el relevo.
         String stationVisint=stationReviews.enqueue(tenant.instanceCountryId(),eventId,assignmentId,c.shift.id,c.point.id,c.post.id,employee,identity.getPrincipal().getName(),execution,batch);
-        return ack(eventId,stationVisint);
+        return ack(eventId,stationVisint,inventoryStatus,inventoryDelivery);
     }
     private JsonNode canonical(JsonNode n) {
         if(n.isObject()) { ObjectNode out=mapper.createObjectNode(); TreeSet<String> names=new TreeSet<>(); n.fieldNames().forEachRemaining(names::add); for(String name:names) out.set(name,canonical(n.get(name))); return out; }
         if(n.isArray()) { ArrayNode out=mapper.createArrayNode(); for(JsonNode v:n) out.add(canonical(v)); return out; } return n;
     }
     /** stationVisintStatus: QUEUED_FOR_VISINT si las fotos del puesto se validan con VISINT, NOT_REQUESTED si el Puesto no lo tiene activado. */
-    private ObjectNode ack(UUID id,String stationVisintStatus) {
+    private ObjectNode ack(UUID id,String stationVisintStatus,String inventoryStatus,String inventoryDeliveryStatus) {
         ObjectNode n=mapper.createObjectNode().put("serverVersion","relief-uat-v1"); n.putArray("acknowledgedEventIds").add(id.toString()); n.putArray("rejectedEvents");
-        n.putArray("pendingMessages").add("Inventario y novedades pendientes de fuente; revisión visual pendiente");
-        n.putArray("results").addObject().put("eventId",id.toString()).put("reliefId",id.toString()).put("status","PENDIENTE").put("inventoryStatus","PENDING_SOURCE").put("validationStatus","PENDING_REVIEW").put("stationVisintStatus",stationVisintStatus); return n;
+        ArrayNode pending=n.putArray("pendingMessages");
+        if("PENDING_SOURCE".equals(inventoryStatus)) pending.add("Inventario pendiente de SIC:RRMM");
+        else if(Set.of("PENDING","FAILED").contains(inventoryDeliveryStatus)) pending.add("Reporte de inventario pendiente de entrega a SIC:RRMM");
+        pending.add("Novedades pendientes de fuente; revisión visual pendiente");
+        n.putArray("results").addObject().put("eventId",id.toString()).put("reliefId",id.toString()).put("status","PENDIENTE")
+            .put("inventoryStatus",inventoryStatus).put("inventoryDeliveryStatus",inventoryDeliveryStatus)
+            .put("validationStatus","PENDING_REVIEW").put("stationVisintStatus",stationVisintStatus); return n;
+    }
+    private String reliefInventoryStatus(UUID id) {
+        List<?> rows=em.createNativeQuery("select inventory_result from relief_event where id=:id and instance_country_id=:t")
+            .setParameter("id",id).setParameter("t",tenant.instanceCountryId()).getResultList();
+        return rows.isEmpty()||rows.get(0)==null?"PENDING_SOURCE":rows.get(0).toString();
     }
     @POST @Path("/consignment-review-requests") @Consumes(MediaType.APPLICATION_JSON) @Transactional
     public ObjectNode submitConsignmentReviewRequest(@HeaderParam("Idempotency-Key") String idempotencyKey, JsonNode request) {
@@ -786,7 +947,7 @@ public class OperatorResource {
     public ArrayNode list(@QueryParam("limit") @DefaultValue("50") int limit) {
         actor(); boolean operator=identity.hasRole("AGENTE_SEGURIDAD");
         UUID employee=operator?employee():null;
-        @SuppressWarnings("unchecked") List<Object[]> rows=em.createNativeQuery("select r.id,r.post_id,s.employee_id,s.received_at,s.context_json,s.payload_json,s.username from operator_relief_submission s join relief_event r on r.id=s.id where s.instance_country_id=:t order by s.received_at desc")
+        @SuppressWarnings("unchecked") List<Object[]> rows=em.createNativeQuery("select r.id,r.post_id,s.employee_id,s.received_at,s.context_json,s.payload_json,s.username,r.inventory_result from operator_relief_submission s join relief_event r on r.id=s.id where s.instance_country_id=:t order by s.received_at desc")
             .setParameter("t",tenant.instanceCountryId()).setMaxResults(500).getResultList();
         ArrayNode result=mapper.createArrayNode();
         for(Object[] row:rows) {
@@ -794,7 +955,8 @@ public class OperatorResource {
             PointEntity point=post==null?null:PointEntity.find("id=?1 and instanceCountryId=?2",post.pointId,tenant.instanceCountryId()).firstResult();
             if(point==null || (operator?!employee.toString().equals(row[2].toString()):!scope.canAccessCompany(point.companyId))) continue;
             ObjectNode n=result.addObject().put("reliefId",row[0].toString()).put("postName",post.name).put("pointName",point.name).put("employeeId",row[2].toString())
-                .put("receivedAt",row[3].toString()).put("status","PENDIENTE").put("inventoryStatus","PENDING_SOURCE").put("validationStatus","PENDING_REVIEW");
+                .put("receivedAt",row[3].toString()).put("status","PENDIENTE").put("inventoryStatus",row[7]==null?"PENDING_SOURCE":row[7].toString())
+                .put("inventoryDeliveryStatus",inventory.reportStatus(UUID.fromString(row[0].toString()))).put("validationStatus","PENDING_REVIEW");
             try { n.set("event",mapper.readTree(row[5].toString())); } catch(Exception e) { throw new InternalServerErrorException(); }
             if(result.size()>=Math.max(1,Math.min(limit,100))) break;
         } return result;

@@ -1,0 +1,139 @@
+GUIA PARA LEVANTAR SGI: COMANDO EN DESARROLLO
+================================================
+
+Ruta del proyecto:
+D:\2026\06102016\sgi-comando_dev
+
+Servicios que se levantan:
+1. PostgreSQL 17: base de datos.
+2. MinIO: almacenamiento de archivos y evidencias.
+3. Backend Quarkus: API y reglas del sistema.
+4. Frontend React/Vite servido por Nginx: interfaz web.
+
+IMPORTANTE
+----------
+- No borres ni publiques el archivo .env: contiene configuración local y secretos.
+- No uses "docker compose down -v" salvo que quieras borrar deliberadamente los datos locales.
+- Este entorno usa docker-compose.dev-local.yml para mantener sus datos separados de otras baselines.
+- La base persistente anterior no fue eliminada ni modificada; se conservó porque tenía un historial Flyway incompatible con esta rama.
+
+PASOS EN ORDEN
+--------------
+
+1. Abrir Docker Desktop.
+
+   Espera hasta que Docker indique que el motor está iniciado.
+
+2. Abrir PowerShell.
+
+3. Entrar en la carpeta del proyecto:
+
+   cd "D:\2026\06102016\sgi-comando_dev"
+
+4. Comprobar que existe el archivo .env:
+
+   Test-Path .\.env
+
+   Debe devolver True.
+
+5. Comprobar que no queden valores CHANGE_ME:
+
+   Select-String -Path .\.env -Pattern "CHANGE_ME"
+
+   El comando no debe devolver coincidencias. Si aparecen, configura esos valores antes de continuar.
+
+6. Compilar el frontend con las dependencias locales del proyecto:
+
+   Set-Location .\frontend
+   node .\node_modules\typescript\bin\tsc -b
+   node .\node_modules\vite\bin\vite.js build
+   Set-Location ..
+
+   Este paso genera frontend\dist. Se usa este método porque durante el primer arranque el registro de npm respondió ECONNRESET desde Docker.
+
+7. Construir las imágenes del backend y frontend:
+
+   docker compose -p sgi-comando-uat -f docker-compose.yml -f docker-compose.dev-local.yml build backend frontend
+
+   La primera construcción puede tardar varios minutos porque descarga dependencias de Java/Quarkus.
+
+8. Levantar todos los servicios:
+
+   docker compose -p sgi-comando-uat -f docker-compose.yml -f docker-compose.dev-local.yml up -d --no-build
+
+9. Verificar el estado de los contenedores:
+
+   docker compose -p sgi-comando-uat -f docker-compose.yml -f docker-compose.dev-local.yml ps
+
+   Deben aparecer postgres, minio, backend y frontend con estado Up. PostgreSQL también debe indicar healthy.
+
+10. Verificar el backend:
+
+    Invoke-WebRequest http://localhost:8080/q/health/ready -UseBasicParsing
+
+    La respuesta debe tener código 200 y status UP.
+
+11. Verificar el frontend:
+
+    Invoke-WebRequest http://localhost:5173/uat-version.json -UseBasicParsing
+
+    La respuesta debe tener código 200 y mostrar SGI_COM_NEX versión 0.1.0.
+
+12. Abrir la aplicación en el navegador:
+
+    http://localhost:5173
+
+DIRECCIONES UTILES
+------------------
+- Aplicación web: http://localhost:5173
+- Backend/API: http://localhost:8080
+- Salud del backend: http://localhost:8080/q/health/ready
+- Consola MinIO: http://localhost:9001
+- PostgreSQL desde Windows: localhost:56432
+
+COMANDOS DE OPERACION
+---------------------
+
+Ver el estado:
+
+docker compose -p sgi-comando-uat -f docker-compose.yml -f docker-compose.dev-local.yml ps
+
+Ver los últimos registros del backend:
+
+docker compose -p sgi-comando-uat -f docker-compose.yml -f docker-compose.dev-local.yml logs backend --tail=200
+
+Ver los registros en tiempo real:
+
+docker compose -p sgi-comando-uat -f docker-compose.yml -f docker-compose.dev-local.yml logs -f
+
+Detener el sistema sin borrar datos:
+
+docker compose -p sgi-comando-uat -f docker-compose.yml -f docker-compose.dev-local.yml stop
+
+Volver a iniciarlo sin reconstruir:
+
+docker compose -p sgi-comando-uat -f docker-compose.yml -f docker-compose.dev-local.yml start
+
+Apagar y retirar contenedores sin borrar datos:
+
+docker compose -p sgi-comando-uat -f docker-compose.yml -f docker-compose.dev-local.yml down --remove-orphans
+
+Levantarlo nuevamente después de un down:
+
+docker compose -p sgi-comando-uat -f docker-compose.yml -f docker-compose.dev-local.yml up -d --no-build
+
+QUE OCURRIO DURANTE ESTE PRIMER ARRANQUE
+---------------------------------------
+1. Docker no podía usarse desde el entorno restringido; se autorizó el acceso al motor de Docker Desktop.
+2. El registro de npm cerró la conexión durante la construcción del frontend. Se compiló con las dependencias locales existentes y se creó Dockerfile.dev-local para que el proceso sea repetible.
+3. La base anterior tenía otra contraseña. Se sincronizó la contraseña sin borrar datos.
+4. El backend detectó dos migraciones llamadas V55. La migración independiente operator_logbook_records se renumeró a V59 y su documentación fue actualizada.
+5. La base anterior también tenía checksums de migraciones incompatibles con esta rama. No se alteró flyway_schema_history ni se borró esa base. Se crearon volúmenes aislados para este entorno de desarrollo.
+
+RESULTADO VERIFICADO EL 2026-10-06
+----------------------------------
+- PostgreSQL: Up / healthy.
+- MinIO: Up.
+- Backend Quarkus: Up; health status UP.
+- Frontend: Up; SGI_COM_NEX 0.1.0 FROZEN_UAT.
+- Aplicación disponible en http://localhost:5173.

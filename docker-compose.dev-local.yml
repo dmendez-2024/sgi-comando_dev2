@@ -1,0 +1,19 @@
+services:
+  postgres:
+    volumes:
+      - sgi_comando_dev_postgres_data:/var/lib/postgresql/data
+
+  minio:
+    volumes:
+      - sgi_comando_dev_minio_data:/bitnami/minio/data
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev-local
+
+volumes:
+  sgi_comando_dev_postgres_data:
+    name: sgi_comando_dev_postgres_data
+  sgi_comando_dev_minio_data:
+    name: sgi_comando_dev_minio_data

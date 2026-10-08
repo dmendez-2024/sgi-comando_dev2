@@ -1,0 +1,10 @@
+diff a/docker-compose.yml b/docker-compose.yml	(rejected hunks)
+@@ -6,7 +6,7 @@
+       POSTGRES_USER: ${POSTGRES_USER:-sgi}
+       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+     ports:
+-      - "56432:5432"
++      - "9040:5432"
+     volumes:
+       - postgres_data:/var/lib/postgresql/data
+     healthcheck:

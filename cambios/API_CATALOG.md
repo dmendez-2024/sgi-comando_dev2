@@ -102,32 +102,43 @@ Todos los IDs siguen SITC-NOM-001 v3.0. Paths son contratos lógicos; host/baseP
 ### `SIC_RRHH__SGI_COM__00001__IF01`
 `POST /api/v1/inbound/sic-rrhh/employee-events` — Employee operational master event
 
-## `SGI_COM__SIC_RRMM__00001__V0001` — Read expected material resources/inventory for Point/Post operational configuration and Relevo.
+## `SGI_COM_SIC_RRMM_0001_v001` — Read expected material resources/inventory for Point/Post operational configuration and Relevo.
 - Origen técnico: `SGI_COM`
 - Destino: `SIC_RRMM`
 - Tipo: `REST_API / SYNC / HTTPS`
 - Contrato: `v1`
 - SoR: `SIC_RRMM`
-- Estado: `DESIGN`; destino `BLOCKED`
+- Estado: `UAT_PARTIAL`; destino `BLOCKED` (adaptador SGI implementado; endpoint RRMM pendiente de habilitación)
 
-### `SGI_COM__SIC_RRMM__00001__IF01`
+### `SGI_COM_SIC_RRMM_0001_IF01`
 `GET /api/v1/operational-assets/posts/{postId}/expected` — Expected assets/materials assigned to Post
 
-### `SGI_COM__SIC_RRMM__00001__IF02`
+### `SGI_COM_SIC_RRMM_0001_IF02`
 `GET /api/v1/operational-assets/points/{pointId}` — Material resources visible for Point configuration
 
-## `SIC_RRMM__SGI_COM__00001__V0001` — Provide SIC_RRMM with operational Company Point/Post catalog for MARE requirements.
+## `SGI_COM_SIC_RRMM_0002_v001` — Reportar a RRMM la condición observada durante el relevo.
+- Origen técnico: `SGI_COM`
+- Destino: `SIC_RRMM`
+- Tipo: `REST_API / ASYNC / HTTPS`
+- Contrato: `v1`
+- SoR del activo: `SIC_RRMM`; SoR del reporte operacional: `SGI_COM`
+- Estado: `UAT_PARTIAL`; destino `BLOCKED` (persistencia, idempotencia y reintentos implementados en SGI)
+
+### `SGI_COM_SIC_RRMM_0002_IF01`
+`POST /api/v1/operational-assets/state-reports` — Reporte idempotente de condición por activo, observación y referencias de evidencia
+
+## `SIC_RRMM_SGI_COM_0001_v001` — Provide SIC_RRMM with operational Company Point/Post catalog for MARE requirements.
 - Origen técnico: `SIC_RRMM`
 - Destino: `SGI_COM`
 - Tipo: `REST_API / SYNC / HTTPS`
 - Contrato: `v1`
 - SoR: `SGI_COM`
-- Estado: `UAT`; destino `BLOCKED`
+- Estado: `UAT`; destino `READY`
 
-### `SIC_RRMM__SGI_COM__00001__IF01`
+### `SIC_RRMM_SGI_COM_0001_IF01`
 `GET /api/v1/integration/rrmm/companies/{companyId}/points` — Points currently operated by Company
 
-### `SIC_RRMM__SGI_COM__00001__IF02`
+### `SIC_RRMM_SGI_COM_0001_IF02`
 `GET /api/v1/integration/rrmm/points/{pointId}/posts` — Posts under selected Point
 
 ## `ATS__SGI_COM__00001__V0001` — Deliver a published .ats security architecture package to SGI: Comando/REGESEP.
@@ -218,27 +229,30 @@ Todos los IDs siguen SITC-NOM-001 v3.0. Paths son contratos lógicos; host/baseP
 ### `SGI_COM__VISINT__00002__IF01`
 `GET /api/v1/visual-reviews/{reviewId}` — PASS/FAIL/ERROR result and technical metadata
 
-## `SGI_OPR__SGI_COM__00001__V0001` — Synchronize the mobile operator runtime context/configuration required for the active assignment.
+## `SGI_OPR_SGI_COM_0001_v001` — Synchronize the mobile operator runtime context/configuration required for the active assignment.
 - Origen técnico: `SGI_OPR`
 - Destino: `SGI_COM`
 - Tipo: `REST_API / SYNC / HTTPS`
 - Contrato: `v1`
 - SoR: `SGI_COM`
-- Estado: `DESIGN`; destino `BLOCKED`
+- Estado: `UAT_PARTIAL`; destino `READY`
 
-### `SGI_OPR__SGI_COM__00001__IF01`
-`GET /api/v1/operator/runtime` — Assignment, Point/Post, protocols, consignments, patrols, bitacora and pending messages
+### `SGI_OPR_SGI_COM_0001_IF01`
+`GET /api/v1/operator/runtime` — Asignación, Punto/Puesto, protocolos, consignas, patrullas, bitácora e inventario RRMM (`AVAILABLE`, `STALE` o `PENDING_SOURCE`)
 
-## `SGI_OPR__SGI_COM__00002__V0001` — Submit idempotent operational executions, novelties and evidence captured by SGI: Operador.
+## `SGI_OPR_SGI_COM_0002_v001` — Submit idempotent operational executions, novelties and evidence captured by SGI: Operador.
 - Origen técnico: `SGI_OPR`
 - Destino: `SGI_COM`
 - Tipo: `REST_API / ASYNC / HTTPS`
 - Contrato: `v1`
 - SoR: `SGI_COM`
-- Estado: `DESIGN`; destino `BLOCKED`
+- Estado: `UAT_PARTIAL`; destino `READY`
 
-### `SGI_OPR__SGI_COM__00002__IF01`
-`POST /api/v1/operator/executions` — Batch/idempotent operational events and evidence references
+### `SGI_OPR_SGI_COM_0002_IF01`
+`POST /api/v1/operator/executions` — Relevo idempotente con `inventoryStatus` e `inventoryItems[]`
+
+### `SGI_OPR_SGI_COM_0002_IF02`
+`POST /api/v1/operator/evidences` — Evidencia multipart; admite `targetType=INVENTORY_ASSET`
 
 ## `SGI_CLT__SGI_COM__00001__V0001` — Read client-visible operational information after SGI moderation/authorization.
 - Origen técnico: `SGI_CLT`

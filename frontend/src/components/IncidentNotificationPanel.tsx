@@ -1,10 +1,11 @@
-import {useMemo, useState, type ChangeEvent, type ReactNode} from 'react';
+import {useEffect, useMemo, useState, type ChangeEvent, type ReactNode} from 'react';
 import {
   AlertTriangle, CalendarClock, CheckCircle2, CircleAlert, ClipboardCheck, Clock3,
   FileText, ImagePlus, Info, MapPin, OctagonAlert, Save, Send, ShieldAlert,
   Trash2, UserCheck, Users, X
 } from 'lucide-react';
 import {INCIDENT_TAXONOMY} from '../data/incidentTaxonomy';
+import {api} from '../api';
 
 export type IncidentCategory='SERVICE'|'SECURITY'|'ADMINISTRATIVE';
 export type IncidentSeverity='INFORMATIVE'|'MINOR'|'MODERATE'|'MAJOR'|'CRITICAL';
@@ -65,10 +66,7 @@ type DemoPerson={
   lat:number;lng:number;busy:Set<string>;
 };
 
-type DemoHistory={employeeId:string;point:string;post:string;workedAt:string};
-
-const UAT_NOW=new Date('2026-09-27T09:00:00-05:00');
-const TWO_WEEKS_MS=14*24*60*60*1000;
+type CollaboratorRow={employeeId:string;fullName:string;roleCode:string;postName:string;lastAt:string;source:'EXECUTION'|'PUBLISHED_SHIFT'|'CURRENT_SHIFT'|'UPCOMING_SHIFT'};
 
 const CATEGORY_META:Record<IncidentCategory,{label:string;icon:ReactNode;description:string}>={
   SERVICE:{label:'Servicio',icon:<ClipboardCheck size={24}/>,description:'Cumplimiento del servicio y desempeño operativo.'},
@@ -114,11 +112,6 @@ const PEOPLE:DemoPerson[]=[
   {id:'e14',name:'Mónica Paz',role:'Escolta',companyCode:'GAL',lastPoint:'Sucursal Centro',lastPost:'Puesto 1',lastWorkedAt:'2026-09-17T19:00:00-05:00',phone:'098 219 6057',francosWorked6m:1,lat:-2.1918,lng:-79.8875,busy:new Set()},
 ];
 
-const HISTORY:DemoHistory[]=PEOPLE.flatMap(p=>[
-  {employeeId:p.id,point:p.lastPoint,post:p.lastPost,workedAt:p.lastWorkedAt},
-  ...(p.lastPoint==='Muelle Sur'?[{employeeId:p.id,point:p.lastPoint,post:p.lastPost,workedAt:'2026-09-20T07:00:00-05:00'}]:[])
-]);
-
 const SHIFT_OPTIONS=[
   {id:'NEXT_1',label:'Siguiente turno · 27/09/2026 19:00–28/09/2026 07:00',slot:'next1',previous:'current'},
   {id:'NEXT_2',label:'Segundo turno · 28/09/2026 07:00–19:00',slot:'next2',previous:'next1'},
@@ -146,6 +139,22 @@ export default function IncidentNotificationPanel({initial,nextCode,locations,lo
   const [form,setForm]=useState<IncidentRecord>(initial?{...emptyRecord(nextCode),...structuredClone(initial)}:emptyRecord(nextCode));
   const [error,setError]=useState('');
   const [fileError,setFileError]=useState('');
+  const [collaborators,setCollaborators]=useState<CollaboratorRow[]>([]);
+  const [collaboratorsLoading,setCollaboratorsLoading]=useState(false);
+  const [collaboratorsError,setCollaboratorsError]=useState('');
+  const [collaboratorsRefresh,setCollaboratorsRefresh]=useState(0);
+
+  useEffect(()=>{
+    if(!form.pointId){setCollaborators([]);setCollaboratorsError('');setCollaboratorsLoading(false);return;}
+    let current=true;
+    setCollaborators([]);
+    setCollaboratorsLoading(true);
+    setCollaboratorsError('');
+    void api.operationCollaborators(form.pointId).then(rows=>{if(current)setCollaborators(rows as CollaboratorRow[])})
+      .catch(()=>{if(current)setCollaboratorsError('No se pudo cargar el personal de este Punto.')})
+      .finally(()=>{if(current)setCollaboratorsLoading(false)});
+    return ()=>{current=false};
+  },[form.pointId,collaboratorsRefresh]);
 
   const clients=useMemo(()=>Array.from(new Map(locations.map(x=>[x.clientId,{id:x.clientId,name:x.client}])).values()),[locations]);
   const points=useMemo(()=>Array.from(new Map(locations.filter(x=>x.clientId===form.clientId).map(x=>[x.pointId,{id:x.pointId,name:x.point}])).values()),[locations,form.clientId]);
@@ -153,16 +162,6 @@ export default function IncidentNotificationPanel({initial,nextCode,locations,lo
   const subcategories=form.category?Object.keys(INCIDENT_TAXONOMY[form.category]):[];
   const incidentTypes=form.category&&form.subcategory?(INCIDENT_TAXONOMY[form.category][form.subcategory]??[]):[];
   const absenceMode=absenceModeFromIncidentType(form.incidentType);
-
-  const collaborators=useMemo(()=>{
-    if(!form.point)return [];
-    const cutoff=UAT_NOW.getTime()-TWO_WEEKS_MS;
-    const latest=new Map<string,DemoHistory>();
-    HISTORY.filter(h=>h.point===form.point&&new Date(h.workedAt).getTime()>=cutoff&&new Date(h.workedAt).getTime()<=UAT_NOW.getTime())
-      .sort((a,b)=>b.workedAt.localeCompare(a.workedAt))
-      .forEach(h=>{if(!latest.has(h.employeeId))latest.set(h.employeeId,h)});
-    return [...latest.values()].map(h=>({history:h,person:PEOPLE.find(p=>p.id===h.employeeId)!})).filter(x=>!!x.person);
-  },[form.point]);
 
   const selectedLocation=useMemo(()=>locations.find(x=>x.clientId===form.clientId&&x.pointId===form.pointId&&(form.postId?x.postId===form.postId:true)),[locations,form.clientId,form.pointId,form.postId]);
   const targetShift=absenceMode==='EFFECTIVE'?CURRENT_SHIFT:SHIFT_OPTIONS.find(x=>x.id===form.targetShiftId);
@@ -191,10 +190,10 @@ export default function IncidentNotificationPanel({initial,nextCode,locations,lo
     setForm(prev=>({...prev,pointId:value,point:loc?.point??'',postId:'',post:'',collaboratorIds:[],collaboratorNames:[],companyId:loc?.companyId??'',company:loc?.company??'',companyCode:loc?.companyCode??'',city:loc?.city??'',replacementEmployeeId:'',replacementEmployeeName:''}));
   }
   function choosePost(value:string){const loc=locations.find(x=>x.pointId===form.pointId&&x.postId===value);setForm(prev=>({...prev,postId:value,post:loc?.post??''}));}
-  function toggleCollaborator(person:DemoPerson){
+  function toggleCollaborator(person:CollaboratorRow){
     setForm(prev=>{
-      const selected=prev.collaboratorIds.includes(person.id);
-      return {...prev,collaboratorIds:selected?prev.collaboratorIds.filter(x=>x!==person.id):[...prev.collaboratorIds,person.id],collaboratorNames:selected?prev.collaboratorNames.filter(x=>x!==person.name):[...prev.collaboratorNames,person.name]};
+      const selected=prev.collaboratorIds.includes(person.employeeId);
+      return {...prev,collaboratorIds:selected?prev.collaboratorIds.filter(x=>x!==person.employeeId):[...prev.collaboratorIds,person.employeeId],collaboratorNames:selected?prev.collaboratorNames.filter(x=>x!==person.fullName):[...prev.collaboratorNames,person.fullName]};
     });
   }
   function chooseSubcategory(value:string){
@@ -261,7 +260,7 @@ export default function IncidentNotificationPanel({initial,nextCode,locations,lo
 
       <section className="csl-incident-section"><SectionTitle step="5" title="Ubicación"/>{locationsError&&<div className="csl-incident-error"><AlertTriangle size={16}/>{locationsError}<button type="button" onClick={onRetryLocations}>Reintentar</button></div>}<div className="csl-incident-grid two"><Field label="Cliente *"><select value={form.clientId??''} disabled={locationsLoading||!!locationsError} onChange={e=>chooseClient(e.target.value)}><option value="">{locationsLoading?'Cargando clientes…':locationsError?'Clientes no disponibles':clients.length?'Seleccione cliente':'No hay clientes en su alcance'}</option>{clients.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></Field><Field label="Punto *"><select value={form.pointId??''} disabled={!form.clientId||locationsLoading||!!locationsError} onChange={e=>choosePoint(e.target.value)}><option value="">{form.clientId?'Seleccione punto':'Seleccione cliente primero'}</option>{points.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></Field></div><Field label="Puesto (opcional)"><select value={form.postId??''} disabled={!form.pointId||locationsLoading||!!locationsError} onChange={e=>choosePost(e.target.value)}><option value="">Todos / No aplica</option>{posts.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></Field></section>
 
-      <section className="csl-incident-section"><SectionTitle step="6" title="Colaboradores involucrados"/><p className="csl-incident-hint">Solo aparecen personas que trabajaron en este Punto durante las últimas dos semanas; cada persona aparece una sola vez.</p><div className="csl-collaborator-list">{form.point&&collaborators.map(({person,history})=><label key={person.id} className={form.collaboratorIds.includes(person.id)?'selected':''}><input type="checkbox" checked={form.collaboratorIds.includes(person.id)} onChange={()=>toggleCollaborator(person)}/><span><strong>{person.name}</strong><small>{person.role} · Último servicio: {fmtDate(history.workedAt)} · {history.post}</small></span></label>)}{form.point&&!collaborators.length&&<div className="csl-inline-empty"><Users size={17}/>No hay colaboradores con servicio en este Punto dentro de las últimas dos semanas.</div>}{!form.point&&<div className="csl-inline-empty"><MapPin size={17}/>Seleccione Cliente y Punto para obtener la lista.</div>}</div></section>
+      <section className="csl-incident-section"><SectionTitle step="6" title="Colaboradores involucrados"/><p className="csl-incident-hint">Personas con actividad confirmada en los últimos 14 días o con turnos publicados en este Punto hasta los próximos 14 días. Cada persona aparece una sola vez.</p><div className="csl-collaborator-list">{form.pointId&&collaborators.map(person=><label key={person.employeeId} className={form.collaboratorIds.includes(person.employeeId)?'selected':''}><input type="checkbox" checked={form.collaboratorIds.includes(person.employeeId)} onChange={()=>toggleCollaborator(person)}/><span><strong>{person.fullName}</strong><small>{person.roleCode||'Personal'} · {person.source==='EXECUTION'?'Actividad confirmada':person.source==='CURRENT_SHIFT'?'Turno en curso':person.source==='UPCOMING_SHIFT'?'Turno próximo':'Turno publicado'}: {fmtDate(person.lastAt)} · {person.postName}</small></span></label>)}{form.pointId&&collaboratorsLoading&&<div className="csl-inline-empty"><Users size={17}/>Cargando colaboradores del Punto…</div>}{form.pointId&&collaboratorsError&&<div className="csl-inline-empty"><AlertTriangle size={17}/>{collaboratorsError}<button type="button" onClick={()=>setCollaboratorsRefresh(value=>value+1)}>Reintentar</button></div>}{form.pointId&&!collaboratorsLoading&&!collaboratorsError&&!collaborators.length&&<div className="csl-inline-empty"><Users size={17}/>No hay actividad confirmada ni turnos publicados para este Punto en el período consultado.</div>}{!form.pointId&&<div className="csl-inline-empty"><MapPin size={17}/>Seleccione Cliente y Punto para obtener la lista.</div>}</div></section>
 
       <section className="csl-incident-section"><SectionTitle step="7" title="Descripción"/><Field label="Descripción *"><textarea value={form.description} onChange={e=>patch('description',e.target.value)} placeholder="Describa lo ocurrido con el mayor detalle posible…"/></Field><ImagePicker label="Evidencia de descripción" items={form.descriptionImages} onAdd={e=>addImages('descriptionImages',e)} onRemove={id=>removeImage('descriptionImages',id)}/></section>
 

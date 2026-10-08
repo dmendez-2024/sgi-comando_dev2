@@ -581,7 +581,7 @@
     "criticality": "HIGH",
     "legacyTarget": false,
     "targetImplementationStatus": "BLOCKED",
-    "status": "DESIGN",
+    "status": "UAT_PARTIAL",
     "interfaces": [
       {
         "interfaceId": "SGI_COM_SIC_RRMM_0001_IF01",
@@ -589,16 +589,21 @@
         "path": "/api/v1/operational-assets/posts/{postId}/expected",
         "purpose": "Expected assets/materials assigned to Post",
         "contentType": "application/json",
-        "request": {},
+        "request": {
+          "query": [
+            "instanceCountryId"
+          ]
+        },
         "response": {
           "fields": [
-            "assetId",
-            "productId",
-            "code",
-            "description",
-            "condition",
-            "assignmentStatus",
-            "sourceVersion"
+            "sourceVersion",
+            "items[].assetId",
+            "items[].productId",
+            "items[].code",
+            "items[].description",
+            "items[].expectedCondition",
+            "items[].assignmentStatus",
+            "items[].critical"
           ]
         }
       },
@@ -627,6 +632,66 @@
     ]
   },
   {
+    "interconnectionRef": "SGI_COM_SIC_RRMM_0002",
+    "interconnectionId": "SGI_COM_SIC_RRMM_0002_v001",
+    "sourceProgramId": "SGI_COM",
+    "targetProgramId": "SIC_RRMM",
+    "purpose": "Report the material condition observed by the Operator during an operational relief.",
+    "interactionType": "REST_API",
+    "mode": "ASYNC",
+    "protocol": "HTTPS",
+    "contractVersion": "v1",
+    "dataOwnerProgramId": "SGI_COM",
+    "criticality": "HIGH",
+    "legacyTarget": false,
+    "targetImplementationStatus": "BLOCKED",
+    "status": "UAT_PARTIAL",
+    "interfaces": [
+      {
+        "interfaceId": "SGI_COM_SIC_RRMM_0002_IF01",
+        "method": "POST",
+        "path": "/api/v1/operational-assets/state-reports",
+        "purpose": "Idempotent inventory condition report captured during relief",
+        "contentType": "application/json",
+        "request": {
+          "headers": [
+            "Idempotency-Key",
+            "X-Correlation-Id",
+            "X-Interconnection-Id",
+            "X-Contract-Version"
+          ],
+          "fields": [
+            "reportId",
+            "clientRequestId",
+            "correlationId",
+            "instanceCountryId",
+            "reliefEventId",
+            "assignmentId",
+            "postId",
+            "pointId",
+            "employeeId",
+            "reportedAt",
+            "sourceVersion",
+            "inventoryStatus",
+            "items[].assetId",
+            "items[].productId",
+            "items[].condition",
+            "items[].observation",
+            "items[].evidenceIds"
+          ]
+        },
+        "response": {
+          "fields": [
+            "accepted",
+            "rrmmReportId",
+            "receivedAt"
+          ]
+        }
+      }
+    ],
+    "legacyConnectionIds": []
+  },
+  {
     "interconnectionRef": "SIC_RRMM_SGI_COM_0001",
     "interconnectionId": "SIC_RRMM_SGI_COM_0001_v001",
     "sourceProgramId": "SIC_RRMM",
@@ -639,7 +704,7 @@
     "dataOwnerProgramId": "SGI_COM",
     "criticality": "HIGH",
     "legacyTarget": false,
-    "targetImplementationStatus": "BLOCKED",
+    "targetImplementationStatus": "READY",
     "status": "UAT",
     "interfaces": [
       {
@@ -1075,8 +1140,8 @@
     "dataOwnerProgramId": "SGI_COM",
     "criticality": "CRITICAL",
     "legacyTarget": false,
-    "targetImplementationStatus": "BLOCKED",
-    "status": "DESIGN",
+    "targetImplementationStatus": "READY",
+    "status": "UAT_PARTIAL",
     "interfaces": [
       {
         "interfaceId": "SGI_OPR_SGI_COM_0001_IF01",
@@ -1101,7 +1166,29 @@
             "consignments",
             "regesepVersion",
             "pendingMessages",
-            "configurationVersion"
+            "configurationVersion",
+            "inventory",
+            "activePatrolProtocol",
+            "nextActions"
+          ]
+        }
+      },
+      {
+        "interfaceId": "SGI_OPR_SGI_COM_0001_IF15",
+        "method": "GET",
+        "path": "/api/v1/operator/incident-taxonomy",
+        "purpose": "Obtain the canonical incident subcategories owned by SGI_COM for the selected category",
+        "contentType": "application/json",
+        "request": {
+          "query": [
+            "category"
+          ]
+        },
+        "response": {
+          "fields": [
+            "category",
+            "source",
+            "subcategories"
           ]
         }
       }
@@ -1141,7 +1228,12 @@
             "deviceId",
             "instanceCountryId",
             "capturedAt",
-            "correlationId"
+            "correlationId",
+            "events[].inventoryStatus",
+            "events[].inventoryItems[].assetId",
+            "events[].inventoryItems[].condition",
+            "events[].inventoryItems[].observation",
+            "events[].inventoryItems[].evidenceIds"
           ]
         },
         "response": {
@@ -1149,7 +1241,9 @@
             "acknowledgedEventIds",
             "rejectedEvents",
             "serverVersion",
-            "pendingMessages"
+            "pendingMessages",
+            "results[].inventoryStatus",
+            "results[].inventoryDeliveryStatus"
           ]
         }
       },
@@ -1157,7 +1251,7 @@
         "interfaceId": "SGI_OPR_SGI_COM_0002_IF02",
         "method": "POST",
         "path": "/api/v1/operator/evidences",
-        "purpose": "Multipart upload of 1..5 task photos with JSON metadata (idempotent by clientEvidenceId)",
+        "purpose": "Multipart upload of 1..5 task or inventory-asset photos with JSON metadata (idempotent by clientEvidenceId)",
         "contentType": "multipart/form-data",
         "request": {
           "fields": [

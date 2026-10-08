@@ -16,22 +16,23 @@ Baseline: SITC-NOM-001 v3.0 + `SITC-ECOSISTEMA-CM-SISTEMAS-20260921-SCENARIO_SNA
 | 6 | `SGI_COM__SIC_RRHH__00001__V0001` | SGI_COM | SIC_RRHH | Read employee operational context for territory, assignments and supervision. | DESIGN | MANUAL_PENDING |
 | 7 | `SGI_COM__SIC_RRHH__00002__V0001` | SGI_COM | SIC_RRHH | Submit auditable operational labor events produced by SGI. | DESIGN | MANUAL_PENDING |
 | 8 | `SIC_RRHH__SGI_COM__00001__V0001` | SIC_RRHH | SGI_COM | Notify changes to employee/company/status/skills/unavailability used operationally by SGI. | DESIGN | BLOCKED |
-| 9 | `SGI_COM__SIC_RRMM__00001__V0001` | SGI_COM | SIC_RRMM | Read expected material resources/inventory for Point/Post operational configuration and Relevo. | DESIGN | BLOCKED |
-| 10 | `SIC_RRMM__SGI_COM__00001__V0001` | SIC_RRMM | SGI_COM | Provide SIC_RRMM with operational Company Point/Post catalog for MARE requirements. | UAT | BLOCKED |
-| 11 | `ATS__SGI_COM__00001__V0001` | ATS | SGI_COM | Deliver a published .ats security architecture package to SGI: Comando/REGESEP. | UAT | READY |
-| 12 | `SGI_COM__ATS__00001__V0001` | SGI_COM | ATS | Reconcile operational observations about security components/vulnerabilities with ATS design. | DESIGN | BLOCKED |
-| 13 | `SGI_COM__SMC__00001__V0001` | SGI_COM | SMC | Publish normalized operational facts used by SMC to calculate ID/KPIs. | DESIGN | MANUAL_PENDING |
-| 14 | `SGI_COM__SMC__00002__V0001` | SGI_COM | SMC | Read current employee ID/KPIs used by Assignments and operational views. | DESIGN | MANUAL_PENDING |
-| 15 | `SGI_COM__STC__00001__V0001` | SGI_COM | STC | Create a work/case in STC for Incidents, Requirements and Activities while preserving SGI origin. | DESIGN | MANUAL_PENDING |
-| 16 | `SGI_COM__STC__00002__V0001` | SGI_COM | STC | Read workflow status/progress/closure for an SGI-originated STC case. | DESIGN | MANUAL_PENDING |
-| 17 | `SGI_COM__VISINT__00001__V0001` | SGI_COM | VISINT | Submit task evidence/photos for visual validation by VISINT. | DESIGN | MANUAL_PENDING |
-| 18 | `SGI_COM__VISINT__00002__V0001` | SGI_COM | VISINT | Read VISINT review result for Impulse eligibility and audit. | DESIGN | MANUAL_PENDING |
-| 19 | `SGI_OPR__SGI_COM__00001__V0001` | SGI_OPR | SGI_COM | Synchronize the mobile operator runtime context/configuration required for the active assignment. | DESIGN | BLOCKED |
-| 20 | `SGI_OPR__SGI_COM__00002__V0001` | SGI_OPR | SGI_COM | Submit idempotent operational executions, novelties and evidence captured by SGI: Operador. | DESIGN | BLOCKED |
-| 21 | `SGI_CLT__SGI_COM__00001__V0001` | SGI_CLT | SGI_COM | Read client-visible operational information after SGI moderation/authorization. | DESIGN | BLOCKED |
-| 22 | `SGI_CLT__SGI_COM__00002__V0001` | SGI_CLT | SGI_COM | Submit client-originated Consigna proposals, incidents or requirements for SGI moderation/routing. | DESIGN | BLOCKED |
-| 23 | `SGI_COM__CM_CON__00001__V0001` | SGI_COM | CM_CON | Request pre-shift attendance confirmation through Cajamarca Conmigo/IVR capability. | DESIGN | MANUAL_PENDING |
-| 24 | `SGI_COM__CM_CON__00002__V0001` | SGI_COM | CM_CON | Read the result of a pre-shift attendance confirmation. | DESIGN | MANUAL_PENDING |
+| 9 | `SGI_COM_SIC_RRMM_0001_v001` | SGI_COM | SIC_RRMM | Read expected material resources/inventory for Point/Post operational configuration and Relevo. | UAT_PARTIAL | BLOCKED |
+| 10 | `SGI_COM_SIC_RRMM_0002_v001` | SGI_COM | SIC_RRMM | Report the material condition observed by the Operator during a Relevo. | UAT_PARTIAL | BLOCKED |
+| 11 | `SIC_RRMM_SGI_COM_0001_v001` | SIC_RRMM | SGI_COM | Provide SIC_RRMM with operational Company Point/Post catalog for MARE requirements. | UAT | READY |
+| 12 | `ATS__SGI_COM__00001__V0001` | ATS | SGI_COM | Deliver a published .ats security architecture package to SGI: Comando/REGESEP. | UAT | READY |
+| 13 | `SGI_COM__ATS__00001__V0001` | SGI_COM | ATS | Reconcile operational observations about security components/vulnerabilities with ATS design. | DESIGN | BLOCKED |
+| 14 | `SGI_COM__SMC__00001__V0001` | SGI_COM | SMC | Publish normalized operational facts used by SMC to calculate ID/KPIs. | DESIGN | MANUAL_PENDING |
+| 15 | `SGI_COM__SMC__00002__V0001` | SGI_COM | SMC | Read current employee ID/KPIs used by Assignments and operational views. | DESIGN | MANUAL_PENDING |
+| 16 | `SGI_COM__STC__00001__V0001` | SGI_COM | STC | Create a work/case in STC for Incidents, Requirements and Activities while preserving SGI origin. | DESIGN | MANUAL_PENDING |
+| 17 | `SGI_COM__STC__00002__V0001` | SGI_COM | STC | Read workflow status/progress/closure for an SGI-originated STC case. | DESIGN | MANUAL_PENDING |
+| 18 | `SGI_COM__VISINT__00001__V0001` | SGI_COM | VISINT | Submit task evidence/photos for visual validation by VISINT. | DESIGN | MANUAL_PENDING |
+| 19 | `SGI_COM__VISINT__00002__V0001` | SGI_COM | VISINT | Read VISINT review result for Impulse eligibility and audit. | DESIGN | MANUAL_PENDING |
+| 20 | `SGI_OPR_SGI_COM_0001_v001` | SGI_OPR | SGI_COM | Synchronize the mobile operator runtime context/configuration required for the active assignment. | UAT_PARTIAL | READY |
+| 21 | `SGI_OPR_SGI_COM_0002_v001` | SGI_OPR | SGI_COM | Submit idempotent operational executions, novelties and evidence captured by SGI: Operador. | UAT_PARTIAL | READY |
+| 22 | `SGI_CLT__SGI_COM__00001__V0001` | SGI_CLT | SGI_COM | Read client-visible operational information after SGI moderation/authorization. | DESIGN | BLOCKED |
+| 23 | `SGI_CLT__SGI_COM__00002__V0001` | SGI_CLT | SGI_COM | Submit client-originated Consigna proposals, incidents or requirements for SGI moderation/routing. | DESIGN | BLOCKED |
+| 24 | `SGI_COM__CM_CON__00001__V0001` | SGI_COM | CM_CON | Request pre-shift attendance confirmation through Cajamarca Conmigo/IVR capability. | DESIGN | MANUAL_PENDING |
+| 25 | `SGI_COM__CM_CON__00002__V0001` | SGI_COM | CM_CON | Read the result of a pre-shift attendance confirmation. | DESIGN | MANUAL_PENDING |
 
 ## Reglas transversales
 
@@ -49,5 +50,5 @@ Baseline: SITC-NOM-001 v3.0 + `SITC-ECOSISTEMA-CM-SISTEMAS-20260921-SCENARIO_SNA
 
 - `IDENT` está NOT_STARTED en el snapshot maestro; el contrato queda mapeado pero no operativo.
 - SIC_COM, SIC_RRHH, SMC, STC, VISINT, SGI_CLT y CM_CON tienen lados legacy que requieren adecuación manual.
-- SIC_RRMM y SGI_OPR deben incorporar su propio módulo genérico en sus respectivos desarrollos.
+- SIC_RRMM debe habilitar la consulta de activos esperados y la recepción idempotente de reportes; SGI_OPR debe consumir el bloque `inventory` y enviar `inventoryItems[]`.
 - Alarmas electrónicas de Consola no se registran todavía como interconexión porque el snapshot maestro no contiene un Program ID específico para el gateway/plataforma de alarmas. Crear el Program ID antes de definir ese contrato.
