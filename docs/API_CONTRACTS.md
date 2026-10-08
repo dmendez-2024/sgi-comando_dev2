@@ -337,3 +337,77 @@ Se guarda en `operational_setting` (`setting_key = 'evidence.default_radius_m'`)
 ### Nueva captura (reemplaza la regla de la Fase 3)
 - Se acepta una nueva captura (`captureNo` + 1) mientras la anterior esté en cola de VISINT, con error técnico o "no cumple".
 - `409` solo si la anterior está `PASSED` o no usa VISINT. El relevo sigue siendo uno por asignación.
+
+## SIC:DHO → SGI:Comando · Permisos y vacaciones (2026-10-06)
+
+`POST /api/v1/inbound/sic-rrhh/unavailability-events` recibe indisponibilidades operacionales de RR. HH. Su identificador canónico es `SIC_DHO_SGI_COM_0002_v001`; no se reutiliza el contrato de eventos maestros de empleados.
+
+Encabezados obligatorios: `Authorization: Bearer`, `X-Correlation-Id`, `X-Interconnection-Id`, `X-Contract-Version: v1` e `Idempotency-Key`.
+
+Payload:
+
+```json
+{
+  "sourceRecordId": 8452,
+  "personaId": 12345,
+  "type": "VACATION",
+  "startsAt": "2026-10-10T05:00:00Z",
+  "endsAt": "2026-10-16T05:00:00Z",
+  "sourceStatus": "ACTIVE",
+  "sourceReasonId": 7,
+  "sourceReasonLabel": "VACACIONES",
+  "sourceState": "APROBADO",
+  "updatedFromSourceAt": "2026-10-06T20:30:00Z"
+}
+```
+
+- `type`: `VACATION`, `MEDICAL_LEAVE` o `PERMISSION`.
+- DHO clasifica únicamente los motivos médicos como `MEDICAL_LEAVE`; maternidad, paternidad, licencia sin sueldo, notificaciones judiciales, calamidad doméstica y demás ausencias formales usan `PERMISSION`. Asignaciones los presenta bajo el filtro **Permisos generales** y conserva `sourceReasonLabel` para mostrar el motivo concreto.
+- `sourceStatus`: `ACTIVE` o `INACTIVE`; `sourceState` conserva el estado original de DHO.
+- `endsAt` es exclusivo; una ausencia DHO del 10 al 15 termina el 16 a las 00:00 de Ecuador.
+- `source_ref` se genera como `SIC_DHO:PERMISO:{sourceRecordId}` y es único por `instance_country_id`.
+- `instance_country_id` se obtiene exclusivamente desde `TenantContext`; el endpoint no acepta compañía ni instancia enviadas por DHO.
+- `personaId` debe resolver un `employee_operational_snapshot` de la instancia vigente.
+- Eventos repetidos son idempotentes; eventos con `updatedFromSourceAt` anterior se registran como `STALE_IGNORED`.
+
+## SIC:DHO → SGI:Comando · Consulta de turnos para nómina (2026-10-07)
+
+`POST /api/v1/inbound/sic-rrhh/payroll-shifts/query` devuelve hechos operacionales publicados para que DHO calcule y consolide la nómina. El endpoint es de solo lectura y no crea registros.
+
+Encabezados obligatorios: `Authorization: Bearer`, `X-Correlation-Id`, `X-Interconnection-Id` y `X-Contract-Version: v1`.
+
+Solicitud:
+
+```json
+{
+  "personaId": 12345,
+  "startsAt": "2026-09-25T05:00:00Z",
+  "endsAt": "2026-10-25T05:00:00Z"
+}
+```
+
+Respuesta exitosa con datos:
+
+```json
+{
+  "successful": true,
+  "correlationId": "0bd321a7-695c-493a-9207-938e1f88e05c",
+  "items": [{
+    "assignmentId": "6b30fbfb-aa22-4e0f-a69c-c901a521d75d",
+    "shiftOccurrenceId": "17de05b5-ab44-48fa-9f30-86746e704054",
+    "personaId": 12345,
+    "clientTaxIdentifier": "1790012345001",
+    "clientName": "Cliente de prueba",
+    "tier": "TIER_1",
+    "rotationCode": "5X2",
+    "startsAt": "2026-10-14T01:00:00Z",
+    "endsAt": "2026-10-14T13:00:00Z"
+  }]
+}
+```
+
+- Una consulta válida sin asignaciones responde `200` con `items: []`.
+- Solamente devuelve planes `PUBLISHED` o `CLOSED`, asignaciones distintas de `REMOVED` y el empleado efectivo (`actual_employee_id` cuando existe; en otro caso `employee_id`). Los planes cerrados se incluyen porque representan semanas históricas ya ejecutadas.
+- El filtro temporal utiliza `shift_occurrence.ends_at >= startsAt` y `< endsAt`, igualando la atribución diaria utilizada por el SGI antiguo.
+- `clientTaxIdentifier` proviene de `client.tax_identifier`. El catálogo comercial acepta `client.taxIdentifier` de forma retrocompatible; los clientes utilizados en nómina deben tenerlo informado.
+- El identificador canónico CORE es `SIC_DHO_SGI_COM_0003_v001`; la credencial compartida se resuelve desde `sgi.rrhh.inbound.credential-ref`.

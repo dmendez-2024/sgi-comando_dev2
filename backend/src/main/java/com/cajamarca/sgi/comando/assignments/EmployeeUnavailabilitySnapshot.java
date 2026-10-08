@@ -14,4 +14,8 @@ public class EmployeeUnavailabilitySnapshot extends BaseEntity {
     @Column(name="ends_at", nullable=false) public Instant endsAt;
     @Column(name="source_ref") public String sourceRef;
     @Column(name="source_status", nullable=false) public String sourceStatus;
+    @Column(name="source_reason_id") public Long sourceReasonId;
+    @Column(name="source_reason_label") public String sourceReasonLabel;
+    @Column(name="source_state") public String sourceState;
+    @Column(name="updated_from_source_at", nullable=false) public Instant updatedFromSourceAt;
 }

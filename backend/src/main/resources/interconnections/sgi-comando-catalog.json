@@ -515,6 +515,115 @@
     ]
   },
   {
+    "interconnectionRef": "SIC_DHO_SGI_COM_0002",
+    "interconnectionId": "SIC_DHO_SGI_COM_0002_v001",
+    "sourceProgramId": "SIC_DHO",
+    "targetProgramId": "SGI_COM",
+    "purpose": "Synchronize employee unavailability from SIC:DHO.",
+    "interactionType": "WEBHOOK",
+    "mode": "ASYNC",
+    "protocol": "HTTPS",
+    "contractVersion": "v1",
+    "dataOwnerProgramId": "SIC_DHO",
+    "criticality": "HIGH",
+    "legacyTarget": false,
+    "targetImplementationStatus": "READY",
+    "status": "UAT",
+    "interfaces": [
+      {
+        "interfaceId": "SIC_DHO_SGI_COM_0002_IF01",
+        "method": "POST",
+        "path": "/api/v1/inbound/sic-rrhh/unavailability-events",
+        "purpose": "Synchronize an employee permission, vacation or other operational unavailability.",
+        "contentType": "application/json",
+        "request": {
+          "headers": [
+            "Authorization",
+            "X-Correlation-Id",
+            "X-Interconnection-Id",
+            "X-Contract-Version",
+            "Idempotency-Key"
+          ],
+          "fields": [
+            "sourceRecordId",
+            "personaId",
+            "type",
+            "startsAt",
+            "endsAt",
+            "sourceStatus",
+            "sourceReasonId",
+            "sourceReasonLabel",
+            "sourceState",
+            "updatedFromSourceAt"
+          ]
+        },
+        "response": {
+          "fields": [
+            "accepted",
+            "correlationId",
+            "sourceRef",
+            "processingStatus"
+          ]
+        }
+      }
+    ],
+    "legacyConnectionIds": []
+  },
+  {
+    "interconnectionRef": "SIC_DHO_SGI_COM_0003",
+    "interconnectionId": "SIC_DHO_SGI_COM_0003_v001",
+    "sourceProgramId": "SIC_DHO",
+    "targetProgramId": "SGI_COM",
+    "purpose": "Query SGI:Comando shifts for SIC:DHO payroll consolidation.",
+    "interactionType": "REST_API",
+    "mode": "SYNC",
+    "protocol": "HTTPS",
+    "contractVersion": "v1",
+    "dataOwnerProgramId": "SGI_COM",
+    "criticality": "HIGH",
+    "legacyTarget": false,
+    "targetImplementationStatus": "READY",
+    "status": "UAT",
+    "interfaces": [
+      {
+        "interfaceId": "SIC_DHO_SGI_COM_0003_IF01",
+        "method": "POST",
+        "path": "/api/v1/inbound/sic-rrhh/payroll-shifts/query",
+        "purpose": "Query published operational shifts for one employee and payroll period.",
+        "contentType": "application/json",
+        "request": {
+          "headers": [
+            "Authorization",
+            "X-Correlation-Id",
+            "X-Interconnection-Id",
+            "X-Contract-Version"
+          ],
+          "fields": [
+            "personaId",
+            "startsAt",
+            "endsAt"
+          ]
+        },
+        "response": {
+          "fields": [
+            "successful",
+            "correlationId",
+            "items[].assignmentId",
+            "items[].shiftOccurrenceId",
+            "items[].personaId",
+            "items[].clientTaxIdentifier",
+            "items[].clientName",
+            "items[].tier",
+            "items[].rotationCode",
+            "items[].startsAt",
+            "items[].endsAt"
+          ]
+        }
+      }
+    ],
+    "legacyConnectionIds": []
+  },
+  {
     "interconnectionRef": "IDENT_SGI_COM_0001",
     "interconnectionId": "IDENT_SGI_COM_0001_v001",
     "sourceProgramId": "IDENT",
