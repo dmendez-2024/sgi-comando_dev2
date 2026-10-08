@@ -3,6 +3,8 @@ package com.cajamarca.sgi.comando.operation;
 import com.cajamarca.sgi.comando.common.TenantContext;
 import com.cajamarca.sgi.comando.assignments.AssignmentPlanEntity;
 import com.cajamarca.sgi.comando.assignments.EmployeeOperationalSnapshot;
+import com.cajamarca.sgi.comando.assignments.EmployeeUnavailabilitySnapshot;
+import com.cajamarca.sgi.comando.assignments.AssignmentRolePolicy;
 import com.cajamarca.sgi.comando.assignments.OperationalAssignmentEntity;
 import com.cajamarca.sgi.comando.assignments.ShiftOccurrenceEntity;
 import com.cajamarca.sgi.comando.execution.*;
@@ -39,10 +41,14 @@ public class OperationResource {
     public record ExecutionDetail(ExecutionRow row, String observation, Double latitude, Double longitude, String standardNotes, List<EvidenceView> evidences,
                                   List<StandardView> standards, ReviewDetail review) {}
     public record CollaboratorRow(UUID employeeId, String fullName, String roleCode, String postName, Instant lastAt, String source) {}
+    public record ReplacementCandidate(UUID employeeId, String fullName, String roleCode, int group, String lastPoint, String lastPost) {}
+    public record CoverageShift(UUID id, Instant startsAt, Instant endsAt, List<ReplacementCandidate> candidates) {}
+    public record CoverageOptions(CoverageShift currentShift, List<CoverageShift> nextShifts) {}
     private record CollaboratorActivity(UUID employeeId, UUID postId, Instant lastAt, String source) {}
 
     @Inject TenantContext tenant;
     @Inject OperationalScopeService scope;
+    @Inject AssignmentRolePolicy rolePolicy;
     @Inject EntityManager em;
     @Inject StorageService storage;
     @Inject StandardImageStore standardImages;
@@ -112,6 +118,99 @@ public class OperationResource {
             String role = person == null ? "" : person.roleCode;
             return new CollaboratorRow(activity.employeeId, name, role, postNames.getOrDefault(activity.postId, "Puesto"), activity.lastAt, activity.source);
         }).sorted(Comparator.comparing(CollaboratorRow::lastAt).reversed().thenComparing(CollaboratorRow::fullName)).toList();
+    }
+
+    @GET @Path("/points/{pointId}/coverage-options")
+    @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION","SUPERVISOR_SEGURIDAD"})
+    public CoverageOptions coverageOptions(@PathParam("pointId") UUID pointId, @QueryParam("postId") UUID postId) {
+        requirePoint(pointId);
+        if (postId == null) throw new BadRequestException("Seleccione un Puesto para consultar la cobertura");
+        PostEntity post = PostEntity.find("id=?1 and pointId=?2 and instanceCountryId=?3", postId, pointId, tenant.instanceCountryId()).firstResult();
+        if (post == null) throw new NotFoundException("Puesto no encontrado en el Punto");
+        PointEntity point = PointEntity.findById(pointId);
+        Instant now = Instant.now();
+        List<ShiftOccurrenceEntity> targetShifts = ShiftOccurrenceEntity.list(
+                "instanceCountryId=?1 and postId=?2 and endsAt>?3 and startsAt<?4 order by startsAt",
+                tenant.instanceCountryId(), postId, now, now.plus(Duration.ofDays(30)));
+        ShiftOccurrenceEntity current = targetShifts.stream().filter(s -> !s.startsAt.isAfter(now)).findFirst().orElse(null);
+        List<ShiftOccurrenceEntity> next = targetShifts.stream().filter(s -> s.startsAt.isAfter(now)).limit(2).toList();
+        List<ShiftOccurrenceEntity> targets = new ArrayList<>();
+        if (current != null) targets.add(current);
+        targets.addAll(next);
+        if (targets.isEmpty()) return new CoverageOptions(null, List.of());
+
+        Instant windowStart = targets.stream().map(s -> s.startsAt).min(Instant::compareTo).orElse(now).minus(Duration.ofDays(7));
+        Instant windowEnd = targets.stream().map(s -> s.endsAt).max(Instant::compareTo).orElse(now);
+        List<ShiftOccurrenceEntity> windowShifts = ShiftOccurrenceEntity.list(
+                "instanceCountryId=?1 and startsAt<?2 and endsAt>?3",
+                tenant.instanceCountryId(), windowEnd, windowStart);
+        Map<UUID,ShiftOccurrenceEntity> shiftById = new HashMap<>();
+        for (ShiftOccurrenceEntity shift : windowShifts) shiftById.put(shift.id, shift);
+        List<OperationalAssignmentEntity> assignments = windowShifts.isEmpty() ? List.of() : OperationalAssignmentEntity.list(
+                "instanceCountryId=?1 and shiftOccurrenceId in ?2 and status<>'REMOVED'",
+                tenant.instanceCountryId(), shiftById.keySet());
+        Set<UUID> planIds = new HashSet<>();
+        for (OperationalAssignmentEntity a : assignments) planIds.add(a.assignmentPlanId);
+        Set<UUID> published = new HashSet<>();
+        if (!planIds.isEmpty()) for (AssignmentPlanEntity p : AssignmentPlanEntity.<AssignmentPlanEntity>list(
+                "instanceCountryId=?1 and id in ?2", tenant.instanceCountryId(), planIds))
+            if ("PUBLISHED".equals(p.status) || "CLOSED".equals(p.status)) published.add(p.id);
+
+        List<EmployeeOperationalSnapshot> snapshots = EmployeeOperationalSnapshot.list(
+                "instanceCountryId=?1 and companyId=?2 and employmentStatus='ACTIVE' order by updatedFromSourceAt desc",
+                tenant.instanceCountryId(), point.companyId);
+        Map<UUID,EmployeeOperationalSnapshot> employees = new LinkedHashMap<>();
+        for (EmployeeOperationalSnapshot employee : snapshots)
+            if (rolePolicy.isAssignable(employee.roleCode)) employees.putIfAbsent(employee.employeeId, employee);
+        List<EmployeeUnavailabilitySnapshot> unavailable = employees.isEmpty() ? List.of() : EmployeeUnavailabilitySnapshot.list(
+                "instanceCountryId=?1 and employeeId in ?2 and sourceStatus='ACTIVE' and startsAt<?3 and endsAt>?4",
+                tenant.instanceCountryId(), employees.keySet(), windowEnd, windowStart);
+
+        // La prelación se basa en la última asignación publicada, no en personas DEMO.
+        List<OperationalAssignmentEntity> history = OperationalAssignmentEntity.list(
+                "instanceCountryId=?1 and status<>'REMOVED' order by assignedAt desc", tenant.instanceCountryId());
+        Map<UUID,PostEntity> posts = new HashMap<>();
+        Map<UUID,PointEntity> points = new HashMap<>();
+        Map<UUID,PostEntity> lastPost = new HashMap<>();
+        for (OperationalAssignmentEntity a : history) {
+            if (!employees.containsKey(a.effectiveEmployeeId()) || lastPost.containsKey(a.effectiveEmployeeId())) continue;
+            AssignmentPlanEntity plan = AssignmentPlanEntity.findById(a.assignmentPlanId);
+            if (plan == null || !("PUBLISHED".equals(plan.status) || "CLOSED".equals(plan.status))) continue;
+            ShiftOccurrenceEntity shift = ShiftOccurrenceEntity.findById(a.shiftOccurrenceId);
+            if (shift == null) continue;
+            PostEntity assignedPost = posts.computeIfAbsent(shift.postId, id -> PostEntity.findById(id));
+            if (assignedPost != null) lastPost.put(a.effectiveEmployeeId(), assignedPost);
+        }
+        for (PostEntity p : lastPost.values()) points.computeIfAbsent(p.pointId, id -> PointEntity.findById(id));
+
+        Map<UUID,CoverageShift> options = new HashMap<>();
+        for (ShiftOccurrenceEntity target : targets) {
+            ShiftOccurrenceEntity previous = ShiftOccurrenceEntity.<ShiftOccurrenceEntity>list(
+                    "instanceCountryId=?1 and postId=?2 and endsAt<=?3 order by endsAt desc",
+                    tenant.instanceCountryId(), postId, target.startsAt).stream().findFirst().orElse(null);
+            List<ReplacementCandidate> candidates = new ArrayList<>();
+            for (EmployeeOperationalSnapshot employee : employees.values()) {
+                UUID employeeId = employee.employeeId;
+                boolean blocked = unavailable.stream().anyMatch(u -> u.employeeId.equals(employeeId)
+                        && (overlaps(u.startsAt, u.endsAt, target.startsAt, target.endsAt)
+                            || previous != null && overlaps(u.startsAt, u.endsAt, previous.startsAt, previous.endsAt)));
+                if (!blocked) blocked = assignments.stream().filter(a -> published.contains(a.assignmentPlanId)
+                        && employeeId.equals(a.effectiveEmployeeId())).anyMatch(a -> {
+                            ShiftOccurrenceEntity s = shiftById.get(a.shiftOccurrenceId);
+                            return s != null && (overlaps(s.startsAt, s.endsAt, target.startsAt, target.endsAt)
+                                    || previous != null && overlaps(s.startsAt, s.endsAt, previous.startsAt, previous.endsAt));
+                        });
+                if (blocked) continue;
+                PostEntity prior = lastPost.get(employeeId);
+                PointEntity priorPoint = prior == null ? null : points.get(prior.pointId);
+                int group = prior != null && prior.id.equals(postId) ? 1 : prior != null && prior.pointId.equals(pointId) ? 2 : 3;
+                candidates.add(new ReplacementCandidate(employeeId, employee.fullName, employee.roleCode, group,
+                        priorPoint == null ? "" : priorPoint.name, prior == null ? "" : prior.name));
+            }
+            candidates.sort(Comparator.comparingInt(ReplacementCandidate::group).thenComparing(ReplacementCandidate::fullName));
+            options.put(target.id, new CoverageShift(target.id, target.startsAt, target.endsAt, candidates));
+        }
+        return new CoverageOptions(current == null ? null : options.get(current.id), next.stream().map(s -> options.get(s.id)).toList());
     }
 
     @GET @Path("/executions/{id}")
@@ -271,6 +370,10 @@ public class OperationResource {
         PointEntity p = PointEntity.find("id=?1 and instanceCountryId=?2", pointId, tenant.instanceCountryId()).firstResult();
         if (p == null) throw new NotFoundException("Punto no encontrado");
         scope.requireCompany(p.companyId);
+    }
+
+    private static boolean overlaps(Instant start, Instant end, Instant otherStart, Instant otherEnd) {
+        return start.isBefore(otherEnd) && end.isAfter(otherStart);
     }
 
     private static List<String> flags(String csv) { return csv == null || csv.isBlank() ? List.of() : List.of(csv.split(",")); }

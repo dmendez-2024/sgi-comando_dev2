@@ -100,7 +100,7 @@ const priorityLabel=(value:Priority)=>({LOW:'Baja',MEDIUM:'Media',HIGH:'Alta',CR
 const formatDateTime=(value:string)=>new Intl.DateTimeFormat('es-EC',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}).format(new Date(value));
 const dateOnly=(value:string)=>value.slice(0,10);
 const unique=(values:string[])=>Array.from(new Set(values)).sort((a,b)=>a.localeCompare(b,'es'));
-function withinScope(row:ConsoleItem,scope:Scope,allowedCompanyIds?:Set<string>){ if(row.companyId)return allowedCompanyIds?.has(row.companyId)??false; if(scope.companies && !scope.companies.includes(row.companyCode)) return false; if(scope.zone && row.zone!==scope.zone) return false; if(scope.region && row.region!==scope.region) return false; return true; }
+function withinScope(row:ConsoleItem,scope:Scope,allowedCompanyIds?:Set<string>){ if(row.id.startsWith('incident:'))return true; if(row.companyId)return allowedCompanyIds?.has(row.companyId)??false; if(scope.companies && !scope.companies.includes(row.companyCode)) return false; if(scope.zone && row.zone!==scope.zone) return false; if(scope.region && row.region!==scope.region) return false; return true; }
 function validateRange(from:string,to:string){ if(!from||!to) return 'Debe elegir siempre una fecha inicio y una fecha fin.'; if(to<from) return 'La fecha fin no puede ser menor que la fecha inicio.'; const start=new Date(`${from}T00:00:00`); const max=new Date(start); max.setFullYear(max.getFullYear()+1); const end=new Date(`${to}T23:59:59`); return end>max?'El período consultado no puede ser mayor a 1 año.':''; }
 
 const severityToPriority=(value:IncidentSeverity|''):Priority=>value==='CRITICAL'?'CRITICAL':value==='MAJOR'?'HIGH':value==='MODERATE'?'MEDIUM':'LOW';
@@ -120,12 +120,22 @@ export default function ConsolaMonitor(){
   const [detailId,setDetailId]=useState('');
   const [filtersOpen,setFiltersOpen]=useState(false);
   const [incidents,setIncidents]=useState<IncidentRecord[]>([]);
+  const [incidentsError,setIncidentsError]=useState('');
+  const [incidentsRefresh,setIncidentsRefresh]=useState(0);
   const [incidentEditorOpen,setIncidentEditorOpen]=useState(false);
   const [editingIncidentId,setEditingIncidentId]=useState('');
   const [locationOptions,setLocationOptions]=useState<LocationOption[]>([]);
   const [locationsLoading,setLocationsLoading]=useState(true);
   const [locationsError,setLocationsError]=useState('');
   const [locationsRefresh,setLocationsRefresh]=useState(0);
+
+  useEffect(()=>{
+    let current=true;
+    setIncidents([]);
+    void api.incidents().then(records=>{if(current){setIncidents(records as IncidentRecord[]);setIncidentsError('')}})
+      .catch(()=>{if(current)setIncidentsError('No se pudieron cargar los incidentes guardados en SGI: Comando.')});
+    return ()=>{current=false};
+  },[user,incidentsRefresh]);
 
   useEffect(()=>{
     let current=true;
@@ -208,22 +218,29 @@ export default function ConsolaMonitor(){
     setSelectedId(row.id);
     setDetailId(row.id);setEditingIncidentId('');setIncidentEditorOpen(false);
   }
-  function saveIncident(record:IncidentRecord){
-    const normalized=record;
+  async function saveIncident(record:IncidentRecord):Promise<IncidentRecord>{
+    const normalized=await (record.id?api.updateIncident(record.id,record):api.createIncident(record)) as IncidentRecord;
     setIncidents(prev=>prev.some(x=>x.id===normalized.id)?prev.map(x=>x.id===normalized.id?normalized:x):[normalized,...prev]);
+    setIncidentsError('');
     const rowId=`incident:${normalized.id}`;
     setSelectedId(rowId);
+    if(normalized.status==='DRAFT'){
+      setEditingIncidentId(normalized.id);
+      return normalized;
+    }
     setDetailId(rowId);
     setIncidentEditorOpen(false);
     setEditingIncidentId('');
     const today=normalized.updatedAt.slice(0,10);
     const start=new Date(`${today}T00:00:00`); start.setDate(start.getDate()-30);
     setFilters(prev=>({...prev,category:'ALL',query:'',status:'ALL',dateFrom:start.toISOString().slice(0,10),dateTo:today}));
+    return normalized;
   }
   const nextIncidentCode=`INC-${new Date().getFullYear()}-${String(incidents.length+1).padStart(4,'0')}`;
 
   if(incidentEditorOpen) return <div className="csl-page csl-incident-page">
     <div className="ser-breadcrumbs"><button type="button" onClick={()=>{setIncidentEditorOpen(false);setEditingIncidentId('');setDetailId('')}}><ArrowLeft size={15}/>Volver a Consola</button><span>/</span><small>Notificación de Incidente</small></div>
+    {incidentsError&&<div className="csl-incident-error"><AlertTriangle size={16}/>{incidentsError}<button type="button" onClick={()=>setIncidentsRefresh(value=>value+1)}>Reintentar</button></div>}
     <div className="ser-config-hero">
       <div><div className="ser-title-row"><h2>Notificar Incidente</h2><span>Registro operativo</span></div><small>Operaciones · Consola</small></div>
       <span className={`csl-incident-page-status ${editingIncident?.status.toLowerCase()??'new'}`}><i/>{editingIncident?statusLabel(editingIncident.status):'Nuevo'}</span>
@@ -252,6 +269,7 @@ export default function ConsolaMonitor(){
       <div><div className="page-backline">Operaciones / Consola</div><h2>Consola</h2><p>Workspace operativo para Monitores: consignas, novedades, reasignaciones y alarmas electrónicas.</p></div>
       <div className="csl-scope nov-scope"><Monitor size={16}/>{scope.label}</div>
     </div>
+    {incidentsError&&<div className="csl-incident-error"><AlertTriangle size={16}/>{incidentsError}<button type="button" onClick={()=>setIncidentsRefresh(value=>value+1)}>Reintentar</button></div>}
 
     <div className="csl-kpis coord-kpis nov-kpis">
       <Metric icon={<CircleAlert size={20}/>} label="Atención requerida" value={metrics.attention} subtitle="Casos priorizados" tone="red"/>

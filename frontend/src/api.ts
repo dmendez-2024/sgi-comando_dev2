@@ -49,6 +49,10 @@ async function atsUpload(pointId:string,file:File):Promise<any>{
 export const api={
  operationExecutions:(pointId:string)=>request<any[]>(`/api/operation/executions?pointId=${encodeURIComponent(pointId)}`),
  operationCollaborators:(pointId:string)=>request<any[]>(`/api/operation/points/${encodeURIComponent(pointId)}/collaborators`),
+ incidents:()=>request<any[]>('/api/incidents'),
+ createIncident:(record:any)=>request<any>('/api/incidents',{method:'POST',body:JSON.stringify(record)}),
+ updateIncident:(id:string,record:any)=>request<any>(`/api/incidents/${encodeURIComponent(id)}`,{method:'PUT',body:JSON.stringify(record)}),
+ operationCoverageOptions:(pointId:string,postId:string)=>request<any>(`/api/operation/points/${encodeURIComponent(pointId)}/coverage-options?postId=${encodeURIComponent(postId)}`),
  operationExecution:(id:string)=>request<any>(`/api/operation/executions/${encodeURIComponent(id)}`),
  operationEvidenceImage:(id:string)=>binaryRequest(`/api/operation/evidences/${encodeURIComponent(id)}/content`),
  operationStandardImage:(executionId:string,standardId:string)=>binaryRequest(`/api/operation/executions/${encodeURIComponent(executionId)}/standards/${encodeURIComponent(standardId)}`),

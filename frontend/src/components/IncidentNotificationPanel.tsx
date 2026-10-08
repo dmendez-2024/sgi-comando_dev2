@@ -57,14 +57,12 @@ type Props={
   locationsError:string;
   onRetryLocations:()=>void;
   onCancel:()=>void;
-  onSave:(record:IncidentRecord)=>void;
+  onSave:(record:IncidentRecord)=>Promise<IncidentRecord>;
 };
 
-type DemoPerson={
-  id:string;name:string;role:string;companyCode:string;lastPoint:string;lastPost:string;lastWorkedAt:string;
-  phone:string;francosWorked6m:number;
-  lat:number;lng:number;busy:Set<string>;
-};
+type ReplacementCandidate={employeeId:string;fullName:string;roleCode:string;group:number;lastPoint:string;lastPost:string};
+type CoverageShift={id:string;startsAt:string;endsAt:string;candidates:ReplacementCandidate[]};
+type CoverageOptions={currentShift:CoverageShift|null;nextShifts:CoverageShift[]};
 
 type CollaboratorRow={employeeId:string;fullName:string;roleCode:string;postName:string;lastAt:string;source:'EXECUTION'|'PUBLISHED_SHIFT'|'CURRENT_SHIFT'|'UPCOMING_SHIFT'};
 
@@ -82,42 +80,6 @@ const SEVERITIES:{value:IncidentSeverity;label:string;tone:string;icon:ReactNode
   {value:'CRITICAL',label:'Crítico',tone:'critical',icon:<OctagonAlert size={26}/>},
 ];
 
-const POINT_COORDS:Record<string,{lat:number;lng:number}>={
-  'Portería Principal':{lat:-2.1701,lng:-79.9224},
-  'Mall del Sol':{lat:-2.1567,lng:-79.8927},
-  'Bodega 4':{lat:-2.1814,lng:-79.8458},
-  'Local Centro':{lat:-2.1903,lng:-79.8890},
-  'Planta Norte':{lat:-2.1355,lng:-79.8715},
-  'Sucursal Centro':{lat:-2.1918,lng:-79.8875},
-  'Patio 3':{lat:-2.2052,lng:-79.9074},
-  'Acceso Sur':{lat:-2.2339,lng:-79.8974},
-  'Muelle Sur':{lat:-3.2675,lng:-79.9588},
-  'Torre A':{lat:-2.1725,lng:-79.9011},
-};
-
-const PEOPLE:DemoPerson[]=[
-  {id:'e01',name:'Carlos Rojas',role:'Agente',companyCode:'GAL',lastPoint:'Muelle Sur',lastPost:'Cuarto Técnico',lastWorkedAt:'2026-09-26T19:00:00-05:00',phone:'099 410 2381',francosWorked6m:2,lat:-3.2675,lng:-79.9588,busy:new Set(['next2'])},
-  {id:'e02',name:'Pedro Vera',role:'Agente',companyCode:'GAL',lastPoint:'Muelle Sur',lastPost:'Acceso Muelle Sur',lastWorkedAt:'2026-09-25T07:00:00-05:00',phone:'098 527 6140',francosWorked6m:5,lat:-3.2677,lng:-79.9591,busy:new Set(['current'])},
-  {id:'e03',name:'María González',role:'Agente',companyCode:'GAL',lastPoint:'Muelle Sur',lastPost:'Cuarto Técnico',lastWorkedAt:'2026-09-24T19:00:00-05:00',phone:'096 882 3415',francosWorked6m:3,lat:-3.2674,lng:-79.9585,busy:new Set()},
-  {id:'e04',name:'Luis Pérez',role:'Agente',companyCode:'GAL',lastPoint:'Local Centro',lastPost:'Puesto Principal',lastWorkedAt:'2026-09-26T07:00:00-05:00',phone:'099 735 2048',francosWorked6m:6,lat:-2.1903,lng:-79.8890,busy:new Set(['next1'])},
-  {id:'e05',name:'Diego Torres',role:'Agente',companyCode:'GAL',lastPoint:'Sucursal Centro',lastPost:'Puesto 1',lastWorkedAt:'2026-09-25T19:00:00-05:00',phone:'098 311 7642',francosWorked6m:4,lat:-2.1918,lng:-79.8875,busy:new Set()},
-  {id:'e06',name:'José Mendoza',role:'Agente',companyCode:'GAL',lastPoint:'Patio 3',lastPost:'Control Patio 3',lastWorkedAt:'2026-09-23T07:00:00-05:00',phone:'096 447 1820',francosWorked6m:1,lat:-2.2052,lng:-79.9074,busy:new Set(['previous'])},
-  {id:'e07',name:'Andrés Vega',role:'Agente',companyCode:'GAL',lastPoint:'Bodega 4',lastPost:'Bodega 4',lastWorkedAt:'2026-09-22T19:00:00-05:00',phone:'099 256 7301',francosWorked6m:2,lat:-2.1814,lng:-79.8458,busy:new Set(['next2'])},
-  {id:'e08',name:'Natalia León',role:'Supervisora',companyCode:'GAL',lastPoint:'Planta Norte',lastPost:'Control Principal',lastWorkedAt:'2026-09-21T07:00:00-05:00',phone:'098 602 1945',francosWorked6m:0,lat:-2.1355,lng:-79.8715,busy:new Set(['current','next1'])},
-  {id:'e09',name:'Luis García',role:'Agente',companyCode:'GAL',lastPoint:'Portería Principal',lastPost:'Control de Acceso Principal',lastWorkedAt:'2026-09-20T19:00:00-05:00',phone:'096 915 3270',francosWorked6m:7,lat:-2.1701,lng:-79.9224,busy:new Set()},
-  {id:'e10',name:'Ana Torres',role:'Agente',companyCode:'SISA',lastPoint:'Mall del Sol',lastPost:'Patrulla Perimetral',lastWorkedAt:'2026-09-26T07:00:00-05:00',phone:'099 803 4516',francosWorked6m:3,lat:-2.1567,lng:-79.8927,busy:new Set()},
-  {id:'e11',name:'Jorge Ruiz',role:'Agente',companyCode:'SISA',lastPoint:'Acceso Sur',lastPost:'Cerco Perimetral',lastWorkedAt:'2026-09-24T07:00:00-05:00',phone:'098 744 2603',francosWorked6m:2,lat:-2.2339,lng:-79.8974,busy:new Set(['next1'])},
-  {id:'e12',name:'Carla Méndez',role:'Agente',companyCode:'SISA',lastPoint:'Torre A',lastPost:'Sala de Control',lastWorkedAt:'2026-09-25T07:00:00-05:00',phone:'096 530 8174',francosWorked6m:4,lat:-2.1725,lng:-79.9011,busy:new Set()},
-  {id:'e13',name:'Roberto Silva',role:'Agente',companyCode:'GAL',lastPoint:'Muelle Sur',lastPost:'Acceso Muelle Sur',lastWorkedAt:'2026-09-18T07:00:00-05:00',phone:'099 672 1438',francosWorked6m:5,lat:-3.2678,lng:-79.9590,busy:new Set()},
-  {id:'e14',name:'Mónica Paz',role:'Escolta',companyCode:'GAL',lastPoint:'Sucursal Centro',lastPost:'Puesto 1',lastWorkedAt:'2026-09-17T19:00:00-05:00',phone:'098 219 6057',francosWorked6m:1,lat:-2.1918,lng:-79.8875,busy:new Set()},
-];
-
-const SHIFT_OPTIONS=[
-  {id:'NEXT_1',label:'Siguiente turno · 27/09/2026 19:00–28/09/2026 07:00',slot:'next1',previous:'current'},
-  {id:'NEXT_2',label:'Segundo turno · 28/09/2026 07:00–19:00',slot:'next2',previous:'next1'},
-];
-const CURRENT_SHIFT={id:'CURRENT',label:'Turno en curso · 27/09/2026 07:00–19:00',slot:'current',previous:'previous'};
-
 const emptyRecord=(nextCode:string):IncidentRecord=>({
   id:'',code:nextCode,title:'',category:'',subcategory:'',incidentType:'',severity:'',client:'',clientId:'',point:'',pointId:'',post:'',postId:'',company:'',companyId:'',companyCode:'',city:'',
   collaboratorIds:[],collaboratorNames:[],description:'',descriptionImages:[],resolution:'',resolutionImages:[],sanction:false,
@@ -129,20 +91,25 @@ const absenceModeFromIncidentType=(incidentType:string)=>incidentType==='Inasist
 const uniq=<T,>(values:T[])=>Array.from(new Set(values));
 const fmtDate=(value:string)=>new Intl.DateTimeFormat('es-EC',{day:'2-digit',month:'2-digit',year:'numeric'}).format(new Date(value));
 
-function distanceKm(a:{lat:number;lng:number},b:{lat:number;lng:number}){
-  const r=6371; const rad=(x:number)=>x*Math.PI/180; const dLat=rad(b.lat-a.lat); const dLng=rad(b.lng-a.lng);
-  const h=Math.sin(dLat/2)**2+Math.cos(rad(a.lat))*Math.cos(rad(b.lat))*Math.sin(dLng/2)**2;
-  return 2*r*Math.asin(Math.sqrt(h));
-}
+const fmtShift=(shift:CoverageShift,prefix:string)=>{
+  const date=(value:string)=>new Intl.DateTimeFormat('es-EC',{timeZone:'America/Guayaquil',day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',hour12:false}).format(new Date(value));
+  return `${prefix} · ${date(shift.startsAt)}–${date(shift.endsAt)}`;
+};
 
 export default function IncidentNotificationPanel({initial,nextCode,locations,locationsLoading,locationsError,onRetryLocations,onCancel,onSave}:Props){
   const [form,setForm]=useState<IncidentRecord>(initial?{...emptyRecord(nextCode),...structuredClone(initial)}:emptyRecord(nextCode));
   const [error,setError]=useState('');
   const [fileError,setFileError]=useState('');
+  const [saving,setSaving]=useState(false);
   const [collaborators,setCollaborators]=useState<CollaboratorRow[]>([]);
   const [collaboratorsLoading,setCollaboratorsLoading]=useState(false);
   const [collaboratorsError,setCollaboratorsError]=useState('');
   const [collaboratorsRefresh,setCollaboratorsRefresh]=useState(0);
+  const [coverage,setCoverage]=useState<CoverageOptions|null>(null);
+  const [coverageLoading,setCoverageLoading]=useState(false);
+  const [coverageError,setCoverageError]=useState('');
+  const [coverageRefresh,setCoverageRefresh]=useState(0);
+
 
   useEffect(()=>{
     if(!form.pointId){setCollaborators([]);setCollaboratorsError('');setCollaboratorsLoading(false);return;}
@@ -156,6 +123,16 @@ export default function IncidentNotificationPanel({initial,nextCode,locations,lo
     return ()=>{current=false};
   },[form.pointId,collaboratorsRefresh]);
 
+  useEffect(()=>{
+    if(!form.pointId||!form.postId){setCoverage(null);setCoverageError('');setCoverageLoading(false);return;}
+    let current=true;
+    setCoverage(null);setCoverageLoading(true);setCoverageError('');
+    void api.operationCoverageOptions(form.pointId,form.postId).then(value=>{if(current)setCoverage(value as CoverageOptions)})
+      .catch(()=>{if(current)setCoverageError('No se pudieron consultar los turnos y agentes de este Puesto.')})
+      .finally(()=>{if(current)setCoverageLoading(false)});
+    return ()=>{current=false};
+  },[form.pointId,form.postId,coverageRefresh]);
+
   const clients=useMemo(()=>Array.from(new Map(locations.map(x=>[x.clientId,{id:x.clientId,name:x.client}])).values()),[locations]);
   const points=useMemo(()=>Array.from(new Map(locations.filter(x=>x.clientId===form.clientId).map(x=>[x.pointId,{id:x.pointId,name:x.point}])).values()),[locations,form.clientId]);
   const posts=useMemo(()=>locations.filter(x=>x.pointId===form.pointId).map(x=>({id:x.postId,name:x.post})),[locations,form.pointId]);
@@ -164,32 +141,17 @@ export default function IncidentNotificationPanel({initial,nextCode,locations,lo
   const absenceMode=absenceModeFromIncidentType(form.incidentType);
 
   const selectedLocation=useMemo(()=>locations.find(x=>x.clientId===form.clientId&&x.pointId===form.pointId&&(form.postId?x.postId===form.postId:true)),[locations,form.clientId,form.pointId,form.postId]);
-  const targetShift=absenceMode==='EFFECTIVE'?CURRENT_SHIFT:SHIFT_OPTIONS.find(x=>x.id===form.targetShiftId);
-
-  const replacementCandidates=useMemo(()=>{
-    if(!absenceMode||!form.point||!selectedLocation||!targetShift)return [];
-    const target=POINT_COORDS[form.point]??{lat:0,lng:0};
-    return PEOPLE.filter(p=>p.companyCode===selectedLocation.companyCode)
-      .filter(p=>!form.collaboratorIds.includes(p.id))
-      .filter(p=>!p.busy.has(targetShift.slot)&&!p.busy.has(targetShift.previous))
-      .map(p=>{
-        const samePost=!!form.post&&p.lastPoint===form.point&&p.lastPost===form.post;
-        const samePoint=p.lastPoint===form.point;
-        const group=samePost?1:samePoint?2:3;
-        const km=group===3?distanceKm(target,{lat:p.lat,lng:p.lng}):0;
-        return {person:p,group,km};
-      })
-      .sort((a,b)=>a.group-b.group||(a.group===3?a.km-b.km:a.person.name.localeCompare(b.person.name,'es')));
-  },[absenceMode,form.point,form.post,form.collaboratorIds,selectedLocation,targetShift]);
+  const targetShift=absenceMode==='EFFECTIVE'?coverage?.currentShift:coverage?.nextShifts.find(x=>x.id===form.targetShiftId);
+  const replacementCandidates=(targetShift?.candidates??[]).filter(person=>!form.collaboratorIds.includes(person.employeeId));
 
   function patch<K extends keyof IncidentRecord>(key:K,value:IncidentRecord[K]){setForm(prev=>({...prev,[key]:value}));}
   function chooseCategory(value:IncidentCategory){setForm(prev=>({...prev,category:value,subcategory:'',incidentType:'',absenceMode:'',targetShiftId:'',targetShiftLabel:'',replacementEmployeeId:'',replacementEmployeeName:''}));}
-  function chooseClient(value:string){const loc=locations.find(x=>x.clientId===value);setForm(prev=>({...prev,clientId:value,client:loc?.client??'',pointId:'',point:'',postId:'',post:'',collaboratorIds:[],collaboratorNames:[],companyId:'',company:'',companyCode:'',city:'',replacementEmployeeId:'',replacementEmployeeName:''}));}
+  function chooseClient(value:string){const loc=locations.find(x=>x.clientId===value);setForm(prev=>({...prev,clientId:value,client:loc?.client??'',pointId:'',point:'',postId:'',post:'',collaboratorIds:[],collaboratorNames:[],companyId:'',company:'',companyCode:'',city:'',replacementEmployeeId:'',replacementEmployeeName:'',targetShiftId:'',targetShiftLabel:''}));}
   function choosePoint(value:string){
     const loc=locations.find(x=>x.clientId===form.clientId&&x.pointId===value);
-    setForm(prev=>({...prev,pointId:value,point:loc?.point??'',postId:'',post:'',collaboratorIds:[],collaboratorNames:[],companyId:loc?.companyId??'',company:loc?.company??'',companyCode:loc?.companyCode??'',city:loc?.city??'',replacementEmployeeId:'',replacementEmployeeName:''}));
+    setForm(prev=>({...prev,pointId:value,point:loc?.point??'',postId:'',post:'',collaboratorIds:[],collaboratorNames:[],companyId:loc?.companyId??'',company:loc?.company??'',companyCode:loc?.companyCode??'',city:loc?.city??'',targetShiftId:'',targetShiftLabel:'',replacementEmployeeId:'',replacementEmployeeName:''}));
   }
-  function choosePost(value:string){const loc=locations.find(x=>x.pointId===form.pointId&&x.postId===value);setForm(prev=>({...prev,postId:value,post:loc?.post??''}));}
+  function choosePost(value:string){const loc=locations.find(x=>x.pointId===form.pointId&&x.postId===value);setForm(prev=>({...prev,postId:value,post:loc?.post??'',targetShiftId:'',targetShiftLabel:'',replacementEmployeeId:'',replacementEmployeeName:''}));}
   function toggleCollaborator(person:CollaboratorRow){
     setForm(prev=>{
       const selected=prev.collaboratorIds.includes(person.employeeId);
@@ -201,13 +163,13 @@ export default function IncidentNotificationPanel({initial,nextCode,locations,lo
   }
   function chooseIncidentType(value:string){
     const mode=absenceModeFromIncidentType(value);
-    setForm(prev=>({...prev,incidentType:value,absenceMode:mode,targetShiftId:mode==='EFFECTIVE'?CURRENT_SHIFT.id:'',targetShiftLabel:mode==='EFFECTIVE'?CURRENT_SHIFT.label:'',replacementEmployeeId:'',replacementEmployeeName:''}));
+    setForm(prev=>({...prev,incidentType:value,absenceMode:mode,targetShiftId:'',targetShiftLabel:'',replacementEmployeeId:'',replacementEmployeeName:''}));
   }
   function chooseShift(value:string){
-    const shift=SHIFT_OPTIONS.find(x=>x.id===value);
-    setForm(prev=>({...prev,targetShiftId:value,targetShiftLabel:shift?.label??'',replacementEmployeeId:'',replacementEmployeeName:''}));
+    const shift=coverage?.nextShifts.find(x=>x.id===value);
+    setForm(prev=>({...prev,targetShiftId:value,targetShiftLabel:shift?fmtShift(shift,'Turno a cubrir'):'',replacementEmployeeId:'',replacementEmployeeName:''}));
   }
-  function chooseReplacement(person:DemoPerson){setForm(prev=>({...prev,replacementEmployeeId:person.id,replacementEmployeeName:person.name}));}
+  function chooseReplacement(person:ReplacementCandidate){setForm(prev=>({...prev,replacementEmployeeId:person.employeeId,replacementEmployeeName:person.fullName}));}
   function addImages(key:'descriptionImages'|'resolutionImages',event:ChangeEvent<HTMLInputElement>){
     const files=Array.from(event.target.files??[]); event.target.value=''; setFileError('');
     const invalid=files.find(file=>!file.type.startsWith('image/')); if(invalid){setFileError('Solo se pueden adjuntar imágenes.');return;}
@@ -227,18 +189,26 @@ export default function IncidentNotificationPanel({initial,nextCode,locations,lo
     if(!form.client||!form.point)return 'Cliente y Punto son obligatorios.';
     if(!form.collaboratorIds.length)return 'Seleccione uno o más colaboradores involucrados.';
     if(!form.description.trim())return 'Ingrese la descripción del incidente.';
-    if(absenceMode==='PROGRAMMED'&&!form.targetShiftId)return 'Seleccione uno de los próximos dos turnos.';
+    if(absenceMode==='PROGRAMMED'&&!targetShift)return 'Seleccione uno de los próximos dos turnos.';
+    if(absenceMode==='EFFECTIVE'&&!targetShift)return 'No hay un turno en curso para el Puesto seleccionado.';
+    if(absenceMode&&form.replacementEmployeeId&&!replacementCandidates.some(person=>person.employeeId===form.replacementEmployeeId))return 'Seleccione un agente que siga disponible para este turno.';
     if(absenceMode&&!form.replacementEmployeeId)return 'Seleccione un Agente disponible para la reasignación.';
     if(!form.resolution.trim())return 'Ingrese la resolución antes de finalizar.';
     if(form.sanction&&!form.sanctionDescription.trim())return 'Describa la sanción cuando marca que sí genera sanción.';
     return '';
   }
-  function submit(status:IncidentLifecycle){
+  async function submit(status:IncidentLifecycle){
+    if(saving)return;
     setError('');
     if(status==='FINALIZED'){const validation=validateFinal();if(validation){setError(validation);return;}}
     const now=new Date().toISOString();
     const location=selectedLocation;
-    onSave({...form,id:form.id||crypto.randomUUID(),code:form.code||nextCode,status,absenceMode,companyId:location?.companyId??form.companyId,company:location?.company??form.company,companyCode:location?.companyCode??form.companyCode,city:location?.city??form.city,createdAt:form.createdAt||now,updatedAt:now});
+    setSaving(true);
+    try{
+      const saved=await onSave({...form,code:form.code||nextCode,status,absenceMode,targetShiftId:targetShift?.id??form.targetShiftId,targetShiftLabel:targetShift?fmtShift(targetShift,'Turno a cubrir'):form.targetShiftLabel,companyId:location?.companyId??form.companyId,company:location?.company??form.company,companyCode:location?.companyCode??form.companyCode,city:location?.city??form.city,createdAt:form.createdAt||now,updatedAt:now});
+      setForm(saved);
+    }catch(error){setError(error instanceof Error?`No se pudo guardar el incidente: ${error.message}`:'No se pudo guardar el incidente.');}
+    finally{setSaving(false);}
   }
 
   return <aside className="csl-detail-card csl-incident-panel" aria-label="Notificación de Incidente">
@@ -256,25 +226,50 @@ export default function IncidentNotificationPanel({initial,nextCode,locations,lo
 
       <section className="csl-incident-section"><SectionTitle step="3" title="Incidente"/><Field label=""><select value={form.incidentType} disabled={!form.subcategory} onChange={e=>chooseIncidentType(e.target.value)}><option value="">{form.subcategory?'Seleccione el incidente':'Seleccione primero una subcategoría'}</option>{incidentTypes.map(x=><option key={x} value={x}>{x}</option>)}</select></Field>{form.category==='SERVICE'&&form.subcategory==='Asistencia y Puntualidad'&&<p className="csl-incident-hint">Según el Excel vigente, Inasistencia programada e Inasistencia efectiva son tipos de incidente dentro de Asistencia y Puntualidad; ambos activan el flujo especial de cobertura/reasignación.</p>}</section>
 
-      <section className="csl-incident-section"><SectionTitle step="4" title="Criticidad"/><div className="csl-severity-grid">{SEVERITIES.map(item=><button key={item.value} type="button" className={`${item.tone} ${form.severity===item.value?'selected':''}`} aria-pressed={form.severity===item.value} onClick={()=>patch('severity',item.value)}><span className="csl-severity-icon" aria-hidden="true">{item.icon}</span><strong>{item.label}</strong></button>)}</div></section>
+      <section className="csl-incident-section"><SectionTitle step="4" title="Criticidad"/><div className="csl-severity-grid">{SEVERITIES.map(item=><button key={item.value} type="button" className={`${item.tone} ${form.severity===item.value?'selected':''}`} aria-pressed={form.severity===item.value} onClick={()=>patch('severity',item.value)}><span className="csl-severity-icon" aria-hidden="true">{item.icon}</span><strong>{item.label}</strong><i className="csl-severity-dot" aria-hidden="true"/></button>)}</div></section>
 
-      <section className="csl-incident-section"><SectionTitle step="5" title="Ubicación"/>{locationsError&&<div className="csl-incident-error"><AlertTriangle size={16}/>{locationsError}<button type="button" onClick={onRetryLocations}>Reintentar</button></div>}<div className="csl-incident-grid two"><Field label="Cliente *"><select value={form.clientId??''} disabled={locationsLoading||!!locationsError} onChange={e=>chooseClient(e.target.value)}><option value="">{locationsLoading?'Cargando clientes…':locationsError?'Clientes no disponibles':clients.length?'Seleccione cliente':'No hay clientes en su alcance'}</option>{clients.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></Field><Field label="Punto *"><select value={form.pointId??''} disabled={!form.clientId||locationsLoading||!!locationsError} onChange={e=>choosePoint(e.target.value)}><option value="">{form.clientId?'Seleccione punto':'Seleccione cliente primero'}</option>{points.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></Field></div><Field label="Puesto (opcional)"><select value={form.postId??''} disabled={!form.pointId||locationsLoading||!!locationsError} onChange={e=>choosePost(e.target.value)}><option value="">Todos / No aplica</option>{posts.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></Field></section>
+      <section className="csl-incident-section"><SectionTitle step="5" title="Ubicación"/>{locationsError&&<div className="csl-incident-error"><AlertTriangle size={16}/>{locationsError}<button type="button" onClick={onRetryLocations}>Reintentar</button></div>}<div className="csl-incident-grid two"><Field label="Cliente *"><select value={form.clientId??''} disabled={locationsLoading||!!locationsError} onChange={e=>chooseClient(e.target.value)}><option value="">{locationsLoading?'Cargando clientes…':locationsError?'Clientes no disponibles':clients.length?'Seleccione cliente':'No hay clientes en su alcance'}</option>{clients.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></Field><Field label="Punto *"><select value={form.pointId??''} disabled={!form.clientId||locationsLoading||!!locationsError} onChange={e=>choosePoint(e.target.value)}><option value="">{form.clientId?'Seleccione punto':'Seleccione cliente primero'}</option>{points.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></Field></div><Field label={absenceMode?'Puesto *':'Puesto (opcional)'}><select value={form.postId??''} disabled={!form.pointId||locationsLoading||!!locationsError} onChange={e=>choosePost(e.target.value)}><option value="">Todos / No aplica</option>{posts.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></Field></section>
 
       <section className="csl-incident-section"><SectionTitle step="6" title="Colaboradores involucrados"/><p className="csl-incident-hint">Personas con actividad confirmada en los últimos 14 días o con turnos publicados en este Punto hasta los próximos 14 días. Cada persona aparece una sola vez.</p><div className="csl-collaborator-list">{form.pointId&&collaborators.map(person=><label key={person.employeeId} className={form.collaboratorIds.includes(person.employeeId)?'selected':''}><input type="checkbox" checked={form.collaboratorIds.includes(person.employeeId)} onChange={()=>toggleCollaborator(person)}/><span><strong>{person.fullName}</strong><small>{person.roleCode||'Personal'} · {person.source==='EXECUTION'?'Actividad confirmada':person.source==='CURRENT_SHIFT'?'Turno en curso':person.source==='UPCOMING_SHIFT'?'Turno próximo':'Turno publicado'}: {fmtDate(person.lastAt)} · {person.postName}</small></span></label>)}{form.pointId&&collaboratorsLoading&&<div className="csl-inline-empty"><Users size={17}/>Cargando colaboradores del Punto…</div>}{form.pointId&&collaboratorsError&&<div className="csl-inline-empty"><AlertTriangle size={17}/>{collaboratorsError}<button type="button" onClick={()=>setCollaboratorsRefresh(value=>value+1)}>Reintentar</button></div>}{form.pointId&&!collaboratorsLoading&&!collaboratorsError&&!collaborators.length&&<div className="csl-inline-empty"><Users size={17}/>No hay actividad confirmada ni turnos publicados para este Punto en el período consultado.</div>}{!form.pointId&&<div className="csl-inline-empty"><MapPin size={17}/>Seleccione Cliente y Punto para obtener la lista.</div>}</div></section>
 
-      <section className="csl-incident-section"><SectionTitle step="7" title="Descripción"/><Field label="Descripción *"><textarea value={form.description} onChange={e=>patch('description',e.target.value)} placeholder="Describa lo ocurrido con el mayor detalle posible…"/></Field><ImagePicker label="Evidencia de descripción" items={form.descriptionImages} onAdd={e=>addImages('descriptionImages',e)} onRemove={id=>removeImage('descriptionImages',id)}/></section>
+      <section className="csl-incident-section csl-description-section"><SectionTitle step="7" title="Descripción *"/><Field label=""><textarea aria-label="Descripción requerida" value={form.description} onChange={e=>patch('description',e.target.value)} placeholder="Describa lo ocurrido con el mayor detalle posible…"/></Field><ImagePicker label="Evidencia de descripción" items={form.descriptionImages} onAdd={e=>addImages('descriptionImages',e)} onRemove={id=>removeImage('descriptionImages',id)}/></section>
 
-      {absenceMode&&<section className="csl-incident-section csl-reassignment-section"><SectionTitle step="8" title="Cobertura / Reasignación"/><div className="csl-special-flow"><CalendarClock size={18}/><div><strong>{absenceMode==='PROGRAMMED'?'Inasistencia Programada':'Inasistencia Efectiva'}</strong><span>{absenceMode==='PROGRAMMED'?'Debe seleccionarse uno de los siguientes dos turnos.':'Se utiliza automáticamente el turno actualmente en curso.'}</span></div></div>{absenceMode==='PROGRAMMED'?<Field label="Turno a cubrir *"><select value={form.targetShiftId} onChange={e=>chooseShift(e.target.value)}><option value="">Seleccione turno</option>{SHIFT_OPTIONS.map(x=><option key={x.id} value={x.id}>{x.label}</option>)}</select></Field>:<div className="csl-current-shift"><Clock3 size={16}/>{CURRENT_SHIFT.label}</div>}<div className="csl-reassignment-title"><UserCheck size={17}/><div><strong>Agentes Disponibles para Reasignación</strong><small>Prelación: mismo Puesto → mismo Punto → misma Compañía por cercanía geográfica.</small></div></div><div className="csl-candidate-list">{targetShift&&replacementCandidates.map(({person,group,km})=><button type="button" key={person.id} className={form.replacementEmployeeId===person.id?'selected':''} onClick={()=>chooseReplacement(person)}><span className={`rank rank-${group}`}>{group}</span><div><strong>{person.name}</strong><small className="candidate-contact">Tel. {person.phone} · <b>Francos Trabajados: {person.francosWorked6m}</b> (últ. 6 meses)</small><small>{group===1?`Libre · mismo Puesto (${person.lastPost})`:group===2?`Libre · mismo Punto (${person.lastPost})`:`Libre · misma Compañía · ${km.toFixed(1)} km desde último Punto`}</small></div><i/></button>)}{!targetShift&&<div className="csl-inline-empty"><CalendarClock size={17}/>Seleccione el turno para calcular disponibilidad.</div>}{targetShift&&!replacementCandidates.length&&<div className="csl-inline-empty"><Users size={17}/>No hay Agentes disponibles con la regla de turno + turno previo.</div>}</div><p className="csl-incident-hint">Programada: libre en el turno a cubrir y en el turno previo. Efectiva: libre ahora y en el turno previo.</p></section>}
+      {absenceMode&&<section className="csl-incident-section csl-reassignment-section">
+        <SectionTitle step="8" title="Cobertura / Reasignación"/>
+        <div className="csl-special-flow"><CalendarClock size={18}/><div>
+          <strong>{absenceMode==='PROGRAMMED'?'Inasistencia Programada':'Inasistencia Efectiva'}</strong>
+          <span>{absenceMode==='PROGRAMMED'?'Seleccione uno de los dos próximos turnos registrados para este Puesto.':'Se utiliza el turno actualmente en curso para este Puesto.'}</span>
+        </div></div>
+        {!form.postId&&<div className="csl-inline-empty"><MapPin size={17}/>Seleccione un Puesto en Ubicación para consultar turnos y agentes.</div>}
+        {form.postId&&coverageLoading&&<div className="csl-inline-empty"><CalendarClock size={17}/>Cargando turnos y disponibilidad...</div>}
+        {form.postId&&coverageError&&<div className="csl-inline-empty"><AlertTriangle size={17}/>{coverageError}<button type="button" onClick={()=>setCoverageRefresh(x=>x+1)}>Reintentar</button></div>}
+        {form.postId&&!coverageLoading&&!coverageError&&absenceMode==='PROGRAMMED'&&<Field label="Turno a cubrir *"><select value={form.targetShiftId} onChange={e=>chooseShift(e.target.value)}>
+          <option value="">{coverage?.nextShifts.length?'Seleccione turno':'No hay próximos turnos registrados'}</option>
+          {coverage?.nextShifts.map((shift,index)=><option key={shift.id} value={shift.id}>{fmtShift(shift,index===0?'Siguiente turno':'Segundo turno')}</option>)}
+        </select></Field>}
+        {form.postId&&!coverageLoading&&!coverageError&&absenceMode==='EFFECTIVE'&&<div className="csl-current-shift"><Clock3 size={16}/>{coverage?.currentShift?fmtShift(coverage.currentShift,'Turno en curso'):'No hay un turno en curso registrado para este Puesto.'}</div>}
+        <div className="csl-reassignment-title"><UserCheck size={17}/><div><strong>Agentes Disponibles para Reasignación</strong><small>Prelación: mismo Puesto → mismo Punto → misma Compañía.</small></div></div>
+        <div className="csl-candidate-list">
+          {targetShift&&replacementCandidates.map(person=><button type="button" key={person.employeeId} className={form.replacementEmployeeId===person.employeeId?'selected':''} onClick={()=>chooseReplacement(person)}>
+            <span className={`rank rank-${person.group}`}>{person.group}</span><div><strong>{person.fullName}</strong>
+            <small>{person.roleCode}</small>
+            <small>{person.group===1?`Libre · mismo Puesto (${person.lastPost})`:person.group===2?`Libre · mismo Punto (${person.lastPost})`:person.lastPoint?`Libre · misma Compañía · último Punto: ${person.lastPoint}`:'Libre · misma Compañía'}</small></div><i/>
+          </button>)}
+          {form.postId&&!coverageLoading&&!coverageError&&!targetShift&&<div className="csl-inline-empty"><CalendarClock size={17}/>{absenceMode==='PROGRAMMED'?'Seleccione un turno para consultar disponibilidad.':'No hay turno en curso para este Puesto.'}</div>}
+          {targetShift&&!replacementCandidates.length&&<div className="csl-inline-empty"><Users size={17}/>No hay agentes libres según las asignaciones publicadas y las indisponibilidades registradas.</div>}
+        </div>
+        <p className="csl-incident-hint">Disponibilidad calculada para el turno a cubrir y el turno previo, con asignaciones publicadas e indisponibilidades registradas.</p>
+      </section>}
 
-      <section className="csl-incident-section"><SectionTitle step={absenceMode?'9':'8'} title="Resolución"/><Field label="Resolución"><textarea value={form.resolution} onChange={e=>patch('resolution',e.target.value)} placeholder="Detalle cómo se resolvió o gestionó el incidente…"/></Field><ImagePicker label="Evidencia de resolución" items={form.resolutionImages} onAdd={e=>addImages('resolutionImages',e)} onRemove={id=>removeImage('resolutionImages',id)}/></section>
+      <section className="csl-incident-section csl-resolution-section"><SectionTitle step={absenceMode?'9':'8'} title="Resolución *"/><Field label=""><textarea aria-label="Resolución requerida" value={form.resolution} onChange={e=>patch('resolution',e.target.value)} placeholder="Detalle cómo se resolvió o gestionó el incidente…"/></Field><ImagePicker label="Evidencia de resolución" items={form.resolutionImages} onAdd={e=>addImages('resolutionImages',e)} onRemove={id=>removeImage('resolutionImages',id)}/></section>
 
-      <section className="csl-incident-section"><SectionTitle step={absenceMode?'10':'9'} title="Sanción"/><div className="csl-sanction-choice"><span>¿Genera sanción?</span><label><input type="radio" name="sanction" checked={!form.sanction} onChange={()=>patch('sanction',false)}/>No</label><label><input type="radio" name="sanction" checked={form.sanction} onChange={()=>patch('sanction',true)}/>Sí</label></div>{form.sanction&&<Field label="Descripción de la sanción *"><textarea value={form.sanctionDescription} onChange={e=>patch('sanctionDescription',e.target.value)} placeholder="Describa la sanción propuesta…"/></Field>}</section>
+      <section className="csl-incident-section csl-sanction-section"><SectionTitle step={absenceMode?'10':'9'} title="Sanción"/><div className="csl-sanction-choice"><span>¿Genera sanción?</span><label><input type="radio" name="sanction" checked={!form.sanction} onChange={()=>patch('sanction',false)}/>No</label><label><input type="radio" name="sanction" checked={form.sanction} onChange={()=>patch('sanction',true)}/>Sí</label></div>{form.sanction&&<Field label="Descripción de la sanción *"><textarea value={form.sanctionDescription} onChange={e=>patch('sanctionDescription',e.target.value)} placeholder="Describa la sanción propuesta…"/></Field>}</section>
 
       {fileError&&<div className="csl-incident-warning"><AlertTriangle size={16}/>{fileError}</div>}
       {error&&<div className="csl-incident-error"><AlertTriangle size={16}/>{error}</div>}
     </div>
 
-    <div className="csl-incident-footer"><button type="button" className="draft" onClick={()=>submit('DRAFT')}><Save size={16}/>Guardar borrador</button><button type="button" className="finalize" onClick={()=>submit('FINALIZED')}><Send size={16}/>{initial?.status==='FINALIZED'?'Guardar finalizado':'Finalizar'}</button></div>
+    <div className="csl-incident-footer"><button type="button" className="draft" disabled={saving} onClick={()=>void submit('DRAFT')}><Save size={16}/>{saving?'Guardando…':'Guardar borrador'}</button><button type="button" className="finalize" disabled={saving} onClick={()=>void submit('FINALIZED')}><Send size={16}/>{initial?.status==='FINALIZED'?'Guardar finalizado':'Finalizar'}</button></div>
   </aside>
 }
 
