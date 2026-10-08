@@ -7,7 +7,7 @@ Consume the effective versioned Impulse rules applicable to the SGI: Comando Ins
 
 - SoR de los datos principales: `CORE`
 - contractVersion: `v1`
-- estado: `DESIGN`
+- estado: `DESIGN` — **no implementada (2026-10-08):** las reglas viven por ahora en la tabla `impulse_rule` de SGI: Comando (ver OPR-IMPULSES-001). En CORE de desarrollo el ID `SGI_COM_CORE_0001_v001` hoy resuelve al catálogo de subdivisiones; CORE debe asignar otro ID antes de implementarla.
 
 - `SGI_COM_CORE_0001_IF01` — `GET` `/v1/impulses/rules/effective` — Return the effective versioned Impulse rules for one Instancia PE/context.
 
@@ -409,3 +409,26 @@ Cada foto guarda la distancia y el radio con que se evaluó (`evidence_object.re
 Servicios → Punto → Operación:
 - **Lista:** columna VISINT (Cumple, No cumple, En revisión, Error) y columna Alertas ("Fuera del radio GPS").
 - **Detalle:** "Coincidencia 0.96 de umbral 0.80" y "A 1.0 km del punto · radio 50 m".
+
+# OPR-IMPULSES-001 - Impulsos adjudicados por SGI Comando (2026-10-08)
+
+Cambio aditivo: **no hay interconexión nueva en CORE**. La app recibe el saldo dentro de `GET /api/v1/operator/runtime` (`SGI_OPR_SGI_COM_0003_v002`, ya registrada); los demás endpoints son internos de SGI Comando.
+
+## Para SGI: Operador
+
+`GET /api/v1/operator/runtime?assignmentId={assignmentId}`
+
+- Añade el bloque `impulses` con el saldo del empleado autenticado: `employeeId`, `totalImpulses`, `index` (0–10), `impulsesPerTenth` (100), `maxLevel` (5.0), `skills[]` y `recent[]` (últimas 20 evaluaciones).
+- `skills[]`: `code` (`ASISTENCIA`, `CONTROL_ACCESO`, `PATRULLAS`, `CRITERIO`, `TACTICA`, `PORTE`, `LIDERAZGO`, `ATENCION_CLIENTE`), `name`, `impulses`, `levelTenth`, `level`, `progressToNext` (con un decimal), `awards`, `lastAwardAt`, `ruleActive`.
+- `recent[]`: `evaluationId`, `skillCode`, `skillName`, `ruleCode`, `description`, `sourceType`, `sourceId`, `decision` (`AWARDED`, `NO_AWARD`, `NOT_ELIGIBLE`), `reason`, `amount`, `visintStatus`, `occurredAt`, `evaluatedAt`.
+- La app no calcula ni suma: muestra este bloque.
+
+`GET /api/v1/operator/impulses` — el mismo bloque por separado. **No lo usa la app**; si en el futuro la llamara directamente, habría que registrarlo en CORE.
+
+## Internos de SGI Comando (no van en CORE)
+
+Roles de Comando (Presidencia, Direcciones, Jefatura Regional, Coordinación, Asistente, Supervisor); un Agente recibe `403`.
+
+- `GET /api/impulses/rules` — reglas por versión: código, habilidad, acción, origen, si requiere VISINT, probabilidad, rango (mínimo–máximo), promedio de referencia, estado.
+- `GET /api/impulses/evaluations?employeeId={id}&limit={n}` — evaluaciones del motor (máx. 500).
+- `GET /api/impulses/employees/{employeeId}` — saldo de un Operador (mismo formato que el bloque `impulses`).

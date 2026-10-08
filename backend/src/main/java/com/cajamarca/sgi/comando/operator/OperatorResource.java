@@ -41,6 +41,7 @@ public class OperatorResource {
     @Inject TaskEvidenceService taskEvidences;
     @Inject OperatorTasks tasks;
     @Inject ReliefStationReviews stationReviews;
+    @Inject com.cajamarca.sgi.comando.impulses.ImpulseLedger impulses;
 
     @org.jboss.resteasy.reactive.server.ServerExceptionMapper
     public Response mapError(WebApplicationException e) { return OperatorErrors.withMessage(e); }
@@ -708,6 +709,8 @@ public class OperatorResource {
             response.set("patrols",patrols.runtime(selected.post.id));
             response.set("consignmentTasks",tasks.consignmentTasks(selected.post));
             response.set("logbookTasks",tasks.logbookTasks(selected.post));
+            // Saldo de Impulsos adjudicado por SGI: Comando (Mi Perfil); la app lo muestra sin recalcular.
+            response.set("impulses",impulses.summary(tenant.instanceCountryId(),employee));
             return response;
         }
         ArrayNode choices=response.putArray("assignments");
