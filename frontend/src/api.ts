@@ -47,6 +47,7 @@ async function atsUpload(pointId:string,file:File):Promise<any>{
  if(!res.ok){const body=await res.text();throw new ApiError(res.status,body)} return res.json();
 }
 export const api={
+ operationalReports:(type?:'INCIDENT'|'FINDING'|'VULNERABILITY')=>request<any[]>(`/api/operational-reports${type?`?type=${type}`:''}`),
  operationExecutions:(pointId:string)=>request<any[]>(`/api/operation/executions?pointId=${encodeURIComponent(pointId)}`),
  operationExecution:(id:string)=>request<any>(`/api/operation/executions/${encodeURIComponent(id)}`),
  operationEvidenceImage:(id:string)=>binaryRequest(`/api/operation/evidences/${encodeURIComponent(id)}/content`),

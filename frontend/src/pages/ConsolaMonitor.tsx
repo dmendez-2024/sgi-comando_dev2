@@ -1,10 +1,10 @@
-import {useMemo, useState, type ReactNode} from 'react';
+import {useEffect, useMemo, useState, type ReactNode} from 'react';
 import {
   AlertTriangle, BellRing, Building2, CalendarDays, ClipboardList, Clock3,
   Download, FileWarning, FilterX, MapPin, Monitor,
   RefreshCw, Save, Search, ShieldAlert, ShieldCheck, UserRound, Zap, CircleAlert, ChevronRight, Filter, ChevronDown, Plus, X
 } from 'lucide-react';
-import {getUser, type UatUser} from '../api';
+import {api, getUser, type UatUser} from '../api';
 import IncidentNotificationPanel, {type IncidentRecord, type LocationOption, type IncidentSeverity} from '../components/IncidentNotificationPanel';
 import {OperationalDrawer} from '../components/OperationalDrawer';
 
@@ -38,6 +38,7 @@ type ConsoleItem={
 };
 
 type Scope={label:string;companies:string[]|null;region?:string;zone?:string};
+type OperatorReport={reportId:string;type:'INCIDENT'|'FINDING'|'VULNERABILITY';category:string;subcategory?:string;title:string;description:string;severity:Priority;status:string;occurredAt:string;createdAt:string;username:string;pointName:string;postName:string};
 type Filters={
   category:'ALL'|ItemCategory;
   query:string;
@@ -108,6 +109,14 @@ const incidentToConsoleItem=(record:IncidentRecord):ConsoleItem=>({
   createdAt:record.createdAt||record.updatedAt,updatedAt:record.updatedAt,summary:record.description||'Incidente en elaboración.',source:'NOV',originLabel:`Novedades · Incidentes · ${record.incidentType||record.subcategory||'Sin clasificar'}`,
   recommendedAction:record.status==='DRAFT'?'Completar y finalizar la notificación del incidente.':'Incidente finalizado; puede reabrirse para edición desde Consola.'
 });
+const operatorReportToConsoleItem=(record:OperatorReport):ConsoleItem=>({
+  id:`operator:${record.reportId}`,category:'NOVEDADES',subtype:record.type==='INCIDENT'?'Incidente':record.type==='FINDING'?'Hallazgo':'Vulnerabilidad',
+  code:`OPR-${record.reportId.slice(0,8).toUpperCase()}`,title:record.title,company:'Galvarino',companyCode:'GAL',client:'—',city:'Cajamarca',
+  point:record.pointName||'—',post:record.postName||'—',responsible:record.username||'SGI Operador',zone:'Zona Costa',region:'Costa Sur',
+  status:record.severity==='CRITICAL'?'CRITICAL':'PENDING',priority:record.severity,createdAt:record.createdAt,updatedAt:record.occurredAt,
+  summary:record.description,source:'NOV',originLabel:`Novedades · ${record.type==='INCIDENT'?'Incidentes':record.type==='FINDING'?'Hallazgos':'Vulnerabilidades'} · ${record.category}`,
+  recommendedAction:'Validar el reporte recibido desde SGI Operador.'
+});
 
 export default function ConsolaMonitor(){
   const user=getUser();
@@ -117,11 +126,17 @@ export default function ConsolaMonitor(){
   const [detailId,setDetailId]=useState('');
   const [filtersOpen,setFiltersOpen]=useState(false);
   const [incidents,setIncidents]=useState<IncidentRecord[]>([]);
+  const [operatorReports,setOperatorReports]=useState<OperatorReport[]>([]);
   const [incidentEditorOpen,setIncidentEditorOpen]=useState(false);
   const [editingIncidentId,setEditingIncidentId]=useState('');
 
   const incidentRows=useMemo(()=>incidents.map(incidentToConsoleItem),[incidents]);
-  const allRows=useMemo(()=>[...DATA,...incidentRows],[incidentRows]);
+  const operatorRows=useMemo(()=>operatorReports.map(operatorReportToConsoleItem),[operatorReports]);
+  const allRows=useMemo(()=>[...operatorRows,...DATA,...incidentRows],[operatorRows,incidentRows]);
+  useEffect(()=>{api.operationalReports().then(data=>{
+    setOperatorReports(data);
+    if(data.length){const latest=data.reduce((max,row)=>row.occurredAt>max?row.occurredAt:max,data[0].occurredAt).slice(0,10);const start=new Date(`${latest}T00:00:00`);start.setDate(start.getDate()-30);setFilters(prev=>({...prev,dateFrom:start.toISOString().slice(0,10),dateTo:latest}));}
+  }).catch(()=>setOperatorReports([]));},[]);
   const scoped=useMemo(()=>allRows.filter(x=>withinScope(x,scope)),[allRows,scope]);
   const locationOptions=useMemo<LocationOption[]>(()=>{
     const seen=new Set<string>();
