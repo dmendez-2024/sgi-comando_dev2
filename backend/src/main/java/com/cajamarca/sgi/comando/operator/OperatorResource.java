@@ -42,11 +42,8 @@ public class OperatorResource {
     @Inject TaskEvidenceService taskEvidences;
     @Inject OperatorTasks tasks;
     @Inject ReliefStationReviews stationReviews;
-<<<<<<< HEAD
     @Inject InventoryService inventory;
-=======
     @Inject com.cajamarca.sgi.comando.impulses.ImpulseLedger impulses;
->>>>>>> Ambiente_dev
 
     @org.jboss.resteasy.reactive.server.ServerExceptionMapper
     public Response mapError(WebApplicationException e) { return OperatorErrors.withMessage(e); }

@@ -43,6 +43,12 @@ public class IdentEmployeeQueryResource {
     @ConfigProperty(name = "sgi.ident.employees.inbound.credential-ref", defaultValue = "")
     Optional<String> credentialRef;
 
+    @ConfigProperty(name = "sgi.ident.employees.auth-enabled", defaultValue = "true")
+    boolean authenticationEnabled = true;
+
+    @ConfigProperty(name = "sgi.interconnections.environment", defaultValue = "UAT")
+    String interconnectionsEnvironment = "UAT";
+
     public record EmployeeCompanyResponse(
         UUID id,
         UUID coreCatalogId,
@@ -161,7 +167,11 @@ public class IdentEmployeeQueryResource {
         );
     }
 
-    private void requireServiceCredential(String authorization) {
+    void requireServiceCredential(String authorization) {
+        if (!authenticationEnabled && "DEVELOPMENT".equalsIgnoreCase(trim(interconnectionsEnvironment))) {
+            return;
+        }
+
         String ref = trim(credentialRef.orElse(""));
         if (ref.isEmpty()) {
             throw new ServiceUnavailableException("La credential_ref de integración IDENT no está configurada.");
