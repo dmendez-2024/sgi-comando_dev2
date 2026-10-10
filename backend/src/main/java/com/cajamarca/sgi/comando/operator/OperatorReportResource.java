@@ -75,18 +75,22 @@ public class OperatorReportResource {
         return rows(employee,selected);
     }
 
-    ArrayNode rows(UUID employee,String type) {
+    ArrayNode rows(UUID employee,String type) { return rows(employee,type,null); }
+
+    ArrayNode rows(UUID employee,String type,Set<UUID> companyIds) {
+        if(companyIds!=null && companyIds.isEmpty()) return mapper.createArrayNode();
         String sql="""
           select r.id,r.employee_id,r.report_type,r.category,r.subcategory,r.title,r.description,r.severity,r.status,
                  r.occurred_at,r.created_at,r.assignment_id,r.point_id,r.post_id,r.username,p.name,coalesce(po.name,'—')
           from operator_operational_report r join point p on p.id=r.point_id left join post po on po.id=r.post_id
           where r.instance_country_id=:tenant order by r.occurred_at desc limit 200
           """;
-        String filters=(employee==null?"":" and r.employee_id=:employee")+(type==null?"":" and r.report_type=:type");
+        String filters=(employee==null?"":" and r.employee_id=:employee")+(type==null?"":" and r.report_type=:type")+(companyIds==null?"":" and p.company_id in (:companyIds)");
         sql=sql.replace(" order by",filters+" order by");
         var query=em.createNativeQuery(sql).setParameter("tenant",tenant.instanceCountryId());
         if(employee!=null) query.setParameter("employee",employee);
         if(type!=null) query.setParameter("type",type);
+        if(companyIds!=null) query.setParameter("companyIds",companyIds);
         @SuppressWarnings("unchecked") List<Object[]> data=query.getResultList();
         ArrayNode out=mapper.createArrayNode(); data.forEach(row->out.add(response(row,false))); return out;
     }

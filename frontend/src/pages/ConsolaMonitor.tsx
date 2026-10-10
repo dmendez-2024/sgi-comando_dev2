@@ -41,7 +41,7 @@ type ConsoleItem={
 type Scope={label:string;companies:string[]|null;region?:string;zone?:string};
 type ClientOption={id:string;code:string;name:string};
 type ServiceLocationRow={clientId:string;pointId:string;postId:string;companyId:string|null;companyName:string;clientName:string;pointName:string;postName:string};
-type OperatorReport={reportId:string;type:'INCIDENT'|'FINDING'|'VULNERABILITY';category:string;subcategory?:string;title:string;description:string;severity:Priority;status:string;occurredAt:string;createdAt:string;username:string;pointName:string;postName:string};
+type OperatorReport={reportId:string;type:'INCIDENT'|'FINDING'|'VULNERABILITY';category:string;subcategory?:string;title:string;description:string;severity:Priority;status:string;occurredAt:string;createdAt:string;username:string;pointId:string;pointName:string;postName:string};
 type Filters={
   category:'ALL'|ItemCategory;
   query:string;
@@ -85,9 +85,13 @@ const scopeByUser:Record<UatUser,Scope>={
   cliente:{label:'Alcance restringido',companies:['GAL']},
 };
 
-const latestDate=new Date(DATA.reduce((m,x)=>x.updatedAt>m?x.updatedAt:m,DATA[0].updatedAt));
-const DEFAULT_TO=latestDate.toISOString().slice(0,10);
-const from=new Date(latestDate); from.setDate(from.getDate()-30);
+const guayaquilDateFormatter=new Intl.DateTimeFormat('en-US',{timeZone:'America/Guayaquil',year:'numeric',month:'2-digit',day:'2-digit'});
+const guayaquilDate=(value:Date)=>{
+  const parts=Object.fromEntries(guayaquilDateFormatter.formatToParts(value).map(part=>[part.type,part.value]));
+  return `${parts.year}-${parts.month}-${parts.day}`;
+};
+const DEFAULT_TO=guayaquilDate(new Date());
+const from=new Date(`${DEFAULT_TO}T12:00:00Z`); from.setUTCDate(from.getUTCDate()-30);
 const DEFAULT_FROM=from.toISOString().slice(0,10);
 const EMPTY_FILTERS:Filters={category:'ALL',query:'',city:'',company:'ALL',client:'',point:'',post:'',status:'ALL',responsible:'',dateFrom:DEFAULT_FROM,dateTo:DEFAULT_TO};
 
@@ -99,9 +103,9 @@ const statusClass=(value:ItemStatus)=>({PENDING:'warning',IN_PROGRESS:'info',OVE
 const priorityClass=(value:Priority)=>({LOW:'neutral',MEDIUM:'info',HIGH:'warning',CRITICAL:'danger'}[value]);
 const priorityLabel=(value:Priority)=>({LOW:'Baja',MEDIUM:'Media',HIGH:'Alta',CRITICAL:'Crítica'}[value]);
 const formatDateTime=(value:string)=>new Intl.DateTimeFormat('es-EC',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}).format(new Date(value));
-const dateOnly=(value:string)=>value.slice(0,10);
+const dateOnly=(value:string)=>/([zZ]|[+-]\d{2}:\d{2})$/.test(value)?guayaquilDate(new Date(value)):value.slice(0,10);
 const unique=(values:string[])=>Array.from(new Set(values)).sort((a,b)=>a.localeCompare(b,'es'));
-function withinScope(row:ConsoleItem,scope:Scope,allowedCompanyIds?:Set<string>){ if(row.id.startsWith('incident:'))return true; if(row.companyId)return allowedCompanyIds?.has(row.companyId)??false; if(scope.companies && !scope.companies.includes(row.companyCode)) return false; if(scope.zone && row.zone!==scope.zone) return false; if(scope.region && row.region!==scope.region) return false; return true; }
+function withinScope(row:ConsoleItem,scope:Scope){ if(row.id.startsWith('incident:')||row.id.startsWith('operator:'))return true; if(scope.companies && !scope.companies.includes(row.companyCode)) return false; if(scope.zone && row.zone!==scope.zone) return false; if(scope.region && row.region!==scope.region) return false; return true; }
 function validateRange(from:string,to:string){ if(!from||!to) return 'Debe elegir siempre una fecha inicio y una fecha fin.'; if(to<from) return 'La fecha fin no puede ser menor que la fecha inicio.'; const start=new Date(`${from}T00:00:00`); const max=new Date(start); max.setFullYear(max.getFullYear()+1); const end=new Date(`${to}T23:59:59`); return end>max?'El período consultado no puede ser mayor a 1 año.':''; }
 
 const severityToPriority=(value:IncidentSeverity|''):Priority=>value==='CRITICAL'?'CRITICAL':value==='MAJOR'?'HIGH':value==='MODERATE'?'MEDIUM':'LOW';
@@ -112,10 +116,10 @@ const incidentToConsoleItem=(record:IncidentRecord):ConsoleItem=>({
   createdAt:record.createdAt||record.updatedAt,updatedAt:record.updatedAt,summary:record.description||'Incidente en elaboración.',source:'NOV',originLabel:`Novedades · Incidentes · ${record.incidentType||record.subcategory||'Sin clasificar'}`,
   recommendedAction:record.status==='DRAFT'?'Completar y finalizar la notificación del incidente.':'Incidente finalizado; puede reabrirse para edición desde Consola.'
 });
-const operatorReportToConsoleItem=(record:OperatorReport):ConsoleItem=>({
+const operatorReportToConsoleItem=(record:OperatorReport,location?:LocationOption):ConsoleItem=>({
   id:`operator:${record.reportId}`,category:'NOVEDADES',subtype:record.type==='INCIDENT'?'Incidente':record.type==='FINDING'?'Hallazgo':'Vulnerabilidad',
-  code:`OPR-${record.reportId.slice(0,8).toUpperCase()}`,title:record.title,company:'Galvarino',companyCode:'GAL',client:'—',city:'Cajamarca',
-  point:record.pointName||'—',post:record.postName||'—',responsible:record.username||'SGI Operador',zone:'Zona Costa',region:'Costa Sur',
+  code:`OPR-${record.reportId.slice(0,8).toUpperCase()}`,title:record.title,company:location?.company||'Sin dato',companyCode:location?.companyCode||'',companyId:location?.companyId||undefined,client:location?.client||'Sin dato',city:location?.city||'Sin dato',
+  point:record.pointName||'Sin dato',post:record.postName||'Sin dato',responsible:record.username||'SGI Operador',zone:'',region:'',
   status:record.severity==='CRITICAL'?'CRITICAL':'PENDING',priority:record.severity,createdAt:record.createdAt,updatedAt:record.occurredAt,
   summary:record.description,source:'NOV',originLabel:`Novedades · ${record.type==='INCIDENT'?'Incidentes':record.type==='FINDING'?'Hallazgos':'Vulnerabilidades'} · ${record.category}`,
   recommendedAction:'Validar el reporte recibido desde SGI Operador.'
@@ -170,26 +174,18 @@ export default function ConsolaMonitor(){
     return ()=>{current=false};
   },[user,locationsRefresh]);
 
+  useEffect(()=>{
+    let current=true;
+    setOperatorReports([]);
+    void api.operationalReports().then(data=>{if(current)setOperatorReports(data as OperatorReport[])})
+      .catch(()=>{if(current)setOperatorReports([])});
+    return ()=>{current=false};
+  },[user]);
   const incidentRows=useMemo(()=>incidents.map(incidentToConsoleItem),[incidents]);
-  const allRows=useMemo(()=>[...DATA,...incidentRows],[incidentRows]);
-  const allowedCompanyIds=useMemo(()=>new Set(locationOptions.map(x=>x.companyId).filter((id):id is string=>!!id)),[locationOptions]);
-  const scoped=useMemo(()=>allRows.filter(x=>withinScope(x,scope,allowedCompanyIds)),[allRows,scope,allowedCompanyIds]);
-  const operatorRows=useMemo(()=>operatorReports.map(operatorReportToConsoleItem),[operatorReports]);
+  const locationsByPoint=useMemo(()=>new Map(locationOptions.map(location=>[location.pointId,location])),[locationOptions]);
+  const operatorRows=useMemo(()=>operatorReports.map(report=>operatorReportToConsoleItem(report,locationsByPoint.get(report.pointId))),[operatorReports,locationsByPoint]);
   const allRows=useMemo(()=>[...operatorRows,...DATA,...incidentRows],[operatorRows,incidentRows]);
-  useEffect(()=>{api.operationalReports().then(data=>{
-    setOperatorReports(data);
-    if(data.length){const latest=data.reduce((max,row)=>row.occurredAt>max?row.occurredAt:max,data[0].occurredAt).slice(0,10);const start=new Date(`${latest}T00:00:00`);start.setDate(start.getDate()-30);setFilters(prev=>({...prev,dateFrom:start.toISOString().slice(0,10),dateTo:latest}));}
-  }).catch(()=>setOperatorReports([]));},[]);
   const scoped=useMemo(()=>allRows.filter(x=>withinScope(x,scope)),[allRows,scope]);
-  const locationOptions=useMemo<LocationOption[]>(()=>{
-    const seen=new Set<string>();
-    return DATA.filter(x=>withinScope(x,scope)).flatMap(row=>{
-      const key=`${row.client}|${row.point}|${row.post}`;
-      if(seen.has(key))return [];
-      seen.add(key);
-      return [{client:row.client,point:row.point,post:row.post,company:row.company,companyCode:row.companyCode,city:row.city}];
-    });
-  },[scope]);
   const cities=useMemo(()=>unique(scoped.map(x=>x.city)),[scoped]);
   const companies=useMemo(()=>unique(scoped.map(x=>x.company)),[scoped]);
   const clients=useMemo(()=>unique(scoped.map(x=>x.client)),[scoped]);
@@ -232,6 +228,12 @@ export default function ConsolaMonitor(){
   function setPoint(value:string){ setFilters(prev=>({...prev,point:value,post:''})); }
   function setCompany(value:string){ setFilters(prev=>({...prev,company:value,responsible:''})); }
   function clear(){ setFilters(EMPTY_FILTERS); }
+  function search(){
+    void api.incidents().then(records=>{if(getUser()===user){setIncidents(records as IncidentRecord[]);setIncidentsError('')}})
+      .catch(()=>{if(getUser()===user)setIncidentsError('No se pudieron cargar los incidentes guardados en SGI: Comando.')});
+    void api.operationalReports().then(records=>{if(getUser()===user)setOperatorReports(records as OperatorReport[])})
+      .catch(()=>{});
+  }
   function exportCsv(){
     const header=['Categoría','Subtipo','Código','Título','Cliente','Compañía','Ciudad','Punto','Puesto','Responsable','Estado','Prioridad','Última actualización'];
     const body=rows.map(r=>[categoryLabel(r.category),r.subtype,r.code,r.title,r.client,r.company,r.city,r.point,r.post,r.responsible,statusLabel(r.status),priorityLabel(r.priority),formatDateTime(r.updatedAt)]);
@@ -250,6 +252,9 @@ export default function ConsolaMonitor(){
     setIncidentsError('');
     const rowId=`incident:${normalized.id}`;
     setSelectedId(rowId);
+    const savedDate=dateOnly(normalized.updatedAt);
+    const start=new Date(`${savedDate}T12:00:00Z`); start.setUTCDate(start.getUTCDate()-30);
+    setFilters({...EMPTY_FILTERS,dateFrom:start.toISOString().slice(0,10),dateTo:savedDate});
     if(normalized.status==='DRAFT'){
       setEditingIncidentId(normalized.id);
       return normalized;
@@ -257,9 +262,6 @@ export default function ConsolaMonitor(){
     setDetailId(rowId);
     setIncidentEditorOpen(false);
     setEditingIncidentId('');
-    const today=normalized.updatedAt.slice(0,10);
-    const start=new Date(`${today}T00:00:00`); start.setDate(start.getDate()-30);
-    setFilters(prev=>({...prev,category:'ALL',query:'',status:'ALL',dateFrom:start.toISOString().slice(0,10),dateTo:today}));
     return normalized;
   }
   const nextIncidentCode=`INC-${new Date().getFullYear()}-${String(incidents.length+1).padStart(4,'0')}`;
@@ -348,7 +350,7 @@ export default function ConsolaMonitor(){
               </div>
               <div className="csl-rules-note"><CircleAlert size={15}/><span>Fechas obligatorias. Rango máximo: 1 año. Punto depende de Cliente; Puesto depende de Punto; Responsable depende de Compañía.</span></div>
               {dateError && <div className="csl-validation-error"><AlertTriangle size={16}/><span>{dateError}</span></div>}
-              <div className="csl-search-actions"><button className="primary" disabled={!!dateError}><Search size={16}/>Buscar</button><button onClick={clear}><FilterX size={16}/>Limpiar filtros</button><button className="export" onClick={exportCsv} disabled={!!dateError || !rows.length}><Download size={16}/>Exportar</button></div>
+              <div className="csl-search-actions"><button className="primary" onClick={search} disabled={!!dateError}><Search size={16}/>Buscar</button><button onClick={clear}><FilterX size={16}/>Limpiar filtros</button><button className="export" onClick={exportCsv} disabled={!!dateError || !rows.length}><Download size={16}/>Exportar</button></div>
             </div>
           </div>
         </div>

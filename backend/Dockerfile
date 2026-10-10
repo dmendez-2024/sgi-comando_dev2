@@ -1,8 +1,10 @@
+# syntax=docker/dockerfile:1
 FROM maven:3.9.11-eclipse-temurin-25 AS build
 WORKDIR /workspace
 COPY pom.xml .
 COPY src ./src
-RUN mvn -B -DskipTests -Dquarkus.package.jar.type=fast-jar package
+RUN --mount=type=cache,id=sgi-comando-maven,target=/root/.m2/repository,sharing=locked \
+    mvn -B -U -Daether.transport.http.retryHandler.count=5 -DskipTests -Dquarkus.package.jar.type=fast-jar package
 
 FROM eclipse-temurin:25-jre
 WORKDIR /work/

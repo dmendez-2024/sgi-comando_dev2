@@ -1,6 +1,7 @@
 package com.cajamarca.sgi.comando.operator;
 
 import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.cajamarca.sgi.comando.territory.OperationalScopeService;
 import jakarta.inject.Inject;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.ws.rs.*;
@@ -12,5 +13,6 @@ import jakarta.ws.rs.core.MediaType;
 @Produces(MediaType.APPLICATION_JSON)
 public class OperationalReportResource {
     @Inject OperatorReportResource reports;
-    @GET public ArrayNode list(@QueryParam("type") String type) { return reports.rows(null,OperatorReportResource.normalizeType(type)); }
+    @Inject OperationalScopeService scope;
+    @GET public ArrayNode list(@QueryParam("type") String type) { return reports.rows(null,OperatorReportResource.normalizeType(type),scope.allowedCompanyIds()); }
 }
