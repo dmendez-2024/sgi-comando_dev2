@@ -451,27 +451,84 @@ public class OperatorResource {
         if(!evidenceIds.containsAll(requiredEvidence)) throw new BadRequestException("Faltan evidencias obligatorias");
         String comments=event.path("comments").asText("").trim(); if(comments.length()>500) throw new BadRequestException("Comentarios superan 500 caracteres");
         String payloadHash=hash(canonical(event).toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
-        @SuppressWarnings("unchecked") List<Object[]> old=em.createNativeQuery("select payload_hash,username from operator_logbook_record where instance_country_id=:tenant and id=:id")
+        @SuppressWarnings("unchecked") List<Object[]> old=em.createNativeQuery("select payload_hash,username,point_version,record_version,status from operator_logbook_record where instance_country_id=:tenant and id=:id")
             .setParameter("tenant",tenant.instanceCountryId()).setParameter("id",recordId).getResultList();
         if(!old.isEmpty()) {
             Object[] row=old.get(0); if(!identity.getPrincipal().getName().equals(row[1].toString())) throw new ForbiddenException();
             if(!payloadHash.equals(row[0].toString())) throw new ClientErrorException("recordId reutilizado con contenido diferente",409);
-            return mapper.createObjectNode().put("recordId",recordId.toString()).put("status","REGISTERED").put("idempotentReplay",true);
+            return mapper.createObjectNode().put("recordId",recordId.toString()).put("status",row[4].toString())
+                .put("pointVersion",((Number)row[2]).longValue()).put("recordVersion",((Number)row[3]).longValue()).put("idempotentReplay",true);
         }
-        em.createNativeQuery("insert into operator_logbook_record(id,instance_country_id,assignment_id,point_id,post_id,employee_id,username,protocol_id,protocol_version,accreditation_id,captured_at,received_at,status,comments,field_values_json,evidence_refs_json,payload_hash,correlation_id) values(:id,:tenant,:assignment,:point,:post,:employee,:username,:protocol,:version,:accreditation,:captured,current_timestamp,'REGISTERED',:comments,:fields,:evidence,:hash,:correlation)")
+        long pointVersion=nextLogbookPointVersion(c.point.id);
+        em.createNativeQuery("insert into operator_logbook_record(id,instance_country_id,assignment_id,point_id,post_id,employee_id,username,protocol_id,protocol_version,accreditation_id,captured_at,received_at,status,comments,field_values_json,evidence_refs_json,payload_hash,correlation_id,record_version,point_version) values(:id,:tenant,:assignment,:point,:post,:employee,:username,:protocol,:version,:accreditation,:captured,current_timestamp,'INSIDE',:comments,:fields,:evidence,:hash,:correlation,1,:pointVersion)")
             .setParameter("id",recordId).setParameter("tenant",tenant.instanceCountryId()).setParameter("assignment",assignmentId)
             .setParameter("point",c.point.id).setParameter("post",c.post.id).setParameter("employee",employee).setParameter("username",identity.getPrincipal().getName())
             .setParameter("protocol",protocolId).setParameter("version",protocolVersion).setParameter("accreditation",accreditationId).setParameter("captured",capturedAt)
             .setParameter("comments",comments.isBlank()?null:comments).setParameter("fields",values.toString()).setParameter("evidence",evidence.toString())
-            .setParameter("hash",payloadHash).setParameter("correlation",correlationId).executeUpdate();
-        return mapper.createObjectNode().put("recordId",recordId.toString()).put("status","REGISTERED").put("receivedAt",Instant.now().toString()).put("idempotentReplay",false);
+            .setParameter("hash",payloadHash).setParameter("correlation",correlationId).setParameter("pointVersion",pointVersion).executeUpdate();
+        return mapper.createObjectNode().put("recordId",recordId.toString()).put("status","INSIDE").put("receivedAt",Instant.now().toString())
+            .put("pointVersion",pointVersion).put("recordVersion",1).put("idempotentReplay",false);
+    }
+
+    @GET @Path("/logbook-records/active")
+    public ObjectNode activeLogbookRecords(@QueryParam("assignmentId") UUID assignmentId,@QueryParam("afterVersion") Long afterVersion) {
+        UUID employee=employee(); AssignmentContext c=assignment(assignmentId,employee); long currentVersion=logbookPointVersion(c.point.id);
+        StringBuilder sql=new StringBuilder("""
+          select r.id,r.point_id,r.post_id,r.captured_at,r.status,r.field_values_json,
+                 r.record_version,r.point_version,r.exited_at,r.exited_by_username,p.name,a.name
+          from operator_logbook_record r
+          join logbook_protocol p on p.id=r.protocol_id and p.instance_country_id=r.instance_country_id
+          join logbook_accreditation a on a.id=r.accreditation_id and a.instance_country_id=r.instance_country_id
+          where r.instance_country_id=:tenant and r.point_id=:point
+          """);
+        if(afterVersion!=null&&afterVersion>0) sql.append(" and r.point_version>:afterVersion");
+        else sql.append(" and r.status='INSIDE' and r.captured_at>=:since");
+        sql.append(" order by r.point_version asc limit 500");
+        var query=em.createNativeQuery(sql.toString()).setParameter("tenant",tenant.instanceCountryId()).setParameter("point",c.point.id);
+        if(afterVersion!=null&&afterVersion>0)query.setParameter("afterVersion",afterVersion);
+        else query.setParameter("since",Instant.now().minusSeconds(48L*60L*60L));
+        @SuppressWarnings("unchecked") List<Object[]> rows=query.getResultList();
+        ObjectNode response=mapper.createObjectNode().put("pointId",c.point.id.toString()).put("pointVersion",currentVersion)
+            .put("fullSnapshot",afterVersion==null||afterVersion<=0);
+        ArrayNode records=response.putArray("records"); for(Object[] row:rows)records.add(logbookSyncDto(row)); return response;
+    }
+
+    @POST @Path("/logbook-records/{recordId}/exit") @Consumes(MediaType.APPLICATION_JSON) @Transactional
+    public ObjectNode exitLogbookRecord(@PathParam("recordId") UUID recordId,@HeaderParam("Idempotency-Key") String idempotencyKey,JsonNode request) {
+        UUID employee=employee(), assignmentId=uuid(request,"assignmentId"), exitOperationId=uuid(request,"exitOperationId");
+        if(idempotencyKey==null||!exitOperationId.toString().equals(idempotencyKey.trim())) throw new BadRequestException("Idempotency-Key debe coincidir con exitOperationId");
+        AssignmentContext c=assignment(assignmentId,employee); lock(assignmentId);
+        @SuppressWarnings("unchecked") List<Object[]> replay=em.createNativeQuery("select id,point_version,record_version,exited_at,exited_by_username from operator_logbook_record where instance_country_id=:tenant and exit_operation_id=:operation")
+            .setParameter("tenant",tenant.instanceCountryId()).setParameter("operation",exitOperationId).getResultList();
+        if(!replay.isEmpty()){Object[] r=replay.get(0);return mapper.createObjectNode().put("recordId",r[0].toString()).put("status","EXITED")
+            .put("pointVersion",((Number)r[1]).longValue()).put("recordVersion",((Number)r[2]).longValue()).put("exitedAt",r[3].toString())
+            .put("exitedBy",r[4].toString()).put("idempotentReplay",true);}
+        @SuppressWarnings("unchecked") List<Object[]> rows=em.createNativeQuery("select point_id,status,record_version,exited_at,exited_by_username from operator_logbook_record where instance_country_id=:tenant and id=:id for update")
+            .setParameter("tenant",tenant.instanceCountryId()).setParameter("id",recordId).getResultList();
+        if(rows.isEmpty())throw new NotFoundException("No encontramos el ingreso activo solicitado.");
+        Object[] row=rows.get(0); if(!c.point.id.toString().equals(row[0].toString()))throw new ForbiddenException("El acceso pertenece a otro punto.");
+        if("EXITED".equals(row[1].toString())) return mapper.createObjectNode().put("recordId",recordId.toString()).put("status","EXITED")
+            .put("recordVersion",((Number)row[2]).longValue()).put("exitedAt",row[3].toString()).put("exitedBy",row[4].toString())
+            .put("alreadyExited",true).put("idempotentReplay",false);
+        if(!"INSIDE".equals(row[1].toString()))throw new ClientErrorException("El acceso no se encuentra disponible para registrar la salida.",409);
+        long expected=request.path("expectedVersion").asLong(0), current=((Number)row[2]).longValue();
+        if(expected>0&&expected!=current)throw new ClientErrorException("El acceso cambió. Actualiza la información antes de registrar la salida.",409);
+        Instant exitedAt=time(request,"exitedAt"); if(exitedAt.isAfter(Instant.now().plusSeconds(300)))throw new BadRequestException("La fecha de salida no puede estar en el futuro");
+        long pointVersion=nextLogbookPointVersion(c.point.id), recordVersion=current+1;
+        em.createNativeQuery("update operator_logbook_record set status='EXITED',exited_at=:exitedAt,exited_by_employee_id=:employee,exited_by_username=:username,exit_operation_id=:operation,record_version=:recordVersion,point_version=:pointVersion where instance_country_id=:tenant and id=:id")
+            .setParameter("exitedAt",exitedAt).setParameter("employee",employee).setParameter("username",identity.getPrincipal().getName())
+            .setParameter("operation",exitOperationId).setParameter("recordVersion",recordVersion).setParameter("pointVersion",pointVersion)
+            .setParameter("tenant",tenant.instanceCountryId()).setParameter("id",recordId).executeUpdate();
+        return mapper.createObjectNode().put("recordId",recordId.toString()).put("status","EXITED").put("pointVersion",pointVersion)
+            .put("recordVersion",recordVersion).put("exitedAt",exitedAt.toString()).put("exitedBy",identity.getPrincipal().getName()).put("idempotentReplay",false);
     }
     @GET @Path("/logbook-records")
     public ArrayNode listLogbookRecords() {
         actor(); boolean operator=identity.hasRole("AGENTE_SEGURIDAD"); UUID operatorEmployee=operator?employee():null;
         @SuppressWarnings("unchecked") List<Object[]> rows=em.createNativeQuery("""
           select r.id,p.object_type,a.name,r.field_values_json,r.captured_at,r.status,r.comments,r.employee_id,e.full_name,
-                 pt.client_name,pt.city,pt.name,po.name,c.code,c.name,pt.company_id,lp.code,lp.name,r.protocol_version,r.username
+                 pt.client_name,pt.city,pt.name,po.name,c.code,c.name,pt.company_id,lp.code,lp.name,r.protocol_version,r.username,
+                 r.exited_at,r.exited_by_username,a.id,lp.application_type
           from operator_logbook_record r
           join logbook_protocol lp on lp.id=r.protocol_id and lp.instance_country_id=r.instance_country_id
           join logbook_accreditation a on a.id=r.accreditation_id and a.instance_country_id=r.instance_country_id
@@ -482,6 +539,12 @@ public class OperatorResource {
           join logbook_protocol p on p.id=r.protocol_id and p.instance_country_id=r.instance_country_id
           where r.instance_country_id=:tenant order by r.captured_at desc limit 500
           """).setParameter("tenant",tenant.instanceCountryId()).getResultList();
+        @SuppressWarnings("unchecked") List<Object[]> configuredFields=em.createNativeQuery("""
+          select accreditation_id,id,name from logbook_protocol_field
+          where instance_country_id=:tenant order by accreditation_id,section,sort_order
+          """).setParameter("tenant",tenant.instanceCountryId()).getResultList();
+        Map<String,String> fieldNames=new HashMap<>();
+        for(Object[] field:configuredFields) fieldNames.put(field[0].toString()+":"+field[1].toString(),field[2].toString());
         ArrayNode result=mapper.createArrayNode();
         for(Object[] row:rows) {
             if(operator && !operatorEmployee.toString().equals(row[7].toString())) continue;
@@ -489,15 +552,27 @@ public class OperatorResource {
             JsonNode fieldValues; try { fieldValues=mapper.readTree(row[3].toString()); } catch(Exception ex) { fieldValues=mapper.createObjectNode(); }
             String identifier=""; Iterator<JsonNode> values=fieldValues.elements(); while(values.hasNext() && identifier.isBlank()) identifier=values.next().asText("");
             String objectType=row[1].toString().toUpperCase(Locale.ROOT); String type=objectType.contains("VEH")?"VEHICLE":objectType.contains("CONT")?"CONTAINER":"PERSON";
+            String recordStatus="INSIDE".equals(row[5].toString())?"REGISTERED":"EXITED".equals(row[5].toString())?"RELEASED":row[5].toString();
             ObjectNode item=result.addObject().put("id",row[0].toString()).put("type",type).put("identifier",identifier)
                 .put("label",row[2].toString()+(identifier.isBlank()?"":" · "+identifier)).put("client",row[9]==null?"—":row[9].toString())
                 .put("company",row[14]==null?"—":row[14].toString()).put("companyCode",row[13]==null?"":row[13].toString())
                 .put("city",row[10]==null?"—":row[10].toString()).put("point",row[11].toString()+" · "+row[12].toString())
-                .put("region","").put("zone","").put("status",row[5].toString()).put("at",row[4].toString())
+                .put("region","").put("zone","").put("status",recordStatus).put("at",row[4].toString())
                 .put("detailTag",row[2].toString()).put("subtitle",identifier).put("submittedBy",row[8]==null?row[19].toString():row[8].toString())
                 .put("protocolCode",row[16].toString()).put("protocolName",row[17].toString()).put("protocolVersion",((Number)row[18]).intValue())
-                .put("comments",row[6]==null?"":row[6].toString());
-            item.set("fieldValues",fieldValues); item.putArray("timeline").addObject().put("id","received").put("at",row[4].toString()).put("title","Registro recibido desde SGI Operador").put("place",row[11].toString()+" · "+row[12].toString());
+                .put("comments",row[6]==null?"":row[6].toString()).put("applicationType",row[23].toString());
+            item.set("fieldValues",fieldValues);
+            ArrayNode dynamicFields=item.putArray("dynamicFields");
+            Iterator<Map.Entry<String,JsonNode>> valueEntries=fieldValues.fields();
+            while(valueEntries.hasNext()) {
+                Map.Entry<String,JsonNode> valueEntry=valueEntries.next();
+                dynamicFields.addObject().put("fieldId",valueEntry.getKey())
+                    .put("name",fieldNames.getOrDefault(row[22].toString()+":"+valueEntry.getKey(),"Campo configurado"))
+                    .put("value",valueEntry.getValue().asText(""));
+            }
+            ArrayNode timeline=item.putArray("timeline");
+            if(row[20]!=null) timeline.addObject().put("id","exit").put("at",row[20].toString()).put("title","Salida registrada por "+row[21].toString()).put("place",row[11].toString()+" · "+row[12].toString());
+            timeline.addObject().put("id","entry").put("at",row[4].toString()).put("title","Ingreso registrado desde SGI Operador").put("place",row[11].toString()+" · "+row[12].toString());
         }
         return result;
     }
@@ -870,6 +945,27 @@ public class OperatorResource {
         // VISINT opcional: las fotos del puesto se comparan con las fotos estándar del Puesto; el resultado no bloquea el relevo.
         String stationVisint=stationReviews.enqueue(tenant.instanceCountryId(),eventId,assignmentId,c.shift.id,c.point.id,c.post.id,employee,identity.getPrincipal().getName(),execution,batch);
         return ack(eventId,stationVisint,inventoryStatus,inventoryDelivery);
+    }
+    private long nextLogbookPointVersion(UUID pointId) {
+        Number value=(Number)em.createNativeQuery("""
+          insert into operator_logbook_point_version(instance_country_id,point_id,current_version,updated_at)
+          values(:tenant,:point,1,current_timestamp)
+          on conflict(instance_country_id,point_id) do update set current_version=operator_logbook_point_version.current_version+1,updated_at=current_timestamp
+          returning current_version
+          """).setParameter("tenant",tenant.instanceCountryId()).setParameter("point",pointId).getSingleResult();
+        return value.longValue();
+    }
+    private long logbookPointVersion(UUID pointId) {
+        List<?> rows=em.createNativeQuery("select current_version from operator_logbook_point_version where instance_country_id=:tenant and point_id=:point")
+            .setParameter("tenant",tenant.instanceCountryId()).setParameter("point",pointId).getResultList();
+        return rows.isEmpty()?0L:((Number)rows.get(0)).longValue();
+    }
+    private ObjectNode logbookSyncDto(Object[] row) {
+        ObjectNode item=mapper.createObjectNode().put("recordId",row[0].toString()).put("pointId",row[1].toString()).put("postId",row[2].toString())
+            .put("capturedAt",row[3].toString()).put("status",row[4].toString()).put("recordVersion",((Number)row[6]).longValue())
+            .put("pointVersion",((Number)row[7]).longValue()).put("protocolName",row[10].toString()).put("accreditationName",row[11].toString());
+        try{item.set("fieldValues",mapper.readTree(row[5].toString()));}catch(Exception ignored){item.set("fieldValues",mapper.createObjectNode());}
+        if(row[8]!=null)item.put("exitedAt",row[8].toString()); if(row[9]!=null)item.put("exitedBy",row[9].toString()); return item;
     }
     private JsonNode canonical(JsonNode n) {
         if(n.isObject()) { ObjectNode out=mapper.createObjectNode(); TreeSet<String> names=new TreeSet<>(); n.fieldNames().forEachRemaining(names::add); for(String name:names) out.set(name,canonical(n.get(name))); return out; }
