@@ -38,12 +38,6 @@ public class CoreCatalogService {
     @ConfigProperty(name = "sgi.core.catalog-base-url")
     Optional<String> baseUrl;
 
-    @ConfigProperty(name = "sgi.core.country-code", defaultValue = "EC")
-    String configuredCountryCode;
-
-    @ConfigProperty(name = "sgi.core.instance-country-code")
-    Optional<String> configuredInstanceCountryCode;
-
     @ConfigProperty(name = "sgi.core.catalog-timeout-ms", defaultValue = "5000")
     int timeoutMs;
 
@@ -52,6 +46,8 @@ public class CoreCatalogService {
 
     @Inject ObjectMapper mapper;
     @Inject TenantContext tenant;
+    /** Instancia PE sin codigos configurados: la del token de IDENT o, sin persona, la que diga CORE (DEC-46). */
+    @Inject com.cajamarca.sgi.comando.security.InstanceCountrySource instances;
 
     private final HttpClient httpClient = CoreHttp.client(Duration.ofSeconds(5));
 
@@ -74,8 +70,8 @@ public class CoreCatalogService {
                                         int migratedRows) {}
 
     public ResolvedTenantContext synchronizeTenantContext() {
-        CountryReference country = resolveCountry();
-        InstanceCountryReference instanceCountry = resolveInstanceCountry(country);
+        InstanceCountryReference instanceCountry = resolveInstanceCountry();
+        CountryReference country = resolveCountry(instanceCountry.countryId());
         int migratedRows = tenant.adoptCanonicalInstanceCountry(
             instanceCountry.id(),
             country.id(),
@@ -189,27 +185,35 @@ public class CoreCatalogService {
         }
     }
 
+    /** País de la Instancia PE actual (token de IDENT o CORE). */
     public CountryReference resolveCountry() {
+        return resolveCountry(resolveInstanceCountry().countryId());
+    }
+
+    CountryReference resolveCountry(UUID countryId) {
         Instant now = Instant.now();
         CountryReference cached = cachedCountry;
-        if (cached != null && countryCachedAt != null && now.isBefore(countryCachedAt.plusSeconds(Math.max(1, countryCacheSeconds)))) {
+        if (cached != null && cached.id().equals(countryId) && countryCachedAt != null
+            && now.isBefore(countryCachedAt.plusSeconds(Math.max(1, countryCacheSeconds)))) {
             return cached;
         }
         synchronized (this) {
-            cached = cachedCountry;
-            if (cached != null && countryCachedAt != null && now.isBefore(countryCachedAt.plusSeconds(Math.max(1, countryCacheSeconds)))) {
-                return cached;
-            }
-            CountryReference resolved = findCountry(get("/catalog/countries", "application/json"), effectiveCountryCode());
+            CountryReference resolved = findCountryById(get("/catalog/countries", "application/json"), countryId);
             cachedCountry = resolved;
             countryCachedAt = now;
             return resolved;
         }
     }
 
-    String effectiveCountryCode() {
-        // Sustituir por el código ISO alpha-2 recibido desde IDENT cuando ese proyecto esté disponible.
-        return configuredCountryCode == null || configuredCountryCode.isBlank() ? "EC" : configuredCountryCode.trim().toUpperCase(Locale.ROOT);
+    static CountryReference findCountryById(JsonNode countries, UUID countryId) {
+        if (countries == null || !countries.isArray()) throw new IllegalStateException("CORE devolvió un catálogo de países inválido.");
+        for (JsonNode item : countries) {
+            if (countryId.equals(requiredUuid(item, "id", "país"))) {
+                return new CountryReference(countryId, requiredText(item, "isoAlpha2", "país"), optionalText(item, "isoAlpha3"),
+                    requiredText(item, "name", "país"), optionalText(item, "locale"), optionalText(item, "timezone"), optionalText(item, "currency"));
+            }
+        }
+        throw new IllegalStateException("CORE no devolvió el país " + countryId + " de la Instancia PE.");
     }
 
     static CountryReference findCountry(JsonNode countries, String isoAlpha2) {
@@ -230,11 +234,18 @@ public class CoreCatalogService {
         throw new IllegalStateException("CORE no devolvió el país configurado con isoAlpha2=" + isoAlpha2 + ".");
     }
 
-    InstanceCountryReference resolveInstanceCountry(CountryReference country) {
-        return findInstanceCountry(
-            get(instanceCountriesPath(country.id()), "application/json"),
-            country.id(),
-            configuredInstanceCountryCode.filter(value -> !value.isBlank()).orElse(null)
+    /** Instancia PE actual: la del token de IDENT o, sin persona, la que CORE indica para SGI_COM (sin código configurado). */
+    InstanceCountryReference resolveInstanceCountry() {
+        UUID id = instances.current();
+        JsonNode item = get("/catalog/instance-countries/" + enc(id.toString()), "application/json");
+        return new InstanceCountryReference(
+            requiredUuid(item, "id", "Instancia–País"),
+            requiredText(item, "code", "Instancia–País"),
+            requiredText(item, "name", "Instancia–País"),
+            requiredUuid(item, "countryId", "Instancia–País"),
+            optionalText(item, "countryCode"),
+            optionalText(item, "countryIsoAlpha3"),
+            optionalText(item, "countryName")
         );
     }
 

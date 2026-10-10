@@ -24,16 +24,12 @@ public class CoreCatalogAdapter implements ExternalPorts.CorePort {
     @ConfigProperty(name = "sgi.core.catalog-base-url")
     String coreCatalogBaseUrl;
 
-    @ConfigProperty(name = "sgi.core.country-id")
-    String countryId;
-
-    @ConfigProperty(name = "sgi.core.instance-country-code", defaultValue = "ECU-CM")
-    String instanceCountryCode;
-
     @ConfigProperty(name = "sgi.interconnections.core-timeout-ms", defaultValue = "5000")
     int timeoutMs;
 
     @Inject ObjectMapper mapper;
+    /** Instancia PE sin ID ni codigo configurado: la del token de IDENT o, sin persona, la que diga CORE (DEC-46). */
+    @Inject com.cajamarca.sgi.comando.security.InstanceCountrySource instances;
 
     private final HttpClient httpClient = com.cajamarca.sgi.comando.core.CoreHttp.client(Duration.ofSeconds(5));
 
@@ -49,9 +45,9 @@ public class CoreCatalogAdapter implements ExternalPorts.CorePort {
     public record CatalogResponse(UUID coreInstanceCountryId, JsonNode context, JsonNode territory, JsonNode companies) {}
 
     public CatalogResponse fetchCatalog() {
-        UUID coreCountryId = parseUuid(countryId, "SGI_CORE_COUNTRY_ID");
-        JsonNode instanceCountry = selectInstanceCountry(fetchInstanceCountries(coreCountryId));
+        JsonNode instanceCountry = get("/catalog/instance-countries/" + enc(instances.current().toString()));
         UUID coreInstanceCountryId = parseUuid(text(instanceCountry, "id"), "CORE instance-country id");
+        UUID coreCountryId = parseUuid(text(instanceCountry, "countryId"), "CORE country id de la Instancia PE");
 
         ObjectNode context = mapper.createObjectNode();
         context.put("instanceCountryId", coreInstanceCountryId.toString());
@@ -77,7 +73,7 @@ public class CoreCatalogAdapter implements ExternalPorts.CorePort {
             if (sourceInstanceCountryId == null) throw new IllegalStateException("CORE devolvió una Compañía sin instanceCountryId.");
             if (coreInstanceCountryId.toString().equalsIgnoreCase(sourceInstanceCountryId)) selectedCompanies.add(company);
         }
-        if (selectedCompanies.isEmpty()) throw new IllegalStateException("CORE no devolvió compañías para la Instancia-País " + instanceCountryCode + ".");
+        if (selectedCompanies.isEmpty()) throw new IllegalStateException("CORE no devolvió compañías para la Instancia-País " + text(instanceCountry, "code") + ".");
         ObjectNode companies = mapper.createObjectNode();
         companies.put("instanceCountryId", coreInstanceCountryId.toString());
         companies.set("companies", selectedCompanies);
@@ -100,20 +96,11 @@ public class CoreCatalogAdapter implements ExternalPorts.CorePort {
             throw new IllegalStateException("CORE no encontró una Instancia-País para el país configurado.");
         }
 
-        JsonNode match = null;
-        for (JsonNode row : rows) {
-            if (instanceCountryCode == null || instanceCountryCode.isBlank()
-                || instanceCountryCode.equalsIgnoreCase(text(row, "code"))) {
-                if (match != null) {
-                    throw new IllegalStateException("CORE devolvió varias Instancias-País; configure SGI_CORE_INSTANCE_COUNTRY_CODE.");
-                }
-                match = row;
-            }
-        }
-        if (match == null) {
-            throw new IllegalStateException("CORE no devolvió la Instancia-País " + instanceCountryCode + ".");
-        }
-        return match;
+        // Sin codigo configurado: con varias Instancias-Pais en el pais se usa la del token de IDENT / CORE.
+        if (rows.size() == 1) return rows.get(0);
+        String current = instances.current().toString();
+        for (JsonNode row : rows) if (current.equalsIgnoreCase(text(row, "id"))) return row;
+        throw new IllegalStateException("CORE no devolvió la Instancia-País " + current + " en ese país.");
     }
 
     private JsonNode get(String pathAndQuery) {

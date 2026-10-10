@@ -27,7 +27,7 @@ public class AssignmentScopeService {
     @Inject SecurityIdentity identity;
 
     public boolean countryWide(){return identity.getRoles().stream().anyMatch(COUNTRY_READ_ROLES::contains);}
-    public List<UserOperationalScope> scopes(){return UserOperationalScope.list("instanceCountryId=?1 and username=?2",tenant.instanceCountryId(),identity.getPrincipal().getName());}
+    public List<UserOperationalScope> scopes(){return UserOperationalScope.of(identity,tenant.instanceCountryId());}
 
     public Set<UUID> allowedCompanyIds(){
         if(countryWide())return Company.<Company>list("instanceCountryId=?1",tenant.instanceCountryId()).stream().map(c->c.id).collect(Collectors.toCollection(LinkedHashSet::new));

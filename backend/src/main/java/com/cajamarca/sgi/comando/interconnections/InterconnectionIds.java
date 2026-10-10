@@ -23,6 +23,10 @@ public final class InterconnectionIds {
 
     public static final String IDENT_AUTH = "SGI_COM_IDENT_0001_v001";
     public static final String IDENT_EMPLOYEE_QUERY = "IDENT_SGI_COM_0001_v001";
+    /** SGI: Comando publica su catálogo de Roles en IDENT (login con IDENT). */
+    public static final String IDENT_ROLES = "SGI_COM_IDENT_0002_v001";
+    /** IDENT abre SGI: Comando desde su selector de Sistemas (lo usa IDENT, no SGI). */
+    public static final String IDENT_PORTAL_ENTRY = "IDENT_SGI_COM_0002_v001";
 
     public static final String SIC_COM_RECONCILIATION = "SGI_COM_SIC_COM_0001_v001";
     public static final String SIC_COM_EVENTS = "SIC_COM_SGI_COM_0001_v001";

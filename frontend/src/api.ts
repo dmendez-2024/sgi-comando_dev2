@@ -1,3 +1,4 @@
+import {identEnabled,identRoles,identToken,startLogin} from './security/identAuth';
 const API = import.meta.env.VITE_API_URL || '/dev.comando';
 // const API=import.meta.env.VITE_API_URL ?? 'http://localhost:8080';
 export type UatUser='presidente'|'dlatam'|'don'|'dnacional'|'dzonal'|'jregional'|'coord'|'asistente'|'supervisor'|'agente'|'cliente';
@@ -5,21 +6,31 @@ let currentUser:UatUser=(localStorage.getItem('sgi-uat-user') as UatUser)||'coor
 const PASSWORD='CajamarcaUAT!2026';
 const contextCache=new Map<UatUser,Promise<any>>();
 export const setUser=(u:UatUser)=>{currentUser=u;contextCache.clear();localStorage.setItem('sgi-uat-user',u)};
-export const getUser=()=>currentUser;
+/** Perfil de pantalla segun el Rol que entrega IDENT (Cargo); sin IDENT, el usuario UAT elegido en el selector. */
+const PROFILE_BY_ROLE:[string,UatUser][]=[['PRESIDENTE','presidente'],['DIRECTOR_OPERACIONES_LATAM','dlatam'],['DIRECTOR_OPERACIONES_NACIONAL','don'],
+ ['DIRECTOR_NACIONAL','dnacional'],['DIRECTOR_ZONAL','dzonal'],['JEFE_REGIONAL','jregional'],['COORDINADOR_COMPANIA','coord'],
+ ['ASISTENTE_COORDINACION','asistente'],['SUPERVISOR_SEGURIDAD','supervisor'],['AGENTE_SEGURIDAD','agente'],['CLIENTE','cliente']];
+export const getUser=():UatUser=>{
+ if(!identEnabled())return currentUser;
+ const roles=identRoles(); return PROFILE_BY_ROLE.find(([r])=>roles.includes(r))?.[1]??'cliente';
+};
 export class ApiError extends Error{status:number;body:string;constructor(status:number,body:string){super(`${status} ${body}`);this.status=status;this.body=body}}
-async function request<T>(path:string,init?:RequestInit,user:UatUser=currentUser):Promise<T>{
- const headers=new Headers(init?.headers); headers.set('Content-Type','application/json'); headers.set('Authorization','Basic '+btoa(`${user}:${PASSWORD}`));
- const res=await fetch(`${API}${path}`,{...init,headers}); if(!res.ok){const body=await res.text();throw new ApiError(res.status,body)} return res.status===204?undefined as T:res.json();
+async function request<T>(path:string,init?:RequestInit,user?:UatUser):Promise<T>{
+ const headers=new Headers(init?.headers); headers.set('Content-Type','application/json'); headers.set('Authorization',authHeader(user));
+ const res=await fetch(`${API}${path}`,{...init,headers}); if(!res.ok){reloginIfExpired(res.status,user);const body=await res.text();throw new ApiError(res.status,body)} return res.status===204?undefined as T:res.json();
 }
 
-async function binaryRequest(path:string,init?:RequestInit,user:UatUser=currentUser):Promise<Blob>{
- const headers=new Headers(init?.headers); headers.set('Authorization','Basic '+btoa(`${user}:${PASSWORD}`));
- const res=await fetch(`${API}${path}`,{...init,headers}); if(!res.ok){const body=await res.text();throw new ApiError(res.status,body)} return res.blob();
+async function binaryRequest(path:string,init?:RequestInit,user?:UatUser):Promise<Blob>{
+ const headers=new Headers(init?.headers); headers.set('Authorization',authHeader(user));
+ const res=await fetch(`${API}${path}`,{...init,headers}); if(!res.ok){reloginIfExpired(res.status,user);const body=await res.text();throw new ApiError(res.status,body)} return res.blob();
 }
 async function atsCurrentOrNull(pointId:string):Promise<any|null>{
  try{return await request<any>(`/api/points/${encodeURIComponent(pointId)}/ats`)}catch(error){if(error instanceof ApiError&&error.status===404)return null;throw error}
 }
-const authHeader=(user:UatUser=currentUser)=>"Basic "+btoa(`${user}:${PASSWORD}`);
+/** Con IDENT: token de la persona. Sin IDENT, o para el Simulador de Agente (usuario UAT explicito): usuario y contrasena UAT. */
+const authHeader=(user?:UatUser)=>identEnabled()&&!user?`Bearer ${identToken()}`:"Basic "+btoa(`${user??currentUser}:${PASSWORD}`);
+/** Token de IDENT vencido: se pide uno nuevo (con sesion de IDENT abierta vuelve sin contrasena). */
+const reloginIfExpired=(status:number,user?:UatUser)=>{if(status===401&&identEnabled()&&!user)void startLogin()};
 // TEMPORAL (demo UAT): el Simulador de Agente llama a la API del operador como el usuario UAT "agente",
 // sin cambiar el usuario del resto de la app. Quitar junto con el simulador.
 const SIMULATOR_USER:UatUser='agente';
@@ -42,7 +53,7 @@ const patrolImageUpload=(checkpointId:string,file:File)=>standardImageUpload(`/a
 const consignmentImageUpload=(evidenceId:string,file:File)=>standardImageUpload(`/api/consignments/evidences/${encodeURIComponent(evidenceId)}/standard-images`,file);
 const postImageUpload=(postId:string,file:File)=>standardImageUpload(`/api/post-configurations/${encodeURIComponent(postId)}/standard-images`,file);
 async function atsUpload(pointId:string,file:File):Promise<any>{
- const headers=new Headers(); headers.set('Authorization','Basic '+btoa(`${currentUser}:${PASSWORD}`)); headers.set('Content-Type','application/octet-stream');
+ const headers=new Headers(); headers.set('Authorization',authHeader()); headers.set('Content-Type','application/octet-stream');
  const res=await fetch(`${API}/api/points/${encodeURIComponent(pointId)}/ats/upload?filename=${encodeURIComponent(file.name)}`,{method:'POST',headers,body:file});
  if(!res.ok){const body=await res.text();throw new ApiError(res.status,body)} return res.json();
 }
