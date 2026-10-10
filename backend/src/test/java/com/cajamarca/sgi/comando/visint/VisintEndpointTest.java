@@ -60,9 +60,9 @@ class VisintEndpointTest {
         assertEquals(ENV_URL, e.url());
     }
 
-    @Test void fallsBackToEnvWhenInstanceIdIsInvalid() {
+    @Test void fallsBackToEnvWhenThereIsNoInstanceCountry() {
         VisintEndpoint e = endpoint((id, iface, instance) -> fail("no debe llamar a CORE"));
-        e.instanceCountryId = Optional.of("no-es-uuid");
+        e.instances = instances(() -> { throw new IllegalStateException("CORE no indica Instancia PE"); });
         assertEquals(ENV_URL, e.url());
     }
 
@@ -81,10 +81,14 @@ class VisintEndpointTest {
 
     interface Core { ResolvedInterconnection resolve(String id, String iface, UUID instance); }
 
+    static com.cajamarca.sgi.comando.security.InstanceCountrySource instances(java.util.function.Supplier<UUID> pe) {
+        return new com.cajamarca.sgi.comando.security.InstanceCountrySource() { @Override public UUID current() { return pe.get(); } };
+    }
+
     static VisintEndpoint endpoint(Core core) {
         VisintEndpoint e = VisintEndpoint.fixed(Optional.of(ENV_URL));
         e.coreResolverUrl = Optional.of("http://core:5173");
-        e.instanceCountryId = Optional.of(INSTANCE);
+        e.instances = instances(() -> UUID.fromString(INSTANCE));   // en la aplicacion: PE del token de IDENT o de CORE
         e.resolver = new CoreInterconnectionResolver() {
             @Override public ResolvedInterconnection resolve(String id, String iface, UUID instance) { return core.resolve(id, iface, instance); }
         };

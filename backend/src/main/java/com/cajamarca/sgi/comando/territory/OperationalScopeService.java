@@ -17,7 +17,7 @@ public class OperationalScopeService {
 
     public boolean countryWide(){ return identity.getRoles().stream().anyMatch(COUNTRY_ROLES::contains); }
     public String username(){ return identity.getPrincipal().getName(); }
-    public List<UserOperationalScope> scopes(){ return UserOperationalScope.list("instanceCountryId=?1 and username=?2",tenant.instanceCountryId(),username()); }
+    public List<UserOperationalScope> scopes(){ return UserOperationalScope.of(identity,tenant.instanceCountryId()); }
 
     public Set<UUID> visibleZoneIds(){
         if(countryWide()){List<TerritoryZone> zones=TerritoryZone.list("instanceCountryId=?1",tenant.instanceCountryId());return zones.stream().map(z->z.id).collect(Collectors.toSet());}

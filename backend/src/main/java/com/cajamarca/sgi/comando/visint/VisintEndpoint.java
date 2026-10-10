@@ -22,15 +22,15 @@ public class VisintEndpoint {
     @Inject CoreInterconnectionResolver resolver;
     @Inject ResolutionCache cache;
     @ConfigProperty(name="sgi.interconnections.core-resolver-url") Optional<String> coreResolverUrl;
-    /** Id (UUID) de la Instancia PE en CORE; temporal hasta que IDENT entregue el id de la empresa. */
-    @ConfigProperty(name="sgi.interconnections.instance-country-id") Optional<String> instanceCountryId;
+    /** Instancia PE: la del token de IDENT o, sin persona, la que diga CORE (sin ID configurado, DEC-46). */
+    @Inject com.cajamarca.sgi.comando.security.InstanceCountrySource instances;
     @ConfigProperty(name="sgi.visint.interconnection-code", defaultValue=InterconnectionIds.VISINT_REVIEW_REQUEST) String code;
     @ConfigProperty(name="sgi.visint.url") Optional<String> fallbackUrl;
 
     /** Solo SGI_VISINT_URL, sin CORE (pruebas). */
     static VisintEndpoint fixed(Optional<String> url) {
         VisintEndpoint e = new VisintEndpoint();
-        e.coreResolverUrl = Optional.empty(); e.instanceCountryId = Optional.empty();
+        e.coreResolverUrl = Optional.empty(); e.instances = null;
         e.code = InterconnectionIds.VISINT_REVIEW_REQUEST; e.fallbackUrl = url;
         return e;
     }
@@ -38,16 +38,16 @@ public class VisintEndpoint {
     /** Cada llamada deja en el log la URL usada y su origen: CORE o SGI_VISINT_URL (con el motivo). */
     public String url() {
         String reason;
-        if (present(coreResolverUrl) && present(instanceCountryId)) {
+        if (present(coreResolverUrl) && instances != null) {
             try {
-                String url = cache.resolve(code, null, UUID.fromString(instanceCountryId.get().trim()), resolver).url();
+                String url = cache.resolve(code, null, instances.current(), resolver).url();
                 LOG.infof("URL de VISINT desde CORE %s → %s", code, url);
                 return url;
             } catch (RuntimeException e) {
                 reason = "CORE no resolvió " + code + ": " + e.getMessage();
             }
         } else {
-            reason = "CORE no configurado (SGI_INTERCONNECTIONS_CORE_RESOLVER_URL o SGI_INTERCONNECTIONS_INSTANCE_COUNTRY_ID vacío)";
+            reason = "CORE no configurado (SGI_INTERCONNECTIONS_CORE_RESOLVER_URL vacío)";
         }
         if (present(fallbackUrl)) {
             String url = fallbackUrl.get().trim();

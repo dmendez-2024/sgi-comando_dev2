@@ -1,0 +1,19 @@
+{
+  "program": "SGI_COM",
+  "note": "Catálogo de Roles de SGI: Comando (dueño de sus Roles). Se publica en IDENT por SGI_COM_IDENT_0002_v001 y en IDENT se asigna a cada Cargo. INACTIVE = Roles del simulador que este catálogo reemplaza.",
+  "roles": [
+    {"code": "PRESIDENTE", "name": "Presidente", "scopeRequirement": "PE"},
+    {"code": "DIRECTOR_OPERACIONES_LATAM", "name": "Director de Operaciones LATAM", "scopeRequirement": "PE"},
+    {"code": "DIRECTOR_OPERACIONES_NACIONAL", "name": "Director de Operaciones Nacional", "scopeRequirement": "PE"},
+    {"code": "DIRECTOR_NACIONAL", "name": "Director Nacional", "scopeRequirement": "PE"},
+    {"code": "DIRECTOR_ZONAL", "name": "Director Zonal", "scopeRequirement": "PE"},
+    {"code": "JEFE_REGIONAL", "name": "Jefe Regional", "scopeRequirement": "PE"},
+    {"code": "COORDINADOR_COMPANIA", "name": "Coordinador de Compañía", "scopeRequirement": "PE"},
+    {"code": "ASISTENTE_COORDINACION", "name": "Asistente de Coordinación", "scopeRequirement": "PE"},
+    {"code": "SUPERVISOR_SEGURIDAD", "name": "Supervisor de Seguridad", "scopeRequirement": "PE"},
+    {"code": "AGENTE_SEGURIDAD", "name": "Agente de Seguridad", "scopeRequirement": "PE"},
+    {"code": "CLIENTE", "name": "Cliente", "scopeRequirement": "PE"},
+    {"code": "COORDINADOR", "name": "Coordinador", "scopeRequirement": "COMPANY", "status": "INACTIVE"},
+    {"code": "DIRECTOR_ZONA", "name": "Director Zona", "scopeRequirement": "ZONE", "status": "INACTIVE"}
+  ]
+}

@@ -1,0 +1,34 @@
+# SGI: Comando en un SERVIDOR (desarrollo: https://apps.cajamarca.ec/dev.comando). Se suma a docker-compose.yml y
+# reemplaza los valores de local. Los DATOS del servidor van en .env.openbao (no va a Git); los secretos, en
+# .env.secretos (solo en el servidor, nunca en Git) y en OpenBao.
+#   docker compose --env-file .env.openbao --env-file .env.secretos -f docker-compose.yml -f docker-compose.servidor.yml up -d --build
+# Si falta un dato, docker compose no levanta y dice cual falta.
+services:
+  backend:
+    environment:
+      SGI_INTERCONNECTIONS_CORE_RESOLVER_URL: ${SGI_INTERCONNECTIONS_CORE_RESOLVER_URL:?Falta SGI_INTERCONNECTIONS_CORE_RESOLVER_URL en .env.openbao}
+      SGI_INTERCONNECTIONS_ENVIRONMENT: ${SGI_INTERCONNECTIONS_ENVIRONMENT:?Falta SGI_INTERCONNECTIONS_ENVIRONMENT en .env.openbao}
+      SGI_CORE_CATALOG_BASE_URL: ${SGI_CORE_CATALOG_BASE_URL:?Falta SGI_CORE_CATALOG_BASE_URL en .env.openbao}
+      # Login con IDENT (direccion de IDENT desde CORE: SGI_COM_IDENT_0001_v001)
+      SGI_IDENT_ENABLED: ${SGI_IDENT_ENABLED:?Falta SGI_IDENT_ENABLED en .env.openbao}
+      SGI_IDENT_ALLOWED_HOSTS: ${SGI_IDENT_ALLOWED_HOSTS:?Falta SGI_IDENT_ALLOWED_HOSTS en .env.openbao}
+      SGI_IDENT_INTERNAL_URL: ""
+      # Publicacion de Roles en IDENT (SGI_COM_IDENT_0002_v001) con la clave SGI_COM_PUBLISH de OpenBao
+      SGI_IDENT_PUBLISH_ROLES: ${SGI_IDENT_PUBLISH_ROLES:-false}
+      SGI_IDENT_PUBLISHER_CLIENT_ID: ${SGI_IDENT_PUBLISHER_CLIENT_ID:-}
+      SGI_IDENT_PUBLISHER_SECRET_REF: ${SGI_IDENT_PUBLISHER_SECRET_REF:-}
+      # Consulta de empleados que hace IDENT (IDENT_SGI_COM_0001_v001)
+      SGI_IDENT_EMPLOYEES_AUTH_ENABLED: ${SGI_IDENT_EMPLOYEES_AUTH_ENABLED:-true}
+      SGI_IDENT_EMPLOYEES_INBOUND_CREDENTIAL_REF: ${SGI_IDENT_EMPLOYEES_INBOUND_CREDENTIAL_REF:-IDENT_SGI_COM_0001_v001}
+      # OpenBao del ambiente (AppRole propio de SGI_COM)
+      SGI_VAULT_ADDR: ${SGI_VAULT_ADDR:?Falta SGI_VAULT_ADDR (direccion del OpenBao de este ambiente)}
+      SGI_VAULT_ROLE_ID_FILE: /run/secrets/openbao-sgi-com/role_id
+      SGI_VAULT_SECRET_ID_FILE: /run/secrets/openbao-sgi-com/secret_id
+      SGI_VAULT_CA_CERT_FILE: /run/secrets/openbao-sgi-com/ca.pem
+    volumes:
+      - /run/secrets/openbao-sgi-com:/run/secrets/openbao-sgi-com:ro
+  frontend:
+    build:
+      args:
+        VITE_BASE_PATH: ${SGI_FRONTEND_BASE:?Falta SGI_FRONTEND_BASE en .env.openbao}
+        VITE_API_URL: ${SGI_FRONTEND_API_URL:?Falta SGI_FRONTEND_API_URL en .env.openbao}
