@@ -96,6 +96,6 @@ services:
 
 volumes:
   postgres_data:
-    name: sgi-comando_dev2_dme3_postgres_data
+    name: repo_postgres_data
   minio_data:
     name: repo_minio_data
