@@ -39,12 +39,9 @@ type ConsoleItem={
 };
 
 type Scope={label:string;companies:string[]|null;region?:string;zone?:string};
-<<<<<<< HEAD
 type ClientOption={id:string;code:string;name:string};
 type ServiceLocationRow={clientId:string;pointId:string;postId:string;companyId:string|null;companyName:string;clientName:string;pointName:string;postName:string};
-=======
 type OperatorReport={reportId:string;type:'INCIDENT'|'FINDING'|'VULNERABILITY';category:string;subcategory?:string;title:string;description:string;severity:Priority;status:string;occurredAt:string;createdAt:string;username:string;pointName:string;postName:string};
->>>>>>> Ambiente_dev
 type Filters={
   category:'ALL'|ItemCategory;
   query:string;
@@ -132,12 +129,9 @@ export default function ConsolaMonitor(){
   const [detailId,setDetailId]=useState('');
   const [filtersOpen,setFiltersOpen]=useState(false);
   const [incidents,setIncidents]=useState<IncidentRecord[]>([]);
-<<<<<<< HEAD
   const [incidentsError,setIncidentsError]=useState('');
   const [incidentsRefresh,setIncidentsRefresh]=useState(0);
-=======
   const [operatorReports,setOperatorReports]=useState<OperatorReport[]>([]);
->>>>>>> Ambiente_dev
   const [incidentEditorOpen,setIncidentEditorOpen]=useState(false);
   const [editingIncidentId,setEditingIncidentId]=useState('');
   const [locationOptions,setLocationOptions]=useState<LocationOption[]>([]);
@@ -177,11 +171,9 @@ export default function ConsolaMonitor(){
   },[user,locationsRefresh]);
 
   const incidentRows=useMemo(()=>incidents.map(incidentToConsoleItem),[incidents]);
-<<<<<<< HEAD
   const allRows=useMemo(()=>[...DATA,...incidentRows],[incidentRows]);
   const allowedCompanyIds=useMemo(()=>new Set(locationOptions.map(x=>x.companyId).filter((id):id is string=>!!id)),[locationOptions]);
   const scoped=useMemo(()=>allRows.filter(x=>withinScope(x,scope,allowedCompanyIds)),[allRows,scope,allowedCompanyIds]);
-=======
   const operatorRows=useMemo(()=>operatorReports.map(operatorReportToConsoleItem),[operatorReports]);
   const allRows=useMemo(()=>[...operatorRows,...DATA,...incidentRows],[operatorRows,incidentRows]);
   useEffect(()=>{api.operationalReports().then(data=>{
@@ -198,7 +190,6 @@ export default function ConsolaMonitor(){
       return [{client:row.client,point:row.point,post:row.post,company:row.company,companyCode:row.companyCode,city:row.city}];
     });
   },[scope]);
->>>>>>> Ambiente_dev
   const cities=useMemo(()=>unique(scoped.map(x=>x.city)),[scoped]);
   const companies=useMemo(()=>unique(scoped.map(x=>x.company)),[scoped]);
   const clients=useMemo(()=>unique(scoped.map(x=>x.client)),[scoped]);
