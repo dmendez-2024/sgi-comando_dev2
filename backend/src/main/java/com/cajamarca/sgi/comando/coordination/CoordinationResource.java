@@ -132,7 +132,7 @@ public class CoordinationResource {
     @Path("/posts/{postId}/route")
     @Transactional
     public RouteDto createRoute(@PathParam("postId")UUID postId,SaveRouteRequest req){
-        CoordinationPost p=post(postId);manageableCompany(p.companyId);requireSupervisor(p);requireMutableConfiguration(p);
+        CoordinationPost p=post(postId);manageableCompany(p.companyId);requireSupervisor(p);
         SupervisionRoute existing=currentRoute(p.id);if(existing!=null)return routeDto(existing);
         SupervisionRoute r=new SupervisionRoute();r.id=UUID.randomUUID();r.instanceCountryId=tenant.instanceCountryId();r.seriesId=r.id;r.coordinationPostId=p.id;r.code="RUT-"+p.code;r.name=clean(req==null?null:req.name(),"Ruta "+p.name);r.versionNo=1;r.status="DRAFT";r.updatedByUsername=scope.username();r.persist();
         if(req!=null&&req.pointIds()!=null)saveRoutePoints(r,p,req.pointIds());
@@ -143,7 +143,7 @@ public class CoordinationResource {
     @Path("/routes/{id}")
     @Transactional
     public RouteDto saveRoute(@PathParam("id")UUID id,SaveRouteRequest req){
-        SupervisionRoute r=route(id);CoordinationPost p=post(r.coordinationPostId);manageableCompany(p.companyId);requireSupervisor(p);requireMutableConfiguration(p);requireDraftRoute(r);if(req==null)throw new BadRequestException("Solicitud obligatoria.");
+        SupervisionRoute r=route(id);CoordinationPost p=post(r.coordinationPostId);manageableCompany(p.companyId);requireSupervisor(p);requireDraftRoute(r);if(req==null)throw new BadRequestException("Solicitud obligatoria.");
         r.name=clean(req.name(),r.name);r.updatedByUsername=scope.username();saveRoutePoints(r,p,req.pointIds()==null?List.of():req.pointIds());return routeDto(r);
     }
 
@@ -151,7 +151,7 @@ public class CoordinationResource {
     @Path("/routes/{id}/fork")
     @Transactional
     public RouteDto forkRoute(@PathParam("id")UUID id){
-        SupervisionRoute source=route(id);CoordinationPost p=post(source.coordinationPostId);manageableCompany(p.companyId);requireSupervisor(p);requireMutableConfiguration(p);
+        SupervisionRoute source=route(id);CoordinationPost p=post(source.coordinationPostId);manageableCompany(p.companyId);requireSupervisor(p);
         SupervisionRoute existing=SupervisionRoute.find("instanceCountryId=?1 and seriesId=?2 and status='DRAFT'",tenant.instanceCountryId(),source.seriesId).firstResult();if(existing!=null)return routeDto(existing);
         SupervisionRoute target=new SupervisionRoute();target.instanceCountryId=tenant.instanceCountryId();target.seriesId=source.seriesId;target.basedOnRouteId=source.id;target.coordinationPostId=source.coordinationPostId;target.code=source.code;target.name=source.name;target.versionNo=source.versionNo+1;target.status="DRAFT";target.updatedByUsername=scope.username();target.persist();
         List<SupervisionRoutePoint> src=routePoints(source.id);for(SupervisionRoutePoint old:src){SupervisionRoutePoint rp=new SupervisionRoutePoint();rp.instanceCountryId=tenant.instanceCountryId();rp.routeId=target.id;rp.pointId=old.pointId;rp.sortOrder=old.sortOrder;rp.pointCodeSnapshot=old.pointCodeSnapshot;rp.pointNameSnapshot=old.pointNameSnapshot;rp.persist();}
@@ -162,7 +162,7 @@ public class CoordinationResource {
     @Path("/routes/{id}/publish")
     @Transactional
     public RouteDto publishRoute(@PathParam("id")UUID id){
-        SupervisionRoute r=route(id);CoordinationPost p=post(r.coordinationPostId);manageableCompany(p.companyId);requireSupervisor(p);requireMutableConfiguration(p);requireDraftRoute(r);if(routePoints(r.id).isEmpty())throw new BadRequestException("La Ruta debe contener al menos un Punto.");
+        SupervisionRoute r=route(id);CoordinationPost p=post(r.coordinationPostId);manageableCompany(p.companyId);requireSupervisor(p);requireDraftRoute(r);if(routePoints(r.id).isEmpty())throw new BadRequestException("La Ruta debe contener al menos un Punto.");
         List<SupervisionRoute> actives=SupervisionRoute.list("instanceCountryId=?1 and coordinationPostId=?2 and status='ACTIVE'",tenant.instanceCountryId(),p.id);for(SupervisionRoute active:actives)active.status="REPLACED";
         r.status="ACTIVE";r.publishedAt=Instant.now();r.updatedByUsername=scope.username();return routeDto(r);
     }
@@ -222,7 +222,6 @@ public class CoordinationResource {
     private SupervisionRoute currentRoute(UUID postId){List<SupervisionRoute> rows=SupervisionRoute.list("instanceCountryId=?1 and coordinationPostId=?2 order by versionNo desc",tenant.instanceCountryId(),postId);for(SupervisionRoute r:rows)if("DRAFT".equals(r.status))return r;for(SupervisionRoute r:rows)if("ACTIVE".equals(r.status))return r;return rows.isEmpty()?null:rows.get(0);}
     private List<SupervisionRoutePoint> routePoints(UUID routeId){return SupervisionRoutePoint.list("instanceCountryId=?1 and routeId=?2 order by sortOrder",tenant.instanceCountryId(),routeId);}
     private void requireSupervisor(CoordinationPost p){if(!"SUPERVISION".equals(p.postType))throw new BadRequestException("Solo los Puestos de Supervisión tienen Ruta.");}
-    private void requireMutableConfiguration(CoordinationPost p){if(p.configurationLocked)throw new ClientErrorException("El Puesto quedó bloqueado al activarse y su configuración ya no puede modificarse. Cree un nuevo Puesto de Coordinación para aplicar cambios.",409);}
     private void requireDraftRoute(SupervisionRoute r){if(!"DRAFT".equals(r.status))throw new ClientErrorException("La Ruta publicada es inmutable. Cree una nueva versión.",409);}
     private String nextPostCode(Company company,String type){
         String countryIsoAlpha3=coreCatalog.resolveCountry().isoAlpha3();

@@ -718,6 +718,16 @@ public class AssignmentResource {
     private Map<String,Object> publicationShiftSnapshot(ShiftOccurrenceEntity shift){
         Map<String,Object> snapshot=new LinkedHashMap<>();
         snapshot.put("shiftOccurrenceId",shift.id);snapshot.put("targetType",shift.isCoordination()?"COORDINATION":"OPERATIONAL");snapshot.put("postId",shift.targetId());snapshot.put("startsAt",shift.startsAt);snapshot.put("endsAt",shift.endsAt);snapshot.put("shiftCode",shift.shiftCode);snapshot.put("commercialVersion",shift.commercialVersion);
+        if(shift.coordinationPostId!=null){
+            CoordinationPost post=CoordinationPost.find("id=?1 and instanceCountryId=?2",shift.coordinationPostId,tenant.instanceCountryId()).firstResult();
+            if(post!=null){
+                snapshot.put("coordinationPostCode",post.code);snapshot.put("coordinationPostName",post.name);snapshot.put("coordinationType",post.postType);
+                if("SUPERVISION".equals(post.postType)){
+                    SupervisionRoute route=activeCoordinationRoute(post.id);
+                    if(route!=null){snapshot.put("routeId",route.id);snapshot.put("routeCode",route.code);snapshot.put("routeName",route.name);snapshot.put("routeVersion",route.versionNo);}
+                }
+            }
+        }
         return snapshot;
     }
 
