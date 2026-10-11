@@ -2,6 +2,7 @@ package com.cajamarca.sgi.comando.rrhh;
 
 import com.cajamarca.sgi.comando.assignments.CompanyMembershipEntity;
 import com.cajamarca.sgi.comando.assignments.EmployeeOperationalSnapshot;
+import com.cajamarca.sgi.comando.assignments.AssignmentReleaseService;
 import com.cajamarca.sgi.comando.common.TenantContext;
 import com.cajamarca.sgi.comando.companies.Company;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -40,6 +41,7 @@ public class RrhhEmployeeSyncService {
     );
 
     @Inject TenantContext tenant;
+    @Inject AssignmentReleaseService assignmentReleaseService;
 
     @ConfigProperty(name = "sgi.integrations.rrhh.use-canonical-employee-id", defaultValue = "false")
     boolean useCanonicalEmployeeId;
@@ -116,6 +118,9 @@ public class RrhhEmployeeSyncService {
             return;
         }
 
+        boolean becameInactive = employee != null
+            && !"INACTIVE".equalsIgnoreCase(employee.employmentStatus)
+            && "INACTIVE".equals(employmentStatus);
         Company sourceCompany = resolveSourceCompany(tenantId, request, employee);
 
         if (employee == null) {
@@ -140,6 +145,14 @@ public class RrhhEmployeeSyncService {
             reconcilePrimaryMembership(tenantId, employee, sourceCompany, sourceTimestamp);
         } else {
             closePrimaryMembership(tenantId, employee, sourceTimestamp);
+            if (becameInactive) {
+                assignmentReleaseService.releaseForEmployeeInactivation(
+                    tenantId,
+                    employee.employeeId,
+                    sourceTimestamp,
+                    key
+                );
+            }
         }
         recordReceipt(tenantId, key, contentHash, sourceTimestamp, "APPLIED");
     }

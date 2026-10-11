@@ -40,6 +40,7 @@ public class AssignmentResource {
     @Inject ObjectMapper mapper;
     @Inject AssignmentScopeService scope;
     @Inject AssignmentRolePolicy rolePolicy;
+    @Inject AssignmentReleaseService assignmentReleaseService;
 
     public record EnsurePlanRequest(UUID companyId, LocalDate weekStart) {}
     public record AssignRequest(UUID planId, UUID shiftOccurrenceId, UUID employeeId, UUID sourceAssignmentId, String reason) {}
@@ -295,7 +296,7 @@ public class AssignmentResource {
         if(openTransfer(employee.employeeId)!=null)throw conflict("TRANSFERENCIA_ABIERTA","El colaborador ya tiene una transferencia pendiente.");
         TransferReasonCatalog reason=TransferReasonCatalog.find("instanceCountryId=?1 and code=?2 and active=true",tenant.instanceCountryId(),req.reasonCode()).firstResult();if(reason==null)throw new BadRequestException("Motivo inválido.");
         EmployeeCompanyTransfer t=new EmployeeCompanyTransfer();t.instanceCountryId=tenant.instanceCountryId();t.employeeId=employee.employeeId;t.originCompanyId=originId;t.destinationCompanyId=destination.id;t.reasonCode=reason.code;t.reasonLabelSnapshot=reason.label;t.observations=req.observations().trim();t.status="PENDING_ACCEPTANCE";t.initiatedByUsername=identity.getPrincipal().getName();t.initiatedAt=Instant.now();t.releasedFutureAssignments=0;t.rrhhSyncStatus="PENDING";t.persist();
-        t.releasedFutureAssignments=releaseFutureAssignments(employee.employeeId,originId,t.id);OperationalAssignmentEntity current=currentAssignment(employee.employeeId,originId,Instant.now());if(current!=null)t.currentShiftAssignmentId=current.id;
+        t.releasedFutureAssignments=assignmentReleaseService.releaseForCompanyTransfer(tenant.instanceCountryId(),employee.employeeId,originId,t.id,identity.getPrincipal().getName());OperationalAssignmentEntity current=currentAssignment(employee.employeeId,originId,Instant.now());if(current!=null)t.currentShiftAssignmentId=current.id;
         OutboxEvent.of(tenant.instanceCountryId(),"EMPLOYEE_COMPANY_TRANSFER",t.id,"TRANSFER_REQUESTED",json(Map.of("employeeId",employee.employeeId,"originCompanyId",originId,"destinationCompanyId",destination.id,"reasonCode",reason.code))).persist();
         return transferDto(t,employee);
     }
@@ -773,13 +774,6 @@ public class AssignmentResource {
         List<AssignmentPlanEntity> plans=AssignmentPlanEntity.list("instanceCountryId=?1 and companyId=?2",tenant.instanceCountryId(),companyId);if(plans.isEmpty())return null;Set<UUID> planIds=plans.stream().map(p->p.id).collect(Collectors.toSet());
         List<OperationalAssignmentEntity> rows=OperationalAssignmentEntity.list("instanceCountryId=?1 and assignmentPlanId in ?2 and status<>'REMOVED' and (employeeId=?3 or actualEmployeeId=?3)",tenant.instanceCountryId(),planIds,employeeId);if(rows.isEmpty())return null;Map<UUID,ShiftOccurrenceEntity> shifts=shiftMap(rows.stream().map(a->a.shiftOccurrenceId).collect(Collectors.toSet()));
         return rows.stream().filter(a->{ShiftOccurrenceEntity sh=shifts.get(a.shiftOccurrenceId);return sh!=null&&!now.isBefore(sh.startsAt)&&now.isBefore(sh.endsAt);}).findFirst().orElse(null);
-    }
-
-    private int releaseFutureAssignments(UUID employeeId,UUID companyId,UUID transferId){
-        Instant now=Instant.now();List<AssignmentPlanEntity> plans=AssignmentPlanEntity.list("instanceCountryId=?1 and companyId=?2",tenant.instanceCountryId(),companyId);if(plans.isEmpty())return 0;Set<UUID> planIds=plans.stream().map(p->p.id).collect(Collectors.toSet());
-        List<OperationalAssignmentEntity> rows=OperationalAssignmentEntity.list("instanceCountryId=?1 and assignmentPlanId in ?2 and status<>'REMOVED' and (employeeId=?3 or actualEmployeeId=?3)",tenant.instanceCountryId(),planIds,employeeId);Map<UUID,ShiftOccurrenceEntity> shifts=shiftMap(rows.stream().map(a->a.shiftOccurrenceId).collect(Collectors.toSet()));Map<UUID,AssignmentPlanEntity> planMap=plans.stream().collect(Collectors.toMap(p->p.id,p->p));int released=0;
-        for(OperationalAssignmentEntity a:rows){ShiftOccurrenceEntity sh=shifts.get(a.shiftOccurrenceId);if(sh==null||!sh.startsAt.isAfter(now))continue;UUID before=a.effectiveEmployeeId();a.status="REMOVED";AssignmentPlanEntity plan=planMap.get(a.assignmentPlanId);if(plan!=null)recordEvent(plan,a,sh,"ASSIGNMENT_RELEASED_FOR_COMPANY_TRANSFER",before,null,identity.getPrincipal().getName(),"Transferencia de Compañía pendiente",Map.of("transferId",transferId));released++;}
-        return released;
     }
 
     private void completeTransfer(EmployeeCompanyTransfer t,Instant effectiveAt){
