@@ -244,7 +244,7 @@ public class OperatorResource {
                 ObjectNode patrol=definitions.addObject().put("patrolId",patrolId.toString()).put("code",patrolRow[1].toString())
                     .put("name",patrolRow[2].toString()).put("description",patrolRow[3].toString())
                     .put("structureType",patrolRow[4].toString()).put("scheduleType",patrolRow[5].toString())
-                    .put("repetitions",((Number)patrolRow[9]).intValue());
+                    .put("repetitions",((Number)patrolRow[9]).intValue()).put("status","ACTIVO");
                 if(patrolRow[6]!=null) patrol.put("sequenceType",patrolRow[6].toString());
                 if(patrolRow[7]!=null) patrol.put("windowStart",patrolRow[7].toString());
                 if(patrolRow[8]!=null) patrol.put("windowEnd",patrolRow[8].toString());
@@ -581,13 +581,15 @@ public class OperatorResource {
         UUID employee=employee(), assignmentId=uuid(event,"assignmentId"), executionId=uuid(event,"executionId"), patrolId=uuid(event,"patrolId");
         AssignmentContext c=assignment(assignmentId,employee); lock(assignmentId);
         List<?> allowed=em.createNativeQuery("""
-          select d.id,d.schedule_type,d.sequence_type from patrol_definition d join patrol_protocol p on p.id=d.protocol_id and p.instance_country_id=d.instance_country_id
+          select d.id,d.structure_type,d.schedule_type,d.sequence_type,d.window_start,d.window_end from patrol_definition d join patrol_protocol p on p.id=d.protocol_id and p.instance_country_id=d.instance_country_id
           join patrol_protocol_post_scope s on s.protocol_id=p.id and s.instance_country_id=p.instance_country_id
           where d.id=:patrol and d.instance_country_id=:tenant and d.status='ACTIVO' and p.status='ACTIVO' and s.post_id=:post
           """).setParameter("patrol",patrolId).setParameter("tenant",tenant.instanceCountryId()).setParameter("post",c.post.id).getResultList();
         if(allowed.isEmpty()) throw new BadRequestException("Patrulla no activa para el puesto asignado");
         Object[] patrolRules=(Object[])allowed.get(0);
-        boolean fieldCheckpointsAllowed="UNPROGRAMMED".equals(patrolRules[1]) && "FLEXIBLE".equals(patrolRules[2]);
+        if(!withinAssignmentWindow(c,patrolRules[2],patrolRules[4],patrolRules[5]))
+            throw new BadRequestException("La patrulla no corresponde al horario de la asignación");
+        boolean fieldCheckpointsAllowed="OPEN".equals(patrolRules[1]);
         List<?> plans=em.createNativeQuery("select id from patrol_plan where instance_country_id=:tenant and patrol_definition_id=:patrol and post_id=:post and active=true limit 1")
             .setParameter("tenant",tenant.instanceCountryId()).setParameter("patrol",patrolId).setParameter("post",c.post.id).getResultList();
         UUID planId;
