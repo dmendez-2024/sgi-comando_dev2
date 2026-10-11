@@ -25,7 +25,7 @@ import {
 import StandardGallery,{type StandardImageRef,uploadStandardImages,uploadSummary} from '../components/StandardGallery';
 import MatchThresholdField from '../components/MatchThresholdField';
 import RadiusField from '../components/RadiusField';
-import {api} from '../api';
+import {ApiError,api} from '../api';
 
 type PointPost={postId:string;postCode:string;postName:string;tier:string;state:string};
 type PointContext={pointId:string;pointName:string;pointCode:string;clientName:string;companyName:string;serviceName:string;serviceCode:string;posts:PointPost[]};
@@ -53,7 +53,39 @@ const statusLabel=(s:ProtocolStatus)=>s==='BORRADOR'?'Borrador':s==='ACTIVO'?'Ac
 const validityLabel=(v:string)=>v==='TEMPORARY'?'Temporal':'Permanente';
 const applicationLabel=(v:string)=>v==='CALENDAR'?'Calendario':'Todo el tiempo';
 const locationModeLabel=(v:string)=>v==='ATS'?'Plano ATS':v==='GPS'?'Coordenadas':'Sin ubicación';
-const errorText=(e:unknown)=>e instanceof Error?e.message:String(e);
+const errorText=(e:unknown)=>{
+  if(e instanceof ApiError){
+    if(e.status===0)return 'No se pudo conectar con el servidor. Verifique que el backend esté activo y vuelva a intentar.';
+    let detail='';let reference='';
+    try{const body=JSON.parse(e.body) as Record<string,unknown>;for(const key of ['message','error','title','details'])if(typeof body[key]==='string'&&body[key].trim()){const value=body[key].trim();if(/internal server error|unexpected error/i.test(value))continue;const id=value.match(/error id\s*[: ]\s*([\w-]+)/i);if(id)reference=id[1];else detail=value;break}const id=body.id??body.errorId;if(typeof id==='string')reference=id}catch{detail=e.body.trim()}
+    if(detail)return `No se pudo completar la operación (HTTP ${e.status}): ${detail.slice(0,700)}${detail.length>700?'…':''}`;
+    if(e.status===401||e.status===403)return 'No tiene permisos para modificar las Consignas de este Punto.';
+    if(e.status===404)return 'No se encontró el Protocolo, la Consigna o la Evidencia. Actualice la pantalla y vuelva a seleccionarlos.';
+    if(e.status===409)return 'La versión ya fue publicada y no se puede modificar. Cree una nueva versión en borrador.';
+    if(e.status>=500)return `Error interno al guardar (HTTP ${e.status}). Revise el backend y sus migraciones${reference?` · referencia ${reference}`:''}.`;
+    return `La solicitud fue rechazada (HTTP ${e.status}). Revise los datos ingresados.`;
+  }
+  if(e instanceof TypeError&&/fetch/i.test(e.message))return 'No se pudo contactar a la API. Compruebe la URL del backend, CORS y que el servicio esté iniciado.';
+  return e instanceof Error?e.message:String(e);
+};
+const consignmentInputProblem=(item:Item,posts:PointPost[])=>{
+  if(!item.title.trim())return `${item.code}: ingrese el título de la Consigna.`;
+  if(!item.instruction.trim())return `${item.code}: escriba la instrucción que debe seguir el Agente.`;
+  if(item.instruction.length>500)return `${item.code}: la instrucción no puede superar 500 caracteres.`;
+  if(item.scopeType==='POSTS'&&!item.postIds.length)return `${item.code}: seleccione al menos un Puesto o cambie el alcance a «Todo el Punto».`;
+  if(item.scopeType==='POSTS'&&item.postIds.some(id=>!posts.some(post=>post.postId===id)))return `${item.code}: uno de los Puestos seleccionados ya no pertenece a este Punto. Actualice la pantalla.`;
+  if(item.validityType==='TEMPORARY'&&(!item.validityFrom||!item.validityUntil||new Date(item.validityUntil)<=new Date(item.validityFrom)))return `${item.code}: indique «Vigente desde» y «Vigente hasta»; la fecha final debe ser posterior a la inicial.`;
+  if(item.applicationType==='CALENDAR'){
+    let days:string[]=[];try{days=JSON.parse(item.applicationDaysJson||'[]')}catch{return `${item.code}: no se pudo leer el calendario. Seleccione nuevamente los días de aplicación.`}
+    if(!days.length)return `${item.code}: seleccione al menos un día de aplicación.`;
+    if(!item.applicationTimeFrom||!item.applicationTimeTo)return `${item.code}: indique la hora «Desde» y «Hasta» del calendario.`;
+  }
+  if(item.expectedLocationMode==='ATS'&&(item.atsX==null||item.atsY==null))return `${item.code}: haga clic sobre el plano ATS para indicar la ubicación esperada.`;
+  if(item.expectedLocationMode==='GPS'&&(item.expectedLatitude==null||item.expectedLongitude==null))return `${item.code}: ingrese latitud y longitud esperadas.`;
+  if(item.expectedLocationMode==='GPS'&&(item.expectedLatitude! < -90||item.expectedLatitude! > 90||item.expectedLongitude! < -180||item.expectedLongitude! > 180))return `${item.code}: la latitud debe estar entre -90 y 90 y la longitud entre -180 y 180.`;
+  if(item.evidenceRequired&&!item.evidences.length)return `${item.code}: agregue al menos una Evidencia en la pestaña «Evidencias» o desactive «Requiere evidencia».`;
+  return '';
+};
 const toInput=(iso?:string|null)=>iso?new Date(iso).toISOString().slice(0,16):'';
 const cloneItem=(i:Item):Item=>({...i,postIds:[...i.postIds],evidences:i.evidences.map(e=>({...e}))});
 const itemAppliesToPost=(item:Item,postId:string)=>item.scopeType==='POINT'||item.postIds.includes(postId);
@@ -213,8 +245,8 @@ export default function ConsignasConfig({point,onBack}:{point:PointContext;onBac
 
   const createProtocol=async()=>{try{const p=await api.createConsignmentProtocol({pointId:point.pointId,name:'Nuevo protocolo de consignas'}) as Protocol;await load(p.id);setNotice(`${p.code} creado como borrador.`)}catch(e){setError(errorText(e))}};
   const forkProtocol=async()=>{if(!selectedProtocol)return;try{const p=await api.forkConsignmentProtocol(selectedProtocol.id) as Protocol;await load(p.id,p.consignments[0]?.id);setNotice(`Se creó ${p.code} v${p.versionNo} como borrador editable.`)}catch(e){setError(errorText(e))}};
-  const saveProtocol=async()=>{if(!selectedProtocol||!isDraft)return;setSaving(true);try{await api.saveConsignmentProtocol(selectedProtocol.id,{name:protocolName,description:protocolDescription});await load(selectedProtocol.id,selectedItemId,selectedEvidenceId);setNotice('Borrador del protocolo guardado.')}catch(e){setError(errorText(e))}finally{setSaving(false)}};
-  const publishProtocol=async()=>{if(!selectedProtocol||!isDraft)return;setSaving(true);try{if(draft)await saveItemInternal(false);await api.saveConsignmentProtocol(selectedProtocol.id,{name:protocolName,description:protocolDescription});const p=await api.publishConsignmentProtocol(selectedProtocol.id) as Protocol;await load(p.id,selectedItemId,selectedEvidenceId);setNotice('Versión publicada en estado Inactivo. Actívela cuando deba entrar en operación.')}catch(e){setError(errorText(e))}finally{setSaving(false)}};
+  const saveProtocol=async()=>{if(!selectedProtocol||!isDraft)return;if(!protocolName.trim()){setError('Ingrese el nombre del Protocolo antes de guardar.');return}setSaving(true);try{await api.saveConsignmentProtocol(selectedProtocol.id,{name:protocolName,description:protocolDescription});await load(selectedProtocol.id,selectedItemId,selectedEvidenceId);setNotice('Borrador del protocolo guardado.')}catch(e){setError(errorText(e))}finally{setSaving(false)}};
+  const publishProtocol=async()=>{if(!selectedProtocol||!isDraft)return;if(!protocolName.trim()){setError('Ingrese el nombre del Protocolo antes de publicar.');return}if(!selectedProtocol.consignments.length){setError('Agregue al menos una Consigna antes de publicar.');return}const rows=selectedProtocol.consignments.map(item=>item.id===draft?.id?draft:item);for(const item of rows){const problem=consignmentInputProblem(item,point.posts);if(problem){setError(problem);if(item.id===draft?.id)setTab(problem.includes('Puesto')?'ALCANCE':problem.includes('vigencia')||problem.includes('calendario')||problem.includes('plano')||problem.includes('latitud')?'APLICACION':problem.includes('Evidencia')?'EVIDENCIAS':'CONSIGNA');else{setSelectedItemId(item.id);setDraft(cloneItem(item));setTab(problem.includes('Puesto')?'ALCANCE':problem.includes('vigencia')||problem.includes('calendario')||problem.includes('plano')||problem.includes('latitud')?'APLICACION':problem.includes('Evidencia')?'EVIDENCIAS':'CONSIGNA')}return}const missing=item.evidences.find(e=>e.visintEnabled&&!e.hasStandardImage);if(missing){setError(`${item.code}: la evidencia «${missing.name}» requiere al menos una foto estándar para publicar.`);if(item.id!==draft?.id){setSelectedItemId(item.id);setDraft(cloneItem(item))}setTab('EVIDENCIAS');return}}setSaving(true);try{if(draft)await saveItemInternal(false);await api.saveConsignmentProtocol(selectedProtocol.id,{name:protocolName,description:protocolDescription});const p=await api.publishConsignmentProtocol(selectedProtocol.id) as Protocol;await load(p.id,selectedItemId,selectedEvidenceId);setNotice('Versión publicada en estado Inactivo. Actívela cuando deba entrar en operación.')}catch(e){setError(errorText(e))}finally{setSaving(false)}};
   const activateProtocol=async()=>{if(!selectedProtocol)return;try{const p=await api.activateConsignmentProtocol(selectedProtocol.id) as Protocol;await load(p.id,selectedItemId,selectedEvidenceId);setNotice(`${p.code} quedó como Protocolo Activo de Consignas.`)}catch(e){setError(errorText(e))}};
   const deactivateProtocol=async()=>{if(!selectedProtocol)return;try{const p=await api.deactivateConsignmentProtocol(selectedProtocol.id) as Protocol;await load(p.id,selectedItemId,selectedEvidenceId);setNotice(`${p.code} quedó Inactivo.`)}catch(e){setError(errorText(e))}};
   const showHistory=async()=>{if(!selectedProtocol)return;try{setHistory(await api.consignmentProtocolHistory(selectedProtocol.id) as Protocol[])}catch(e){setError(errorText(e))}};
@@ -257,7 +289,7 @@ export default function ConsignasConfig({point,onBack}:{point:PointContext;onBac
     if(reload)await load(selectedProtocolId,saved.id,selectedEvidenceId);
   };
 
-  const saveItem=async()=>{setSaving(true);try{await saveItemInternal();setNotice('Consigna guardada en el borrador.')}catch(e){setError(errorText(e))}finally{setSaving(false)}};
+  const saveItem=async()=>{if(!draft)return;const problem=consignmentInputProblem(draft,point.posts);if(problem){setError(problem);return}setSaving(true);try{await saveItemInternal();setNotice('Consigna guardada en el borrador.')}catch(e){setError(errorText(e))}finally{setSaving(false)}};
   const deleteItem=()=>{if(!draft||!isDraft)return;const itemId=draft.id;const protocolId=selectedProtocolId;setConfirmState({title:'Eliminar consigna',message:`Se eliminará “${draft.title||draft.code}” de este borrador. Esta acción no se puede deshacer.`,confirmLabel:'Eliminar consigna',tone:'danger',run:async()=>{await api.deleteConsignment(itemId);await load(protocolId);setNotice('Consigna eliminada del borrador.')}})};
   const createEvidence=async()=>{if(!draft||!isDraft)return;try{const e=await api.createConsignmentEvidence(draft.id,{name:'Nueva evidencia',evidenceType:'PHOTO',required:true}) as Evidence;await load(selectedProtocolId,draft.id,e.id);setTab('EVIDENCIAS')}catch(e){setError(errorText(e))}};
   const saveEvidence=async()=>{if(!selectedEvidence||!isDraft)return;try{const e=await api.saveConsignmentEvidence(selectedEvidence.id,{name:selectedEvidence.name,description:selectedEvidence.description,evidenceType:selectedEvidence.evidenceType,required:selectedEvidence.required,standardImageNotes:selectedEvidence.standardImageNotes,matchThreshold:selectedEvidence.matchThreshold??null}) as Evidence;await load(selectedProtocolId,draft!.id,e.id);setNotice('Evidencia guardada.')}catch(e){setError(errorText(e))}};

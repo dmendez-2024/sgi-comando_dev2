@@ -28,7 +28,7 @@ import {
 } from 'lucide-react';
 import StandardGallery,{type StandardImageRef,uploadStandardImages,uploadSummary} from '../components/StandardGallery';
 import MatchThresholdField from '../components/MatchThresholdField';
-import {api} from '../api';
+import {ApiError,api} from '../api';
 
 type PointPost={postId:string;postCode:string;postName:string;tier:string;state:string};
 type PointContext={pointId:string;pointName:string;pointCode:string;clientName:string;companyName:string;serviceName:string;serviceCode:string;posts:PointPost[]};
@@ -73,7 +73,33 @@ function appLabel(value:Protocol['applicationType']){return value==='INGRESO'?'I
 function statusLabel(value:ProtocolStatus){return value==='BORRADOR'?'Borrador':value==='ACTIVO'?'Activo':'Inactivo'}
 function fieldTypeLabel(value:FieldType){return ({DOCUMENTO:'Documento',IMAGEN:'Imagen',TEXTO:'Texto',SELECCION:'Selección',CODIGO:'Código',OTRO:'Otro'})[value]}
 function captureLabel(value:CaptureMode){return ({MANUAL:'Manual',CAMARA:'Cámara',MANUAL_QR:'Manual / QR',QR:'QR',CODIGO_BARRAS:'Código de barras',NFC:'NFC'})[value]}
-function errorText(error:unknown){return error instanceof Error?error.message:String(error)}
+function errorText(error:unknown){
+  if(error instanceof ApiError){
+    if(error.status===0)return 'No se pudo conectar con el servidor. Verifique que el backend esté activo y vuelva a intentar.';
+    let detail='';let reference='';
+    try{const body=JSON.parse(error.body) as Record<string,unknown>;for(const key of ['message','error','title','details'])if(typeof body[key]==='string'&&body[key].trim()){const value=body[key].trim();if(/internal server error|unexpected error/i.test(value))continue;const id=value.match(/error id\s*[: ]\s*([\w-]+)/i);if(id)reference=id[1];else detail=value;break}const id=body.id??body.errorId;if(typeof id==='string')reference=id}catch{detail=error.body.trim()}
+    if(detail)return `No se pudo completar la operación (HTTP ${error.status}): ${detail.slice(0,700)}${detail.length>700?'…':''}`;
+    if(error.status===401||error.status===403)return 'No tiene permisos para modificar la Bitácora de este Puesto.';
+    if(error.status===404)return 'No se encontró el Protocolo, la Acreditación o el campo. Actualice la pantalla y vuelva a seleccionarlo.';
+    if(error.status===409)return 'La versión ya fue publicada y no se puede modificar. Cree una nueva versión en borrador.';
+    if(error.status>=500)return `Error interno al guardar (HTTP ${error.status}). Revise el backend y sus migraciones${reference?` · referencia ${reference}`:''}.`;
+    return `La solicitud fue rechazada (HTTP ${error.status}). Revise los datos ingresados.`;
+  }
+  if(error instanceof TypeError&&/fetch/i.test(error.message))return 'No se pudo contactar a la API. Compruebe la URL del backend, CORS y que el servicio esté iniciado.';
+  return error instanceof Error?error.message:String(error);
+}
+function fieldInputProblem(field:FieldDraft){if(!field.name.trim())return 'Ingrese el nombre del campo para poder guardarlo.';if(field.name.trim().length>160)return 'El nombre del campo no puede superar 160 caracteres.';return ''}
+function publishInputProblem(protocol:Protocol){
+  if(!protocol.name.trim())return 'Ingrese el nombre del Protocolo antes de publicar.';
+  if(!protocol.accreditations.length)return 'Agregue al menos una Acreditación antes de publicar.';
+  for(const accreditation of protocol.accreditations){
+    if(!accreditation.name.trim())return `${accreditation.code}: ingrese el nombre de la Acreditación.`;
+    if(!accreditation.fields.some(field=>field.section==='IDENTIFICACION'))return `${accreditation.code}: agregue al menos un campo en la pestaña «Identificación».`;
+    const missing=accreditation.fields.find(field=>field.visintEnabled&&!field.hasStandardImage);
+    if(missing)return `${accreditation.code}: el campo «${missing.name}» requiere al menos una foto estándar para publicar. Abra el campo y agregue la foto en «Evidencias».`;
+  }
+  return '';
+}
 function cloneProtocol(protocol:Protocol):Protocol{return {...protocol,applicablePostIds:[...(protocol.applicablePostIds?.length?protocol.applicablePostIds:[protocol.postId])],accreditations:protocol.accreditations.map(acc=>({...acc,fields:acc.fields.map(field=>({...field}))}))}}
 function applicablePosts(protocol:Protocol){return protocol.applicablePostIds?.length?protocol.applicablePostIds:[protocol.postId]}
 function appliesToPost(protocol:Protocol,postId:string){return !postId||applicablePosts(protocol).includes(postId)}
@@ -209,6 +235,8 @@ export default function BitacoraConfig({point,onBack}:{point:PointContext;onBack
   }:null;
   const saveProtocol=async()=>{
     if(!draft)return;
+    if(!draft.name.trim()){setError('Ingrese el nombre del Protocolo antes de guardar.');return}
+    if(selectedAccreditation&&!selectedAccreditation.name.trim()){setError(`${selectedAccreditation.code}: ingrese el nombre de la Acreditación antes de guardar.`);setTab('ACREDITACION');return}
     setSavingProtocol(true);setError('');setNotice('');
     try{
       await api.saveBitacoraProtocol(draft.id,protocolBody());
@@ -218,6 +246,7 @@ export default function BitacoraConfig({point,onBack}:{point:PointContext;onBack
   };
   const publishProtocol=async()=>{
     if(!draft)return;
+    const problem=publishInputProblem(draft);if(problem){setError(problem);setTab(problem.includes('Identificación')?'IDENTIFICACION':problem.includes('foto estándar')?'EVIDENCIAS':problem.includes('Acreditación')?'ACREDITACION':'DEFINICION');return}
     setSavingProtocol(true);setError('');setNotice('');
     try{
       await api.saveBitacoraProtocol(draft.id,protocolBody());
@@ -264,6 +293,7 @@ export default function BitacoraConfig({point,onBack}:{point:PointContext;onBack
   function closeField(){setFieldDraft(null);setPendingImage(null);setImageUrl('')}
   const saveField=async()=>{
     if(!draft||!selectedAccreditation||!fieldDraft)return;
+    const problem=fieldInputProblem(fieldDraft);if(problem){setError(problem);return}
     setSavingField(true);setError('');setNotice('');
     try{
       const body={section:fieldDraft.section,sortOrder:fieldDraft.sortOrder,name:fieldDraft.name,description:fieldDraft.description,fieldType:fieldDraft.fieldType,required:fieldDraft.required,evidenceRequired:fieldDraft.evidenceRequired,captureMode:fieldDraft.captureMode,customField:fieldDraft.customField,standardImageNotes:fieldDraft.standardImageNotes,matchThreshold:fieldDraft.matchThreshold??null};

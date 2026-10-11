@@ -8,7 +8,7 @@ import {
 import StandardGallery,{uploadStandardImages,uploadSummary} from '../components/StandardGallery';
 import MatchThresholdField from '../components/MatchThresholdField';
 import RadiusField from '../components/RadiusField';
-import {api} from '../api';
+import {ApiError,api} from '../api';
 
 type PointPost={postId:string;postCode:string;postName:string;tier:string;state:string};
 type PointContext={pointId:string;pointName:string;pointCode:string;clientName:string;companyName:string;serviceName:string;serviceCode:string;posts:PointPost[]};
@@ -36,7 +36,56 @@ const TABS:{key:Tab;short:string;label:string}[]=[
 function statusLabel(status:ProtocolStatus){return status==='BORRADOR'?'Borrador':status==='ACTIVO'?'Activo':'Inactivo'}
 function structureLabel(v:Patrol['structureType']){return v==='CLOSED'?'Cerrada':'Abierta'}
 function scheduleLabel(v:Patrol['scheduleType']){return v==='PROGRAMMED'?'Programada':'No programada'}
-function errorText(e:unknown){return e instanceof Error?e.message:String(e)}
+function errorText(e:unknown){
+  if(e instanceof ApiError){
+    if(e.status===0)return 'No se pudo conectar con el servidor. Verifique que el backend esté activo y vuelva a intentar.';
+    let detail='';let reference='';
+    try{
+      const body=JSON.parse(e.body) as Record<string,unknown>;
+      for(const key of ['message','error','title','details'])if(typeof body[key]==='string'&&body[key].trim()){const value=body[key].trim();if(/internal server error|unexpected error/i.test(value))continue;const idInDetail=value.match(/error id\s*[: ]\s*([\w-]+)/i);if(idInDetail)reference=idInDetail[1];else detail=value;break}
+      const id=body.id??body.errorId;if(typeof id==='string')reference=id;
+    }catch{detail=e.body.trim()}
+    if(detail&&detail.length>700)detail=`${detail.slice(0,700)}…`;
+    if(detail)return `El servidor rechazó la operación (HTTP ${e.status}): ${detail}`;
+    if(e.status===401||e.status===403)return 'No tiene permisos para esta operación. Verifique el usuario y su rol de Coordinación.';
+    if(e.status===404)return 'No se encontró el protocolo, la Patrulla o el Hito. Actualice la pantalla y vuelva a seleccionarlo.';
+    if(e.status===409)return 'La versión está publicada o cambió mientras editaba. Cree/seleccione un borrador y vuelva a guardar.';
+    if(e.status>=500)return `Error interno al guardar (HTTP ${e.status}). Revise conexión y migraciones del backend${reference?` · referencia ${reference}`:''}.`;
+    return `La solicitud fue rechazada (HTTP ${e.status}). Revise los datos ingresados y vuelva a intentar.`;
+  }
+  if(e instanceof TypeError&&/fetch/i.test(e.message))return 'No se pudo contactar a la API. Compruebe la URL del backend, CORS y que el servicio esté iniciado.';
+  return e instanceof Error?e.message:String(e);
+}
+function timeMinutes(value?:string|null){if(!value||!/^\d{2}:\d{2}$/.test(value))return null;const [hours,minutes]=value.split(':').map(Number);return hours<24&&minutes<60?hours*60+minutes:null}
+function patrolInputProblem(p:Patrol){
+  if(!p.name.trim())return `${p.code}: ingrese el nombre de la Patrulla.`;
+  if(p.name.trim().length>180)return `${p.code}: el nombre no puede superar 180 caracteres.`;
+  if(p.description.length>1000)return `${p.code}: la descripción no puede superar 1000 caracteres.`;
+  if(p.scheduleType==='PROGRAMMED'){
+    const start=timeMinutes(p.windowStart),end=timeMinutes(p.windowEnd);
+    if(start==null)return `${p.code}: ingrese una hora «Desde» válida.`;
+    if(end==null)return `${p.code}: ingrese una hora «Hasta» válida.`;
+    let duration=end-start;if(duration<=0)duration+=1440;
+    if(duration>60)return `${p.code}: la ventana programada dura ${duration} minutos; debe ser de máximo 60 minutos.`;
+  }
+  if(p.repetitions<1)return `${p.code}: las ejecuciones requeridas deben ser al menos 1.`;
+  return '';
+}
+function checkpointInputProblem(cp:Checkpoint){
+  if(!cp.name.trim())return `${cp.code}: ingrese el nombre del Hito.`;
+  if(cp.name.trim().length>180)return `${cp.code}: el nombre del Hito no puede superar 180 caracteres.`;
+  const hasAts=cp.atsX!=null&&cp.atsY!=null,partialAts=(cp.atsX==null)!==(cp.atsY==null);
+  const hasGps=cp.latitude!=null&&cp.longitude!=null,partialGps=(cp.latitude==null)!==(cp.longitude==null);
+  if(partialAts)return `${cp.code}: complete las coordenadas X e Y del plano ATS, o deje ambas vacías.`;
+  if(partialGps)return `${cp.code}: complete latitud y longitud, o deje ambas vacías.`;
+  if(hasAts&&(cp.atsX!<0||cp.atsX!>1||cp.atsY!<0||cp.atsY!>1))return `${cp.code}: las coordenadas ATS deben estar entre 0 y 1.`;
+  if(hasGps&&(cp.latitude!<-90||cp.latitude!>90||cp.longitude!<-180||cp.longitude!>180))return `${cp.code}: use latitud entre -90 y 90 y longitud entre -180 y 180.`;
+  if(cp.originMode==='ATS'&&!hasAts)return `${cp.code}: seleccione el Hito en el plano ATS para guardar sus coordenadas.`;
+  if(cp.originMode==='FIELD'&&!hasGps)return `${cp.code}: capture o ingrese latitud y longitud GPS.`;
+  if(cp.originMode==='MIXED'&&!hasAts&&!hasGps)return `${cp.code}: agregue una ubicación del plano ATS o una ubicación GPS.`;
+  if(cp.visintEnabled&&!cp.requiresEvidence)return `${cp.code}: VISINT requiere activar «Requiere evidencia».`;
+  return '';
+}
 function clonePatrol(p:Patrol):Patrol{return {...p,checkpoints:p.checkpoints.map(c=>({...c,rules:c.rules.map(r=>({...r}))}))}}
 function normalizeProtocol(p:Protocol):Protocol{return {...p,applicablePostIds:Array.isArray(p.applicablePostIds)?[...p.applicablePostIds]:[p.postId],patrols:p.patrols.map(clonePatrol)}}
 function applicablePosts(p:Protocol){return Array.isArray(p.applicablePostIds)?p.applicablePostIds:[p.postId]}
@@ -158,8 +207,18 @@ export default function PatrolConfig({point,onBack}:{point:PointContext;onBack:(
   const createProtocol=async()=>{if(!selectedPostId)return;setError('');try{const created=normalizeProtocol(await api.createPatrolProtocol({postId:selectedPostId,name:'Nuevo protocolo de patrullas'}) as Protocol);await load(created.id);setTab('DEFINICION');setNotice(`${created.code} creado como borrador v1.`)}catch(e){setError(errorText(e))}};
   const forkProtocol=async()=>{if(!draft)return;setSaving(true);try{const forked=normalizeProtocol(await api.forkPatrolProtocol(draft.id) as Protocol);await load(forked.id,forked.patrols[0]?.id);setTab('DEFINICION');setNotice(`Se creó ${forked.code} v${forked.versionNo} en borrador. La versión publicada permanece inmutable.`)}catch(e){setError(errorText(e))}finally{setSaving(false)}};
   const protocolBody=()=>draft?{name:draft.name,description:draft.description,applicablePostIds:draft.applicablePostIds}:null;
-  const saveProtocol=async()=>{if(!draft||!isDraft)return;setSaving(true);setError('');try{await api.savePatrolProtocol(draft.id,protocolBody());await load(draft.id,selectedPatrolId,selectedCheckpointId);setNotice('Borrador guardado correctamente.')}catch(e){setError(errorText(e))}finally{setSaving(false)}};
-  const publish=async()=>{if(!draft||!isDraft)return;setSaving(true);setError('');try{await api.savePatrolProtocol(draft.id,protocolBody());if(patrolDraft)await savePatrolInternal(false);const published=normalizeProtocol(await api.publishPatrolProtocol(draft.id) as Protocol);await load(published.id,selectedPatrolId,selectedCheckpointId);const count=applicablePosts(published).length;setNotice(count?`Protocolo ${published.code} publicado y activo en ${count} Puesto${count===1?'':'s'}.`:`Protocolo ${published.code} publicado en estado Inactivo.`)}catch(e){setError(errorText(e))}finally{setSaving(false)}};
+  const saveProtocol=async()=>{if(!draft||!isDraft)return;if(!draft.name.trim()){setError('Ingrese el nombre del Protocolo antes de guardar.');setTab('DEFINICION');return}if(draft.name.trim().length>180){setError('El nombre del Protocolo no puede superar 180 caracteres.');setTab('DEFINICION');return}if(draft.description.length>1000){setError('La descripción del Protocolo no puede superar 1000 caracteres.');setTab('DEFINICION');return}setSaving(true);setError('');try{await api.savePatrolProtocol(draft.id,protocolBody());await load(draft.id,selectedPatrolId,selectedCheckpointId);setNotice('Borrador guardado correctamente.')}catch(e){setError(errorText(e))}finally{setSaving(false)}};
+  const publish=async()=>{if(!draft||!isDraft)return;
+    if(!draft.name.trim()){setError('Ingrese el nombre del Protocolo antes de publicar.');setTab('DEFINICION');return}
+    const patrols=draft.patrols.map(p=>p.id===patrolDraft?.id?patrolDraft:p);
+    if(!patrols.length){setError('Agregue al menos una Patrulla antes de publicar el Protocolo.');setTab('PATRULLA');return}
+    for(const patrol of patrols){const issue=patrolInputProblem(patrol);if(issue){setError(issue);setTab('PATRULLA');return}
+      if(patrol.structureType==='CLOSED'&&!patrol.checkpoints.length){setError(`${patrol.code}: agregue al menos un Hito antes de publicar esta Patrulla Cerrada.`);setSelectedPatrolId(patrol.id);setPatrolDraft(clonePatrol(patrol));setTab('HITOS');return}
+      for(const cp of patrol.checkpoints){const checkpointIssue=checkpointInputProblem(cp);if(checkpointIssue){setError(checkpointIssue);setSelectedPatrolId(patrol.id);setPatrolDraft(clonePatrol(patrol));setSelectedCheckpointId(cp.id);setTab('HITOS');return}
+        if(cp.visintEnabled&&cp.standardImages.length===0){setError(`${patrol.code} / ${cp.code}: VISINT está activo y requiere al menos una foto estándar antes de publicar.`);setSelectedPatrolId(patrol.id);setPatrolDraft(clonePatrol(patrol));setSelectedCheckpointId(cp.id);setTab('EVIDENCIAS');return}
+      }
+    }
+    setSaving(true);setError('');try{await api.savePatrolProtocol(draft.id,protocolBody());if(patrolDraft)await savePatrolInternal(false);const published=normalizeProtocol(await api.publishPatrolProtocol(draft.id) as Protocol);await load(published.id,selectedPatrolId,selectedCheckpointId);const count=applicablePosts(published).length;setNotice(count?`Protocolo ${published.code} publicado y activo en ${count} Puesto${count===1?'':'s'}.`:`Protocolo ${published.code} publicado en estado Inactivo.`)}catch(e){setError(errorText(e))}finally{setSaving(false)}};
   const showHistory=async()=>{if(!draft)return;try{setHistory((await api.patrolProtocolHistory(draft.id) as Protocol[]).map(normalizeProtocol))}catch(e){setError(errorText(e))}};
   const applyPublishedScope=async(protocolId:string,nextPostIds:string[],postLabel:string,activating:boolean)=>{setScopeBusy(true);setError('');try{const saved=normalizeProtocol(await api.patrolProtocolScope(protocolId,nextPostIds) as Protocol);await load(saved.id,selectedPatrolId,selectedCheckpointId);setNotice(activating?`Protocolo activado para ${postLabel}.`:`Protocolo inactivado para ${postLabel}.`)}catch(e){setError(errorText(e))}finally{setScopeBusy(false)}};
   const toggleProtocolPost=(postId:string,checked:boolean)=>{
@@ -169,7 +228,7 @@ export default function PatrolConfig({point,onBack}:{point:PointContext;onBack:(
   };
 
   const createPatrol=async()=>{if(!draft||!isDraft)return;if(draft.patrols.length>=15){setError('Este Protocolo ya alcanzó el máximo de 15 Patrullas. Para continuar, cree un nuevo Protocolo.');return}try{const created=await api.createPatrol(draft.id,{name:'Nueva patrulla',structureType:'CLOSED',scheduleType:'PROGRAMMED'}) as Patrol;await load(draft.id,created.id);setTab('PATRULLA');setNotice(`${created.code} creada.`)}catch(e){setError(errorText(e))}};
-  const savePatrolInternal=async(reload=true)=>{if(!patrolDraft||!isDraft)return;const body={name:patrolDraft.name,description:patrolDraft.description,structureType:patrolDraft.structureType,scheduleType:patrolDraft.scheduleType,sequenceType:patrolDraft.sequenceType,windowStart:patrolDraft.windowStart,windowEnd:patrolDraft.windowEnd,repetitions:patrolDraft.repetitions};const saved=await api.savePatrol(patrolDraft.id,body) as Patrol;if(reload){await load(selectedProtocolId,saved.id,selectedCheckpointId);setNotice(`${saved.code} guardada en el borrador.`)}};
+  const savePatrolInternal=async(reload=true)=>{if(!patrolDraft||!isDraft)return;const issue=patrolInputProblem(patrolDraft);if(issue)throw new Error(issue);const body={name:patrolDraft.name,description:patrolDraft.description,structureType:patrolDraft.structureType,scheduleType:patrolDraft.scheduleType,sequenceType:patrolDraft.sequenceType,windowStart:patrolDraft.windowStart,windowEnd:patrolDraft.windowEnd,repetitions:patrolDraft.repetitions};const saved=await api.savePatrol(patrolDraft.id,body) as Patrol;if(reload){await load(selectedProtocolId,saved.id,selectedCheckpointId);setNotice(`${saved.code} guardada en el borrador.`)}};
   const savePatrol=async()=>{setSaving(true);try{await savePatrolInternal(true)}catch(e){setError(errorText(e))}finally{setSaving(false)}};
   const requestDeletePatrol=()=>{if(!patrolDraft||!draft||!isDraft)return;const id=patrolDraft.id;const code=patrolDraft.code;setConfirmState({title:'Eliminar patrulla',message:`Se eliminará ${code} de este borrador. Esta acción no se puede deshacer.`,confirmLabel:'Eliminar patrulla',tone:'danger',run:async()=>{await api.deletePatrol(id);await load(draft.id);setTab('PATRULLA');setNotice('Patrulla eliminada del borrador.')}})};
   const requestOpenPatrol=()=>{if(!patrolDraft)return;if(!patrolDraft.checkpoints.length){setPatrolDraft({...patrolDraft,structureType:'OPEN',sequenceType:null});return}setConfirmState({title:'Cambiar a Patrulla Abierta',message:'Al guardar una Patrulla Abierta se eliminarán sus Hitos predefinidos. Esta acción afecta únicamente al borrador actual.',confirmLabel:'Cambiar a Abierta',tone:'warning',run:()=>{setPatrolDraft({...patrolDraft,structureType:'OPEN',sequenceType:null})}})};
@@ -180,12 +239,9 @@ export default function PatrolConfig({point,onBack}:{point:PointContext;onBack:(
   const captureGpsForSelected=()=>{if(!selectedCheckpoint||!patrolDraft||!navigator.geolocation)return;setNotice('Capturando GPS actual…');navigator.geolocation.getCurrentPosition(async pos=>{try{const cp=selectedCheckpoint;const saved=await api.savePatrolCheckpoint(cp.id,{name:cp.name,description:cp.description,originMode:cp.atsX!=null&&cp.atsY!=null?'MIXED':'FIELD',atsPackageId:cp.atsPackageId,atsX:cp.atsX,atsY:cp.atsY,latitude:pos.coords.latitude,longitude:pos.coords.longitude,gpsAccuracyM:pos.coords.accuracy,controlType:cp.controlType,requiresEvidence:cp.requiresEvidence,standardImageNotes:cp.standardImageNotes}) as Checkpoint;await load(selectedProtocolId,patrolDraft.id,saved.id);setNotice(`${saved.code}: GPS actualizado desde campo.`)}catch(e){setError(errorText(e))}},err=>setError(`No se pudo capturar GPS: ${err.message}`),{enableHighAccuracy:true,timeout:15000,maximumAge:0})};
   const updateCheckpoint=<K extends keyof Checkpoint>(key:K,value:Checkpoint[K])=>{if(!patrolDraft||!selectedCheckpoint)return;const id=selectedCheckpoint.id;setPatrolDraft(d=>d&&{...d,checkpoints:d.checkpoints.map(c=>c.id===id?{...c,[key]:value}:c)})};
   const toggleRule=(kind:RuleType,checked:boolean)=>{if(!selectedCheckpoint)return;const rules=selectedCheckpoint.rules.some(r=>r.ruleType===kind)?selectedCheckpoint.rules.map(r=>r.ruleType===kind?{...r,required:checked}:r):[...selectedCheckpoint.rules,{id:`local-${kind}`,checkpointId:selectedCheckpoint.id,sortOrder:selectedCheckpoint.rules.length+1,ruleType:kind,required:checked,evidenceRequired:kind==='FOTOGRAFIA'}];updateCheckpoint('rules',rules)};
-  const saveCheckpoint=async()=>{if(!selectedCheckpoint||!patrolDraft||!isDraft)return;
-    {const {latitude:la,longitude:lo}=selectedCheckpoint;
-     if((la==null)!==(lo==null)){setError('Ingresa latitud y longitud del Hito, o deja ambas vacías.');return}
-     if(la!=null&&lo!=null&&(Number.isNaN(la)||Number.isNaN(lo)||la<-90||la>90||lo<-180||lo>180)){setError('Coordenadas GPS fuera de rango: latitud entre -90 y 90, longitud entre -180 y 180.');return}}
-    setSaving(true);try{const cp=selectedCheckpoint;const hasGps=cp.latitude!=null&&cp.longitude!=null,hasAts=cp.atsX!=null&&cp.atsY!=null;
-    await api.savePatrolCheckpoint(cp.id,{name:cp.name,description:cp.description,originMode:hasGps&&hasAts?'MIXED':hasGps?'FIELD':hasAts?'ATS':cp.originMode,atsPackageId:cp.atsPackageId,atsX:cp.atsX,atsY:cp.atsY,latitude:cp.latitude,longitude:cp.longitude,gpsAccuracyM:cp.gpsAccuracyM,controlType:cp.controlType,requiresEvidence:cp.requiresEvidence,standardImageNotes:cp.standardImageNotes,visintEnabled:cp.requiresEvidence,matchThreshold:cp.matchThreshold??null,radiusM:cp.radiusM??0});await api.savePatrolCheckpointRules(cp.id,{rules:cp.rules.filter(r=>r.required).map(r=>({ruleType:r.ruleType,required:true,evidenceRequired:r.evidenceRequired}))});await load(selectedProtocolId,patrolDraft.id,cp.id);setNotice(`${cp.code} guardado.`)}catch(e){setError(errorText(e))}finally{setSaving(false)}};
+  const saveCheckpoint=async()=>{if(!selectedCheckpoint||!patrolDraft||!isDraft)return;const issue=checkpointInputProblem(selectedCheckpoint);if(issue){setError(issue);return}
+    setSaving(true);let checkpointSaved=false;try{const cp=selectedCheckpoint;const hasGps=cp.latitude!=null&&cp.longitude!=null,hasAts=cp.atsX!=null&&cp.atsY!=null;
+    await api.savePatrolCheckpoint(cp.id,{name:cp.name,description:cp.description,originMode:hasGps&&hasAts?'MIXED':hasGps?'FIELD':hasAts?'ATS':cp.originMode,atsPackageId:cp.atsPackageId,atsX:cp.atsX,atsY:cp.atsY,latitude:cp.latitude,longitude:cp.longitude,gpsAccuracyM:cp.gpsAccuracyM,controlType:cp.controlType,requiresEvidence:cp.requiresEvidence,standardImageNotes:cp.standardImageNotes,visintEnabled:cp.requiresEvidence,matchThreshold:cp.matchThreshold??null,radiusM:cp.radiusM??0});checkpointSaved=true;await api.savePatrolCheckpointRules(cp.id,{rules:cp.rules.filter(r=>r.required).map(r=>({ruleType:r.ruleType,required:true,evidenceRequired:r.evidenceRequired}))});await load(selectedProtocolId,patrolDraft.id,cp.id);setNotice(`${cp.code} guardado.`)}catch(e){setError(checkpointSaved?`El Hito se guardó, pero sus reglas no: ${errorText(e)}`:errorText(e))}finally{setSaving(false)}};
   const requestDeleteCheckpoint=()=>{if(!selectedCheckpoint||!patrolDraft||!isDraft)return;const id=selectedCheckpoint.id;const code=selectedCheckpoint.code;const patrolId=patrolDraft.id;setConfirmState({title:'Eliminar Hito',message:`Se eliminará ${code} de esta Patrulla. Esta acción no se puede deshacer.`,confirmLabel:'Eliminar Hito',tone:'danger',run:async()=>{await api.deletePatrolCheckpoint(id);await load(selectedProtocolId,patrolId);setNotice('Hito eliminado del borrador.')}})};
   const uploadPhotos=async(files:File[])=>{
     if(!selectedCheckpoint||!patrolDraft||!isDraft||!files.length)return;setError('');
