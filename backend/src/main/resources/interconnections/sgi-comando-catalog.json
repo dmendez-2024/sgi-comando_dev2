@@ -497,7 +497,7 @@
             "companyCoreCatalogId?",
             "companyCode?"
           ],
-          "companyRule": "For a new employee, companyCoreCatalogId or companyCode is mandatory. Existing employees may omit during transition and retain current source company.",
+          "companyRule": "An explicit companyCoreCatalogId or companyCode is authoritative. During the DHO transition, new employees that omit both fields use the configured default company (Kaibil); existing employees retain their current source company.",
           "idempotency": "Idempotency-Key is persisted per Instancia PE; same key + same payload is safe, same key + different payload returns conflict."
         },
         "response": {

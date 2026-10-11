@@ -16,7 +16,7 @@
 - El catálogo CURRENT registra **25 ECOSYSTEM_INTERCONNECTION y 31 interfaces** con nomenclatura v4.1. Los IDs v3 se conservan únicamente como aliases de transición.
 - La existencia de una definición en CURRENT no implica que ambas puntas estén implementadas ni probadas. Revisar `docs/INTERCONNECTIONS.md` para estado `DESIGN`, `UAT`, `MANUAL_PENDING`, etc.
 - SIC:COM inbound y SIC:RRHH inbound fueron avanzados por SISTEMAS y endurecidos en esta RC; requieren prueba bilateral contra sus contrapartes antes de declararlos `ACTIVE`.
-- SIC:RRHH es SoR de Persona–Compañía. SGI ya no asigna automáticamente a Kaibil un empleado nuevo: exige `companyCoreCatalogId` o `companyCode`. La contraparte debe homologar esos campos; hasta entonces el flujo permanece `UAT_PARTIAL`.
+- SIC:RRHH debe convertirse en SoR de Persona–Compañía mediante `companyCoreCatalogId` o `companyCode`. Hasta que la contraparte homologue esos campos, SGI asigna temporalmente Kaibil solo a empleados nuevos que no traen Compañía; el flujo permanece `UAT_PARTIAL`.
 - El resolver CORE/cache y `CredentialRefResolver` son la capa reusable vigente. `CredentialRefResolver` resuelve secretos desde runtime/env en UAT; producción puede sustituirlo por Vault/KMS sin cambiar el contrato de negocio.
 - Alarmas electrónicas de Consola todavía no tienen un Program ID fuente/gateway confirmado en el catálogo vigente; no se inventó una interconexión.
 
