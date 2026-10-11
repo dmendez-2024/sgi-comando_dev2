@@ -13,6 +13,7 @@ public class AssignmentRolePolicy {
         key("Agente de Consola de Monitoreo Senior"),
         key("Supervisor de Seguridad"),
         key("Supervisor de Seguridad CL"),
+        key("Monitor"),
         key("Escolta Líder"),
         key("Escolta Líder JT"),
         key("Responsable de Punto")
@@ -23,11 +24,13 @@ public class AssignmentRolePolicy {
         "Agente de Consola de Monitoreo Senior",
         "Supervisor de Seguridad",
         "Supervisor de Seguridad CL",
+        "Monitor",
         "Escolta Líder",
         "Escolta Líder JT",
         "Responsable de Punto",
         "AGENTE_SEGURIDAD",
         "SUPERVISOR_SEGURIDAD",
+        "MONITOR",
         "ESCOLTA_SEGURIDAD"
     );
 
@@ -44,6 +47,8 @@ public class AssignmentRolePolicy {
                 || employee.equals(key("Agente de Consola de Monitoreo Senior"));
             case "SUPERVISOR_SEGURIDAD" -> employee.equals(key("Supervisor de Seguridad"))
                 || employee.equals(key("Supervisor de Seguridad CL"));
+            case "MONITOR" -> employee.equals(key("Monitor"))
+                || employee.equals(key("Agente de Consola de Monitoreo Senior"));
             case "ESCOLTA_SEGURIDAD" -> employee.equals(key("Escolta Líder"))
                 || employee.equals(key("Escolta Líder JT"));
             default -> false;

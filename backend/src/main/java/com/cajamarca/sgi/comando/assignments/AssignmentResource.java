@@ -2,6 +2,9 @@ package com.cajamarca.sgi.comando.assignments;
 
 import com.cajamarca.sgi.comando.common.TenantContext;
 import com.cajamarca.sgi.comando.companies.Company;
+import com.cajamarca.sgi.comando.coordination.CoordinationPost;
+import com.cajamarca.sgi.comando.coordination.SupervisionRoute;
+import com.cajamarca.sgi.comando.coordination.SupervisionRoutePoint;
 import com.cajamarca.sgi.comando.consignments.Consignment;
 import com.cajamarca.sgi.comando.consignments.ConsignmentPostScope;
 import com.cajamarca.sgi.comando.operations.PointEntity;
@@ -44,7 +47,8 @@ public class AssignmentResource {
     public record PlanDto(UUID id, UUID companyId, LocalDate weekStart, String status, Instant publishedAt, String publishedBy, Instant draftSavedAt, String draftSavedBy) {}
     public record PointDto(UUID id, String code, String name, String clientName, String city) {}
     public record PostDto(UUID id, UUID pointId, String code, String name, String format, BigDecimal fhe, String tier,
-                          String rotationCode, Integer cycleLengthDays, String cycleSourceVersion) {}
+                          String rotationCode, Integer cycleLengthDays, String cycleSourceVersion,
+                          String targetType, String coordinationType, String requiredRoleCode, String routeName) {}
     public record ShiftDto(UUID id, UUID postId, UUID templateId, LocalDate localDate, String shiftCode, String shiftName, Instant startsAt, Instant endsAt, String commercialVersion) {}
     public record AssignmentDto(UUID id, UUID shiftOccurrenceId, UUID originalEmployeeId, UUID effectiveEmployeeId, String employeeName, String status,
                                 BigDecimal ic, BigDecimal idScore, List<String> warnings, String assignedBy, Instant assignedAt,
@@ -118,10 +122,15 @@ public class AssignmentResource {
         Set<UUID> pointIds=visiblePoints.stream().map(p->p.id).collect(Collectors.toSet());
         List<PostEntity> allPosts=pointIds.isEmpty()?List.of():PostEntity.list("instanceCountryId=?1 and pointId in ?2 order by code",tenant.instanceCountryId(),pointIds);
         Set<UUID> postIds=allPosts.stream().map(p->p.id).collect(Collectors.toSet());
+        List<CoordinationPost> coordinationPosts=pointId==null?assignableCoordinationPosts(companyId):List.of();
+        Set<UUID> coordinationPostIds=coordinationPosts.stream().map(p->p.id).collect(Collectors.toSet());
         Instant from=week.atStartOfDay(OPERATING_ZONE).toInstant();
         Instant to=week.plusDays(7).atStartOfDay(OPERATING_ZONE).toInstant();
-        List<ShiftOccurrenceEntity> shifts=postIds.isEmpty()?List.of():ShiftOccurrenceEntity.list("instanceCountryId=?1 and postId in ?2 and startsAt>=?3 and startsAt<?4 order by startsAt,shiftName",tenant.instanceCountryId(),postIds,from,to);
-        shifts=eligibleShiftsAfterServiceTransition(visiblePoints,allPosts,shifts);
+        List<ShiftOccurrenceEntity> operationalShifts=postIds.isEmpty()?List.of():ShiftOccurrenceEntity.list("instanceCountryId=?1 and postId in ?2 and startsAt>=?3 and startsAt<?4 order by startsAt,shiftName",tenant.instanceCountryId(),postIds,from,to);
+        operationalShifts=eligibleShiftsAfterServiceTransition(visiblePoints,allPosts,operationalShifts);
+        List<ShiftOccurrenceEntity> coordinationShifts=coordinationPostIds.isEmpty()?List.of():ShiftOccurrenceEntity.list("instanceCountryId=?1 and coordinationPostId in ?2 and startsAt>=?3 and startsAt<?4 order by startsAt,shiftName",tenant.instanceCountryId(),coordinationPostIds,from,to);
+        List<ShiftOccurrenceEntity> shifts=new ArrayList<>(operationalShifts.size()+coordinationShifts.size());
+        shifts.addAll(operationalShifts);shifts.addAll(coordinationShifts);shifts.sort(Comparator.comparing((ShiftOccurrenceEntity s)->s.startsAt).thenComparing(s->s.shiftName));
         Set<UUID> shiftIds=shifts.stream().map(s->s.id).collect(Collectors.toSet());
         List<OperationalAssignmentEntity> assignments=shiftIds.isEmpty()?List.of():OperationalAssignmentEntity.list("instanceCountryId=?1 and assignmentPlanId=?2 and shiftOccurrenceId in ?3 and status<>'REMOVED'",tenant.instanceCountryId(),plan.id,shiftIds);
 
@@ -139,15 +148,24 @@ public class AssignmentResource {
             List<PostPlanningCycleSnapshot> cycleSnapshots=PostPlanningCycleSnapshot.list("instanceCountryId=?1 and postId in ?2",tenant.instanceCountryId(),postIds);
             cycleByPost=cycleSnapshots.stream().collect(Collectors.toMap(x->x.postId,x->x));
         }
+        List<PostDto> postDtos=new ArrayList<>();
+        for(PostEntity p:allPosts){
+            PostPlanningCycleSnapshot c=cycleByPost.get(p.id);
+            PostSkillRequirement r=PostSkillRequirement.find("instanceCountryId=?1 and postId=?2",tenant.instanceCountryId(),p.id).firstResult();
+            postDtos.add(new PostDto(p.id,p.pointId,p.code,p.name,p.format,p.fhe,p.tier,
+                c==null?null:c.rotationCode,c==null?null:c.cycleLengthDays,c==null?null:c.sourceVersion,
+                "OPERATIONAL",null,r==null?null:r.requiredRoleCode,null));
+        }
+        for(CoordinationPost p:coordinationPosts){
+            SupervisionRoute route="SUPERVISION".equals(p.postType)?activeCoordinationRoute(p.id):null;
+            postDtos.add(new PostDto(p.id,null,p.code,p.name,p.format,null,null,p.rotation,cycleLength(p.rotation),"COO",
+                "COORDINATION",p.postType,coordinationRequiredRole(p),route==null?null:route.name));
+        }
         return new WeekResponse(
             planDto(plan),
             allPoints.stream().map(p->new PointDto(p.id,p.code,p.name,p.clientName,p.city)).toList(),
-            allPosts.stream().map(p->{
-                PostPlanningCycleSnapshot c=cycleByPost.get(p.id);
-                return new PostDto(p.id,p.pointId,p.code,p.name,p.format,p.fhe,p.tier,
-                    c==null?null:c.rotationCode,c==null?null:c.cycleLengthDays,c==null?null:c.sourceVersion);
-            }).toList(),
-            shifts.stream().map(s->new ShiftDto(s.id,s.postId,s.templateId,s.localDate,s.shiftCode,s.shiftName,s.startsAt,s.endsAt,s.commercialVersion)).toList(),
+            postDtos,
+            shifts.stream().map(s->new ShiftDto(s.id,s.targetId(),s.templateId,s.localDate,s.shiftCode,s.shiftName,s.startsAt,s.endsAt,s.commercialVersion)).toList(),
             assignmentDtos,
             new SummaryDto(required,assigned,Math.max(required-assigned,0),coverage,warnings,roundPct(icAvg),
                 plan.publishedRequiredShifts,plan.publishedAssignedShifts,plan.publishedCoveragePct==null?null:plan.publishedCoveragePct.doubleValue())
@@ -247,8 +265,9 @@ public class AssignmentResource {
         EmployeeSkillSnapshot skills=EmployeeSkillSnapshot.find("instanceCountryId=?1 and employeeId=?2",tenant.instanceCountryId(),employeeId).firstResult();List<SkillDto> skillDtos=skills==null?List.of():skillDtos(skills);
         List<EmployeeUnavailabilitySnapshot> unavs=EmployeeUnavailabilitySnapshot.list("instanceCountryId=?1 and employeeId=?2 order by startsAt desc",tenant.instanceCountryId(),employeeId);
         List<OperationalAssignmentEntity> recent=OperationalAssignmentEntity.find("instanceCountryId=?1 and (employeeId=?2 or actualEmployeeId=?2) and status<>'REMOVED' order by updatedAt desc",tenant.instanceCountryId(),employeeId).page(Page.of(0,12)).list();
-        Map<UUID,ShiftOccurrenceEntity> shifts=shiftMap(recent.stream().map(a->a.shiftOccurrenceId).collect(Collectors.toSet()));Set<UUID> postIds=shifts.values().stream().map(s->s.postId).collect(Collectors.toSet());Map<UUID,PostEntity> posts=postIds.isEmpty()?Map.of():PostEntity.<PostEntity>list("instanceCountryId=?1 and id in ?2",tenant.instanceCountryId(),postIds).stream().collect(Collectors.toMap(x->x.id,x->x));
-        List<AssignmentAuditDto> audits=recent.stream().map(a->{ShiftOccurrenceEntity sh=shifts.get(a.shiftOccurrenceId);PostEntity post=sh==null?null:posts.get(sh.postId);return new AssignmentAuditDto(post==null?"—":post.code,post==null?"—":post.name,sh==null?"—":sh.shiftName,sh==null?null:sh.startsAt,a.status,a.actualAssignedByUsername!=null?a.actualAssignedByUsername:a.assignedByUsername);}).toList();
+        Map<UUID,ShiftOccurrenceEntity> shifts=shiftMap(recent.stream().map(a->a.shiftOccurrenceId).collect(Collectors.toSet()));Set<UUID> postIds=shifts.values().stream().map(s->s.postId).filter(Objects::nonNull).collect(Collectors.toSet());Map<UUID,PostEntity> posts=postIds.isEmpty()?Map.of():PostEntity.<PostEntity>list("instanceCountryId=?1 and id in ?2",tenant.instanceCountryId(),postIds).stream().collect(Collectors.toMap(x->x.id,x->x));
+        Set<UUID> coordinationPostIds=shifts.values().stream().map(s->s.coordinationPostId).filter(Objects::nonNull).collect(Collectors.toSet());Map<UUID,CoordinationPost> coordinationPosts=coordinationPostIds.isEmpty()?Map.of():CoordinationPost.<CoordinationPost>list("instanceCountryId=?1 and id in ?2",tenant.instanceCountryId(),coordinationPostIds).stream().collect(Collectors.toMap(x->x.id,x->x));
+        List<AssignmentAuditDto> audits=recent.stream().map(a->{ShiftOccurrenceEntity sh=shifts.get(a.shiftOccurrenceId);PostEntity post=sh==null?null:posts.get(sh.postId);CoordinationPost cp=sh==null?null:coordinationPosts.get(sh.coordinationPostId);return new AssignmentAuditDto(post!=null?post.code:cp!=null?cp.code:"—",post!=null?post.name:cp!=null?cp.name:"—",sh==null?"—":sh.shiftName,sh==null?null:sh.startsAt,a.status,a.actualAssignedByUsername!=null?a.actualAssignedByUsername:a.assignedByUsername);}).toList();
         Company company=Company.find("id=?1 and instanceCountryId=?2",e.companyId,tenant.instanceCountryId()).firstResult();String direction=transfer==null?null:(viewingCompanyId!=null&&Objects.equals(transfer.destinationCompanyId,viewingCompanyId)?"INCOMING":"OUTGOING");
         return new EmployeeDetails(e.employeeId,e.fullName,e.roleCode,e.employmentStatus,e.idScore,e.preferredShift,e.photoKey,e.requiredChange,e.companyId,company==null?"—":company.name,skillDtos,unavs.stream().map(this::unavailabilityDto).toList(),audits,transfer==null?null:transferMini(transfer,direction));
     }
@@ -305,9 +324,14 @@ public class AssignmentResource {
         AssignmentPlanEntity plan=plan(a.assignmentPlanId); scope.requireCompany(plan.companyId);
         ShiftOccurrenceEntity shift=ShiftOccurrenceEntity.find("id=?1 and instanceCountryId=?2",a.shiftOccurrenceId,tenant.instanceCountryId()).firstResult();
         if(shift==null) throw new NotFoundException("Turno no encontrado");
+        UUID employeeId=a.effectiveEmployeeId(); EmployeeOperationalSnapshot employee=employeeId==null?null:EmployeeOperationalSnapshot.find("instanceCountryId=?1 and employeeId=?2",tenant.instanceCountryId(),employeeId).firstResult();
+        if(shift.coordinationPostId!=null){
+            CoordinationPost post=CoordinationPost.find("id=?1 and instanceCountryId=?2",shift.coordinationPostId,tenant.instanceCountryId()).firstResult();
+            if(post==null)throw new NotFoundException("Puesto de Coordinación no encontrado");
+            return new CompatibilityDetails(a.id,employeeId,employee==null?"—":employee.fullName,post.id,post.code,post.name,null,0,0,100d,List.of());
+        }
         PostEntity post=PostEntity.find("id=?1 and instanceCountryId=?2",shift.postId,tenant.instanceCountryId()).firstResult();
         if(post==null) throw new NotFoundException("Puesto no encontrado");
-        UUID employeeId=a.effectiveEmployeeId(); EmployeeOperationalSnapshot employee=employeeId==null?null:EmployeeOperationalSnapshot.find("instanceCountryId=?1 and employeeId=?2",tenant.instanceCountryId(),employeeId).firstResult();
         EmployeeSkillSnapshot actual=employeeId==null?null:EmployeeSkillSnapshot.find("instanceCountryId=?1 and employeeId=?2",tenant.instanceCountryId(),employeeId).firstResult();
         PostSkillRequirement required=PostSkillRequirement.find("instanceCountryId=?1 and postId=?2",tenant.instanceCountryId(),post.id).firstResult();
         List<CompatibilitySkillDto> skills=compatibilitySkills(actual,required); int met=(int)skills.stream().filter(CompatibilitySkillDto::meets).count(); double compliance=skills.isEmpty()?0d:roundPct(100d*met/skills.size());
@@ -337,9 +361,11 @@ public class AssignmentResource {
         EmployeeOperationalSnapshot employee=EmployeeOperationalSnapshot.find("instanceCountryId=?1 and employeeId=?2",tenant.instanceCountryId(),employeeId).firstResult();
         if(employee==null) throw new NotFoundException("Colaborador no encontrado");
         List<ShiftOccurrenceEntity> shifts=planShifts(plan);if(shifts.isEmpty())return List.of();
-        Set<UUID> postIds=shifts.stream().map(x->x.postId).collect(Collectors.toSet());
-        Map<UUID,PostEntity> posts=PostEntity.<PostEntity>list("instanceCountryId=?1 and id in ?2",tenant.instanceCountryId(),postIds).stream().collect(Collectors.toMap(x->x.id,x->x));
-        Map<UUID,PostSkillRequirement> requirements=PostSkillRequirement.<PostSkillRequirement>list("instanceCountryId=?1 and postId in ?2",tenant.instanceCountryId(),postIds).stream().collect(Collectors.toMap(x->x.postId,x->x));
+        Set<UUID> postIds=shifts.stream().map(x->x.postId).filter(Objects::nonNull).collect(Collectors.toSet());
+        Set<UUID> coordinationPostIds=shifts.stream().map(x->x.coordinationPostId).filter(Objects::nonNull).collect(Collectors.toSet());
+        Map<UUID,PostEntity> posts=postIds.isEmpty()?Map.of():PostEntity.<PostEntity>list("instanceCountryId=?1 and id in ?2",tenant.instanceCountryId(),postIds).stream().collect(Collectors.toMap(x->x.id,x->x));
+        Map<UUID,CoordinationPost> coordinationPosts=coordinationPostIds.isEmpty()?Map.of():CoordinationPost.<CoordinationPost>list("instanceCountryId=?1 and id in ?2",tenant.instanceCountryId(),coordinationPostIds).stream().collect(Collectors.toMap(x->x.id,x->x));
+        Map<UUID,PostSkillRequirement> requirements=postIds.isEmpty()?Map.of():PostSkillRequirement.<PostSkillRequirement>list("instanceCountryId=?1 and postId in ?2",tenant.instanceCountryId(),postIds).stream().collect(Collectors.toMap(x->x.postId,x->x));
         EmployeeSkillSnapshot employeeSkills=EmployeeSkillSnapshot.find("instanceCountryId=?1 and employeeId=?2",tenant.instanceCountryId(),employeeId).firstResult();
         boolean transferPending=openTransfer(employeeId)!=null;
         Instant minStart=shifts.stream().map(x->x.startsAt).min(Comparator.naturalOrder()).orElse(Instant.now());
@@ -357,10 +383,12 @@ public class AssignmentResource {
         List<EvaluationDto> out=new ArrayList<>(shifts.size());
         for(ShiftOccurrenceEntity shift:shifts){
             PostEntity post=posts.get(shift.postId);PostSkillRequirement req=requirements.get(shift.postId);
+            CoordinationPost coordinationPost=coordinationPosts.get(shift.coordinationPostId);
             List<ValidationProblem> hard=new ArrayList<>();
             if(companyMismatch)hard.add(new ValidationProblem("COMPANY","El colaborador no pertenece a la Compañía del plan."));
             if(inactive)hard.add(new ValidationProblem("EMPLOYMENT_STATUS","El colaborador no está activo en SIC: RRHH."));
             if(unassignableRole)hard.add(new ValidationProblem("ROLE_NOT_ASSIGNABLE","El cargo del colaborador no está habilitado para Asignaciones."));
+            if(coordinationPost!=null&&!rolePolicy.matchesRequiredRole(coordinationRequiredRole(coordinationPost),employee.roleCode))hard.add(new ValidationProblem("COORDINATION_ROLE","Este Puesto de Coordinación requiere "+roleLabel(coordinationRequiredRole(coordinationPost))+"."));
             if(transferPending)hard.add(new ValidationProblem("TRANSFER_PENDING","El colaborador tiene una transferencia de Compañía pendiente y no admite nuevas asignaciones futuras."));
             if(unavailability.stream().anyMatch(u->u.startsAt.isBefore(shift.endsAt)&&u.endsAt.isAfter(shift.startsAt)))hard.add(new ValidationProblem("UNAVAILABLE","SIC: RRHH reporta vacaciones, permiso médico u otra indisponibilidad para este intervalo."));
             for(ShiftOccurrenceEntity other:assignedShifts){
@@ -370,11 +398,11 @@ public class AssignmentResource {
                 boolean consecutive=other.endsAt.equals(shift.startsAt)||shift.endsAt.equals(other.startsAt);
                 if(consecutive){hard.add(new ValidationProblem("AUTO_RELEVO","La asignación produciría auto-relevo/turnos inmediatamente consecutivos."));break;}
             }
-            List<String> soft=post==null?new ArrayList<>():warnings(post,employee,req);
-            BigDecimal ic=compatibility(employeeSkills,req);
+            List<String> soft=post==null?coordinationWarnings(employee):warnings(post,employee,req);
+            BigDecimal ic=post==null?null:compatibility(employeeSkills,req);
             if(ic!=null&&ic.compareTo(BigDecimal.valueOf(100))<0)soft.add("IC "+ic.stripTrailingZeros().toPlainString()+"%: compatibilidad inferior a 100% (alerta, no bloqueo).");
-            boolean icCompliant=ic!=null&&ic.compareTo(BigDecimal.valueOf(100))>=0;
-            boolean idCompliant=post!=null&&employee.idScore!=null&&employee.idScore.doubleValue()>=tierMinimum(post.tier);
+            boolean icCompliant=coordinationPost!=null||ic!=null&&ic.compareTo(BigDecimal.valueOf(100))>=0;
+            boolean idCompliant=coordinationPost!=null||post!=null&&employee.idScore!=null&&employee.idScore.doubleValue()>=tierMinimum(post.tier);
             String state=!hard.isEmpty()?"RED":(icCompliant&&idCompliant?"GREEN":"AMBER");
             out.add(new EvaluationDto(shift.id,state,ic,hard,soft));
         }
@@ -391,18 +419,21 @@ public class AssignmentResource {
         if("CLOSED".equals(plan.status)) throw conflict("PLAN_CERRADO","El plan está cerrado y no admite cambios.");
         ShiftOccurrenceEntity shift=ShiftOccurrenceEntity.find("id=?1 and instanceCountryId=?2",req.shiftOccurrenceId(),tenant.instanceCountryId()).firstResult();
         if(shift==null) throw new NotFoundException("Turno requerido no encontrado");
-        PostEntity post=PostEntity.find("id=?1 and instanceCountryId=?2",shift.postId,tenant.instanceCountryId()).firstResult();
-        if(post==null) throw new NotFoundException("Puesto no encontrado");
-        PointEntity point=PointEntity.find("id=?1 and instanceCountryId=?2",post.pointId,tenant.instanceCountryId()).firstResult();
-        if(point==null||!Objects.equals(point.companyId,plan.companyId)) throw conflict("COMPANIA_INVALIDA","El turno no pertenece a la Compañía del plan.");
-        if(point.operationalTransitionUntil!=null&&shift.startsAt.isBefore(point.operationalTransitionUntil)) throw conflict("SERVICIO_EN_TRANSICION","El Servicio conserva un turno de la Compañía anterior hasta "+point.operationalTransitionUntil+". No puede asignarse personal nuevo antes de ese momento.");
+        PostEntity post=shift.postId==null?null:PostEntity.find("id=?1 and instanceCountryId=?2",shift.postId,tenant.instanceCountryId()).firstResult();
+        CoordinationPost coordinationPost=shift.coordinationPostId==null?null:CoordinationPost.find("id=?1 and instanceCountryId=?2",shift.coordinationPostId,tenant.instanceCountryId()).firstResult();
+        if(post==null&&coordinationPost==null) throw new NotFoundException("Puesto no encontrado");
+        if(post!=null){
+            PointEntity point=PointEntity.find("id=?1 and instanceCountryId=?2",post.pointId,tenant.instanceCountryId()).firstResult();
+            if(point==null||!Objects.equals(point.companyId,plan.companyId)) throw conflict("COMPANIA_INVALIDA","El turno no pertenece a la Compañía del plan.");
+            if(point.operationalTransitionUntil!=null&&shift.startsAt.isBefore(point.operationalTransitionUntil)) throw conflict("SERVICIO_EN_TRANSICION","El Servicio conserva un turno de la Compañía anterior hasta "+point.operationalTransitionUntil+". No puede asignarse personal nuevo antes de ese momento.");
+        }else if(!Objects.equals(coordinationPost.companyId,plan.companyId)||!"ACTIVE".equals(coordinationPost.status)||("SUPERVISION".equals(coordinationPost.postType)&&!hasPublishedRoute(coordinationPost.id)))throw conflict("COORDINATION_POST_INVALID","El Puesto de Coordinación no está activo o no pertenece a la Compañía del plan.");
         EmployeeOperationalSnapshot employee=EmployeeOperationalSnapshot.find("instanceCountryId=?1 and employeeId=?2",tenant.instanceCountryId(),req.employeeId()).firstResult();
         if(employee==null) throw new NotFoundException("Colaborador no encontrado");
 
         List<ValidationProblem> blockers=blockers(plan,shift,employee);
         if(!blockers.isEmpty()) return Response.status(Response.Status.CONFLICT).entity(Map.of("blocking",true,"problems",blockers)).build();
-        List<String> warnings=warnings(post,employee);
-        BigDecimal ic=compatibility(post.id,employee.employeeId);
+        List<String> warnings=post==null?coordinationWarnings(employee):warnings(post,employee);
+        BigDecimal ic=post==null?null:compatibility(post.id,employee.employeeId);
         if(ic!=null && ic.compareTo(BigDecimal.valueOf(100))<0) warnings.add("IC " + ic.stripTrailingZeros().toPlainString() + "%: compatibilidad inferior a 100% (alerta, no bloqueo).");
 
         OperationalAssignmentEntity existing=OperationalAssignmentEntity.find("instanceCountryId=?1 and assignmentPlanId=?2 and shiftOccurrenceId=?3 and status<>'REMOVED'",tenant.instanceCountryId(),plan.id,shift.id).firstResult();
@@ -464,7 +495,7 @@ public class AssignmentResource {
         Map<String,Object> snapshot=new LinkedHashMap<>();
         snapshot.put("planId",plan.id); snapshot.put("companyId",plan.companyId); snapshot.put("weekStart",plan.weekStart);
         snapshot.put("publishedAt",Instant.now());
-        snapshot.put("shifts",shifts.stream().map(s->Map.of("shiftOccurrenceId",s.id,"postId",s.postId,"startsAt",s.startsAt,"endsAt",s.endsAt,"shiftCode",s.shiftCode,"commercialVersion",s.commercialVersion)).toList());
+        snapshot.put("shifts",shifts.stream().map(this::publicationShiftSnapshot).toList());
         snapshot.put("assignments",assignments.stream().map(this::publicationAssignmentSnapshot).toList());
         int requiredAtPublish=shifts.size();
         int assignedAtPublish=assignments.size();
@@ -492,14 +523,12 @@ public class AssignmentResource {
             List<PointEntity> points=PointEntity.list("instanceCountryId=?1 and companyId=?2 and status='ACTIVE'",tenant.instanceCountryId(),c.id);
             Set<UUID> pids=points.stream().map(p->p.id).collect(Collectors.toSet());
             List<PostEntity> posts=pids.isEmpty()?List.of():PostEntity.list("instanceCountryId=?1 and pointId in ?2",tenant.instanceCountryId(),pids);
-            Set<UUID> postIds=posts.stream().map(p->p.id).collect(Collectors.toSet());
-            Instant from=week.atStartOfDay(OPERATING_ZONE).toInstant(), to=week.plusDays(7).atStartOfDay(OPERATING_ZONE).toInstant();
-            List<ShiftOccurrenceEntity> shifts=postIds.isEmpty()?List.of():ShiftOccurrenceEntity.list("instanceCountryId=?1 and postId in ?2 and startsAt>=?3 and startsAt<?4",tenant.instanceCountryId(),postIds,from,to);
-            shifts=eligibleShiftsAfterServiceTransition(points,posts,shifts);
+            List<CoordinationPost> coordinationPosts=assignableCoordinationPosts(c.id);
+            List<ShiftOccurrenceEntity> shifts=planShifts(plan);
             Set<UUID> shiftIds=shifts.stream().map(s->s.id).collect(Collectors.toSet());
             long assigned=shiftIds.isEmpty()?0:OperationalAssignmentEntity.count("instanceCountryId=?1 and assignmentPlanId=?2 and shiftOccurrenceId in ?3 and status<>'REMOVED'",tenant.instanceCountryId(),plan.id,shiftIds);
             int req=shifts.size(), asg=(int)assigned, un=Math.max(req-asg,0); double pct=req==0?100d:roundPct(100d*asg/req);
-            result.add(new CoverageCompanyDto(c.id,c.name,posts.size(),req,asg,un,pct,plan.publishedRequiredShifts,plan.publishedAssignedShifts,plan.publishedCoveragePct==null?null:plan.publishedCoveragePct.doubleValue(),plan.status)); totalReq+=req;totalAssigned+=asg;
+            result.add(new CoverageCompanyDto(c.id,c.name,posts.size()+coordinationPosts.size(),req,asg,un,pct,plan.publishedRequiredShifts,plan.publishedAssignedShifts,plan.publishedCoveragePct==null?null:plan.publishedCoveragePct.doubleValue(),plan.status)); totalReq+=req;totalAssigned+=asg;
         }
         int un=Math.max(totalReq-totalAssigned,0); double pct=totalReq==0?100d:roundPct(100d*totalAssigned/totalReq);
         return new CoverageResponse(week,result,totalReq,totalAssigned,un,pct);
@@ -519,11 +548,9 @@ public class AssignmentResource {
     private void materializeShifts(UUID companyId, LocalDate week){
         List<PointEntity> points=PointEntity.list("instanceCountryId=?1 and companyId=?2 and status='ACTIVE'",tenant.instanceCountryId(),companyId);
         Set<UUID> pointIds=points.stream().map(p->p.id).collect(Collectors.toSet());
-        if(pointIds.isEmpty()) return;
-        List<PostEntity> posts=PostEntity.list("instanceCountryId=?1 and pointId in ?2",tenant.instanceCountryId(),pointIds);
+        List<PostEntity> posts=pointIds.isEmpty()?List.of():PostEntity.list("instanceCountryId=?1 and pointId in ?2",tenant.instanceCountryId(),pointIds);
         Set<UUID> postIds=posts.stream().map(p->p.id).collect(Collectors.toSet());
-        if(postIds.isEmpty()) return;
-        List<PostShiftTemplate> templates=PostShiftTemplate.list("instanceCountryId=?1 and postId in ?2 and active=true",tenant.instanceCountryId(),postIds);
+        List<PostShiftTemplate> templates=postIds.isEmpty()?List.of():PostShiftTemplate.list("instanceCountryId=?1 and postId in ?2 and active=true",tenant.instanceCountryId(),postIds);
         for(PostShiftTemplate t:templates){
             for(int i=0;i<7;i++){
                 if((t.dayMask & (1<<i))==0) continue;
@@ -536,13 +563,62 @@ public class AssignmentResource {
                 ShiftOccurrenceEntity s=new ShiftOccurrenceEntity();s.instanceCountryId=tenant.instanceCountryId();s.postId=t.postId;s.templateId=t.id;s.localDate=d;s.shiftCode=t.shiftCode;s.shiftName=t.shiftName;s.startsAt=start.toInstant();s.endsAt=end.toInstant();s.commercialVersion=t.commercialVersion;s.required=true;s.persist();
             }
         }
+        materializeCoordinationShifts(companyId,week);
     }
+
+    private record CoordinationShift(String code,String name,LocalTime start,LocalTime end) {}
+
+    private void materializeCoordinationShifts(UUID companyId,LocalDate week){
+        for(CoordinationPost post:assignableCoordinationPosts(companyId)){
+            for(CoordinationShift template:coordinationShifts(post)){
+                for(int i=0;i<7;i++){
+                    if((post.dayMask&(1<<i))==0)continue;
+                    LocalDate date=week.plusDays(i);
+                    long exists=ShiftOccurrenceEntity.count("instanceCountryId=?1 and coordinationPostId=?2 and localDate=?3 and shiftCode=?4",tenant.instanceCountryId(),post.id,date,template.code());
+                    if(exists>0)continue;
+                    ZonedDateTime start=date.atTime(template.start()).atZone(OPERATING_ZONE);
+                    LocalDate endDate=!template.end().isAfter(template.start())?date.plusDays(1):date;
+                    ZonedDateTime end=endDate.atTime(template.end()).atZone(OPERATING_ZONE);
+                    ShiftOccurrenceEntity shift=new ShiftOccurrenceEntity();shift.instanceCountryId=tenant.instanceCountryId();shift.postId=null;shift.coordinationPostId=post.id;shift.templateId=null;shift.localDate=date;shift.shiftCode=template.code();shift.shiftName=template.name();shift.startsAt=start.toInstant();shift.endsAt=end.toInstant();shift.commercialVersion="COO:"+post.rotation;shift.required=true;shift.persist();
+                }
+            }
+        }
+    }
+
+    private List<CoordinationShift> coordinationShifts(CoordinationPost post){
+        LocalTime start=post.shiftStartTime,end=start.plusHours(12);
+        if("24/7".equals(post.format))return List.of(new CoordinationShift("T1","Turno 1 (Día)",start,end),new CoordinationShift("T2","Turno 2 (Noche)",end,start));
+        return List.of(new CoordinationShift("T1","Turno operativo",start,end));
+    }
+
+    private List<CoordinationPost> assignableCoordinationPosts(UUID companyId){
+        return CoordinationPost.<CoordinationPost>list("instanceCountryId=?1 and companyId=?2 and status='ACTIVE' order by code",tenant.instanceCountryId(),companyId).stream()
+            .filter(p->!"SUPERVISION".equals(p.postType)||hasPublishedRoute(p.id)).toList();
+    }
+
+    private boolean hasPublishedRoute(UUID coordinationPostId){
+        SupervisionRoute route=activeCoordinationRoute(coordinationPostId);
+        return route!=null&&SupervisionRoutePoint.count("instanceCountryId=?1 and routeId=?2",tenant.instanceCountryId(),route.id)>0;
+    }
+
+    private SupervisionRoute activeCoordinationRoute(UUID coordinationPostId){
+        return SupervisionRoute.find("instanceCountryId=?1 and coordinationPostId=?2 and status='ACTIVE' order by versionNo desc",tenant.instanceCountryId(),coordinationPostId).firstResult();
+    }
+
+    private String coordinationRequiredRole(CoordinationPost post){return "SUPERVISION".equals(post.postType)?"SUPERVISOR_SEGURIDAD":"MONITOR";}
+    private Integer cycleLength(String rotation){return "6-2".equals(rotation)?8:"5-2".equals(rotation)?7:null;}
 
     private List<ValidationProblem> blockers(AssignmentPlanEntity plan, ShiftOccurrenceEntity shift, EmployeeOperationalSnapshot employee){
         List<ValidationProblem> problems=new ArrayList<>();
         if(!Objects.equals(employee.companyId,plan.companyId)) problems.add(new ValidationProblem("COMPANY","El colaborador no pertenece a la Compañía del plan."));
         if(!"ACTIVE".equals(employee.employmentStatus)) problems.add(new ValidationProblem("EMPLOYMENT_STATUS","El colaborador no está activo en SIC: RRHH."));
         if(!rolePolicy.isAssignable(employee.roleCode)) problems.add(new ValidationProblem("ROLE_NOT_ASSIGNABLE","El cargo del colaborador no está habilitado para Asignaciones."));
+        if(shift.coordinationPostId!=null){
+            CoordinationPost coordinationPost=CoordinationPost.find("id=?1 and instanceCountryId=?2",shift.coordinationPostId,tenant.instanceCountryId()).firstResult();
+            if(coordinationPost==null)problems.add(new ValidationProblem("COORDINATION_POST","El Puesto de Coordinación ya no existe."));
+            else if(!Objects.equals(coordinationPost.companyId,plan.companyId))problems.add(new ValidationProblem("COMPANY","El Puesto de Coordinación pertenece a otra Compañía."));
+            else if(!rolePolicy.matchesRequiredRole(coordinationRequiredRole(coordinationPost),employee.roleCode))problems.add(new ValidationProblem("COORDINATION_ROLE","Este Puesto de Coordinación requiere "+roleLabel(coordinationRequiredRole(coordinationPost))+"."));
+        }
         if(openTransfer(employee.employeeId)!=null) problems.add(new ValidationProblem("TRANSFER_PENDING","El colaborador tiene una transferencia de Compañía pendiente y no admite nuevas asignaciones futuras."));
         long unav=EmployeeUnavailabilitySnapshot.count("instanceCountryId=?1 and employeeId=?2 and sourceStatus='ACTIVE' and startsAt<?3 and endsAt>?4",tenant.instanceCountryId(),employee.employeeId,shift.endsAt,shift.startsAt);
         if(unav>0) problems.add(new ValidationProblem("UNAVAILABLE","SIC: RRHH reporta vacaciones, permiso médico u otra indisponibilidad para este intervalo."));
@@ -583,6 +659,11 @@ public class AssignmentResource {
         if(employee.idScore!=null&&employee.idScore.doubleValue()<min) warnings.add("ID "+employee.idScore.stripTrailingZeros().toPlainString()+" menor al mínimo TIER "+post.tier+" ("+min+"): alerta, no bloqueo.");
         return warnings;
     }
+    private List<String> coordinationWarnings(EmployeeOperationalSnapshot employee){
+        List<String> warnings=new ArrayList<>();
+        if(employee.requiredChange)warnings.add("Colaborador marcado Cambio Requerido: alerta, no bloqueo mientras siga activo.");
+        return warnings;
+    }
 
     private BigDecimal compatibility(UUID postId, UUID employeeId){
         EmployeeSkillSnapshot a=EmployeeSkillSnapshot.find("instanceCountryId=?1 and employeeId=?2",tenant.instanceCountryId(),employeeId).firstResult();
@@ -600,12 +681,13 @@ public class AssignmentResource {
     private List<ShiftOccurrenceEntity> planShifts(AssignmentPlanEntity plan){
         List<PointEntity> points=PointEntity.list("instanceCountryId=?1 and companyId=?2 and status='ACTIVE'",tenant.instanceCountryId(),plan.companyId);
         Set<UUID> pids=points.stream().map(p->p.id).collect(Collectors.toSet());
-        if(pids.isEmpty()) return List.of();
-        List<PostEntity> posts=PostEntity.list("instanceCountryId=?1 and pointId in ?2",tenant.instanceCountryId(),pids); Set<UUID> postIds=posts.stream().map(p->p.id).collect(Collectors.toSet());
-        if(postIds.isEmpty()) return List.of();
+        List<PostEntity> posts=pids.isEmpty()?List.of():PostEntity.list("instanceCountryId=?1 and pointId in ?2",tenant.instanceCountryId(),pids); Set<UUID> postIds=posts.stream().map(p->p.id).collect(Collectors.toSet());
+        Set<UUID> coordinationPostIds=assignableCoordinationPosts(plan.companyId).stream().map(p->p.id).collect(Collectors.toSet());
         Instant from=plan.weekStart.atStartOfDay(OPERATING_ZONE).toInstant(),to=plan.weekStart.plusDays(7).atStartOfDay(OPERATING_ZONE).toInstant();
-        List<ShiftOccurrenceEntity> shifts=ShiftOccurrenceEntity.list("instanceCountryId=?1 and postId in ?2 and startsAt>=?3 and startsAt<?4 order by startsAt",tenant.instanceCountryId(),postIds,from,to);
-        return eligibleShiftsAfterServiceTransition(points,posts,shifts);
+        List<ShiftOccurrenceEntity> operational=postIds.isEmpty()?List.of():ShiftOccurrenceEntity.list("instanceCountryId=?1 and postId in ?2 and startsAt>=?3 and startsAt<?4 order by startsAt",tenant.instanceCountryId(),postIds,from,to);
+        operational=eligibleShiftsAfterServiceTransition(points,posts,operational);
+        List<ShiftOccurrenceEntity> coordination=coordinationPostIds.isEmpty()?List.of():ShiftOccurrenceEntity.list("instanceCountryId=?1 and coordinationPostId in ?2 and startsAt>=?3 and startsAt<?4 order by startsAt",tenant.instanceCountryId(),coordinationPostIds,from,to);
+        List<ShiftOccurrenceEntity> shifts=new ArrayList<>(operational.size()+coordination.size());shifts.addAll(operational);shifts.addAll(coordination);shifts.sort(Comparator.comparing(s->s.startsAt));return shifts;
     }
 
     private List<ShiftOccurrenceEntity> eligibleShiftsAfterServiceTransition(List<PointEntity> points,List<PostEntity> posts,List<ShiftOccurrenceEntity> shifts){
@@ -630,6 +712,12 @@ public class AssignmentResource {
             }
         }
         return m;
+    }
+
+    private Map<String,Object> publicationShiftSnapshot(ShiftOccurrenceEntity shift){
+        Map<String,Object> snapshot=new LinkedHashMap<>();
+        snapshot.put("shiftOccurrenceId",shift.id);snapshot.put("targetType",shift.isCoordination()?"COORDINATION":"OPERATIONAL");snapshot.put("postId",shift.targetId());snapshot.put("startsAt",shift.startsAt);snapshot.put("endsAt",shift.endsAt);snapshot.put("shiftCode",shift.shiftCode);snapshot.put("commercialVersion",shift.commercialVersion);
+        return snapshot;
     }
 
     private PublishResponse publishResponse(AssignmentPlanEntity plan){
@@ -728,7 +816,7 @@ public class AssignmentResource {
     private static double roundPct(double v){return Math.round(v*10d)/10d;}
     private static double roundOne(double v){return Math.round(v*10d)/10d;}
     private static String blankToDefault(String v,String d){return v==null||v.isBlank()?d:v.trim();}
-    private static String roleLabel(String code){return switch(code){case "AGENTE_SEGURIDAD"->"Agente de Seguridad";case "SUPERVISOR_SEGURIDAD"->"Supervisor de Seguridad";case "ESCOLTA_SEGURIDAD"->"Escolta";default->code;};}
+    private static String roleLabel(String code){return switch(code){case "AGENTE_SEGURIDAD"->"Agente de Seguridad";case "SUPERVISOR_SEGURIDAD"->"Supervisor de Seguridad";case "MONITOR"->"Monitor";case "ESCOLTA_SEGURIDAD"->"Escolta";default->code;};}
     private static Map<String,Object> assignmentPayload(List<String> warnings,BigDecimal ic,BigDecimal idScore){Map<String,Object> payload=new LinkedHashMap<>();payload.put("warnings",warnings);payload.put("ic",ic);payload.put("idScore",idScore);return payload;}
 
     private String json(Object value){try{return mapper.writeValueAsString(value);}catch(JsonProcessingException e){throw new InternalServerErrorException("No se pudo serializar auditoría",e);}}

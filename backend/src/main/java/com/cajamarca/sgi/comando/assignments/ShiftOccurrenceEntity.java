@@ -8,7 +8,8 @@ import java.util.UUID;
 @Entity
 @Table(name="shift_occurrence")
 public class ShiftOccurrenceEntity extends BaseEntity {
-    @Column(name="post_id", nullable=false) public UUID postId;
+    @Column(name="post_id") public UUID postId;
+    @Column(name="coordination_post_id") public UUID coordinationPostId;
     @Column(name="starts_at", nullable=false) public Instant startsAt;
     @Column(name="ends_at", nullable=false) public Instant endsAt;
     @Column(name="commercial_version") public String commercialVersion;
@@ -17,4 +18,7 @@ public class ShiftOccurrenceEntity extends BaseEntity {
     @Column(name="local_date") public LocalDate localDate;
     @Column(name="shift_code") public String shiftCode;
     @Column(name="shift_name") public String shiftName;
+
+    public UUID targetId(){ return coordinationPostId!=null?coordinationPostId:postId; }
+    public boolean isCoordination(){ return coordinationPostId!=null; }
 }

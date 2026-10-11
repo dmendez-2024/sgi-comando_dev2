@@ -17,5 +17,6 @@ public class CoordinationPost extends BaseEntity {
     @Column(name="shift_start_time", nullable=false) public LocalTime shiftStartTime;
     @Column(name="day_mask", nullable=false) public int dayMask;
     @Column(nullable=false, length=16) public String status;
+    @Column(name="configuration_locked", nullable=false) public boolean configurationLocked;
     @Column(name="updated_by_username", nullable=false, length=80) public String updatedByUsername;
 }
