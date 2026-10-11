@@ -497,7 +497,7 @@
             "companyCoreCatalogId?",
             "companyCode?"
           ],
-          "companyRule": "For a new employee, companyCoreCatalogId or companyCode is mandatory. Existing employees may omit during transition and retain current source company.",
+          "companyRule": "An explicit companyCoreCatalogId or companyCode is authoritative. During the DHO transition, new employees that omit both fields use the configured default company (Kaibil); existing employees retain their current source company.",
           "idempotency": "Idempotency-Key is persisted per Instancia PE; same key + same payload is safe, same key + different payload returns conflict."
         },
         "response": {
@@ -1613,6 +1613,58 @@
       "contentType": "application/json",
       "request": {"query": ["type"]},
       "response": {"fields": ["reportId","type","category","subcategory","title","description","severity","status","occurredAt"]}
+    }],
+    "legacyConnectionIds": []
+  },
+  {
+    "interconnectionRef": "SGI_OPR_SGI_COM_0020",
+    "interconnectionId": "SGI_OPR_SGI_COM_0020_v001",
+    "sourceProgramId": "SGI_OPR",
+    "targetProgramId": "SGI_COM",
+    "purpose": "Consultar accesos activos y cambios incrementales de Bitácora para el punto de la asignación autenticada.",
+    "interactionType": "REST_API",
+    "mode": "SYNC",
+    "protocol": "HTTPS",
+    "contractVersion": "v1",
+    "dataOwnerProgramId": "SGI_COM",
+    "criticality": "HIGH",
+    "legacyTarget": false,
+    "targetImplementationStatus": "TEMPORARY_LOCAL",
+    "status": "UAT",
+    "interfaces": [{
+      "interfaceId": "SGI_OPR_SGI_COM_0020_IF01",
+      "method": "GET",
+      "path": "/api/v1/operator/logbook-records/active",
+      "purpose": "Carga inicial o consulta incremental de accesos activos del punto",
+      "contentType": "application/json",
+      "request": {"query": ["assignmentId","afterVersion"]},
+      "response": {"fields": ["pointId","pointVersion","fullSnapshot","records"]}
+    }],
+    "legacyConnectionIds": []
+  },
+  {
+    "interconnectionRef": "SGI_OPR_SGI_COM_0021",
+    "interconnectionId": "SGI_OPR_SGI_COM_0021_v001",
+    "sourceProgramId": "SGI_OPR",
+    "targetProgramId": "SGI_COM",
+    "purpose": "Registrar de forma idempotente la salida de un acceso activo de Bitácora.",
+    "interactionType": "REST_API",
+    "mode": "ASYNC",
+    "protocol": "HTTPS",
+    "contractVersion": "v1",
+    "dataOwnerProgramId": "SGI_COM",
+    "criticality": "HIGH",
+    "legacyTarget": false,
+    "targetImplementationStatus": "TEMPORARY_LOCAL",
+    "status": "UAT",
+    "interfaces": [{
+      "interfaceId": "SGI_OPR_SGI_COM_0021_IF01",
+      "method": "POST",
+      "path": "/api/v1/operator/logbook-records/{recordId}/exit",
+      "purpose": "Cerrar un acceso activo conservando fecha y agente ejecutor",
+      "contentType": "application/json",
+      "request": {"fields": ["exitOperationId","assignmentId","expectedVersion","exitedAt"]},
+      "response": {"fields": ["recordId","status","pointVersion","recordVersion","exitedAt","exitedBy","idempotentReplay"]}
     }],
     "legacyConnectionIds": []
   }

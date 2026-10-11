@@ -29,7 +29,7 @@ Correcciones P0/P1 heredadas de la baseline:
 - `CORE` queda **UNIVERSAL**; `SGI_COM` permanece `PE_SPECIFIC`.
 - IDs de interconexión migrados al formato v4.1 `ORIGEN_DESTINO_NNNN_vNNN`, preservando aliases v3 solo para transición.
 - `CORE` es SoR de las **reglas versionadas de Impulsos**; cada Instancia PE de `SGI_COM` aplica las reglas y es SoR de su ledger/saldo de Impulsos por Operador.
-- SIC:RRHH inbound usa `credential_ref`, idempotencia persistente (V34) y Compañía fuente autoritativa; no existe token portable ni fallback automático a Kaibil para altas nuevas.
+- SIC:RRHH inbound usa `credential_ref` e idempotencia persistente (V34). Mientras DHO incorpora la Compañía fuente, las altas que omiten `companyCoreCatalogId` y `companyCode` usan temporalmente Kaibil; una Compañía explícita siempre tiene prioridad.
 - `.env` deja de formar parte del entregable; usar `.env.example`.
 - Dependencias frontend top-level quedan fijadas a versiones exactas.
 

@@ -13,14 +13,14 @@ SIC:RRHH es System of Record de la relación Persona–Compañía. La implementa
 - ID v4.1 canónico `SIC_DHO_SGI_COM_0001_v001`; los IDs SIC_RRHH existentes quedan como aliases de transición.
 - Auth por `credential_ref`; ningún token portable.
 - Request amplía v1 de manera compatible con `companyCoreCatalogId?` y `companyCode?`.
-- Empleado nuevo: debe llegar al menos uno de esos identificadores de Compañía; **no existe fallback automático a Kaibil**.
+- Empleado nuevo: mientras DHO incorpora esos identificadores, la omisión de ambos usa temporalmente la Compañía predeterminada configurada (Kaibil). Cuando se envía uno, la Compañía explícita es autoritativa.
 - Empleado existente: mientras se despliega la contraparte, puede omitir compañía y conservar la relación ya persistida.
 - Si la Compañía fuente cambia, SGI cierra la membresía PRIMARY anterior y crea la nueva con timestamp de fuente.
 - Receipt idempotente persistente mediante V34.
 
 ## Cambio requerido en SIC_DHO
 
-1. Enviar `companyCoreCatalogId` (preferido) o `companyCode` para todo empleado activo de Seguridad Física, especialmente altas nuevas.
+1. Incorporar `companyCoreCatalogId` (preferido) o `companyCode` para todo empleado activo de Seguridad Física. Hasta ese despliegue, SGI aplica el fallback temporal a Kaibil solo en altas nuevas sin Compañía.
 2. Usar `X-Interconnection-Id: SIC_DHO_SGI_COM_0001_v001`.
 3. Mantener `X-Contract-Version: v1`, `X-Correlation-Id` e `Idempotency-Key` estable por evento lógico.
 4. Resolver la credencial mediante el binding/secret autorizado; no hardcodear token.

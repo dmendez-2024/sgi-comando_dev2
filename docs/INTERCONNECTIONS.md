@@ -56,7 +56,7 @@ Total: **25 interconexiones / 31 interfaces**.
 ## Inbound ya presentes en la baseline de SISTEMAS
 
 - `SIC_COM_SGI_COM_0001_v001`: catálogo comercial, con recibo idempotente.
-- `SIC_DHO_SGI_COM_0001_v001`: sincronización de empleado con auth por `credential_ref`, idempotencia persistente y resolución de Compañía fuente. Para personal nuevo SGI exige `companyCoreCatalogId` o `companyCode`; la contraparte SIC:DHO debe homologar esos campos antes de declarar el flujo ACTIVE.
+- `SIC_DHO_SGI_COM_0001_v001`: sincronización de empleado con auth por `credential_ref`, idempotencia persistente y resolución de Compañía fuente. Hasta que SIC:DHO homologue `companyCoreCatalogId` o `companyCode`, las altas nuevas que omiten ambos usan temporalmente Kaibil; una Compañía explícita tiene prioridad.
 - `SGI_OPR_SGI_COM_0002_v001`: relevo/evidencia UAT parcialmente implementado.
 
 ## Seguridad

@@ -44,6 +44,9 @@ public class RrhhEmployeeSyncService {
     @ConfigProperty(name = "sgi.integrations.rrhh.use-canonical-employee-id", defaultValue = "false")
     boolean useCanonicalEmployeeId;
 
+    @ConfigProperty(name = "sgi.integrations.rrhh.default-company-core-catalog-id")
+    UUID defaultCompanyCoreCatalogId;
+
     /**
      * Apply one versioned SIC:RRHH event. Idempotency-Key is persisted so a retry
      * with the same payload is safe, while reuse of the key with different content
@@ -191,9 +194,10 @@ public class RrhhEmployeeSyncService {
     }
 
     /**
-     * SIC:RRHH is SoR of Persona->Compañía. New personnel must therefore arrive
-     * with a company identity. For transition compatibility, an existing employee
-     * may omit it and retain the already persisted source company.
+     * An explicit company sent by SIC:RRHH is authoritative. During the transition
+     * to the new DHO API, a new employee without company data is assigned to the
+     * configured default company (Kaibil). Existing employees keep their current
+     * company when the event omits it.
      */
     private Company resolveSourceCompany(
         UUID tenantId,
@@ -236,9 +240,15 @@ public class RrhhEmployeeSyncService {
             throw new InternalServerErrorException("La Compañía actual del empleado no existe en el tenant.");
         }
 
-        throw new BadRequestException(
-            "SIC:RRHH es SoR de Persona–Compañía: un empleado nuevo requiere companyCoreCatalogId o companyCode."
+        List<Company> defaultCompanies = Company.list(
+            "instanceCountryId=?1 and coreCatalogId=?2", tenantId, defaultCompanyCoreCatalogId
         );
+        if (defaultCompanies.size() != 1) {
+            throw new InternalServerErrorException(
+                "La Compañía predeterminada para SIC:RRHH no resuelve exactamente una Compañía SGI del tenant."
+            );
+        }
+        return defaultCompanies.getFirst();
     }
 
     private void recordReceipt(
