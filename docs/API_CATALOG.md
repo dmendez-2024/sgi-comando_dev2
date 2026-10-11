@@ -108,6 +108,7 @@ Synchronize the ACTIVE/INACTIVE lifecycle of Seguridad Física personnel and the
   - Campos: `employeeId?`, `personaId?`, `canonicalEmployeeId?`, `fullName`, `roleCode`, `employmentStatus`, `updatedFromSourceAt`, `companyCoreCatalogId?`, `companyCode?`.
   - Para un empleado **nuevo**, `companyCoreCatalogId` o `companyCode` identifica la Compañía fuente. Mientras DHO incorpora esos campos, si ambos se omiten SGI asigna temporalmente la Compañía predeterminada configurada (Kaibil).
   - Para un empleado ya existente, la omisión temporal de compañía conserva la compañía actual para compatibilidad de transición.
+  - Una transición de `ACTIVE` a `INACTIVE` cierra la membresía activa y libera las asignaciones cuyo turno todavía no ha iniciado (`status=REMOVED`), conservando el turno en curso, los turnos pasados y su auditoría.
   - `Idempotency-Key` se persiste por Instancia PE: mismo key + mismo payload es retry seguro; mismo key + payload distinto responde conflicto.
 - aliases de transición: `SIC_RRHH_SGI_COM_0001_v001`, `SIC_RRHH__SGI_COM__00001__V0001`, `SIC_RRHH__SGI_COM__00001`
 
