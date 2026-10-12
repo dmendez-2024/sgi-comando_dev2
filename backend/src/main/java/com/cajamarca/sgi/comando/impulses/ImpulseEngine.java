@@ -87,9 +87,10 @@ public class ImpulseEngine {
                        exists(select 1 from operator_relief_evidence ev where ev.instance_country_id=r.instance_country_id and ev.event_id=r.id and ev.purpose='entrant_full')
                 from relief_event r join operator_relief_submission s on s.id=r.id and s.instance_country_id=r.instance_country_id
                 where r.instance_country_id=:t and r.incoming_employee_id is not null and s.received_at<:cutoff""" + NOT_EVALUATED.formatted("r.id");
+            // Desde V74 un registro de Bitácora entra como INSIDE (persona dentro) y pasa a EXITED con su salida; ambos son ingresos válidos.
             case "LOGBOOK" -> """
                 select r.id, r.employee_id, r.assignment_id, r.captured_at from operator_logbook_record r
-                where r.instance_country_id=:t and r.status='REGISTERED' and r.received_at<:cutoff""" + NOT_EVALUATED.formatted("r.id");
+                where r.instance_country_id=:t and r.status in ('INSIDE','EXITED') and r.received_at<:cutoff""" + NOT_EVALUATED.formatted("r.id");
             case "PATROL" -> """
                 select pe.id, pe.employee_id, pe.assignment_id, pe.finished_at, pe.result from patrol_execution pe
                 where pe.instance_country_id=:t and pe.employee_id is not null and pe.finished_at is not null and pe.finished_at<:cutoff""" + NOT_EVALUATED.formatted("pe.id");
