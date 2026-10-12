@@ -47,7 +47,7 @@ public class CoordinationResource {
 
     public record OperationalPostDto(UUID id,String code,String name,String format,List<ShiftDto> shifts){}
     public record PointDto(UUID id,String code,String name,String clientName,UUID companyId,String companyName,String status,List<OperationalPostDto> posts,boolean coveredByActiveRoute,boolean newOrUncovered){}
-    public record RoutePointDto(UUID id,UUID pointId,int sortOrder,String pointCodeSnapshot,String pointNameSnapshot,boolean currentlyOperational){}
+    public record RoutePointDto(UUID id,UUID pointId,int sortOrder,String pointCodeSnapshot,String pointNameSnapshot,String clientName,boolean currentlyOperational){}
     public record RouteDto(UUID id,UUID seriesId,UUID basedOnRouteId,UUID coordinationPostId,String code,String name,int versionNo,String status,String publishedAt,String updatedBy,List<RoutePointDto> points){}
     public record SaveRouteRequest(String name,List<UUID> pointIds){}
     public record CoverageDto(int totalOperationalPoints,int coveredPoints,int uncoveredPoints,List<PointDto> uncovered){}
@@ -125,15 +125,17 @@ public class CoordinationResource {
     @Path("/posts/{postId}/route")
     public RouteDto routeForPost(@PathParam("postId")UUID postId){
         CoordinationPost p=post(postId);
-        if(identity.hasRole("SUPERVISOR_SEGURIDAD")) requireAssignedSupervisorPost(p);
+        UUID assignedRouteId=null;
+        if(identity.hasRole("SUPERVISOR_SEGURIDAD")) assignedRouteId=requireAssignedSupervisorPost(p);
         else manageableCompany(p.companyId);
         requireSupervisor(p);
-        SupervisionRoute route=currentRoute(p.id);return route==null?null:routeDto(route);
+        SupervisionRoute route=assignedRouteId==null?activeRoute(p.id):assignedRoute(assignedRouteId,p.id);
+        return route==null?null:routeDto(route);
     }
 
     /** A Supervisor may only read the route of the coordination post in their own published,
      * current (or early-entry) assignment. This does not grant access to coordination management. */
-    private void requireAssignedSupervisorPost(CoordinationPost post){
+    private UUID requireAssignedSupervisorPost(CoordinationPost post){
         UUID employee;
         if(com.cajamarca.sgi.comando.security.IdentIdentity.isIdent(identity)){
             Long personaId=com.cajamarca.sgi.comando.security.IdentIdentity.personaId(identity);
@@ -150,7 +152,7 @@ public class CoordinationResource {
         }
         Instant now=Instant.now();
         List<?> assignments=entityManager.createNativeQuery("""
-          select 1 from operational_assignment a
+          select s.supervision_route_id from operational_assignment a
           join shift_occurrence s on s.id=a.shift_occurrence_id and s.instance_country_id=a.instance_country_id
           join assignment_plan p on p.id=a.assignment_plan_id and p.instance_country_id=a.instance_country_id
           where a.instance_country_id=:tenant and a.status<>'REMOVED' and p.status in ('PUBLISHED','CLOSED')
@@ -159,6 +161,8 @@ public class CoordinationResource {
           """).setParameter("tenant",tenant.instanceCountryId()).setParameter("employee",employee).setParameter("post",post.id)
             .setParameter("now",now).setParameter("latestStart",now.plusSeconds(59L*60L)).getResultList();
         if(assignments.isEmpty())throw new ForbiddenException("El Puesto de Supervisión no pertenece a tu asignación vigente");
+        Object routeId=assignments.get(0);
+        return routeId==null?null:UUID.fromString(routeId.toString());
     }
 
     @POST
@@ -217,7 +221,10 @@ public class CoordinationResource {
     private CoordinationPostDto postDto(CoordinationPost p,Company c){SupervisionRoute route="SUPERVISION".equals(p.postType)?currentRoute(p.id):null;RouteSummaryDto rs=route==null?null:new RouteSummaryDto(route.id,route.code,route.name,route.versionNo,route.status,routePoints(route.id).size());return new CoordinationPostDto(p.id,p.companyId,c.name,p.code,p.name,p.postType,p.format,p.rotation,fmt(p.shiftStartTime),p.dayMask,p.status,p.configurationLocked,shiftDtos(p),rs,p.updatedByUsername);}
     private RouteDto routeDto(SupervisionRoute r){
         CoordinationPost cp=post(r.coordinationPostId);Company company=Company.find("id=?1 and instanceCountryId=?2",cp.companyId,tenant.instanceCountryId()).firstResult();Set<UUID> operational=company==null?Set.of():operationalPoints(company).stream().map(p->p.id).collect(Collectors.toSet());
-        List<RoutePointDto> points=routePoints(r.id).stream().map(rp->new RoutePointDto(rp.id,rp.pointId,rp.sortOrder,rp.pointCodeSnapshot,rp.pointNameSnapshot,operational.contains(rp.pointId))).toList();
+        List<RoutePointDto> points=routePoints(r.id).stream().map(rp->{
+            PointEntity point=PointEntity.find("id=?1 and instanceCountryId=?2",rp.pointId,tenant.instanceCountryId()).firstResult();
+            return new RoutePointDto(rp.id,rp.pointId,rp.sortOrder,rp.pointCodeSnapshot,rp.pointNameSnapshot,point==null?null:point.clientName,operational.contains(rp.pointId));
+        }).toList();
         return new RouteDto(r.id,r.seriesId,r.basedOnRouteId,r.coordinationPostId,r.code,r.name,r.versionNo,r.status,r.publishedAt==null?null:r.publishedAt.toString(),r.updatedByUsername,points);
     }
     private CompanyDto companyDto(Company c){return new CompanyDto(c.id,c.code,c.name,c.companyType,isKaibil(c));}
@@ -253,6 +260,8 @@ public class CoordinationResource {
     private CoordinationPost post(UUID id){CoordinationPost p=CoordinationPost.find("id=?1 and instanceCountryId=?2",id,tenant.instanceCountryId()).firstResult();if(p==null)throw new NotFoundException("Puesto de Coordinación no encontrado.");return p;}
     private SupervisionRoute route(UUID id){SupervisionRoute r=SupervisionRoute.find("id=?1 and instanceCountryId=?2",id,tenant.instanceCountryId()).firstResult();if(r==null)throw new NotFoundException("Ruta de Supervisión no encontrada.");return r;}
     private SupervisionRoute currentRoute(UUID postId){List<SupervisionRoute> rows=SupervisionRoute.list("instanceCountryId=?1 and coordinationPostId=?2 order by versionNo desc",tenant.instanceCountryId(),postId);for(SupervisionRoute r:rows)if("DRAFT".equals(r.status))return r;for(SupervisionRoute r:rows)if("ACTIVE".equals(r.status))return r;return rows.isEmpty()?null:rows.get(0);}
+    private SupervisionRoute activeRoute(UUID postId){return SupervisionRoute.find("instanceCountryId=?1 and coordinationPostId=?2 and status='ACTIVE' order by versionNo desc",tenant.instanceCountryId(),postId).firstResult();}
+    private SupervisionRoute assignedRoute(UUID routeId,UUID postId){return SupervisionRoute.find("instanceCountryId=?1 and id=?2 and coordinationPostId=?3 and status in ('ACTIVE','REPLACED')",tenant.instanceCountryId(),routeId,postId).firstResult();}
     private List<SupervisionRoutePoint> routePoints(UUID routeId){return SupervisionRoutePoint.list("instanceCountryId=?1 and routeId=?2 order by sortOrder",tenant.instanceCountryId(),routeId);}
     private void requireSupervisor(CoordinationPost p){if(!"SUPERVISION".equals(p.postType))throw new BadRequestException("Solo los Puestos de Supervisión tienen Ruta.");}
     private void requireDraftRoute(SupervisionRoute r){if(!"DRAFT".equals(r.status))throw new ClientErrorException("La Ruta publicada es inmutable. Cree una nueva versión.",409);}

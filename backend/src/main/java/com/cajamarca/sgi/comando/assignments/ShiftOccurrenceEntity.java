@@ -10,6 +10,7 @@ import java.util.UUID;
 public class ShiftOccurrenceEntity extends BaseEntity {
     @Column(name="post_id") public UUID postId;
     @Column(name="coordination_post_id") public UUID coordinationPostId;
+    @Column(name="supervision_route_id") public UUID supervisionRouteId;
     @Column(name="starts_at", nullable=false) public Instant startsAt;
     @Column(name="ends_at", nullable=false) public Instant endsAt;
     @Column(name="commercial_version") public String commercialVersion;
