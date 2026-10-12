@@ -6,16 +6,16 @@ import java.util.Locale;
 final class PostCodeGenerator {
   private PostCodeGenerator() {}
 
-  static String baseCode(String province, String city, String clientName, String postName) {
+  static String baseCode(String province, String city, String clientName, String pointName) {
     return initial(province, "province")
         + initial(city, "city")
         + initial(clientName, "client.name")
-        + initial(postName, "posts.name");
+        + initial(pointName, "points.name");
   }
 
-  static String sourceSignature(String province, String city, String clientName, String postName) {
+  static String sourceSignature(String province, String city, String clientName, String pointName) {
     return signaturePart(province) + "|" + signaturePart(city) + "|"
-        + signaturePart(clientName) + "|" + signaturePart(postName);
+        + signaturePart(clientName) + "|" + signaturePart(pointName);
   }
 
   /** index 0 has no discriminator; 1..26 are A..Z; 27 is AA. */

@@ -29,7 +29,10 @@ public final class InterconnectionIds {
     public static final String IDENT_PORTAL_ENTRY = "IDENT_SGI_COM_0002_v001";
 
     public static final String SIC_COM_RECONCILIATION = "SGI_COM_SIC_COM_0001_v001";
-    public static final String SIC_COM_EVENTS = "SIC_COM_SGI_COM_0001_v001";
+    // v003 is the active CORE binding for SIC_COM commercial events.
+    public static final String SIC_COM_EVENTS = "SIC_COM_SGI_COM_0001_v003";
+    // Keep v001 while upstream clients complete their migration to v003.
+    public static final String COMPATIBLE_SIC_COM_EVENTS_V001 = "SIC_COM_SGI_COM_0001_v001";
 
     public static final String RRHH_EMPLOYEE_CONTEXT = "SGI_COM_SIC_RRHH_0001_v001";
     public static final String RRHH_OPERATIONAL_LABOR_EVENTS = "SGI_COM_SIC_RRHH_0002_v001";
