@@ -5,6 +5,7 @@ import com.cajamarca.sgi.comando.companies.Company;
 import com.cajamarca.sgi.comando.security.AppUser;
 import com.cajamarca.sgi.comando.assignments.*;
 import com.cajamarca.sgi.comando.coordination.CoordinationPost;
+import com.cajamarca.sgi.comando.coordination.SupervisionRoute;
 import com.cajamarca.sgi.comando.operations.*;
 import com.cajamarca.sgi.comando.ats.AtsPointPackage;
 import com.cajamarca.sgi.comando.inventory.InventoryService;
@@ -371,6 +372,10 @@ public class OperatorResource {
             .put("timezone",country==null||country.timezone==null||country.timezone.isBlank()?OPERATING_ZONE.getId():country.timezone);
         n.set("inventory",inventoryContext);
         if(!c.coordination()) n.put("pointId",c.point.id.toString()).put("pointName",c.point.name).put("clientName",c.point.clientName);
+        else if(c.shift.supervisionRouteId!=null) {
+            SupervisionRoute route=SupervisionRoute.find("id=?1 and instanceCountryId=?2 and coordinationPostId=?3",c.shift.supervisionRouteId,tenant.instanceCountryId(),c.coordinationPost.id).firstResult();
+            if(route!=null) n.put("routeId",route.id.toString()).put("routeCode",route.code).put("routeName",route.name).put("routeVersion",route.versionNo);
+        }
         List<Object[]> employeeProfile=employeeProfile(c.assignment.effectiveEmployeeId());
         if(!employeeProfile.isEmpty()) {
             Object[] employee=employeeProfile.get(0);

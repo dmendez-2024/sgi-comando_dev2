@@ -492,6 +492,7 @@ public class AssignmentResource {
         if("CLOSED".equals(plan.status)) throw conflict("PLAN_CERRADO","El plan ya está cerrado.");
         if("PUBLISHED".equals(plan.status)) return publishResponse(plan);
         List<ShiftOccurrenceEntity> shifts=planShifts(plan);
+        pinSupervisionRoutes(shifts);
         List<OperationalAssignmentEntity> assignments=OperationalAssignmentEntity.list("instanceCountryId=?1 and assignmentPlanId=?2 and status<>'REMOVED'",tenant.instanceCountryId(),plan.id);
         Map<String,Object> snapshot=new LinkedHashMap<>();
         snapshot.put("planId",plan.id); snapshot.put("companyId",plan.companyId); snapshot.put("weekStart",plan.weekStart);
@@ -604,6 +605,17 @@ public class AssignmentResource {
 
     private SupervisionRoute activeCoordinationRoute(UUID coordinationPostId){
         return SupervisionRoute.find("instanceCountryId=?1 and coordinationPostId=?2 and status='ACTIVE' order by versionNo desc",tenant.instanceCountryId(),coordinationPostId).firstResult();
+    }
+
+    private void pinSupervisionRoutes(List<ShiftOccurrenceEntity> shifts){
+        for(ShiftOccurrenceEntity shift:shifts){
+            if(shift.coordinationPostId==null)continue;
+            CoordinationPost post=CoordinationPost.find("id=?1 and instanceCountryId=?2",shift.coordinationPostId,tenant.instanceCountryId()).firstResult();
+            if(post==null||!"SUPERVISION".equals(post.postType))continue;
+            SupervisionRoute route=activeCoordinationRoute(post.id);
+            if(route==null)throw conflict("SUPERVISION_ROUTE_REQUIRED","El Puesto de Supervisión "+post.name+" no tiene una Ruta publicada.");
+            shift.supervisionRouteId=route.id;
+        }
     }
 
     private String coordinationRequiredRole(CoordinationPost post){return "SUPERVISION".equals(post.postType)?"SUPERVISOR_SEGURIDAD":"MONITOR";}
@@ -723,7 +735,7 @@ public class AssignmentResource {
             if(post!=null){
                 snapshot.put("coordinationPostCode",post.code);snapshot.put("coordinationPostName",post.name);snapshot.put("coordinationType",post.postType);
                 if("SUPERVISION".equals(post.postType)){
-                    SupervisionRoute route=activeCoordinationRoute(post.id);
+                    SupervisionRoute route=shift.supervisionRouteId==null?activeCoordinationRoute(post.id):SupervisionRoute.find("id=?1 and instanceCountryId=?2",shift.supervisionRouteId,tenant.instanceCountryId()).firstResult();
                     if(route!=null){snapshot.put("routeId",route.id);snapshot.put("routeCode",route.code);snapshot.put("routeName",route.name);snapshot.put("routeVersion",route.versionNo);}
                 }
             }
