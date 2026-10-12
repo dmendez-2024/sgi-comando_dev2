@@ -456,3 +456,12 @@ Rama `acordova` · commits `5ac2f76`, `28b566c`, `bc0fafd`. Estado detallado: `d
 ### Validación
 - Builds de backend y frontend en Docker; pruebas E2E por API y Playwright contra el VISINT real.
 - Videos en `C:/Proyectos/sgi_comando/evidencias_playwright/`: `v6` (relevo), `v7` (GPS Hito, parcial), `v8` (umbral), `v9` (GPS consigna), `v10` (GPS Bitácora y Relevo), `v11` (radio configurable).
+# 2026-10-11 — Consignas Operador: alcance IDENT y consulta resiliente
+
+- La consulta de propuestas pendientes informa cuando el usuario IDENT no tiene alcance operativo parametrizado por `persona_id`.
+- Operaciones > Consignas separa los errores de propuestas y patrullas; una falla ya no borra silenciosamente ambas fuentes.
+- Se retiró el dataset DEMO del conjunto de resultados operativos reales.
+- El runtime publica la zona horaria sincronizada desde CORE para evaluar el calendario en SGI Operador.
+- El backend rechaza cumplimientos fuera del calendario configurado y, cuando corresponde, exige coordenadas GPS válidas.
+- La aprobación o descarte permanece fuera de alcance hasta segunda orden documentada.
+- Validación: `docs/VALIDATION_CONSIGNMENTS_2026-10-11.md`.

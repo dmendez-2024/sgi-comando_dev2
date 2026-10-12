@@ -24,7 +24,7 @@ import java.util.stream.Collectors;
 @Path("/api/coordination")
 @Consumes(MediaType.APPLICATION_JSON)
 @Produces(MediaType.APPLICATION_JSON)
-@RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
+@RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION","SUPERVISOR_SEGURIDAD"})
 public class CoordinationResource {
     private static final Set<String> TYPES=Set.of("MONITORING","SUPERVISION");
     private static final Set<String> FORMATS=Set.of("24/7","12/7","12/5");
@@ -124,8 +124,41 @@ public class CoordinationResource {
     @GET
     @Path("/posts/{postId}/route")
     public RouteDto routeForPost(@PathParam("postId")UUID postId){
-        CoordinationPost p=post(postId);manageableCompany(p.companyId);requireSupervisor(p);
+        CoordinationPost p=post(postId);
+        if(identity.hasRole("SUPERVISOR_SEGURIDAD")) requireAssignedSupervisorPost(p);
+        else manageableCompany(p.companyId);
+        requireSupervisor(p);
         SupervisionRoute route=currentRoute(p.id);return route==null?null:routeDto(route);
+    }
+
+    /** A Supervisor may only read the route of the coordination post in their own published,
+     * current (or early-entry) assignment. This does not grant access to coordination management. */
+    private void requireAssignedSupervisorPost(CoordinationPost post){
+        UUID employee;
+        if(com.cajamarca.sgi.comando.security.IdentIdentity.isIdent(identity)){
+            Long personaId=com.cajamarca.sgi.comando.security.IdentIdentity.personaId(identity);
+            if(personaId==null)throw new ForbiddenException("Vínculo persona empleado pendiente de configuración");
+            List<?> rows=entityManager.createNativeQuery("select employee_id from employee_operational_snapshot where instance_country_id=:tenant and persona_id=:persona")
+                .setParameter("tenant",tenant.instanceCountryId()).setParameter("persona",personaId).getResultList();
+            if(rows.size()!=1)throw new ForbiddenException("Vínculo persona empleado pendiente de configuración");
+            employee=UUID.fromString(rows.get(0).toString());
+        }else{
+            List<?> rows=entityManager.createNativeQuery("select employee_id from operator_employee_binding where instance_country_id=:tenant and username=:username and active=true")
+                .setParameter("tenant",tenant.instanceCountryId()).setParameter("username",identity.getPrincipal().getName()).getResultList();
+            if(rows.size()!=1)throw new ForbiddenException("Vínculo usuario empleado pendiente de configuración");
+            employee=UUID.fromString(rows.get(0).toString());
+        }
+        Instant now=Instant.now();
+        List<?> assignments=entityManager.createNativeQuery("""
+          select 1 from operational_assignment a
+          join shift_occurrence s on s.id=a.shift_occurrence_id and s.instance_country_id=a.instance_country_id
+          join assignment_plan p on p.id=a.assignment_plan_id and p.instance_country_id=a.instance_country_id
+          where a.instance_country_id=:tenant and a.status<>'REMOVED' and p.status in ('PUBLISHED','CLOSED')
+            and coalesce(a.actual_employee_id,a.employee_id)=:employee and s.coordination_post_id=:post
+            and s.ends_at>:now and s.starts_at<=:latestStart limit 1
+          """).setParameter("tenant",tenant.instanceCountryId()).setParameter("employee",employee).setParameter("post",post.id)
+            .setParameter("now",now).setParameter("latestStart",now.plusSeconds(59L*60L)).getResultList();
+        if(assignments.isEmpty())throw new ForbiddenException("El Puesto de Supervisión no pertenece a tu asignación vigente");
     }
 
     @POST
