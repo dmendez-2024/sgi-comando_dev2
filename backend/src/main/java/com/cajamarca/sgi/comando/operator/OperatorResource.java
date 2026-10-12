@@ -4,9 +4,11 @@ import com.cajamarca.sgi.comando.common.TenantContext;
 import com.cajamarca.sgi.comando.companies.Company;
 import com.cajamarca.sgi.comando.security.AppUser;
 import com.cajamarca.sgi.comando.assignments.*;
+import com.cajamarca.sgi.comando.coordination.CoordinationPost;
 import com.cajamarca.sgi.comando.operations.*;
 import com.cajamarca.sgi.comando.ats.AtsPointPackage;
 import com.cajamarca.sgi.comando.inventory.InventoryService;
+import com.cajamarca.sgi.comando.context.CoreInstanceCountrySnapshot;
 import com.cajamarca.sgi.comando.territory.OperationalScopeService;
 import com.fasterxml.jackson.databind.*;
 import com.fasterxml.jackson.databind.node.*;
@@ -47,7 +49,11 @@ public class OperatorResource {
 
     @org.jboss.resteasy.reactive.server.ServerExceptionMapper
     public Response mapError(WebApplicationException e) { return OperatorErrors.withMessage(e); }
-    record AssignmentContext(OperationalAssignmentEntity assignment,ShiftOccurrenceEntity shift,PostEntity post,PointEntity point) {}
+    record AssignmentContext(OperationalAssignmentEntity assignment,ShiftOccurrenceEntity shift,PostEntity post,PointEntity point,CoordinationPost coordinationPost) {
+        boolean coordination(){ return coordinationPost!=null; }
+        UUID targetId(){ return coordination()?coordinationPost.id:post.id; }
+        String targetName(){ return coordination()?coordinationPost.name:post.name; }
+    }
     private record NextAction(String type,UUID targetId,String title,Instant scheduledAt,Instant endsAt) {}
 
     private AppUser actor() {
@@ -91,10 +97,16 @@ public class OperatorResource {
         if(plan==null || !("PUBLISHED".equals(plan.status) || "CLOSED".equals(plan.status))) throw new ForbiddenException("Tu asignación aún no ha sido publicada en SGI COMANDO. Comunícate con tu supervisor.");
         ShiftOccurrenceEntity s=ShiftOccurrenceEntity.find("id=?1 and instanceCountryId=?2",a.shiftOccurrenceId,tenant.instanceCountryId()).firstResult();
         if(s==null) throw new NotFoundException("Turno no disponible");
+        if(s.coordinationPostId!=null) {
+            CoordinationPost coordinationPost=CoordinationPost.find("id=?1 and instanceCountryId=?2",s.coordinationPostId,tenant.instanceCountryId()).firstResult();
+            if(coordinationPost==null || !"ACTIVE".equals(coordinationPost.status) || !"SUPERVISION".equals(coordinationPost.postType))
+                throw new NotFoundException("Puesto de Supervisión no disponible");
+            return new AssignmentContext(a,s,null,null,coordinationPost);
+        }
         PostEntity post=PostEntity.find("id=?1 and instanceCountryId=?2",s.postId,tenant.instanceCountryId()).firstResult();
         PointEntity point=post==null?null:PointEntity.find("id=?1 and instanceCountryId=?2",post.pointId,tenant.instanceCountryId()).firstResult();
         if(point==null) throw new NotFoundException("Puesto o punto no disponible");
-        return new AssignmentContext(a,s,post,point);
+        return new AssignmentContext(a,s,post,point,null);
     }
     @SuppressWarnings("unchecked")
     private ArrayNode consignments(AssignmentContext c) {
@@ -345,13 +357,20 @@ public class OperatorResource {
     }
     private ObjectNode context(AssignmentContext c) {
         ObjectNode n=mapper.createObjectNode();
-        ObjectNode inventoryContext=inventory.runtime(c.post.id);
-        n.put("assignmentId",c.assignment.id.toString()).put("shiftOccurrenceId",c.shift.id.toString()).put("postId",c.post.id.toString())
-            .put("pointId",c.point.id.toString()).put("postName",c.post.name).put("pointName",c.point.name).put("clientName",c.point.clientName)
+        ObjectNode inventoryContext;
+        if(c.coordination()) {
+            inventoryContext=mapper.createObjectNode().put("status","PENDING_SOURCE");
+            inventoryContext.putArray("items");
+        } else inventoryContext=inventory.runtime(c.post.id);
+        CoreInstanceCountrySnapshot country=CoreInstanceCountrySnapshot.find("instanceCountryId=?1",tenant.instanceCountryId()).firstResult();
+        n.put("assignmentId",c.assignment.id.toString()).put("shiftOccurrenceId",c.shift.id.toString()).put("postId",c.targetId().toString())
+            .put("postName",c.targetName()).put("assignmentTargetType",c.coordination()?"COORDINATION_POST":"OPERATIONAL_POST")
             .put("incomingEmployeeId",c.assignment.effectiveEmployeeId().toString()).put("plannedAt",c.shift.startsAt.toString())
             .put("shiftStartsAt",c.shift.startsAt.toString()).put("shiftEndsAt",c.shift.endsAt.toString())
-            .put("inventoryStatus",inventoryContext.path("status").asText("PENDING_SOURCE")).put("noveltiesStatus","PENDING_SOURCE").put("validationStatus","PENDING_REVIEW");
+            .put("inventoryStatus",inventoryContext.path("status").asText("PENDING_SOURCE")).put("noveltiesStatus","PENDING_SOURCE").put("validationStatus","PENDING_REVIEW")
+            .put("timezone",country==null||country.timezone==null||country.timezone.isBlank()?OPERATING_ZONE.getId():country.timezone);
         n.set("inventory",inventoryContext);
+        if(!c.coordination()) n.put("pointId",c.point.id.toString()).put("pointName",c.point.name).put("clientName",c.point.clientName);
         List<Object[]> employeeProfile=employeeProfile(c.assignment.effectiveEmployeeId());
         if(!employeeProfile.isEmpty()) {
             Object[] employee=employeeProfile.get(0);
@@ -367,18 +386,19 @@ public class OperatorResource {
             Object[] relief=registeredReliefs.get(0);
             n.put("reliefId",relief[0].toString()).put("reliefReceivedAt",relief[1].toString()).put("reliefExecutedAt",relief[2].toString()).put("reliefUnilateral",Boolean.TRUE.equals(relief[3]));
         }
-        List<?> previous=em.createNativeQuery("select coalesce(a.actual_employee_id,a.employee_id),e.full_name,s.ends_at from operational_assignment a join shift_occurrence s on s.id=a.shift_occurrence_id and s.instance_country_id=a.instance_country_id left join employee_operational_snapshot e on e.employee_id=coalesce(a.actual_employee_id,a.employee_id) and e.instance_country_id=a.instance_country_id where a.instance_country_id=:t and s.post_id=:p and a.status<>'REMOVED' and s.ends_at<=:start order by s.ends_at desc limit 1")
-            .setParameter("t",tenant.instanceCountryId()).setParameter("p",c.post.id).setParameter("start",c.shift.startsAt).getResultList();
+        String previousSql="select coalesce(a.actual_employee_id,a.employee_id),e.full_name,s.ends_at from operational_assignment a join shift_occurrence s on s.id=a.shift_occurrence_id and s.instance_country_id=a.instance_country_id left join employee_operational_snapshot e on e.employee_id=coalesce(a.actual_employee_id,a.employee_id) and e.instance_country_id=a.instance_country_id where a.instance_country_id=:t and s."+(c.coordination()?"coordination_post_id":"post_id")+"=:p and a.status<>'REMOVED' and s.ends_at<=:start order by s.ends_at desc limit 1";
+        List<?> previous=em.createNativeQuery(previousSql)
+            .setParameter("t",tenant.instanceCountryId()).setParameter("p",c.targetId()).setParameter("start",c.shift.startsAt).getResultList();
         if(!previous.isEmpty()) {
             Object[] row=(Object[])previous.get(0);
             if(row[0]!=null) n.put("expectedOutgoingEmployeeId",row[0].toString());
             if(row[1]!=null) n.put("expectedOutgoingEmployeeName",row[1].toString());
             if(row[2]!=null) n.put("expectedOutgoingShiftEndsAt",row[2].toString());
         }
-        ArrayNode assignmentConsignments=consignments(c);
+        ArrayNode assignmentConsignments=c.coordination()?mapper.createArrayNode():consignments(c);
         n.set("consignments",assignmentConsignments);
-        n.set("bitacoraProtocols",bitacora(c));
-        ArrayNode patrolProtocols=patrols(c);
+        n.set("bitacoraProtocols",c.coordination()?mapper.createArrayNode():bitacora(c));
+        ArrayNode patrolProtocols=c.coordination()?mapper.createArrayNode():patrols(c);
         n.set("patrolProtocols",patrolProtocols);
         if(!patrolProtocols.isEmpty()) {
             ObjectNode activeProtocol=(ObjectNode)patrolProtocols.get(0);
@@ -393,7 +413,7 @@ public class OperatorResource {
                 activePatrols.add(patrol);
             }
         } else n.putArray("patrols");
-        n.set("nextActions",nextActions(c,assignmentConsignments));
+        n.set("nextActions",c.coordination()?mapper.createArrayNode():nextActions(c,assignmentConsignments));
         n.putArray("stationPhotos").add("Vista general del puesto").add("Área de trabajo o garita").add("Acceso principal");
         // fetchedAt/warning/status cambian por disponibilidad de red y no deben invalidar una confirmación del mismo inventario.
         ObjectNode versionedContext=n.deepCopy();
@@ -404,11 +424,11 @@ public class OperatorResource {
         versionedContext.remove("inventoryStatus");
         n.put("configurationVersion",hash(versionedContext.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8)));
         // Fuera de configurationVersion: activar VISINT en el Puesto no invalida un relevo en curso.
-        ObjectNode visint=n.putObject("stationVisint").put("enabled",stationReviews.enabled(tenant.instanceCountryId(),c.post.id));
+        ObjectNode visint=n.putObject("stationVisint").put("enabled",!c.coordination()&&stationReviews.enabled(tenant.instanceCountryId(),c.post.id));
         ArrayNode images=visint.putArray("standardImageIds");
-        for(var i:com.cajamarca.sgi.comando.storage.StandardReferenceImage.of(com.cajamarca.sgi.comando.storage.StandardReferenceImage.POST_CONFIG,c.post.id)) images.add(i.id.toString());
+        if(!c.coordination()) for(var i:com.cajamarca.sgi.comando.storage.StandardReferenceImage.of(com.cajamarca.sgi.comando.storage.StandardReferenceImage.POST_CONFIG,c.post.id)) images.add(i.id.toString());
         // Ubicación del Puesto: el relevo envía latitude/longitude/accuracyM y fuera del radio queda como aviso (nunca bloquea).
-        double[] loc=patrols.locationSettings().postReference(tenant.instanceCountryId(),c.post.id);
+        double[] loc=c.coordination()?null:patrols.locationSettings().postReference(tenant.instanceCountryId(),c.post.id);
         if(loc!=null) n.putObject("postLocation").put("latitude",loc[0]).put("longitude",loc[1]).put("radiusM",(int)loc[2]);
         return n;
     }
@@ -697,6 +717,7 @@ public class OperatorResource {
         if(comment.length()>2000) throw new BadRequestException("La observación supera 2000 caracteres");
         int photoCount=event.path("photoCount").asInt(0);
         if(photoCount<0 || photoCount>5) throw new BadRequestException("Cantidad de fotografías inválida");
+        Instant executedAt=parseConsignmentExecutedAt(event);
         String payloadHash=hash(canonical(event).toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
         List<?> existing=em.createNativeQuery("select assignment_id,employee_id,consignment_id,payload_hash,result,confirmed_at from consignment_compliance where id=:id and instance_country_id=:tenant")
             .setParameter("id",executionId).setParameter("tenant",tenant.instanceCountryId()).getResultList();
@@ -707,17 +728,20 @@ public class OperatorResource {
             return mapper.createObjectNode().put("executionId",executionId.toString()).put("status","RECEIVED").put("result",old[4].toString()).put("confirmedAt",old[5].toString());
         }
         @SuppressWarnings("unchecked") List<Object[]> allowed=em.createNativeQuery("""
-          select c.protocol_id,c.evidence_required,c.gps_required,c.observation_required
+          select c.protocol_id,c.evidence_required,c.gps_required,c.observation_required,
+                 c.application_type,c.application_days_json,c.application_time_from,c.application_time_to
           from consignment c join consignment_protocol p on p.id=c.protocol_id and p.instance_country_id=c.instance_country_id
           where c.id=:consignment and c.instance_country_id=:tenant and c.point_id=:point and c.status='VIGENTE' and p.status='ACTIVO'
-            and (c.validity_from is null or c.validity_from<=current_timestamp)
-            and (c.validity_until is null or c.validity_until>=current_timestamp)
+            and (c.validity_from is null or c.validity_from<=:executed)
+            and (c.validity_until is null or c.validity_until>=:executed)
             and (c.scope_type='POINT' or c.post_id=:post or exists
               (select 1 from consignment_post_scope x where x.consignment_id=c.id and x.post_id=:post and x.instance_country_id=c.instance_country_id))
-          """).setParameter("consignment",consignmentId).setParameter("tenant",tenant.instanceCountryId()).setParameter("point",c.point.id).setParameter("post",c.post.id).getResultList();
+          """).setParameter("consignment",consignmentId).setParameter("tenant",tenant.instanceCountryId()).setParameter("point",c.point.id).setParameter("post",c.post.id).setParameter("executed",executedAt).getResultList();
         if(allowed.isEmpty()) throw new BadRequestException("La Consigna no está vigente o no aplica al puesto asignado");
         Object[] rules=allowed.get(0);
+        if(!consignmentAppliesAt(rules,executedAt)) throw new BadRequestException("La Consigna estaba fuera de sus días u horario de aplicación");
         if("CUMPLIDA".equals(result) && Boolean.TRUE.equals(rules[1]) && photoCount==0) throw new BadRequestException("La Consigna requiere evidencia fotográfica");
+        if("CUMPLIDA".equals(result) && Boolean.TRUE.equals(rules[2])) validateConsignmentCoordinates(event.path("coordinates"));
         if("CUMPLIDA".equals(result) && Boolean.TRUE.equals(rules[3]) && comment.isBlank()) throw new BadRequestException("La Consigna requiere una observación");
         List<?> alreadyConfirmed=em.createNativeQuery("select id,result,confirmed_at from consignment_compliance where instance_country_id=:tenant and assignment_id=:assignment and consignment_id=:consignment")
             .setParameter("tenant",tenant.instanceCountryId()).setParameter("assignment",assignmentId).setParameter("consignment",consignmentId).getResultList();
@@ -732,6 +756,31 @@ public class OperatorResource {
             .setParameter("result",result).setParameter("comment",comment).setParameter("photos",photoCount).setParameter("gps",Boolean.TRUE.equals(rules[2]))
             .setParameter("hash",payloadHash).setParameter("payload",event.toString()).setParameter("confirmed",confirmedAt).executeUpdate();
         return mapper.createObjectNode().put("executionId",executionId.toString()).put("status","RECEIVED").put("result",result).put("confirmedAt",confirmedAt.toString());
+    }
+    private Instant parseConsignmentExecutedAt(JsonNode event) {
+        String value=event.path("executedAt").asText("").trim();
+        if(value.isEmpty()) return Instant.now(); // compatibilidad con eventos de la versión anterior
+        try { return Instant.parse(value); } catch(DateTimeException e) { throw new BadRequestException("La fecha de ejecución de la Consigna es inválida"); }
+    }
+    private boolean consignmentAppliesAt(Object[] rules,Instant executedAt) {
+        if(!"CALENDAR".equals(rules[4].toString())) return true;
+        if(rules[5]==null||rules[6]==null||rules[7]==null) return false;
+        Set<String> days=calendarDays(rules[5].toString());
+        LocalTime from=LocalTime.parse(rules[6].toString()),to=LocalTime.parse(rules[7].toString());
+        CoreInstanceCountrySnapshot country=CoreInstanceCountrySnapshot.find("instanceCountryId=?1",tenant.instanceCountryId()).firstResult();
+        ZoneId zone=OPERATING_ZONE;
+        if(country!=null&&country.timezone!=null&&!country.timezone.isBlank()) try { zone=ZoneId.of(country.timezone); } catch(DateTimeException ignored) {}
+        ZonedDateTime now=executedAt.atZone(zone); LocalTime time=now.toLocalTime();
+        if(!from.isAfter(to)) return days.contains(dayCode(now.toLocalDate()))&&!time.isBefore(from)&&time.isBefore(to);
+        return (days.contains(dayCode(now.toLocalDate()))&&!time.isBefore(from)) ||
+            (days.contains(dayCode(now.toLocalDate().minusDays(1)))&&time.isBefore(to));
+    }
+    private void validateConsignmentCoordinates(JsonNode coordinates) {
+        if(!coordinates.isObject()||!coordinates.has("latitude")||!coordinates.has("longitude")||!coordinates.has("accuracyM"))
+            throw new BadRequestException("La Consigna requiere una ubicación GPS válida");
+        double latitude=coordinates.path("latitude").asDouble(Double.NaN),longitude=coordinates.path("longitude").asDouble(Double.NaN),accuracy=coordinates.path("accuracyM").asDouble(Double.NaN);
+        if(!Double.isFinite(latitude)||latitude < -90||latitude > 90||!Double.isFinite(longitude)||longitude < -180||longitude > 180||!Double.isFinite(accuracy)||accuracy < 0||accuracy > 500)
+            throw new BadRequestException("Las coordenadas GPS de la Consigna son inválidas");
     }
     @GET @Path("/patrol-executions/current")
     public ObjectNode currentPatrol(@QueryParam("assignmentId") UUID assignmentId,@QueryParam("patrolId") UUID patrolId) {
@@ -806,9 +855,9 @@ public class OperatorResource {
             response.set("relief",relief);
             response.set("inventory",relief.path("inventory").deepCopy());
             // Tareas con foto del Puesto: Hitos de patrulla, evidencias de Consigna y campos de Bitácora.
-            response.set("patrols",patrols.runtime(selected.post.id));
-            response.set("consignmentTasks",tasks.consignmentTasks(selected.post));
-            response.set("logbookTasks",tasks.logbookTasks(selected.post));
+            response.set("patrols",selected.coordination()?mapper.createArrayNode():patrols.runtime(selected.post.id));
+            response.set("consignmentTasks",selected.coordination()?mapper.createArrayNode():tasks.consignmentTasks(selected.post));
+            response.set("logbookTasks",selected.coordination()?mapper.createArrayNode():tasks.logbookTasks(selected.post));
             // Saldo de Impulsos adjudicado por SGI: Comando (Mi Perfil); la app lo muestra sin recalcular.
             response.set("impulses",impulses.summary(tenant.instanceCountryId(),employee));
             return response;
@@ -830,7 +879,8 @@ public class OperatorResource {
         List<OperatorAssignmentWindow.Candidate<AssignmentContext>> candidates=contexts.stream()
             .map(c->new OperatorAssignmentWindow.Candidate<>(c,c.shift.startsAt,c.shift.endsAt)).toList();
         for(var c:OperatorAssignmentWindow.select(candidates,now)) choices.addObject()
-            .put("assignmentId",c.assignment.id.toString()).put("postName",c.post.name)
+            .put("assignmentId",c.assignment.id.toString()).put("postName",c.targetName())
+            .put("assignmentTargetType",c.coordination()?"COORDINATION_POST":"OPERATIONAL_POST")
             .put("startsAt",c.shift.startsAt.toString()).put("endsAt",c.shift.endsAt.toString())
             .put("accessMode",now.isBefore(c.shift.startsAt)?"EARLY_ENTRY":"CURRENT_SHIFT");
         if(choices.isEmpty()) {
@@ -849,6 +899,7 @@ public class OperatorResource {
         }
         return response;
     }
+
     @GET @Path("/patrol-map") @Produces({"image/png","image/jpeg","image/webp"})
     public Response patrolMap(@QueryParam("assignmentId") UUID assignmentId) {
         if(assignmentId==null) throw new BadRequestException("assignmentId obligatorio");
@@ -902,7 +953,7 @@ public class OperatorResource {
         UUID employee=employee(); validate(batch,employee,tenant.instanceCountryId(),Instant.now());
         JsonNode event=batch.path("events").get(0); UUID eventId=uuid(event,"eventId"), assignmentId=uuid(event,"assignmentId");
         AssignmentContext c=assignment(assignmentId,employee); lock(assignmentId);
-        if(!c.post.id.equals(uuid(event,"postId")) || !c.shift.id.equals(uuid(event,"shiftOccurrenceId"))) throw new BadRequestException("Puesto o turno no coincide");
+        if(!c.targetId().equals(uuid(event,"postId")) || !c.shift.id.equals(uuid(event,"shiftOccurrenceId"))) throw new BadRequestException("Puesto o turno no coincide");
         String digest=hash(canonical(event).toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
         List<?> old=em.createNativeQuery("select payload_hash,username from operator_relief_submission where id=:id and instance_country_id=:t")
             .setParameter("id",eventId).setParameter("t",tenant.instanceCountryId()).getResultList();
@@ -917,8 +968,9 @@ public class OperatorResource {
         if(execution.isBefore(c.shift.startsAt.minusSeconds(43200)) || execution.isAfter(c.shift.endsAt.plusSeconds(43200))) throw new BadRequestException("Fecha fuera de ventana UAT del turno");
         if(!event.path("unilateral").asBoolean()) {
             UUID outgoing=uuid(event,"outgoingEmployeeId");
-            List<?> previous=em.createNativeQuery("select coalesce(a.actual_employee_id,a.employee_id) from operational_assignment a join shift_occurrence s on s.id=a.shift_occurrence_id and s.instance_country_id=a.instance_country_id where a.instance_country_id=:t and s.post_id=:p and a.status<>'REMOVED' and s.ends_at<=:start order by s.ends_at desc limit 1")
-                .setParameter("t",tenant.instanceCountryId()).setParameter("p",c.post.id).setParameter("start",c.shift.startsAt).getResultList();
+            String previousSql="select coalesce(a.actual_employee_id,a.employee_id) from operational_assignment a join shift_occurrence s on s.id=a.shift_occurrence_id and s.instance_country_id=a.instance_country_id where a.instance_country_id=:t and s."+(c.coordination()?"coordination_post_id":"post_id")+"=:p and a.status<>'REMOVED' and s.ends_at<=:start order by s.ends_at desc limit 1";
+            List<?> previous=em.createNativeQuery(previousSql)
+                .setParameter("t",tenant.instanceCountryId()).setParameter("p",c.targetId()).setParameter("start",c.shift.startsAt).getResultList();
             if(previous.isEmpty() || previous.get(0)==null || !previous.get(0).toString().equals(outgoing.toString())) throw new BadRequestException("Saliente no coincide con la asignación anterior");
         }
         ObjectNode snapshot=context(c);
@@ -934,18 +986,19 @@ public class OperatorResource {
             if(rows.isEmpty()) throw new BadRequestException("Evidencia no autorizada o no cargada");
         }
         String inventoryStatus=text(event,"inventoryStatus").toUpperCase(Locale.ROOT);
-        em.createNativeQuery("insert into relief_event(id,instance_country_id,post_id,shift_occurrence_id,outgoing_employee_id,incoming_employee_id,status,planned_at,executed_at,unilateral,inventory_result,consignments_confirmed,created_at,updated_at) values(:id,:t,:p,:s,:o,:i,'PENDIENTE',:planned,:executed,:unilateral,:inventory,true,current_timestamp,current_timestamp)")
-            .setParameter("id",eventId).setParameter("t",tenant.instanceCountryId()).setParameter("p",c.post.id).setParameter("s",c.shift.id)
+        String reliefTargetColumn=c.coordination()?"coordination_post_id":"post_id";
+        em.createNativeQuery("insert into relief_event(id,instance_country_id,"+reliefTargetColumn+",shift_occurrence_id,outgoing_employee_id,incoming_employee_id,status,planned_at,executed_at,unilateral,inventory_result,consignments_confirmed,created_at,updated_at) values(:id,:t,:target,:s,:o,:i,'PENDIENTE',:planned,:executed,:unilateral,:inventory,true,current_timestamp,current_timestamp)")
+            .setParameter("id",eventId).setParameter("t",tenant.instanceCountryId()).setParameter("target",c.targetId()).setParameter("s",c.shift.id)
             .setParameter("o",event.path("unilateral").asBoolean()?null:uuid(event,"outgoingEmployeeId")).setParameter("i",employee).setParameter("planned",c.shift.startsAt)
             .setParameter("executed",execution).setParameter("unilateral",event.path("unilateral").asBoolean()).setParameter("inventory",inventoryStatus).executeUpdate();
         em.createNativeQuery("insert into operator_relief_submission(id,instance_country_id,assignment_id,employee_id,username,device_id,batch_id,correlation_id,payload_hash,payload_json,context_json,received_at) values(:id,:t,:a,:e,:u,:d,:b,:c,:h,:payload,:context,current_timestamp)")
             .setParameter("id",eventId).setParameter("t",tenant.instanceCountryId()).setParameter("a",assignmentId).setParameter("e",employee).setParameter("u",identity.getPrincipal().getName())
             .setParameter("d",text(batch,"deviceId")).setParameter("b",uuid(batch,"batchId")).setParameter("c",uuid(batch,"correlationId"))
             .setParameter("h",digest).setParameter("payload",event.toString()).setParameter("context",snapshot.toString()).executeUpdate();
-        String inventoryDelivery=inventory.recordReport(event,snapshot.path("inventory"),eventId,assignmentId,c.post.id,c.point.id,employee,
+        String inventoryDelivery=c.coordination()?"NOT_REQUIRED":inventory.recordReport(event,snapshot.path("inventory"),eventId,assignmentId,c.post.id,c.point.id,employee,
             identity.getPrincipal().getName(),uuid(batch,"correlationId"));
         // VISINT opcional: las fotos del puesto se comparan con las fotos estándar del Puesto; el resultado no bloquea el relevo.
-        String stationVisint=stationReviews.enqueue(tenant.instanceCountryId(),eventId,assignmentId,c.shift.id,c.point.id,c.post.id,employee,identity.getPrincipal().getName(),execution,batch);
+        String stationVisint=c.coordination()?"NOT_REQUESTED":stationReviews.enqueue(tenant.instanceCountryId(),eventId,assignmentId,c.shift.id,c.point.id,c.post.id,employee,identity.getPrincipal().getName(),execution,batch);
         return ack(eventId,stationVisint,inventoryStatus,inventoryDelivery);
     }
     private long nextLogbookPointVersion(UUID pointId) {
@@ -1040,6 +1093,9 @@ public class OperatorResource {
         actor();
         if(!Set.of("PENDING","APPROVED","DISCARDED").contains(status)) throw new BadRequestException("Estado de revisión inválido");
         boolean operator=identity.hasRole("AGENTE_SEGURIDAD"); UUID employee=operator?employee():null;
+        if(!operator && !scope.countryWide() && scope.scopes().isEmpty()) {
+            throw new ForbiddenException("Tu usuario no tiene un alcance operativo configurado. Solicita a Comando que parametrice tu persona y compañía.");
+        }
         @SuppressWarnings("unchecked") List<Object[]> rows=em.createNativeQuery("""
             select id,point_id,post_id,employee_id,username,title,instruction,priority,submitted_at,schedule,start_time,end_time,status
             from operator_consignment_review_request where instance_country_id=:t and status=:status order by submitted_at desc

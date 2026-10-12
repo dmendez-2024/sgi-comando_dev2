@@ -180,23 +180,22 @@ export default function ConsignasExecution(){
   const [inspectorId,setInspectorId]=useState<string|null>(null);
   const [reviewRequests,setReviewRequests]=useState<Execution[]>([]);
   const [patrolExecutions,setPatrolExecutions]=useState<Execution[]>([]);
+  const [loadWarnings,setLoadWarnings]=useState<string[]>([]);
 
   const loadReviewRequests=useCallback(async()=>{
-    try{
-      const [requests,patrols]=await Promise.all([api.consignmentReviewRequests('PENDING'),api.patrolExecutions()]);
-      setReviewRequests(requests.map(reviewRequestToExecution));
-      setPatrolExecutions(patrols.map(patrolExecutionToExecution));
-    }catch{
-      setReviewRequests([]);
-      setPatrolExecutions([]);
-    }
+    const [requests,patrols]=await Promise.allSettled([api.consignmentReviewRequests('PENDING'),api.patrolExecutions()]);
+    const warnings:string[]=[];
+    if(requests.status==='fulfilled') setReviewRequests(requests.value.map(reviewRequestToExecution));
+    else { setReviewRequests([]); warnings.push('No fue posible consultar las consignas pendientes. Verifica el alcance operativo del usuario o inténtalo nuevamente.'); }
+    if(patrols.status==='fulfilled') setPatrolExecutions(patrols.value.map(patrolExecutionToExecution));
+    else { setPatrolExecutions([]); warnings.push('No fue posible consultar las ejecuciones de patrullas.'); }
+    setLoadWarnings(warnings);
   },[]);
 
   useEffect(()=>{void loadReviewRequests()},[loadReviewRequests]);
 
-  // El backend ya aplica el alcance RBAC a las solicitudes reales. El filtro
-  // local usa códigos DEMO (por ejemplo, GAL) y solo corresponde a DATA.
-  const scoped=useMemo(()=>[...reviewRequests,...patrolExecutions,...DATA.filter(row=>withinScope(row,scope))],[reviewRequests,patrolExecutions,scope]);
+  // El backend es la fuente oficial y aplica alcance RBAC; esta vista no mezcla datos DEMO.
+  const scoped=useMemo(()=>[...reviewRequests,...patrolExecutions],[reviewRequests,patrolExecutions]);
 
   const companies=useMemo(()=>unique(scoped.map(x=>x.company)),[scoped]);
   const cities=useMemo(()=>unique(scoped.map(x=>x.city)),[scoped]);
@@ -285,6 +284,7 @@ export default function ConsignasExecution(){
           <Field label="Fecha fin"><input type="date" value={filters.dateTo} onChange={e=>set('dateTo',e.target.value)}/></Field>
         </div>
         {dateError && <div className="cns-validation-error"><AlertTriangle size={16}/><span>{dateError}</span></div>}
+        {loadWarnings.map(message=><div className="cns-validation-error" key={message}><AlertTriangle size={16}/><span>{message}</span></div>)}
         <div className="cns-search-actions nov-actions"><button className="primary" disabled={!!dateError} onClick={()=>void loadReviewRequests()}><Search size={16}/>Buscar</button><button onClick={clear}><FilterX size={16}/>Limpiar filtros</button><div className="cns-rules-note"><AlertCircle size={15}/><span>Fechas obligatorias · rango máximo de 1 año</span></div><button className="export" onClick={exportCsv} disabled={!!dateError || !rows.length}><Download size={16}/>Exportar</button></div>
 
         <div className="cns-results-card nov-results-card"><div className="cns-results-head nov-results-head"><h3>Ejecuciones ({rows.length})</h3><div>Ordenar por: <strong>Fecha más reciente</strong></div></div><div className="cns-table-wrap nov-table-wrap"><table className="cns-table nov-table"><thead><tr><th>Tipo</th><th>Código</th><th>Nombre / Descripción</th><th>Cliente</th><th>Punto / Puesto</th><th>Responsable</th><th>Ventana / Hora</th><th>Estado de ejecución</th><th>Resultado / Progreso</th><th></th></tr></thead><tbody>{rows.map(row=>{

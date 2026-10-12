@@ -10,12 +10,14 @@ import com.cajamarca.sgi.comando.storage.StandardReferenceImages;
 import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
+import jakarta.persistence.EntityManager;
 import jakarta.transaction.Transactional;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.HttpHeaders;
 import jakarta.ws.rs.core.Response;
 import java.util.*;
+import java.time.Instant;
 
 @Path("/api/post-configurations")
 @Consumes(MediaType.APPLICATION_JSON)
@@ -26,6 +28,7 @@ public class PostConfigurationResource {
     @Inject TenantContext tenant;
     @Inject OperationalScopeService scope;
     @Inject SecurityIdentity identity;
+    @Inject EntityManager entityManager;
     @Inject StandardReferenceImages references;
 
     public record SkillSet(int attendance,int accessControl,int patrol,int judgement,int tactical,int bearing,int leadership,int customerService) {}
@@ -36,7 +39,8 @@ public class PostConfigurationResource {
     @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION","SUPERVISOR_SEGURIDAD","AGENTE_SEGURIDAD","CLIENTE"})
     public List<ConfigDto> list(@QueryParam("pointId") UUID pointId){
         PointEntity point=point(pointId);
-        scope.requireCompany(point.companyId);
+        if(identity.hasRole("SUPERVISOR_SEGURIDAD")) requirePointInAssignedRoute(pointId);
+        else scope.requireCompany(point.companyId);
         List<PostEntity> posts=PostEntity.list("pointId=?1 and instanceCountryId=?2 order by code",pointId,tenant.instanceCountryId());
         if(posts.isEmpty()) return List.of();
         Set<UUID> ids=new HashSet<>(); for(PostEntity p:posts) ids.add(p.id);
@@ -48,6 +52,37 @@ public class PostConfigurationResource {
             out.add(c==null?defaults(post):dto(c));
         }
         return out;
+    }
+
+    /** Limits Supervisor reads to points contained in the active route of their own assignment. */
+    private void requirePointInAssignedRoute(UUID pointId){
+        UUID employee;
+        if(com.cajamarca.sgi.comando.security.IdentIdentity.isIdent(identity)){
+            Long personaId=com.cajamarca.sgi.comando.security.IdentIdentity.personaId(identity);
+            if(personaId==null)throw new ForbiddenException("Vínculo persona empleado pendiente de configuración");
+            List<?> rows=entityManager.createNativeQuery("select employee_id from employee_operational_snapshot where instance_country_id=:tenant and persona_id=:persona")
+                .setParameter("tenant",tenant.instanceCountryId()).setParameter("persona",personaId).getResultList();
+            if(rows.size()!=1)throw new ForbiddenException("Vínculo persona empleado pendiente de configuración");
+            employee=UUID.fromString(rows.get(0).toString());
+        }else{
+            List<?> rows=entityManager.createNativeQuery("select employee_id from operator_employee_binding where instance_country_id=:tenant and username=:username and active=true")
+                .setParameter("tenant",tenant.instanceCountryId()).setParameter("username",identity.getPrincipal().getName()).getResultList();
+            if(rows.size()!=1)throw new ForbiddenException("Vínculo usuario empleado pendiente de configuración");
+            employee=UUID.fromString(rows.get(0).toString());
+        }
+        Instant now=Instant.now();
+        List<?> allowed=entityManager.createNativeQuery("""
+          select 1 from operational_assignment a
+          join shift_occurrence s on s.id=a.shift_occurrence_id and s.instance_country_id=a.instance_country_id
+          join assignment_plan ap on ap.id=a.assignment_plan_id and ap.instance_country_id=a.instance_country_id
+          join supervision_route r on r.coordination_post_id=s.coordination_post_id and r.instance_country_id=s.instance_country_id and r.status='ACTIVE'
+          join supervision_route_point rp on rp.route_id=r.id and rp.instance_country_id=r.instance_country_id
+          where a.instance_country_id=:tenant and a.status<>'REMOVED' and ap.status in ('PUBLISHED','CLOSED')
+            and coalesce(a.actual_employee_id,a.employee_id)=:employee and rp.point_id=:point
+            and s.ends_at>:now and s.starts_at<=:latestStart limit 1
+          """).setParameter("tenant",tenant.instanceCountryId()).setParameter("employee",employee).setParameter("point",pointId)
+            .setParameter("now",now).setParameter("latestStart",now.plusSeconds(59L*60L)).getResultList();
+        if(allowed.isEmpty())throw new ForbiddenException("El Punto no pertenece a tu Ruta de Supervisión vigente");
     }
 
     @PUT

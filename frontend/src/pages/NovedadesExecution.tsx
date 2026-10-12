@@ -1,10 +1,10 @@
-import {useMemo, useState, type ReactNode} from 'react';
+import {useCallback, useEffect, useMemo, useState, type ReactNode} from 'react';
 import {
   AlertTriangle, Building2, CalendarDays, CheckCircle2, ChevronRight, CircleAlert,
   Download, Eye, FileImage, FilterX, MapPin, Search, ShieldCheck, Trash2,
   UserRound, X, Pencil, Save, Clock3, Camera, Navigation, ClipboardCheck
 } from 'lucide-react';
-import {getUser, type UatUser} from '../api';
+import {api, getUser, type UatUser} from '../api';
 import {OperationalDrawer} from '../components/OperationalDrawer';
 
 type NoveltyType='FINDING'|'VULNERABILITY'|'INCIDENT';
@@ -66,7 +66,7 @@ type Filters={
 
 type EditableDraft=Pick<Novelty,'type'|'subcategory'|'company'|'client'|'city'|'point'|'post'|'description'|'latitude'|'longitude'|'photoCount'>;
 
-const FINDING_SUBCATEGORIES=['Orden','Limpieza','Mantenimiento','Estacionamiento','Componentes de Seguridad'];
+const FINDING_SUBCATEGORIES=['Orden','Limpieza','Mantenimiento','Estacionamiento','Componente de seguridad'];
 const VULNERABILITY_SUBCATEGORIES=['Acceso','Perímetro','Interno'];
 const INCIDENT_SUBCATEGORIES=['Servicio','Seguridad','Administrativo'];
 
@@ -160,11 +160,21 @@ const scopeByUser:Record<UatUser,Scope>={
   cliente:{label:'Alcance restringido',companies:['GAL']},
 };
 
-const latestDate=new Date(INITIAL_DATA.reduce((max,row)=>row.createdAt>max?row.createdAt:max,INITIAL_DATA[0].createdAt));
+const latestDate=new Date();
 const DEFAULT_TO=latestDate.toISOString().slice(0,10);
 const defaultFromDate=new Date(latestDate);defaultFromDate.setDate(defaultFromDate.getDate()-30);
 const DEFAULT_FROM=defaultFromDate.toISOString().slice(0,10);
 const EMPTY_FILTERS:Filters={type:'ALL',query:'',city:'',company:'ALL',client:'',point:'',post:'',status:'ALL',reporter:'',dateFrom:DEFAULT_FROM,dateTo:DEFAULT_TO};
+
+type OperatorReport={reportId:string;type:NoveltyType;category:string;subcategory?:string;title:string;description:string;severity:'LOW'|'MEDIUM'|'HIGH'|'CRITICAL';status:string;occurredAt:string;createdAt:string;username:string;pointName:string;postName:string;clientName?:string;city?:string;companyCode?:string;companyName?:string;latitude?:number;longitude?:number;photoCount?:number};
+function fromOperatorReport(row:OperatorReport):Novelty{return {
+  id:row.reportId,code:`OPR-${row.reportId.slice(0,8).toUpperCase()}`,type:row.type,subcategory:row.subcategory||row.category,
+  status:row.status==='APPROVED'?'APPROVED':row.status==='DISCARDED'?'DISCARDED':'PENDING',critical:row.severity==='CRITICAL',
+  company:row.companyName||'—',companyCode:row.companyCode||'',client:row.clientName||'—',city:row.city||'—',point:row.pointName||'—',post:row.postName||'—',zone:'',region:'',
+  reportedBy:row.username||'Operador',reporterRole:'AGENT',createdAt:row.occurredAt||row.createdAt,description:row.description,
+  latitude:row.latitude??null,longitude:row.longitude??null,photoCount:row.photoCount||0,reviewComment:'',reviewedBy:null,reviewedAt:null,clientVisible:false,sourceSystem:'SGI_OPR',
+  audit:[{id:`received-${row.reportId}`,at:row.createdAt,title:'Recibido desde SGI Operador',detail:row.title,actor:row.username||'Operador'}]
+}}
 
 const typeLabel=(type:NoveltyType)=>type==='FINDING'?'Hallazgo':type==='VULNERABILITY'?'Vulnerabilidad':'Incidente';
 const typeClass=(type:NoveltyType)=>type==='FINDING'?'finding':type==='VULNERABILITY'?'vulnerability':'incident';
@@ -184,7 +194,8 @@ function draftFrom(row:Novelty):EditableDraft{return {type:row.type,subcategory:
 export default function NovedadesExecution(){
   const user=getUser();
   const scope=scopeByUser[user];
-  const [records,setRecords]=useState<Novelty[]>(INITIAL_DATA);
+  const [records,setRecords]=useState<Novelty[]>([]);
+  const [loadError,setLoadError]=useState('');
   const [filters,setFilters]=useState<Filters>(EMPTY_FILTERS);
   const [selectedId,setSelectedId]=useState<string|null>(null);
   const [editing,setEditing]=useState(false);
@@ -192,7 +203,14 @@ export default function NovedadesExecution(){
   const [reviewComment,setReviewComment]=useState('');
   const [modalError,setModalError]=useState('');
 
-  const scoped=useMemo(()=>records.filter(row=>withinScope(row,scope)),[records,scope]);
+  const loadRecords=useCallback(async()=>{
+    try{const values=await api.operationalReports();setRecords((values as OperatorReport[]).map(fromOperatorReport));setLoadError('')}
+    catch{setRecords([]);setLoadError('No fue posible consultar las novedades registradas desde SGI Operador.')}
+  },[]);
+  useEffect(()=>{void loadRecords()},[loadRecords]);
+
+  // El backend ya aplica el alcance de compañía del usuario autenticado.
+  const scoped=useMemo(()=>records,[records]);
   const cities=useMemo(()=>unique(scoped.map(x=>x.city)),[scoped]);
   const companies=useMemo(()=>unique(scoped.map(x=>x.company)),[scoped]);
   const clients=useMemo(()=>unique(scoped.map(x=>x.client)),[scoped]);
@@ -301,7 +319,8 @@ export default function NovedadesExecution(){
       </div>
       <div className="nov-rule-note"><CircleAlert size={15}/><span>Para filtrar por Punto primero seleccione un Cliente; para Puesto seleccione un Punto; para Reportado por seleccione una Compañía. Las fechas son obligatorias y el rango máximo es 1 año.</span></div>
       {dateError&&<div className="nov-validation"><AlertTriangle size={16}/>{dateError}</div>}
-      <div className="nov-actions"><button className="primary" disabled={!!dateError}><Search size={16}/>Buscar</button><button onClick={clearFilters}><FilterX size={16}/>Limpiar filtros</button><button className="export" onClick={exportCsv} disabled={!!dateError||!rows.length}><Download size={16}/>Exportar</button></div>
+      {loadError&&<div className="nov-validation"><AlertTriangle size={16}/>{loadError}</div>}
+      <div className="nov-actions"><button className="primary" disabled={!!dateError} onClick={()=>void loadRecords()}><Search size={16}/>Buscar</button><button onClick={clearFilters}><FilterX size={16}/>Limpiar filtros</button><button className="export" onClick={exportCsv} disabled={!!dateError||!rows.length}><Download size={16}/>Exportar</button></div>
 
       <div className="nov-results-card">
         <div className="nov-results-head"><h3>Novedades ({rows.length})</h3><span>Ordenado por <strong>Fecha más reciente</strong></span></div>
@@ -313,14 +332,9 @@ export default function NovedadesExecution(){
       </div>
     </section>
 
-    {selected&&draft&&<OperationalDrawer title={`${selected.code} · ${typeLabel(selected.type)}`} subtitle="Revisar y editar la novedad antes de aprobar o descartar." onClose={closeModal} footer={<>
-      {selected.status==='PENDING'&&canReview(user)&&<>
-        {!editing?<button onClick={()=>setEditing(true)}><Pencil size={15}/>Editar</button>:<button onClick={saveEdit}><Save size={15}/>Guardar cambios</button>}
-        <button className="discard" onClick={discard}><Trash2 size={15}/>Descartar</button>
-        <button className="approve" onClick={approve}><CheckCircle2 size={15}/>Aprobar</button>
-      </>}
+    {selected&&draft&&<OperationalDrawer title={`${selected.code} · ${typeLabel(selected.type)}`} subtitle="Registro recibido desde SGI Operador · Solo lectura" onClose={closeModal} footer={<>
       <button className="close" onClick={closeModal}><X size={15}/>Cerrar</button>
-    </>} footerNote={selected.status==='PENDING'&&<div className="nov-modal-hints"><span className="discard-hint">Al descartar, el comentario de revisión es obligatorio.</span><span className="approve-hint">Al aprobar, la novedad será visible en SGI: Cliente.</span></div>}>
+    </>}>
           <div className="nov-edit-grid three">
             <ModalField label="Tipo de novedad"><select value={draft.type} disabled={!editing} onChange={e=>{const next=e.target.value as NoveltyType;updateDraft('type',next);updateDraft('subcategory',subcategories(next)[0])}}>{(['FINDING','VULNERABILITY','INCIDENT'] as NoveltyType[]).map(x=><option key={x} value={x}>{typeLabel(x)}</option>)}</select></ModalField>
             <ModalField label="Subcategoría"><select value={draft.subcategory} disabled={!editing} onChange={e=>updateDraft('subcategory',e.target.value)}>{subcategories(draft.type).map(x=><option key={x}>{x}</option>)}</select></ModalField>
@@ -350,7 +364,7 @@ export default function NovedadesExecution(){
 
           <div className="nov-audit"><h4>Historial / Trazabilidad</h4>{selected.audit.map(event=><article key={event.id}><i/><div><strong>{event.title}</strong><span>{formatDateTime(event.at)} · {event.actor}</span><small>{event.detail}</small></div></article>)}</div>
 
-          <ModalField label="Comentario de revisión"><textarea value={reviewComment} disabled={selected.status!=='PENDING'} maxLength={500} placeholder="Ingrese un comentario (opcional al aprobar; obligatorio al descartar)…" onChange={e=>setReviewComment(e.target.value)}/><small className="nov-count">{reviewComment.length}/500</small></ModalField>
+          <ModalField label="Comentario de revisión"><textarea value={reviewComment} disabled maxLength={500} placeholder="Sin revisión registrada" onChange={e=>setReviewComment(e.target.value)}/><small className="nov-count">{reviewComment.length}/500</small></ModalField>
           {selected.status==='APPROVED'&&<div className="nov-publication approved"><CheckCircle2 size={16}/><span>Aprobada: esta novedad está habilitada para SGI: Cliente.</span></div>}
           {selected.status==='DISCARDED'&&<div className="nov-publication discarded"><Trash2 size={16}/><span>Descartada: se conserva en histórico y no se publica a SGI: Cliente.</span></div>}
           {modalError&&<div className="nov-modal-error"><AlertTriangle size={15}/>{modalError}</div>}
