@@ -10,7 +10,6 @@ import jakarta.enterprise.context.RequestScoped;
 import jakarta.inject.Inject;
 import jakarta.persistence.EntityManager;
 import jakarta.ws.rs.*;
-import org.eclipse.microprofile.config.inject.ConfigProperty;
 import java.util.*;
 
 /** Identidad del operador (usuario → empleado) y autorización de su asignación, compartida por los endpoints de SGI: Operador. */
@@ -22,22 +21,15 @@ public class OperatorContext {
     @Inject SecurityIdentity identity;
     @Inject EntityManager em;
     @Inject OperatorEmployeeLookup employees;
-    @ConfigProperty(name="sgi.operator.relief-uat-enabled", defaultValue="false") boolean enabled;
 
     public String username() { return identity.getPrincipal().getName(); }
 
     /** Persona habilitada para la API del operador. Con IDENT el token ya lo dice; con usuario y contrasena de SGI solo
      * entra la web (los Roles de SGI Operador los rechaza IdentAccessFilter) y su app_user debe estar activo. */
     public void actor() {
-        requireEnabled();
         if(IdentIdentity.isIdent(identity)) return;
         AppUser u=AppUser.find("username=?1 and instanceCountryId=?2",username(),tenant.instanceCountryId()).firstResult();
         if(u==null || !u.active) throw new ForbiddenException("Usuario no habilitado en esta instancia");
-    }
-
-    /** API del operador encendida (sgi.operator.relief-uat-enabled). */
-    public void requireEnabled() {
-        if(!enabled) throw new NotFoundException("Integración de relevo UAT deshabilitada");
     }
 
     /** Empleado del Agente o Supervisor de Seguridad: solo con IDENT, por su persona_id. */

@@ -834,7 +834,6 @@ public class OperatorResource {
     /** Igual que /runtime, sin autenticacion: el empleado sale del persona_id de DHO recibido (el que devuelve IDENT), no de app_user. */
     @GET @Path("/runtime/by-persona") @PermitAll
     public ObjectNode runtimeByPersona(@QueryParam("personaId") Long personaId,@QueryParam("assignmentId") UUID assignmentId) {
-        ctx.requireEnabled();
         if(personaId==null) throw new BadRequestException("personaId es obligatorio");
         return runtimeOf(employees.employeeOfPersona(personaId),assignmentId).put("personaId",personaId.toString());
     }
