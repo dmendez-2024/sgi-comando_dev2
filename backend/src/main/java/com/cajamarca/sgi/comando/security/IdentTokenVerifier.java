@@ -31,17 +31,23 @@ import java.util.concurrent.ConcurrentHashMap;
  * token de IDENT (RS256) con Java estandar, sin dependencias nuevas: firma con las claves publicas de IDENT (JWKS),
  * emisor (iss), audiencia (aud=SGI_COM) y vencimiento. La direccion de IDENT NO es fija: se resuelve en CORE para la
  * Instancia PE + ambiente de SGI (SITC-NOM-001 §10) y solo se aceptan hosts de sgi.ident.allowed-hosts.
+ * Tambien acepta el access token de la app SGI Operador (aud=SGI_OPR, token_use=access, IDENT SGI_OPR v1 RC1), que se
+ * enciende aparte de la web (sgi.ident.operator.enabled).
  */
 @ApplicationScoped
 public class IdentTokenVerifier {
     private static final Logger LOG = Logger.getLogger(IdentTokenVerifier.class);
     private static final Duration ADDRESS_TTL = Duration.ofMinutes(5), KEYS_TTL = Duration.ofMinutes(10), SKEW = Duration.ofSeconds(30);
+    /** Programa del token: la web de SGI: Comando o la app SGI Operador. */
+    public static final String PROGRAM_WEB = "SGI_COM", PROGRAM_OPERATOR = "SGI_OPR";
 
     /** Persona que entro con IDENT. email = "quien lo hizo" en la auditoria de SGI; personaId = id de DHO (si IDENT lo envia). */
-    public record Identity(String subject, String email, Long personaId, UUID instanceCountryId, List<String> groups, Instant expiresAt) {}
+    public record Identity(String subject, String email, Long personaId, UUID instanceCountryId, List<String> groups, Instant expiresAt, String program) {}
     public static class InvalidTokenException extends RuntimeException { public InvalidTokenException(String m) { super(m); } }
 
     @ConfigProperty(name = "sgi.ident.enabled", defaultValue = "false") boolean enabled;
+    @ConfigProperty(name = "sgi.ident.operator.enabled", defaultValue = "true") boolean operatorEnabled;
+    @ConfigProperty(name = "sgi.ident.operator.audience", defaultValue = PROGRAM_OPERATOR) String operatorAudience;
     @ConfigProperty(name = "sgi.ident.login-interconnection", defaultValue = InterconnectionIds.IDENT_AUTH) String loginInterconnection;
     @ConfigProperty(name = "sgi.ident.allowed-hosts") Optional<String> allowedHosts;
     @ConfigProperty(name = "sgi.ident.client-id", defaultValue = "sgi-com-web") String clientId;
@@ -57,7 +63,12 @@ public class IdentTokenVerifier {
     private volatile String publicUrl, issuer;
     private volatile Instant addressUntil = Instant.EPOCH, keysUntil = Instant.EPOCH, lastForcedRefresh = Instant.EPOCH;
 
+    /** IDENT encendido para la web: la web solo entra con IDENT. */
     public boolean enabled() { return enabled; }
+    /** IDENT encendido para la app SGI Operador (tokens aud=SGI_OPR). */
+    public boolean operatorEnabled() { return operatorEnabled; }
+    /** true si se valida algun token de IDENT (web u Operador). */
+    public boolean acceptsTokens() { return enabled || operatorEnabled; }
     public String clientId() { return clientId; }
 
     /** SOLO LOCAL: cambia la direccion publica de IDENT por la interna (SGI en Docker). En produccion no cambia nada. */
@@ -96,20 +107,43 @@ public class IdentTokenVerifier {
             if (!sig.verify(Base64.getUrlDecoder().decode(parts[2]))) throw new InvalidTokenException("Firma invalida");
         } catch (InvalidTokenException e) { throw e; } catch (Exception e) { throw new InvalidTokenException("Firma invalida"); }
         if (!Objects.equals(claims.path("iss").asText(), issuer)) throw new InvalidTokenException("Emisor no es IDENT");
-        JsonNode aud = claims.path("aud");
-        boolean audOk = false;
-        if (aud.isArray()) { for (JsonNode a : aud) audOk |= audience.equals(a.asText()); } else audOk = audience.equals(aud.asText());
-        if (!audOk) throw new InvalidTokenException("El token no es para SGI_COM (aud)");
+        return identity(claims);
+    }
+
+    /** Lee los claims de un token ya verificado (firma y emisor): audiencia, uso, vencimiento y datos de la persona. */
+    protected Identity identity(JsonNode claims) {
+        String program;
+        if (enabled && hasAudience(claims, audience)) program = PROGRAM_WEB;
+        else if (operatorEnabled && hasAudience(claims, operatorAudience)) program = PROGRAM_OPERATOR;
+        else throw new InvalidTokenException("El token no es para SGI_COM ni SGI_OPR (aud)");
+        // IDENT SGI_OPR: solo el access token autoriza APIs; el ID token (token_use=id) no.
+        String tokenUse = claims.path("token_use").asText("");
+        if (PROGRAM_OPERATOR.equals(program) ? !"access".equals(tokenUse) : !tokenUse.isEmpty() && !"access".equals(tokenUse))
+            throw new InvalidTokenException("El token no es de acceso (token_use)");
         Instant exp = Instant.ofEpochSecond(claims.path("exp").asLong(0));
         if (Instant.now().minus(SKEW).isAfter(exp)) throw new InvalidTokenException("Token vencido");
         List<String> groups = new ArrayList<>();
         claims.path("groups").forEach(g -> groups.add(g.asText()));
         String email = claims.path("email").asText("");
+        // IDENT SGI_OPR envia persona_id como texto ("9428"); la web lo puede enviar como numero.
+        JsonNode persona = claims.path("persona_id");
+        //Long personaId = persona.canConvertToLong() ? Long.valueOf(persona.asLong()) : parseLong(persona.asText(""));
         Long personaId = personaId(claims);
         // PE del ingreso (IDENT lo saca del dominio del correo, DEC-46); si el rol es por PE, IDENT tambien envia instance_country_id.
         UUID pe = uuid(claims.path("active_instance_country_id").asText(""));
         if (pe == null) pe = uuid(claims.path("instance_country_id").asText(""));
-        return new Identity(claims.path("sub").asText(), email.isBlank() ? null : email, personaId, pe, groups, exp);
+        return new Identity(claims.path("sub").asText(), email.isBlank() ? null : email, personaId, pe, groups, exp, program);
+    }
+
+    private static boolean hasAudience(JsonNode claims, String expected) {
+        JsonNode aud = claims.path("aud");
+        if (!aud.isArray()) return expected.equals(aud.asText());
+        for (JsonNode a : aud) if (expected.equals(a.asText())) return true;
+        return false;
+    }
+
+    private static Long parseLong(String v) {
+        try { return v.isBlank() ? null : Long.valueOf(v.trim()); } catch (NumberFormatException e) { return null; }
     }
 
     /** persona_id de DHO: IDENT lo envia como texto ("6125"); tambien se acepta numerico. null si falta o no es un entero positivo. */

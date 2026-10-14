@@ -3,7 +3,6 @@ package com.cajamarca.sgi.comando.coordination;
 import com.cajamarca.sgi.comando.assignments.PostShiftTemplate;
 import com.cajamarca.sgi.comando.common.TenantContext;
 import com.cajamarca.sgi.comando.companies.Company;
-import com.cajamarca.sgi.comando.core.CoreCatalogService;
 import com.cajamarca.sgi.comando.operations.PointEntity;
 import com.cajamarca.sgi.comando.operations.PostEntity;
 import com.cajamarca.sgi.comando.operations.ServiceEntity;
@@ -33,10 +32,10 @@ public class CoordinationResource {
     private static final Set<String> COMPANY_ROLES=Set.of("COORDINADOR_COMPANIA","ASISTENTE_COORDINACION");
 
     @Inject TenantContext tenant;
-    @Inject CoreCatalogService coreCatalog;
     @Inject EntityManager entityManager;
     @Inject OperationalScopeService scope;
     @Inject SecurityIdentity identity;
+    @Inject com.cajamarca.sgi.comando.operator.OperatorEmployeeLookup operatorEmployees;
 
     public record CompanyDto(UUID id,String code,String name,String companyType,boolean kaibil){}
     public record ShiftDto(String code,String label,String start,String end){}
@@ -136,20 +135,7 @@ public class CoordinationResource {
     /** A Supervisor may only read the route of the coordination post in their own published,
      * current (or early-entry) assignment. This does not grant access to coordination management. */
     private UUID requireAssignedSupervisorPost(CoordinationPost post){
-        UUID employee;
-        if(com.cajamarca.sgi.comando.security.IdentIdentity.isIdent(identity)){
-            Long personaId=com.cajamarca.sgi.comando.security.IdentIdentity.personaId(identity);
-            if(personaId==null)throw new ForbiddenException("Vínculo persona empleado pendiente de configuración");
-            List<?> rows=entityManager.createNativeQuery("select employee_id from employee_operational_snapshot where instance_country_id=:tenant and persona_id=:persona")
-                .setParameter("tenant",tenant.instanceCountryId()).setParameter("persona",personaId).getResultList();
-            if(rows.size()!=1)throw new ForbiddenException("Vínculo persona empleado pendiente de configuración");
-            employee=UUID.fromString(rows.get(0).toString());
-        }else{
-            List<?> rows=entityManager.createNativeQuery("select employee_id from operator_employee_binding where instance_country_id=:tenant and username=:username and active=true")
-                .setParameter("tenant",tenant.instanceCountryId()).setParameter("username",identity.getPrincipal().getName()).getResultList();
-            if(rows.size()!=1)throw new ForbiddenException("Vínculo usuario empleado pendiente de configuración");
-            employee=UUID.fromString(rows.get(0).toString());
-        }
+        UUID employee=operatorEmployees.employeeOf(identity);
         Instant now=Instant.now();
         List<?> assignments=entityManager.createNativeQuery("""
           select s.supervision_route_id from operational_assignment a
@@ -266,16 +252,13 @@ public class CoordinationResource {
     private void requireSupervisor(CoordinationPost p){if(!"SUPERVISION".equals(p.postType))throw new BadRequestException("Solo los Puestos de Supervisión tienen Ruta.");}
     private void requireDraftRoute(SupervisionRoute r){if(!"DRAFT".equals(r.status))throw new ClientErrorException("La Ruta publicada es inmutable. Cree una nueva versión.",409);}
     private String nextPostCode(Company company,String type){
-        String countryIsoAlpha3=coreCatalog.resolveCountry().isoAlpha3();
         entityManager.createNativeQuery("select pg_advisory_xact_lock(hashtextextended(:key,0))")
             .setParameter("key","coordination-post:"+tenant.instanceCountryId()+":"+company.id+":"+type).getSingleResult();
         List<CoordinationPost> rows=CoordinationPost.list("instanceCountryId=?1 and companyId=?2 and postType=?3",tenant.instanceCountryId(),company.id,type);
-        return formatPostCode(countryIsoAlpha3,company.code,type,rows.stream().map(p->p.code).toList());
+        return formatPostCode(type,rows.stream().map(p->p.code).toList());
     }
 
-    static String formatPostCode(String countryIsoAlpha3,String companyCode,String type,Collection<String> existingCodes){
-        if(countryIsoAlpha3==null||!countryIsoAlpha3.matches("(?i)[a-z]{3}"))throw new IllegalStateException("CORE no devolvió countryIsoAlpha3 válido.");
-        if(companyCode==null||companyCode.length()<3||!companyCode.substring(0,3).matches("(?i)[a-z0-9]{3}"))throw new IllegalStateException("La Compañía no tiene un código válido para el Puesto.");
+    static String formatPostCode(String type,Collection<String> existingCodes){
         String prefix="MONITORING".equals(type)?"MON":"SUP";
         int max=0;
         for(String code:existingCodes){
@@ -283,7 +266,7 @@ public class CoordinationResource {
             String[] parts=code.split("-");
             try{max=Math.max(max,Integer.parseInt(parts[parts.length-1]));}catch(NumberFormatException ignored){}
         }
-        return countryIsoAlpha3.toUpperCase(Locale.ROOT)+"-"+companyCode.substring(0,3).toUpperCase(Locale.ROOT)+"-"+prefix+"-"+String.format(Locale.ROOT,"%03d",max+1);
+        return prefix+"-"+String.format(Locale.ROOT,"%03d",max+1);
     }
     private String rotationFor(String format){return "12/5".equals(format)?"5-2":"6-2";}
     private int normalizeDayMask(String format,Integer value){if("12/5".equals(format)){int mask=value==null?31:value;if(Integer.bitCount(mask)!=5||mask<1||mask>127)throw new BadRequestException("12/5 requiere seleccionar exactamente 5 días.");return mask;}return 127;}

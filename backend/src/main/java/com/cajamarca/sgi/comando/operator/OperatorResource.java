@@ -2,7 +2,6 @@ package com.cajamarca.sgi.comando.operator;
 
 import com.cajamarca.sgi.comando.common.TenantContext;
 import com.cajamarca.sgi.comando.companies.Company;
-import com.cajamarca.sgi.comando.security.AppUser;
 import com.cajamarca.sgi.comando.assignments.*;
 import com.cajamarca.sgi.comando.coordination.CoordinationPost;
 import com.cajamarca.sgi.comando.coordination.SupervisionRoute;
@@ -15,12 +14,12 @@ import com.fasterxml.jackson.databind.*;
 import com.fasterxml.jackson.databind.node.*;
 import io.quarkus.security.Authenticated;
 import io.quarkus.security.identity.SecurityIdentity;
+import jakarta.annotation.security.PermitAll;
 import jakarta.inject.Inject;
 import jakarta.persistence.EntityManager;
 import jakarta.transaction.Transactional;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.*;
-import org.eclipse.microprofile.config.inject.ConfigProperty;
 import java.time.*;
 import java.util.*;
 import java.security.MessageDigest;
@@ -36,10 +35,11 @@ public class OperatorResource {
     );
     @Inject TenantContext tenant;
     @Inject SecurityIdentity identity;
+    @Inject OperatorContext ctx;
+    @Inject OperatorEmployeeLookup employees;
     @Inject OperationalScopeService scope;
     @Inject EntityManager em;
     @Inject ObjectMapper mapper;
-    @ConfigProperty(name="sgi.operator.relief-uat-enabled",defaultValue="false") boolean enabled;
     @Inject OperatorPatrols patrols;
     @Inject PatrolExecutionService patrolExecutions;
     @Inject TaskEvidenceService taskEvidences;
@@ -57,30 +57,8 @@ public class OperatorResource {
     }
     private record NextAction(String type,UUID targetId,String title,Instant scheduledAt,Instant endsAt) {}
 
-    private AppUser actor() {
-        if(!enabled) throw new NotFoundException("Integración de relevo UAT deshabilitada");
-        if(com.cajamarca.sgi.comando.security.IdentIdentity.isIdent(identity)) return null; // IDENT ya autenticó; el Rol viene del token
-        AppUser u=AppUser.find("username=?1 and instanceCountryId=?2",identity.getPrincipal().getName(),tenant.instanceCountryId()).firstResult();
-        if(u==null || !u.active) throw new ForbiddenException("Usuario no habilitado en esta instancia");
-        return u;
-    }
-    private UUID employee() {
-        AppUser u=actor();
-        if(!identity.hasRole("AGENTE_SEGURIDAD") && !identity.hasRole("SUPERVISOR_SEGURIDAD")) throw new ForbiddenException("Rol de operador requerido");
-        if(com.cajamarca.sgi.comando.security.IdentIdentity.isIdent(identity)) {
-            // Login con IDENT: el empleado se encuentra por el persona_id de DHO que envia IDENT (V29), no por app_user.
-            Long personaId=com.cajamarca.sgi.comando.security.IdentIdentity.personaId(identity);
-            if(personaId==null) throw new ForbiddenException("IDENT aún no envía el persona_id de DHO de esta persona");
-            List<?> byPersona=em.createNativeQuery("select employee_id from employee_operational_snapshot where instance_country_id=:tenant and persona_id=:persona")
-                .setParameter("tenant",tenant.instanceCountryId()).setParameter("persona",personaId).getResultList();
-            if(byPersona.size()!=1) throw new ForbiddenException("Vínculo persona empleado pendiente de configuración");
-            return UUID.fromString(byPersona.get(0).toString());
-        }
-        List<?> rows=em.createNativeQuery("select employee_id from operator_employee_binding where instance_country_id=:tenant and username=:user and active=true")
-            .setParameter("tenant",tenant.instanceCountryId()).setParameter("user",u.username).getResultList();
-        if(rows.size()!=1) throw new ForbiddenException("Vínculo usuario empleado pendiente de configuración");
-        return UUID.fromString(rows.get(0).toString());
-    }
+    private void actor() { ctx.actor(); }
+    private UUID employee() { return ctx.employee(); }
     @GET @Path("/incident-taxonomy")
     public ObjectNode incidentTaxonomy(@QueryParam("category") String category) {
         actor();
@@ -850,6 +828,18 @@ public class OperatorResource {
     public ObjectNode runtime(@QueryParam("assignmentId") UUID assignmentId,@QueryParam("employeeId") UUID requestedEmployee) {
         UUID employee=employee();
         if(requestedEmployee!=null && !requestedEmployee.equals(employee)) throw new ForbiddenException("Empleado incorrecto");
+        return runtimeOf(employee,assignmentId);
+    }
+
+    /** Igual que /runtime, sin autenticacion: el empleado sale del persona_id de DHO recibido (el que devuelve IDENT), no de app_user. */
+    @GET @Path("/runtime/by-persona") @PermitAll
+    public ObjectNode runtimeByPersona(@QueryParam("personaId") Long personaId,@QueryParam("assignmentId") UUID assignmentId) {
+        ctx.requireEnabled();
+        if(personaId==null) throw new BadRequestException("personaId es obligatorio");
+        return runtimeOf(employees.employeeOfPersona(personaId),assignmentId).put("personaId",personaId.toString());
+    }
+
+    private ObjectNode runtimeOf(UUID employee,UUID assignmentId) {
         ObjectNode response=mapper.createObjectNode().put("instanceCountryId",tenant.instanceCountryId().toString()).put("employeeId",employee.toString());
         Instant now=Instant.now();
         if(assignmentId!=null) {
