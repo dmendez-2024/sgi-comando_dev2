@@ -1,0 +1,25 @@
+# SGI: Comando en el servidor de DESARROLLO: conexion DIRECTA al OpenBao de desarrollo (contenedor dev-openbao), como
+# IDENT, SIC_RRMM y CORE. Solo desarrollo: en produccion OpenBao esta en otro lugar y este archivo no se usa.
+# Por el proxy (/dev.openbao) OpenBao ve la IP del proxy y el AppRole sgi-com-dev la rechaza (bound_cidrs); por eso
+# el backend entra a la red Docker de OpenBao con una IP fija, la misma que se puso en el rol.
+#   docker compose --env-file .env.openbaoSGI --env-file .env.secretos -f docker-compose.yml -f docker-compose.servidor.yml -f docker-compose.openbao-dev.yml up -d --build backend frontend
+services:
+  backend:
+    # En el servidor no hay .env: docker-compose.yml pide env_file .env; aqui se reemplaza por .env.openbaoSGI (sin secretos).
+    env_file: !override
+      - .env.openbaoSGI
+    extra_hosts:
+      # Nombre del certificado de OpenBao (SGI_VAULT_ADDR=https://bao-1.openbao.internal:8200) -> IP de dev-openbao en su red.
+      - "bao-1.openbao.internal:${OPENBAO_DEV_IP:?Falta OPENBAO_DEV_IP en .env.openbaoSGI}"
+    networks:
+      # default: base de datos, MinIO y pantalla de SGI.
+      default: {}
+      # Red de OpenBao con IP fija: el rol sgi-com-dev solo acepta esta IP.
+      openbao:
+        ipv4_address: ${SGI_IP_RED_OPENBAO:?Falta SGI_IP_RED_OPENBAO en .env.openbaoSGI}
+
+networks:
+  # Red que ya existe (la crea OpenBao); SGI solo se conecta, no la crea ni la borra.
+  openbao:
+    external: true
+    name: ${OPENBAO_DEV_RED:?Falta OPENBAO_DEV_RED en .env.openbaoSGI}
