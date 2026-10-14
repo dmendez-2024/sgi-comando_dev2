@@ -105,11 +105,19 @@ public class IdentTokenVerifier {
         List<String> groups = new ArrayList<>();
         claims.path("groups").forEach(g -> groups.add(g.asText()));
         String email = claims.path("email").asText("");
-        Long personaId = claims.path("persona_id").canConvertToLong() ? claims.path("persona_id").asLong() : null;
+        Long personaId = personaId(claims);
         // PE del ingreso (IDENT lo saca del dominio del correo, DEC-46); si el rol es por PE, IDENT tambien envia instance_country_id.
         UUID pe = uuid(claims.path("active_instance_country_id").asText(""));
         if (pe == null) pe = uuid(claims.path("instance_country_id").asText(""));
         return new Identity(claims.path("sub").asText(), email.isBlank() ? null : email, personaId, pe, groups, exp);
+    }
+
+    /** persona_id de DHO: IDENT lo envia como texto ("6125"); tambien se acepta numerico. null si falta o no es un entero positivo. */
+    static Long personaId(JsonNode claims) {
+        JsonNode v = claims.path("persona_id");
+        if (v.isIntegralNumber() && v.canConvertToLong()) return v.asLong();
+        String s = v.isTextual() ? v.asText().trim() : "";
+        return s.matches("\\d{1,18}") ? Long.valueOf(s) : null;
     }
 
     private static UUID uuid(String v) {
