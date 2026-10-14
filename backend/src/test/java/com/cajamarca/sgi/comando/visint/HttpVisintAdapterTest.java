@@ -171,6 +171,39 @@ class HttpVisintAdapterTest {
         } finally { server.stop(0); }
     }
 
+    /** Si CORE entrega token en la misma respuesta que la URL, va a VISINT ese token (no SGI_VISINT_TOKEN). */
+    @Test void usesTokenFromCoreWhenPresent() throws Exception {
+        AtomicReference<String> auth = new AtomicReference<>();
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/v1/evidence/validate", ex -> {
+            auth.set(ex.getRequestHeaders().getFirst("X-API-Key"));
+            ex.getRequestBody().readAllBytes();
+            byte[] out = PASS.getBytes(StandardCharsets.UTF_8);
+            ex.getResponseHeaders().add("Content-Type", "application/json");
+            ex.sendResponseHeaders(200, out.length); ex.getResponseBody().write(out); ex.close();
+        });
+        server.start();
+        try {
+            String url = "http://127.0.0.1:" + server.getAddress().getPort() + "/v1/evidence/validate";
+            HttpVisintAdapter a = adapter(url, new byte[]{(byte) 0xFF, (byte) 0xD8, 1, 2});
+            a.endpoint = new VisintEndpoint() {
+                @Override public Resolution resolve(boolean fresh) {
+                    return new Resolution("SGI_COM_VISINT_0001_v002", url, "CORE", null, null, "DEVELOPMENT", "398233d2-293a-4709-ac30-b74c4269e22d", "SERVICE_TOKEN", "token-de-core");
+                }
+            };
+            assertEquals("PASS", a.review(request()).result());
+        } finally { server.stop(0); }
+        assertEquals("token-de-core", auth.get(), "el token de CORE reemplaza a SGI_VISINT_TOKEN");
+    }
+
+    @Test void tokenFromCoreFirstThenConfiguredThenNone() {
+        assertEquals("de-core", HttpVisintAdapter.credential(" de-core ", Optional.of("configurado")));
+        assertEquals("configurado", HttpVisintAdapter.credential(null, Optional.of("configurado")));
+        assertEquals("configurado", HttpVisintAdapter.credential("  ", Optional.of("configurado")));
+        assertNull(HttpVisintAdapter.credential(null, Optional.empty()));
+        assertNull(HttpVisintAdapter.credential(null, Optional.of(" ")));
+    }
+
     @Test void serviceTypePerModule() {
         assertEquals("PATRULLA", HttpVisintAdapter.serviceType("PATROL_CHECKPOINT"));
         assertEquals("CONSIGNA", HttpVisintAdapter.serviceType("CONSIGNMENT_EVIDENCE"));

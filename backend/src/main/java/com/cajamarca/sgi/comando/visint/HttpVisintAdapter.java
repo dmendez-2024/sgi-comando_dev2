@@ -16,7 +16,8 @@ import java.util.*;
 /**
  * VISINT real (POST multipart/form-data, ver docs/API_CONTRACTS.md): en "image" va la foto del agente y en
  * "referenceImages" (+ "referenceIds") las fotos estándar del Hito (1 a 5). VISINT responde el status y la foto estándar que coincidió.
- * La URL la da {@link VisintEndpoint} (CORE y, si falla, SGI_VISINT_URL).
+ * La URL la da {@link VisintEndpoint} (CORE y, si falla, SGI_VISINT_URL). El token también: el que CORE entrega en la misma
+ * respuesta (credentialRef) y, si no lo entrega, SGI_VISINT_TOKEN. Va en sgi.visint.auth-header (X-API-Key por defecto).
  */
 @ApplicationScoped
 public class HttpVisintAdapter implements VisintPort {
@@ -31,7 +32,11 @@ public class HttpVisintAdapter implements VisintPort {
 
     @Override
     public ReviewResult review(ReviewRequest r) {
-        String url = endpoint.url();
+        VisintEndpoint.Resolution target = endpoint.resolve(false);
+        if (target.url() == null) throw new VisintUnavailableException("VISINT no configurado: " + target.coreError() + " y SGI_VISINT_URL está vacío");
+        String url = target.url();
+        String credential = credential(target.token(), token);
+        LOG.debugf("Token de VISINT: %s", target.token() != null ? "CORE" : credential != null ? "SGI_VISINT_TOKEN" : "ninguno");
         Multipart form = new Multipart();
         form.field("requestId", r.reviewId() + "-" + r.attempt());
         form.field("source", "SGI_COM");
@@ -57,7 +62,7 @@ public class HttpVisintAdapter implements VisintPort {
             .header("Content-Type", "multipart/form-data; boundary=" + form.boundary)
             .header("X-Correlation-Id", r.correlationId().toString())
             .POST(HttpRequest.BodyPublishers.ofByteArray(form.bytes()));
-        if (token.isPresent() && !token.get().isBlank()) req.header(authHeader, authScheme.filter(s -> !s.isBlank()).map(s -> s + " " + token.get()).orElse(token.get()));
+        if (credential != null) req.header(authHeader, authScheme.filter(s -> !s.isBlank()).map(s -> s + " " + credential).orElse(credential));
         HttpResponse<String> res;
         try {
             res = HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1).connectTimeout(Duration.ofSeconds(10)).build().send(req.build(), HttpResponse.BodyHandlers.ofString());
@@ -75,6 +80,12 @@ public class HttpVisintAdapter implements VisintPort {
             throw new VisintUnavailableException("VISINT respondió HTTP " + res.statusCode() + (body.isEmpty() ? "" : ": " + body.substring(0, Math.min(300, body.length()))));
         }
         return parseResult(res.body(), mapper);
+    }
+
+    /** Token para VISINT: el de CORE si vino; si no, SGI_VISINT_TOKEN; null si no hay ninguno. */
+    static String credential(String fromCore, Optional<String> configured) {
+        if (fromCore != null && !fromCore.isBlank()) return fromCore.trim();
+        return configured.filter(v -> !v.isBlank()).map(String::trim).orElse(null);
     }
 
     /**
