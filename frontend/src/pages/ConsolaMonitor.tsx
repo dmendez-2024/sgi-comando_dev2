@@ -56,6 +56,7 @@ type Filters={
   dateTo:string;
 };
 
+/*
 const DATA:ConsoleItem[]=[
   {id:'c1',category:'CONSIGNAS',subtype:'Relevo',code:'REV-2026-0412',title:'Relevo turno diurno',company:'Galvarino',companyCode:'GAL',client:'Maersk',city:'Guayaquil',point:'Portería Principal',post:'Control de Acceso Principal',responsible:'Luis García',zone:'Zona Costa',region:'Costa Sur',status:'IN_PROGRESS',priority:'MEDIUM',createdAt:'2026-09-19T08:00:00',updatedAt:'2026-09-19T08:12:00',summary:'2/4 pasos del relevo completados.',source:'CNS',originLabel:'Consignas · Relevos',recommendedAction:'Dar seguimiento al cierre del relevo.'},
   {id:'c2',category:'CONSIGNAS',subtype:'Patrulla',code:'PAT-2026-0842',title:'Ronda Centro Comercial',company:'Seguridad Integral S.A.',companyCode:'SISA',client:'Maersk',city:'Guayaquil',point:'Mall del Sol',post:'Patrulla Perimetral',responsible:'Ana Torres',zone:'Zona Costa',region:'Costa Sur',status:'OVERDUE',priority:'HIGH',createdAt:'2026-09-19T08:00:00',updatedAt:'2026-09-19T11:45:00',summary:'Patrulla con hitos pendientes fuera de ventana.',source:'CNS',originLabel:'Consignas · Patrullas',recommendedAction:'Contactar al responsable y verificar cobertura.'},
@@ -70,6 +71,7 @@ const DATA:ConsoleItem[]=[
   {id:'c11',category:'CONSIGNAS',subtype:'Reasignación',code:'REA-2026-0047',title:'Cobertura de turno noche',company:'Sur Custodia',companyCode:'SUR',client:'Bananera El Oro',city:'Machala',point:'Muelle Sur',post:'Acceso Muelle Sur',responsible:'Pedro Vera',zone:'Zona Costa',region:'Costa Sur',status:'COMPLETED',priority:'MEDIUM',createdAt:'2026-09-18T17:40:00',updatedAt:'2026-09-18T18:05:00',summary:'Reasignación resuelta y puesto cubierto.',source:'CNS',originLabel:'Consignas · Reasignaciones',recommendedAction:'Sin acción inmediata.'},
   {id:'c12',category:'NOVEDADES',subtype:'Hallazgo',code:'NOV-2026-0131',title:'Foco quemado en pasillo lateral',company:'Seguridad Integral S.A.',companyCode:'SISA',client:'Retail Plaza',city:'Guayaquil',point:'Local Este',post:'Puesto 2',responsible:'Carla Méndez',zone:'Zona Costa',region:'Costa Sur',status:'APPROVED',priority:'LOW',createdAt:'2026-09-18T09:10:00',updatedAt:'2026-09-18T09:35:00',summary:'Hallazgo aprobado y visible para el cliente.',source:'NOV',originLabel:'Novedades · Hallazgos',recommendedAction:'Monitorear cierre por parte del cliente.'},
 ];
+*/
 
 const scopeByUser:Record<UatUser,Scope>={
   presidente:{label:'Alcance: nacional / todas las compañías',companies:null},
@@ -184,7 +186,8 @@ export default function ConsolaMonitor(){
   const incidentRows=useMemo(()=>incidents.map(incidentToConsoleItem),[incidents]);
   const locationsByPoint=useMemo(()=>new Map(locationOptions.map(location=>[location.pointId,location])),[locationOptions]);
   const operatorRows=useMemo(()=>operatorReports.map(report=>operatorReportToConsoleItem(report,locationsByPoint.get(report.pointId))),[operatorReports,locationsByPoint]);
-  const allRows=useMemo(()=>[...operatorRows,...DATA,...incidentRows],[operatorRows,incidentRows]);
+  //const allRows=useMemo(()=>[...operatorRows,...DATA,...incidentRows],[operatorRows,incidentRows]);
+  const allRows=useMemo(()=>[...operatorRows,...incidentRows],[operatorRows,incidentRows]);
   const scoped=useMemo(()=>allRows.filter(x=>withinScope(x,scope)),[allRows,scope]);
   const cities=useMemo(()=>unique(scoped.map(x=>x.city)),[scoped]);
   const companies=useMemo(()=>unique(scoped.map(x=>x.company)),[scoped]);
