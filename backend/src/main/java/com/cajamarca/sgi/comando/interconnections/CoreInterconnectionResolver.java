@@ -35,6 +35,9 @@ public class CoreInterconnectionResolver {
 
     private final HttpClient httpClient = com.cajamarca.sgi.comando.core.CoreHttp.client(Duration.ofSeconds(3));
 
+    /** Ambiente con el que se consulta CORE (sgi.interconnections.environment). */
+    public String environment() { return environment; }
+
     public ResolvedInterconnection resolve(String interconnectionId, String interfaceId, UUID instanceCountryId) {
         if (coreResolverUrl.isEmpty() || coreResolverUrl.get().isBlank()) {
             throw new InterconnectionException("CORE_RESOLVER_NOT_CONFIGURED", "CORE resolver bootstrap URL is not configured");
