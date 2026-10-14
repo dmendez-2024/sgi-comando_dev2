@@ -41,7 +41,7 @@ public final class InterconnectionIds {
 
     public static final String RRMM_EXPECTED_ASSETS = "SGI_COM_SIC_RRMM_0001_v001";
     public static final String RRMM_STATE_REPORTS = "SGI_COM_SIC_RRMM_0002_v001";
-    public static final String RRMM_POINT_POST_CATALOG = "SIC_RRMM_SGI_COM_0001_v001";
+    public static final String RRMM_POINT_POST_CATALOG = "SIC_RRMM_SGI_COM_0001_v001"; 
 
     public static final String ATS_PUBLISHED_PACKAGE = "ATS_SGI_COM_0001_v001";
     public static final String ATS_OPERATIONAL_RECONCILIATION = "SGI_COM_ATS_0001_v001";
