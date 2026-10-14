@@ -63,3 +63,28 @@ CREATE TABLE IF NOT EXISTS supervision_route_point (
 CREATE INDEX IF NOT EXISTS ix_supervision_route_point_route ON supervision_route_point(instance_country_id,route_id,sort_order);
 
 -- UAT fixtures for Galvarino. They are intentionally small so CRUD/versioning can be validated.
+INSERT INTO coordination_post(id,instance_country_id,company_id,code,name,post_type,format,rotation,shift_start_time,day_mask,status,updated_by_username,created_at,updated_at)
+SELECT 'c1000000-0000-0000-0000-000000000001'::uuid,'11111111-1111-1111-1111-111111111111'::uuid,c.id,'MON-001','Monitoreo Principal','MONITORING','24/7','6-2','06:00',127,'ACTIVE','MIGRATION_V25',now(),now()
+FROM company c WHERE c.instance_country_id='11111111-1111-1111-1111-111111111111'::uuid AND c.code='COM-001'
+AND NOT EXISTS (SELECT 1 FROM coordination_post p WHERE p.instance_country_id=c.instance_country_id AND p.company_id=c.id AND p.code='MON-001');
+
+INSERT INTO coordination_post(id,instance_country_id,company_id,code,name,post_type,format,rotation,shift_start_time,day_mask,status,updated_by_username,created_at,updated_at)
+SELECT 'c1000000-0000-0000-0000-000000000002'::uuid,'11111111-1111-1111-1111-111111111111'::uuid,c.id,'SUP-001','Supervisión Norte','SUPERVISION','24/7','6-2','06:00',127,'ACTIVE','MIGRATION_V25',now(),now()
+FROM company c WHERE c.instance_country_id='11111111-1111-1111-1111-111111111111'::uuid AND c.code='COM-001'
+AND NOT EXISTS (SELECT 1 FROM coordination_post p WHERE p.instance_country_id=c.instance_country_id AND p.company_id=c.id AND p.code='SUP-001');
+
+INSERT INTO coordination_post(id,instance_country_id,company_id,code,name,post_type,format,rotation,shift_start_time,day_mask,status,updated_by_username,created_at,updated_at)
+SELECT 'c1000000-0000-0000-0000-000000000003'::uuid,'11111111-1111-1111-1111-111111111111'::uuid,c.id,'SUP-002','Supervisión Centro','SUPERVISION','12/5','5-2','07:00',31,'DRAFT','MIGRATION_V25',now(),now()
+FROM company c WHERE c.instance_country_id='11111111-1111-1111-1111-111111111111'::uuid AND c.code='COM-001'
+AND NOT EXISTS (SELECT 1 FROM coordination_post p WHERE p.instance_country_id=c.instance_country_id AND p.company_id=c.id AND p.code='SUP-002');
+
+INSERT INTO supervision_route(id,instance_country_id,series_id,based_on_route_id,coordination_post_id,code,name,version_no,status,published_at,updated_by_username,created_at,updated_at)
+SELECT 'c2000000-0000-0000-0000-000000000001'::uuid,'11111111-1111-1111-1111-111111111111'::uuid,'c2000000-0000-0000-0000-000000000001'::uuid,NULL,p.id,'RUT-SUP-001','Ruta Norte',1,'ACTIVE',now(),'MIGRATION_V25',now(),now()
+FROM coordination_post p WHERE p.id='c1000000-0000-0000-0000-000000000002'::uuid
+AND NOT EXISTS (SELECT 1 FROM supervision_route r WHERE r.instance_country_id=p.instance_country_id AND r.coordination_post_id=p.id);
+
+INSERT INTO supervision_route_point(id,instance_country_id,route_id,point_id,sort_order,point_code_snapshot,point_name_snapshot,created_at,updated_at)
+SELECT 'c3000000-0000-0000-0000-000000000001'::uuid,'11111111-1111-1111-1111-111111111111'::uuid,r.id,p.id,1,p.code,p.name,now(),now()
+FROM supervision_route r JOIN point p ON p.id='40000000-0000-0000-0000-000000000001'::uuid
+WHERE r.id='c2000000-0000-0000-0000-000000000001'::uuid
+AND NOT EXISTS (SELECT 1 FROM supervision_route_point rp WHERE rp.instance_country_id=r.instance_country_id AND rp.route_id=r.id AND rp.point_id=p.id);
