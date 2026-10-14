@@ -1,6 +1,6 @@
 {
-  "program": "SGI_COM",
-  "note": "Catálogo de Roles de SGI: Comando (dueño de sus Roles). Se publica en IDENT por SGI_COM_IDENT_0002_v001 y en IDENT se asigna a cada Cargo. INACTIVE = Roles del simulador que este catálogo reemplaza.",
+  "programs": ["SGI_COM", "SGI_OPR"],
+  "note": "Roles COMUNES de SGI: Comando y SGI: Operador (mismo backend). Se publican en IDENT en los dos Sistemas por SGI_COM_IDENT_0002_v001 y en IDENT se asignan a cada Cargo. Un Rol solo de un Sistema va en roles-comando.json o roles-operador.json. INACTIVE = Roles del simulador que este catálogo reemplaza.",
   "roles": [
     {"code": "PRESIDENTE", "name": "Presidente", "scopeRequirement": "PE"},
     {"code": "DIRECTOR_OPERACIONES_LATAM", "name": "Director de Operaciones LATAM", "scopeRequirement": "PE"},
