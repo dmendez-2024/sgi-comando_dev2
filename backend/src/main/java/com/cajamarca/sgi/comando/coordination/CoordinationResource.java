@@ -35,6 +35,7 @@ public class CoordinationResource {
     @Inject EntityManager entityManager;
     @Inject OperationalScopeService scope;
     @Inject SecurityIdentity identity;
+    @Inject com.cajamarca.sgi.comando.operator.OperatorEmployeeLookup operatorEmployees;
 
     public record CompanyDto(UUID id,String code,String name,String companyType,boolean kaibil){}
     public record ShiftDto(String code,String label,String start,String end){}
@@ -134,20 +135,7 @@ public class CoordinationResource {
     /** A Supervisor may only read the route of the coordination post in their own published,
      * current (or early-entry) assignment. This does not grant access to coordination management. */
     private UUID requireAssignedSupervisorPost(CoordinationPost post){
-        UUID employee;
-        if(com.cajamarca.sgi.comando.security.IdentIdentity.isIdent(identity)){
-            Long personaId=com.cajamarca.sgi.comando.security.IdentIdentity.personaId(identity);
-            if(personaId==null)throw new ForbiddenException("Vínculo persona empleado pendiente de configuración");
-            List<?> rows=entityManager.createNativeQuery("select employee_id from employee_operational_snapshot where instance_country_id=:tenant and persona_id=:persona")
-                .setParameter("tenant",tenant.instanceCountryId()).setParameter("persona",personaId).getResultList();
-            if(rows.size()!=1)throw new ForbiddenException("Vínculo persona empleado pendiente de configuración");
-            employee=UUID.fromString(rows.get(0).toString());
-        }else{
-            List<?> rows=entityManager.createNativeQuery("select employee_id from operator_employee_binding where instance_country_id=:tenant and username=:username and active=true")
-                .setParameter("tenant",tenant.instanceCountryId()).setParameter("username",identity.getPrincipal().getName()).getResultList();
-            if(rows.size()!=1)throw new ForbiddenException("Vínculo usuario empleado pendiente de configuración");
-            employee=UUID.fromString(rows.get(0).toString());
-        }
+        UUID employee=operatorEmployees.employeeOf(identity);
         Instant now=Instant.now();
         List<?> assignments=entityManager.createNativeQuery("""
           select s.supervision_route_id from operational_assignment a
