@@ -17,7 +17,8 @@ import java.util.Set;
 /**
  * Ingreso con IDENT: "Authorization: Bearer <token de IDENT>". Si el token no es valido la peticion queda anonima y
  * los recursos protegidos responden 401 (el frontend vuelve a pedir login a IDENT). Los tokens fijos de los servicios
- * entrantes (no son JWT) no pasan por aqui. Con IDENT encendido el desafio es Bearer, no Basic.
+ * entrantes (no son JWT) no pasan por aqui. Con IDENT encendido el desafio es Bearer, no Basic; en la API del operador
+ * tambien lo es con solo IDENT de SGI Operador encendido.
  */
 @ApplicationScoped
 public class IdentAuthenticationMechanism implements HttpAuthenticationMechanism {
@@ -25,7 +26,7 @@ public class IdentAuthenticationMechanism implements HttpAuthenticationMechanism
 
     @Override
     public Uni<SecurityIdentity> authenticate(RoutingContext context, IdentityProviderManager identityProviderManager) {
-        if (!verifier.enabled()) return Uni.createFrom().nullItem();
+        if (!verifier.acceptsTokens()) return Uni.createFrom().nullItem();
         String h = context.request().getHeader("Authorization");
         if (h == null || !h.regionMatches(true, 0, "Bearer ", 0, 7)) return Uni.createFrom().nullItem();
         String token = h.substring(7).trim();
@@ -36,7 +37,8 @@ public class IdentAuthenticationMechanism implements HttpAuthenticationMechanism
 
     @Override
     public Uni<ChallengeData> getChallenge(RoutingContext context) {
-        return verifier.enabled() ? Uni.createFrom().item(new ChallengeData(401, "WWW-Authenticate", "Bearer")) : Uni.createFrom().nullItem();
+        boolean bearer = verifier.enabled() || verifier.operatorEnabled() && OperatorRoutes.isOperatorApi(context.normalizedPath());
+        return bearer ? Uni.createFrom().item(new ChallengeData(401, "WWW-Authenticate", "Bearer")) : Uni.createFrom().nullItem();
     }
 
     @Override
