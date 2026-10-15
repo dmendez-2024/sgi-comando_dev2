@@ -39,7 +39,7 @@ CREATE TABLE IF NOT EXISTS territory_audit_event (
 CREATE INDEX IF NOT EXISTS ix_territory_audit_time ON territory_audit_event(instance_country_id,occurred_at DESC);
 
 -- Provincias del Ecuador. La asignación UAT se puede editar desde Territorio.
-INSERT INTO country_subdivision(id,instance_country_id,code,name,status,created_at,updated_at) VALUES
+/*INSERT INTO country_subdivision(id,instance_country_id,code,name,status,created_at,updated_at) VALUES
 (gen_random_uuid(),'11111111-1111-1111-1111-111111111111','AZU','Azuay','ACTIVE',now(),now()),
 (gen_random_uuid(),'11111111-1111-1111-1111-111111111111','BOL','Bolívar','ACTIVE',now(),now()),
 (gen_random_uuid(),'11111111-1111-1111-1111-111111111111','CAN','Cañar','ACTIVE',now(),now()),
@@ -64,7 +64,7 @@ INSERT INTO country_subdivision(id,instance_country_id,code,name,status,created_
 (gen_random_uuid(),'11111111-1111-1111-1111-111111111111','SUC','Sucumbíos','ACTIVE',now(),now()),
 (gen_random_uuid(),'11111111-1111-1111-1111-111111111111','TUN','Tungurahua','ACTIVE',now(),now()),
 (gen_random_uuid(),'11111111-1111-1111-1111-111111111111','ZCH','Zamora Chinchipe','ACTIVE',now(),now())
-ON CONFLICT (instance_country_id,code) DO NOTHING;
+ON CONFLICT (instance_country_id,code) DO NOTHING;*/
 
 -- UAT territorial baseline based on the Ecuador operational reference map.
 UPDATE country_subdivision SET zone_id='91000000-0000-0000-0000-000000000001' WHERE instance_country_id='11111111-1111-1111-1111-111111111111' AND code IN ('CAR','ESM','IMB','PIC','SDE','COT','NAP','ORE','SUC','PAS');

@@ -135,7 +135,7 @@ CREATE INDEX ix_assignment_event_plan_time ON assignment_event(instance_country_
 CREATE INDEX ix_assignment_event_assignment_time ON assignment_event(instance_country_id,assignment_id,occurred_at DESC);
 
 -- UAT RRHH LOCAL personnel for Galvarino.
-INSERT INTO employee_operational_snapshot(id,instance_country_id,employee_id,company_id,full_name,role_code,employment_status,id_score,preferred_shift,required_change,photo_key,updated_from_source_at,created_at,updated_at) VALUES
+/*INSERT INTO employee_operational_snapshot(id,instance_country_id,employee_id,company_id,full_name,role_code,employment_status,id_score,preferred_shift,required_change,photo_key,updated_from_source_at,created_at,updated_at) VALUES
 ('81000000-0000-0000-0000-000000000001','11111111-1111-1111-1111-111111111111','82000000-0000-0000-0000-000000000001','20000000-0000-0000-0000-000000000001','Juan Pérez','AGENTE_SEGURIDAD','ACTIVE',9.10,'DIURNO',false,NULL,now(),now(),now()),
 ('81000000-0000-0000-0000-000000000002','11111111-1111-1111-1111-111111111111','82000000-0000-0000-0000-000000000002','20000000-0000-0000-0000-000000000001','María Quispe','AGENTE_SEGURIDAD','ACTIVE',8.30,'NOCTURNO',false,NULL,now(),now(),now()),
 ('81000000-0000-0000-0000-000000000003','11111111-1111-1111-1111-111111111111','82000000-0000-0000-0000-000000000003','20000000-0000-0000-0000-000000000001','Carlos Rojas','AGENTE_SEGURIDAD','ACTIVE',8.80,'DIURNO',false,NULL,now(),now(),now()),
@@ -185,3 +185,4 @@ INSERT INTO post_shift_template(id,instance_country_id,post_id,shift_code,shift_
 ('83000000-0000-0000-0000-000000000003','11111111-1111-1111-1111-111111111111','50000000-0000-0000-0000-000000000002','D12','Diurno','06:00','18:00',127,true,'SIC-COM-UAT-2026.09',now(),now()),
 ('83000000-0000-0000-0000-000000000004','11111111-1111-1111-1111-111111111111','50000000-0000-0000-0000-000000000002','N12','Nocturno','18:00','06:00',127,true,'SIC-COM-UAT-2026.09',now(),now()),
 ('83000000-0000-0000-0000-000000000005','11111111-1111-1111-1111-111111111111','50000000-0000-0000-0000-000000000003','D12','Diurno','07:00','19:00',127,true,'SIC-COM-UAT-2026.09',now(),now());
+*/

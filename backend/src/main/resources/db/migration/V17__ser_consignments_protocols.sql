@@ -122,7 +122,8 @@ CREATE TABLE IF NOT EXISTS consignment_evidence (
 );
 CREATE INDEX IF NOT EXISTS ix_consignment_evidence_consignment ON consignment_evidence(instance_country_id,consignment_id,sort_order);
 
--- Semilla UAT adicional para hacer visible la vertical sin duplicar el concepto existente.
+-- Semilla UAT adicional deshabilitada para el pase final; los datos llegarán desde SIC:COM.
+/*
 INSERT INTO consignment(id,instance_country_id,code,point_id,post_id,title,instruction,priority,status,validity_type,application_type,published_at,created_at,updated_at,
  protocol_id,scope_type,application_days_json,acknowledgment_required,confirmation_required,evidence_required,gps_required,observation_required,expected_location_mode,updated_by_username)
 SELECT '60000000-0000-0000-0000-000000000002','11111111-1111-1111-1111-111111111111','CON-000002','40000000-0000-0000-0000-000000000001',NULL,
@@ -156,3 +157,4 @@ ON CONFLICT(id) DO NOTHING;
 INSERT INTO consignment_protocol(id,instance_country_id,series_id,based_on_protocol_id,point_id,code,name,description,status,version_no,updated_by_username,created_at,updated_at)
 VALUES ('63000000-0000-0000-0000-000000000001','11111111-1111-1111-1111-111111111111','63000000-0000-0000-0000-000000000001',NULL,'40000000-0000-0000-0000-000000000001','PRO-CON-0002','Emergencia','Protocolo alternativo de Consignas para escenario de emergencia.','BORRADOR',1,'coord',now(),now())
 ON CONFLICT(id) DO NOTHING;
+*/

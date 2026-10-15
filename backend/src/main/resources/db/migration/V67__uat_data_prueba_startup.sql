@@ -12,6 +12,8 @@ CREATE TEMP TABLE import_data_prueba (
   post_code text, base_code text, source_signature text, discriminator text, post_sequence integer
 ) ON COMMIT DROP;
 
+-- Carga UAT deshabilitada para el pase final; los datos llegarán sincronizados desde SIC:COM.
+/*
 INSERT INTO import_data_prueba VALUES
 ('CLI-CM-EC-61', 'Telconet S.A.', 'ACTIVE', 'SER-CM-EC-4806', 'Servicio de Vigilancia Armada Fija', 'ACTIVE', 'PTO-CM-EC-724', 'Esmeraldas', 'Esmeraldas', 'Esmeraldas', 'ACTIVE', 'PUE-CM-EC-26943', 'Guardiania', '24/7', 2.67, 'I', 'ACTIVE', '6-2', 8, 'EETE1', 'EETE', 'ESMERALDAS|ESMERALDAS|TELCONETSA|ESMERALDAS', '', 1),
 ('CLI-CM-EC-61', 'Telconet S.A.', 'ACTIVE', 'SER-CM-EC-4806', 'Servicio de Vigilancia Armada Fija', 'ACTIVE', 'PTO-CM-EC-724', 'Esmeraldas', 'Esmeraldas', 'Esmeraldas', 'ACTIVE', 'PUE-CM-EC-10252', 'Guardiania', '24/7', 3.0, 'I', 'ACTIVE', '4-2', 6, 'EETE2', 'EETE', 'ESMERALDAS|ESMERALDAS|TELCONETSA|ESMERALDAS', '', 2),
@@ -176,3 +178,4 @@ BEGIN
     VALUES(gen_random_uuid(),v_instance,r.base_code,r.source_signature,r.discriminator,r.last_sequence,now(),now());
   END LOOP;
 END $$;
+*/

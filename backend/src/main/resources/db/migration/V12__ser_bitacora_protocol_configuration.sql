@@ -58,7 +58,8 @@ CREATE TABLE IF NOT EXISTS logbook_protocol_field (
 );
 CREATE INDEX IF NOT EXISTS ix_logbook_protocol_field_protocol ON logbook_protocol_field(instance_country_id,protocol_id,section,sort_order);
 
--- Semilla UAT: cuatro protocolos para GGTT01 y uno para GGTT02.
+-- Semilla UAT deshabilitada para el pase final; los datos llegarán desde SIC:COM.
+/*
 INSERT INTO logbook_protocol(
   id,instance_country_id,post_id,code,name,object_type,application_type,description,status,version_no,
   identification_logic,verification_logic,auth_preapproval,auth_client,auth_supervisor,white_list_enabled,black_list_enabled,
@@ -87,3 +88,4 @@ INSERT INTO logbook_protocol_field(
 ('82000000-0000-0000-0000-000000000008','11111111-1111-1111-1111-111111111111','81000000-0000-0000-0000-000000000001','VERIFICACION',4,'Persona anfitriona','Persona responsable de recibir al visitante.','TEXTO',true,false,'MANUAL',false,NULL,NULL,NULL,0,'',false,now(),now()),
 ('82000000-0000-0000-0000-000000000009','11111111-1111-1111-1111-111111111111','81000000-0000-0000-0000-000000000001','VERIFICACION',5,'Vigencia de autorización','Verificar vigencia de la autorización aplicable.','TEXTO',true,false,'MANUAL',false,NULL,NULL,NULL,0,'',false,now(),now())
 ON CONFLICT(id) DO NOTHING;
+*/

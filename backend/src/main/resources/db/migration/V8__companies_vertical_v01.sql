@@ -24,11 +24,11 @@ CREATE TABLE IF NOT EXISTS company_region (
 CREATE INDEX IF NOT EXISTS ix_company_region_company ON company_region(instance_country_id, company_id);
 CREATE INDEX IF NOT EXISTS ix_company_region_region ON company_region(instance_country_id, region_id);
 
-INSERT INTO company_region(id, instance_country_id, company_id, region_id, created_at, updated_at)
+/*INSERT INTO company_region(id, instance_country_id, company_id, region_id, created_at, updated_at)
 SELECT gen_random_uuid(), c.instance_country_id, c.id, c.region_id, now(), now()
 FROM company c
 WHERE c.region_id IS NOT NULL
-ON CONFLICT (instance_country_id, company_id, region_id) DO NOTHING;
+ON CONFLICT (instance_country_id, company_id, region_id) DO NOTHING;*/
 
 CREATE TABLE IF NOT EXISTS company_version (
   id uuid PRIMARY KEY,
@@ -46,7 +46,7 @@ CREATE TABLE IF NOT EXISTS company_version (
 );
 CREATE INDEX IF NOT EXISTS ix_company_version_company ON company_version(instance_country_id, company_id, version_number DESC);
 
-INSERT INTO company_version(
+/*INSERT INTO company_version(
   id, instance_country_id, company_id, version_number, change_type, change_reason,
   actor_username, effective_at, snapshot_json, created_at, updated_at
 )
@@ -68,4 +68,4 @@ FROM company c
 WHERE NOT EXISTS (
   SELECT 1 FROM company_version v
   WHERE v.instance_country_id=c.instance_country_id AND v.company_id=c.id AND v.version_number=1
-);
+);*/
