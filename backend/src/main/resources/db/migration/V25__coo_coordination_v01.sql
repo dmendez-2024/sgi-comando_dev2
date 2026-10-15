@@ -62,7 +62,8 @@ CREATE TABLE IF NOT EXISTS supervision_route_point (
 );
 CREATE INDEX IF NOT EXISTS ix_supervision_route_point_route ON supervision_route_point(instance_country_id,route_id,sort_order);
 
--- UAT fixtures for Galvarino. They are intentionally small so CRUD/versioning can be validated.
+-- Fixtures UAT deshabilitados para el pase final; los datos llegarán desde SIC:COM.
+/*
 INSERT INTO coordination_post(id,instance_country_id,company_id,code,name,post_type,format,rotation,shift_start_time,day_mask,status,updated_by_username,created_at,updated_at)
 SELECT 'c1000000-0000-0000-0000-000000000001'::uuid,'11111111-1111-1111-1111-111111111111'::uuid,c.id,'MON-001','Monitoreo Principal','MONITORING','24/7','6-2','06:00',127,'ACTIVE','MIGRATION_V25',now(),now()
 FROM company c WHERE c.instance_country_id='11111111-1111-1111-1111-111111111111'::uuid AND c.code='COM-001'
@@ -88,3 +89,4 @@ SELECT 'c3000000-0000-0000-0000-000000000001'::uuid,'11111111-1111-1111-1111-111
 FROM supervision_route r JOIN point p ON p.id='40000000-0000-0000-0000-000000000001'::uuid
 WHERE r.id='c2000000-0000-0000-0000-000000000001'::uuid
 AND NOT EXISTS (SELECT 1 FROM supervision_route_point rp WHERE rp.instance_country_id=r.instance_country_id AND rp.route_id=r.id AND rp.point_id=p.id);
+*/

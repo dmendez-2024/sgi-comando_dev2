@@ -107,7 +107,8 @@ CREATE TABLE IF NOT EXISTS patrol_config_checkpoint_rule (
 );
 CREATE INDEX IF NOT EXISTS ix_patrol_config_checkpoint_rule_checkpoint ON patrol_config_checkpoint_rule(instance_country_id,checkpoint_id,sort_order);
 
--- Semilla UAT versionada para GGTT01. IDs determinísticos para UAT.
+-- Semilla UAT versionada deshabilitada para el pase final; los datos llegarán desde SIC:COM.
+/*
 INSERT INTO patrol_protocol(id,instance_country_id,series_id,based_on_protocol_id,post_id,code,name,description,status,version_no,last_published_at,updated_by_username,created_at,updated_at)
 VALUES
 ('83000000-0000-0000-0000-000000000001','11111111-1111-1111-1111-111111111111','83000000-0000-0000-0000-000000000001',NULL,'50000000-0000-0000-0000-000000000001','PRO-PAT-0001','Patrullaje estándar','Configuración estándar de patrullajes del Puesto.','VIGENTE',1,now(),'coord',now(),now()),
@@ -135,3 +136,4 @@ FROM patrol_config_checkpoint c
 CROSS JOIN (VALUES (1,'INSPECCION_VISUAL',false),(2,'FOTOGRAFIA',true),(3,'CONFIRMACION',false)) AS r(ord,kind,evidence)
 WHERE c.id IN ('85000000-0000-0000-0000-000000000001','85000000-0000-0000-0000-000000000002','85000000-0000-0000-0000-000000000003')
 ON CONFLICT(instance_country_id,checkpoint_id,rule_type) DO NOTHING;
+*/

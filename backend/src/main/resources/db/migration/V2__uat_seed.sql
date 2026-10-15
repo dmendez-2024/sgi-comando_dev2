@@ -1,4 +1,6 @@
 -- UAT seed. Password for all users: CajamarcaUAT!2026
+-- Deshabilitado para el pase final: estos datos llegarán sincronizados desde SIC:COM.
+/*
 INSERT INTO app_user(id,username,password_hash,roles,display_name,instance_country_id,active) VALUES
 ('00000000-0000-0000-0000-000000000001','don','$2a$10$W8uMWFQLly1v1Wk7MNs8B.pLzHpjkRg5T2gI5hGtnKQjBeQx0o91.','DIRECTOR_OPERACIONES_NACIONAL','Director de Operaciones Nacional','11111111-1111-1111-1111-111111111111',true),
 ('00000000-0000-0000-0000-000000000002','dnacional','$2a$10$W8uMWFQLly1v1Wk7MNs8B.pLzHpjkRg5T2gI5hGtnKQjBeQx0o91.','DIRECTOR_NACIONAL','Director Nacional','11111111-1111-1111-1111-111111111111',true),
@@ -29,3 +31,4 @@ INSERT INTO consignment(id,instance_country_id,code,point_id,post_id,title,instr
 
 INSERT INTO regesep_version(id,instance_country_id,point_id,version,code,status,effective_at,trigger_type,source_manifest_json,created_at,updated_at) VALUES
 ('70000000-0000-0000-0000-000000000001','11111111-1111-1111-1111-111111111111','40000000-0000-0000-0000-000000000001',1,'REG-GGTT-v001','CURRENT',now(),'UAT_BASELINE','{"ats":{"status":"PENDING"},"consignments":["CON-000001"],"posts":["GGTT01","GGTT02"]}',now(),now());
+*/
