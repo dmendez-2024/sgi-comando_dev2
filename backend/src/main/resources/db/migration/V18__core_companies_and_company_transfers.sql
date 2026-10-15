@@ -28,7 +28,7 @@ CREATE TABLE IF NOT EXISTS core_company_catalog_snapshot (
   UNIQUE(instance_country_id,code)
 );
 
-INSERT INTO core_company_catalog_snapshot(id,instance_country_id,core_company_id,code,name,historical_review,logo_data_url,company_type,source_version,source_status,synced_at,created_at,updated_at) VALUES
+/*INSERT INTO core_company_catalog_snapshot(id,instance_country_id,core_company_id,code,name,historical_review,logo_data_url,company_type,source_version,source_status,synced_at,created_at,updated_at) VALUES
 ('a1000000-0000-0000-0000-000000000001','11111111-1111-1111-1111-111111111111','a2000000-0000-0000-0000-000000000001','COM-001','Galvarino','Compañía operativa de seguridad física.',NULL,'SECURITY','CORE-UAT-2026.09','ACTIVE',now(),now(),now()),
 ('a1000000-0000-0000-0000-000000000002','11111111-1111-1111-1111-111111111111','a2000000-0000-0000-0000-000000000002','COM-002','Atahualpa','Compañía operativa de seguridad integral.',NULL,'SECURITY','CORE-UAT-2026.09','ACTIVE',now(),now(),now()),
 ('a1000000-0000-0000-0000-000000000003','11111111-1111-1111-1111-111111111111','a2000000-0000-0000-0000-000000000003','COM-003','Lanceros','Compañía operativa del grupo.',NULL,'SECURITY','CORE-UAT-2026.09','ACTIVE',now(),now(),now()),
@@ -36,7 +36,7 @@ INSERT INTO core_company_catalog_snapshot(id,instance_country_id,core_company_id
 ('a1000000-0000-0000-0000-000000000005','11111111-1111-1111-1111-111111111111','a2000000-0000-0000-0000-000000000005','KAI-001','Kaibil','Compañía de Operaciones. Aloja personal de coordinación y puestos operacionales no ligados a Servicios de clientes.',NULL,'COORDINATION','CORE-UAT-2026.09','ACTIVE',now(),now(),now()),
 ('a1000000-0000-0000-0000-000000000006','11111111-1111-1111-1111-111111111111','a2000000-0000-0000-0000-000000000006','COM-006','Andes','Compañía operativa del grupo.',NULL,'SECURITY','CORE-UAT-2026.09','ACTIVE',now(),now(),now())
 ON CONFLICT(instance_country_id,core_company_id) DO UPDATE SET name=excluded.name,historical_review=excluded.historical_review,logo_data_url=excluded.logo_data_url,company_type=excluded.company_type,source_version=excluded.source_version,source_status=excluded.source_status,synced_at=excluded.synced_at,updated_at=now();
-
+*/
 -- Preserve the UAT identity already visible for Galvarino while changing authority to CORE.
 UPDATE core_company_catalog_snapshot core
 SET logo_data_url=COALESCE(c.logo_data_url,core.logo_data_url),
@@ -53,13 +53,13 @@ FROM core_company_catalog_snapshot core
 WHERE c.instance_country_id=core.instance_country_id AND core.core_company_id='a2000000-0000-0000-0000-000000000001'
   AND c.instance_country_id='11111111-1111-1111-1111-111111111111' AND c.code='COM-001';
 
-INSERT INTO company_version(id,instance_country_id,company_id,version_number,change_type,change_reason,actor_username,effective_at,snapshot_json,created_at,updated_at)
+/*INSERT INTO company_version(id,instance_country_id,company_id,version_number,change_type,change_reason,actor_username,effective_at,snapshot_json,created_at,updated_at)
 SELECT gen_random_uuid(),c.instance_country_id,c.id,c.version_number,'CORE_BOUND','Identidad de Compañía migrada a catálogo CORE','SYSTEM',now(),
  jsonb_build_object('code',c.code,'name',c.name,'status',c.status,'zoneId',c.zone_id,'regionIds',COALESCE((SELECT jsonb_agg(cr.region_id) FROM company_region cr WHERE cr.company_id=c.id),'[]'::jsonb),'historicalReview',c.historical_review,'logoDataUrl',c.logo_data_url,'sourceSystem',c.source_system,'companyType',c.company_type,'alwaysActive',c.always_active,'versionNumber',c.version_number)::text,
  now(),now()
 FROM company c
 WHERE c.instance_country_id='11111111-1111-1111-1111-111111111111' AND c.code='COM-001'
-ON CONFLICT(instance_country_id,company_id,version_number) DO NOTHING;
+ON CONFLICT(instance_country_id,company_id,version_number) DO NOTHING;*/
 
 -- Additional active UAT companies are snapshots activated from CORE, not locally-created masters.
 -- Reconciliation rule for upgraded UAT databases:
@@ -110,7 +110,7 @@ BEGIN
     END IF;
 
     IF target_id IS NULL THEN
-      INSERT INTO company(
+      /*INSERT INTO company(
         id,instance_country_id,code,name,status,required_change_count,region_id,zone_id,
         historical_review,logo_data_url,version_number,core_catalog_id,source_system,
         source_version,company_type,always_active,created_at,updated_at
@@ -118,7 +118,7 @@ BEGIN
         gen_random_uuid(),'11111111-1111-1111-1111-111111111111',r.canonical_code,r.canonical_name,'ACTIVE',0,
         r.region_id,r.zone_id,r.historical_review,NULL,1,r.core_company_id,'CORE','CORE-UAT-2026.09',
         r.company_type,r.always_active,now(),now()
-      ) RETURNING id INTO target_id;
+      ) RETURNING id INTO target_id;*/
     ELSE
       UPDATE company c
       SET name=r.canonical_name,
@@ -139,7 +139,7 @@ BEGIN
 END $$;
 
 -- Regions point to the Company actually bound to each CORE company id, regardless of its legacy SGI code.
-INSERT INTO company_region(id,instance_country_id,company_id,region_id,created_at,updated_at)
+/*INSERT INTO company_region(id,instance_country_id,company_id,region_id,created_at,updated_at)
 SELECT gen_random_uuid(),c.instance_country_id,c.id,m.region_id,now(),now()
 FROM (VALUES
  ('a2000000-0000-0000-0000-000000000002'::uuid,'92000000-0000-0000-0000-000000000004'::uuid),
@@ -163,14 +163,14 @@ WHERE c.instance_country_id='11111111-1111-1111-1111-111111111111'
     'a2000000-0000-0000-0000-000000000005',
     'a2000000-0000-0000-0000-000000000006'
   )
-ON CONFLICT(instance_country_id,company_id,version_number) DO NOTHING;
+ON CONFLICT(instance_country_id,company_id,version_number) DO NOTHING;*/
 
 CREATE TABLE IF NOT EXISTS transfer_reason_catalog (
  id uuid PRIMARY KEY, instance_country_id uuid NOT NULL, code varchar(40) NOT NULL, label varchar(160) NOT NULL, active boolean NOT NULL DEFAULT true,
  sort_order integer NOT NULL, created_at timestamptz NOT NULL, updated_at timestamptz NOT NULL,
  UNIQUE(instance_country_id,code)
 );
-INSERT INTO transfer_reason_catalog(id,instance_country_id,code,label,active,sort_order,created_at,updated_at) VALUES
+/*INSERT INTO transfer_reason_catalog(id,instance_country_id,code,label,active,sort_order,created_at,updated_at) VALUES
 (gen_random_uuid(),'11111111-1111-1111-1111-111111111111','OPERATIONAL_NEED','Necesidad operativa',true,10,now(),now()),
 (gen_random_uuid(),'11111111-1111-1111-1111-111111111111','RESTRUCTURING','Reestructuración',true,20,now(),now()),
 (gen_random_uuid(),'11111111-1111-1111-1111-111111111111','PROMOTION','Promoción / cambio de función',true,30,now(),now()),
@@ -178,7 +178,7 @@ INSERT INTO transfer_reason_catalog(id,instance_country_id,code,label,active,sor
 (gen_random_uuid(),'11111111-1111-1111-1111-111111111111','PERFORMANCE','Desempeño',true,50,now(),now()),
 (gen_random_uuid(),'11111111-1111-1111-1111-111111111111','DISCIPLINARY','Medida disciplinaria',true,60,now(),now()),
 (gen_random_uuid(),'11111111-1111-1111-1111-111111111111','OTHER','Otro',true,99,now(),now())
-ON CONFLICT(instance_country_id,code) DO NOTHING;
+ON CONFLICT(instance_country_id,code) DO NOTHING;*/
 
 CREATE TABLE IF NOT EXISTS employee_company_transfer (
  id uuid PRIMARY KEY,
@@ -210,7 +210,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS ux_employee_one_open_transfer ON employee_comp
 
 -- Kaibil UAT coordination personnel. SIC: RRHH LOCAL remains the source adapter for these snapshots.
 -- Resolve Kaibil by its canonical tenant+code key so the migration also works if Kaibil already existed with another UUID.
-INSERT INTO employee_operational_snapshot(id,instance_country_id,employee_id,company_id,full_name,role_code,employment_status,id_score,preferred_shift,required_change,photo_key,updated_from_source_at,created_at,updated_at)
+/*INSERT INTO employee_operational_snapshot(id,instance_country_id,employee_id,company_id,full_name,role_code,employment_status,id_score,preferred_shift,required_change,photo_key,updated_from_source_at,created_at,updated_at)
 SELECT v.id,'11111111-1111-1111-1111-111111111111',v.employee_id,c.id,v.full_name,v.role_code,'ACTIVE',v.id_score,v.preferred_shift,false,NULL,now(),now(),now()
 FROM (VALUES
  ('81000000-0000-0000-0000-000000000101'::uuid,'82000000-0000-0000-0000-000000000101'::uuid,'Director Nacional UAT'::varchar,'DIRECTOR_NACIONAL'::varchar,9.70::numeric,'DIURNO'::varchar),
@@ -226,3 +226,4 @@ SELECT gen_random_uuid(),e.instance_country_id,e.company_id,e.employee_id,'PRIMA
 FROM employee_operational_snapshot e
 WHERE e.employee_id IN ('82000000-0000-0000-0000-000000000101','82000000-0000-0000-0000-000000000102','82000000-0000-0000-0000-000000000103','82000000-0000-0000-0000-000000000104')
 AND NOT EXISTS (SELECT 1 FROM company_membership cm WHERE cm.instance_country_id=e.instance_country_id AND cm.employee_id=e.employee_id AND cm.membership_type='PRIMARY' AND cm.ends_at IS NULL);
+*/

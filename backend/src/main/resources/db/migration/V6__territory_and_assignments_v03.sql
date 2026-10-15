@@ -43,7 +43,7 @@ CREATE TABLE user_operational_scope (
 CREATE INDEX ix_user_operational_scope_user ON user_operational_scope(instance_country_id,username,scope_type);
 
 -- Ecuador UAT: two zones and six regions from the operational reference map.
-INSERT INTO territory_zone(id,instance_country_id,code,name,status,created_at,updated_at) VALUES
+/*INSERT INTO territory_zone(id,instance_country_id,code,name,status,created_at,updated_at) VALUES
 ('91000000-0000-0000-0000-000000000001','11111111-1111-1111-1111-111111111111','ZN','Zona Norte','ACTIVE',now(),now()),
 ('91000000-0000-0000-0000-000000000002','11111111-1111-1111-1111-111111111111','ZS','Zona Sur','ACTIVE',now(),now());
 
@@ -54,7 +54,7 @@ INSERT INTO territory_region(id,instance_country_id,zone_id,code,name,status,cre
 ('92000000-0000-0000-0000-000000000004','11111111-1111-1111-1111-111111111111','91000000-0000-0000-0000-000000000002','R-S1','Región Sur 1','ACTIVE',now(),now()),
 ('92000000-0000-0000-0000-000000000005','11111111-1111-1111-1111-111111111111','91000000-0000-0000-0000-000000000002','R-S2','Región Sur 2','ACTIVE',now(),now()),
 ('92000000-0000-0000-0000-000000000006','11111111-1111-1111-1111-111111111111','91000000-0000-0000-0000-000000000002','R-S3','Región Sur 3','ACTIVE',now(),now());
-
+*/
 -- Galvarino belongs to R-S1, and therefore to Zona Sur.
 UPDATE company SET region_id='92000000-0000-0000-0000-000000000004'
 WHERE instance_country_id='11111111-1111-1111-1111-111111111111' AND region_id IS NULL;
