@@ -5,7 +5,7 @@
 -- Las eliminaciones son masivas por tabla y cubren todo el catálogo de empleados de la instancia.
 -- No elimina compañías, territorios, servicios ni planes operacionales.
 -- Si existen asignaciones o evidencias históricas asociadas, aborta sin modificar datos.
-
+/*
 BEGIN;
 
 LOCK TABLE
@@ -121,3 +121,4 @@ SELECT
     (SELECT count(*) FROM employee_company_transfer WHERE instance_country_id = '11111111-1111-1111-1111-111111111111'::uuid) AS transferencias_restantes;
 
 COMMIT;
+*/

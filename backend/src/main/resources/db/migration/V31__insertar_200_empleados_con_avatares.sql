@@ -9,7 +9,7 @@
 -- El Excel no incluye sexo/género. Se infiere solo para ocho nombres inequívocos:
 -- Katherine, Lady, Hillary, Claudia, Madeleine, Brithany, Clara y Cinthia usan
 -- avatares femeninos UAT. Los demás usan avatares masculinos UAT. Pueden repetirse.
-
+/*
 BEGIN;
 
 LOCK TABLE
@@ -440,3 +440,4 @@ GROUP BY role_code
 ORDER BY role_code;
 
 COMMIT;
+*/

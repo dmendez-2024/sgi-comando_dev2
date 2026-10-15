@@ -5,8 +5,8 @@ import {
 } from 'lucide-react';
 import {ApiError,api,getUser} from '../api';
 
-type Zone={id:string;code:string;name:string;status:string;responsibleEmployeeId?:string;responsibleName?:string;provinceCodes:string[]};
-type Region={id:string;zoneId:string;code:string;name:string;status:string;responsibleEmployeeId?:string;responsibleName?:string;provinceCodes:string[]};
+type Zone={id:string;code:string;name:string;status:string;responsibleEmployeeId?:string;responsibleName?:string;provinceIds:string[]};
+type Region={id:string;zoneId:string;code:string;name:string;status:string;responsibleEmployeeId?:string;responsibleName?:string;provinceIds:string[]};
 type Company={id:string;code:string;name:string;status:string;regionId:string};
 type Province={id:string;code:string;name:string;zoneId?:string;regionId?:string;status:string;coreSubdivisionId?:string;geometryJson?:string;coreDatasetVersion?:string};
 type Responsible={employeeId:string;fullName:string;roleCode:string};
@@ -15,7 +15,7 @@ type VisibleRegion={region:Region;provinces:Province[];companies:Company[]};
 type VisibleZone={zone:Zone;regions:VisibleRegion[]};
 type CoreContext={country?:string;countryCode?:string;subdivisionType?:string;subdivisionSingular?:string;subdivisionPlural?:string;territoryCatalogSource?:string;territorialDatasetVersion?:string};
 type AuditEvent={id:string;entityType:string;entityId:string;eventType:string;actorUsername:string;payloadJson:string;occurredAt:string};
-type EditorState={kind:'ZONE'|'REGION';mode:'CREATE'|'EDIT';id?:string;zoneId?:string;code:string;name:string;status:string;responsibleEmployeeId:string;provinceCodes:string[]}|null;
+type EditorState={kind:'ZONE'|'REGION';mode:'CREATE'|'EDIT';id?:string;zoneId?:string;code:string;name:string;status:string;responsibleEmployeeId:string;provinceIds:string[]}|null;
 type MenuState={kind:'ZONE'|'REGION';id:string}|null;
 type MapPoint=[number,number];
 type MapShape=MapPoint[]|MapPoint[][];
@@ -216,9 +216,9 @@ export default function Territory(){
 
   const regionsByZone=useMemo(()=>{const m=new Map<string,Region[]>();for(const r of tree.regions)m.set(r.zoneId,[...(m.get(r.zoneId)??[]),r]);return m},[tree]);
   const companiesByRegion=useMemo(()=>{const m=new Map<string,Company[]>();for(const c of tree.companies)m.set(c.regionId,[...(m.get(c.regionId)??[]),c]);return m},[tree]);
-  const provincesByCode=useMemo(()=>new Map(tree.provinces.map(province=>[province.code,province])),[tree.provinces]);
-  const provincesByRegion=useMemo(()=>new Map(tree.regions.map(region=>[region.id,region.provinceCodes.map(code=>provincesByCode.get(code)).filter((province):province is Province=>Boolean(province))])),[tree.regions,provincesByCode]);
-  const provincesByZone=useMemo(()=>new Map(tree.zones.map(zone=>[zone.id,zone.provinceCodes.map(code=>provincesByCode.get(code)).filter((province):province is Province=>Boolean(province))])),[tree.zones,provincesByCode]);
+  const provincesById=useMemo(()=>new Map(tree.provinces.map(province=>[province.id,province])),[tree.provinces]);
+  const provincesByRegion=useMemo(()=>new Map(tree.regions.map(region=>[region.id,region.provinceIds.map(id=>provincesById.get(id)).filter((province):province is Province=>Boolean(province))])),[tree.regions,provincesById]);
+  const provincesByZone=useMemo(()=>new Map(tree.zones.map(zone=>[zone.id,zone.provinceIds.map(id=>provincesById.get(id)).filter((province):province is Province=>Boolean(province))])),[tree.zones,provincesById]);
 
   const norm=query.trim().toLowerCase();
   const matches=(status:string,...values:(string|undefined)[])=>
@@ -258,17 +258,17 @@ export default function Territory(){
     return [{zone,regions:regions.map(region=>({region,provinces:provincesByRegion.get(region.id)??[],companies:companiesByRegion.get(region.id)??[]}))}];
   }),[tree.zones,typeFilter,statusFilter,norm,regionsByZone,companiesByRegion,provincesByRegion,provincesByZone]);
 
-  const openCreateZone=()=>setEditor({kind:'ZONE',mode:'CREATE',code:'',name:'',status:'DRAFT',responsibleEmployeeId:'',provinceCodes:[]});
-  const openEditZone=(z:Zone)=>setEditor({kind:'ZONE',mode:'EDIT',id:z.id,code:z.code,name:z.name,status:z.status,responsibleEmployeeId:z.responsibleEmployeeId??'',provinceCodes:[...z.provinceCodes]});
-  const openCreateRegion=()=>setEditor({kind:'REGION',mode:'CREATE',zoneId:tree.zones[0]?.id??'',code:'',name:'',status:'DRAFT',responsibleEmployeeId:'',provinceCodes:[]});
-  const openEditRegion=(r:Region)=>setEditor({kind:'REGION',mode:'EDIT',id:r.id,zoneId:r.zoneId,code:r.code,name:r.name,status:r.status,responsibleEmployeeId:r.responsibleEmployeeId??'',provinceCodes:[...r.provinceCodes]});
+  const openCreateZone=()=>setEditor({kind:'ZONE',mode:'CREATE',code:'',name:'',status:'DRAFT',responsibleEmployeeId:'',provinceIds:[]});
+  const openEditZone=(z:Zone)=>setEditor({kind:'ZONE',mode:'EDIT',id:z.id,code:z.code,name:z.name,status:z.status,responsibleEmployeeId:z.responsibleEmployeeId??'',provinceIds:[...z.provinceIds]});
+  const openCreateRegion=()=>setEditor({kind:'REGION',mode:'CREATE',zoneId:tree.zones[0]?.id??'',code:'',name:'',status:'DRAFT',responsibleEmployeeId:'',provinceIds:[]});
+  const openEditRegion=(r:Region)=>setEditor({kind:'REGION',mode:'EDIT',id:r.id,zoneId:r.zoneId,code:r.code,name:r.name,status:r.status,responsibleEmployeeId:r.responsibleEmployeeId??'',provinceIds:[...r.provinceIds]});
 
   const editorAllowedProvinces=useMemo(()=>{
     if(!editor)return [] as Province[];
     if(editor.kind==='ZONE')return tree.provinces;
     const zone=tree.zones.find(item=>item.id===editor.zoneId);
-    const allowed=new Set([...(zone?.provinceCodes??[]),...editor.provinceCodes]);
-    return tree.provinces.filter(p=>allowed.has(p.code));
+    const allowed=new Set([...(zone?.provinceIds??[]),...editor.provinceIds]);
+    return tree.provinces.filter(p=>allowed.has(p.id));
   },[editor,tree.provinces,tree.zones]);
 
   const saveEditor=async()=>{
@@ -277,7 +277,7 @@ export default function Territory(){
     if(code.length>CODE_MAX_LENGTH){setError(`El código no puede superar ${CODE_MAX_LENGTH} caracteres.`);return}
     if(name.length>NAME_MAX_LENGTH){setError(`El nombre no puede superar ${NAME_MAX_LENGTH} caracteres.`);return}
     try{
-      const body={code,name,status:editor.status,responsibleEmployeeId:editor.responsibleEmployeeId||null,provinceCodes:editor.provinceCodes};
+      const body={code,name,status:editor.status,responsibleEmployeeId:editor.responsibleEmployeeId||null,provinceIds:editor.provinceIds};
       if(editor.kind==='ZONE'){
         if(editor.mode==='CREATE')await api.createZone(body); else await api.updateZone(editor.id!,body);
         setNotice(editor.mode==='CREATE'?'Zona creada correctamente.':'Zona guardada correctamente.');
@@ -374,13 +374,13 @@ export default function Territory(){
     {editor&&<div className="ter-modal-backdrop" onMouseDown={()=>setEditor(null)}><div className="ter-modal" onMouseDown={e=>e.stopPropagation()}>
       <div className="ter-modal-head"><div><h3>{editor.mode==='CREATE'?'Nueva':'Editar'} {editor.kind==='ZONE'?'Zona':'Región'}</h3><p>{editor.kind==='ZONE'?`Define qué ${subdivisionPlural.toLowerCase()} pertenecen a la Zona.`:`La Región solo puede usar ${subdivisionPlural.toLowerCase()} previamente incluidas en su Zona.`}</p></div><button onClick={()=>setEditor(null)}><X/></button></div>
       <div className="ter-modal-grid">
-        {editor.kind==='REGION'&&<label>Zona<select value={editor.zoneId} disabled={editor.mode==='EDIT'&&editor.status==='ACTIVE'} onChange={e=>setEditor({...editor,zoneId:e.target.value,provinceCodes:[]})}>{tree.zones.map(z=><option value={z.id} key={z.id}>{z.code} · {z.name}</option>)}</select></label>}
+        {editor.kind==='REGION'&&<label>Zona<select value={editor.zoneId} disabled={editor.mode==='EDIT'&&editor.status==='ACTIVE'} onChange={e=>setEditor({...editor,zoneId:e.target.value,provinceIds:[]})}>{tree.zones.map(z=><option value={z.id} key={z.id}>{z.code} · {z.name}</option>)}</select></label>}
         <label>Código<input value={editor.code} maxLength={CODE_MAX_LENGTH} disabled={editor.mode==='EDIT'} onChange={e=>setEditor({...editor,code:e.target.value.toUpperCase()})} placeholder={editor.kind==='ZONE'?'Ej. ZC':'Ej. R-C1'}/><small>{editor.code.length}/{CODE_MAX_LENGTH} caracteres</small></label>
         <label>Nombre<input value={editor.name} maxLength={NAME_MAX_LENGTH} disabled={editor.mode==='EDIT'&&editor.status==='ACTIVE'} onChange={e=>setEditor({...editor,name:e.target.value})} placeholder={editor.kind==='ZONE'?'Ej. Zona Centro':'Ej. Región Centro 1'}/><small>{editor.name.length}/{NAME_MAX_LENGTH} caracteres</small></label>
         <label>Responsable<select value={editor.responsibleEmployeeId} onChange={e=>setEditor({...editor,responsibleEmployeeId:e.target.value})}><option value="">Sin asignar</option>{responsibles.map(p=><option key={p.employeeId} value={p.employeeId}>{p.fullName}</option>)}</select></label>
         <label>Estado<select value={editor.status} disabled={editor.mode==='EDIT'&&editor.status==='ACTIVE'} onChange={e=>setEditor({...editor,status:e.target.value})}><option value="DRAFT">Borrador</option><option value="ACTIVE">Activa</option><option value="INACTIVE">Inactiva</option></select></label>
       </div>
-      <div className="ter-core-picker"><div><strong>{subdivisionPlural}</strong><span>Fuente: {core.territoryCatalogSource||'CORE sin sincronizar'}</span></div><div className="ter-core-grid">{editorAllowedProvinces.map(p=><label key={p.id}><input type="checkbox" checked={editor.provinceCodes.includes(p.code)} onChange={e=>setEditor({...editor,provinceCodes:e.target.checked?[...editor.provinceCodes,p.code]:editor.provinceCodes.filter(x=>x!==p.code)})}/><span>{p.name}</span><code>{p.code}</code></label>)}</div></div>
+      <div className="ter-core-picker"><div><strong>{subdivisionPlural}</strong><span>Fuente: {core.territoryCatalogSource||'CORE sin sincronizar'}</span></div><div className="ter-core-grid">{editorAllowedProvinces.map(p=><label key={p.id}><input type="checkbox" checked={editor.provinceIds.includes(p.id)} onChange={e=>setEditor({...editor,provinceIds:e.target.checked?[...editor.provinceIds,p.id]:editor.provinceIds.filter(id=>id!==p.id)})}/><span>{p.name}</span><code>{p.code}</code></label>)}</div></div>
       {editor.mode==='EDIT'&&editor.status==='ACTIVE'&&<div className="ter-active-note"><ShieldCheck/>Esta entidad está Activa: no puede eliminarse ni cambiar su identidad, pero sí Responsable y {subdivisionPlural}.</div>}
       <div className="ter-modal-actions"><button className="ter-btn ghost" onClick={()=>setEditor(null)}>Cancelar</button><button className="ter-btn primary" disabled={!editor.code.trim()||!editor.name.trim()||(editor.kind==='REGION'&&!editor.zoneId)} onClick={()=>void saveEditor()}>Guardar</button></div>
     </div></div>}
