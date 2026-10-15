@@ -59,6 +59,11 @@ async function atsUpload(pointId:string,file:File):Promise<any>{
 }
 export const api={
  operationalReports:(type?:'INCIDENT'|'FINDING'|'VULNERABILITY')=>request<any[]>(`/api/operational-reports${type?`?type=${type}`:''}`),
+ /** Evaluaciones de supervisión registradas desde SGI Operador (solo lectura). Filtros vacíos se omiten. */
+ supervisionEvaluations:(filters:Record<string,string|number>)=>request<any>(`/api/supervision/evaluations?${new URLSearchParams(Object.entries(filters).filter(([,v])=>v!==''&&v!=null).map(([k,v])=>[k,String(v)]))}`),
+ supervisionFilters:()=>request<any>('/api/supervision/evaluations/filters'),
+ supervisionEvaluation:(id:string)=>request<any>(`/api/supervision/evaluations/${encodeURIComponent(id)}`),
+ supervisionPhoto:(id:string)=>binaryRequest(`/api/supervision/evaluations/${encodeURIComponent(id)}/photo`),
  operationExecutions:(pointId:string)=>request<any[]>(`/api/operation/executions?pointId=${encodeURIComponent(pointId)}`),
  operationCollaborators:(pointId:string)=>request<any[]>(`/api/operation/points/${encodeURIComponent(pointId)}/collaborators`),
  incidents:()=>request<any[]>('/api/incidents'),

@@ -14,6 +14,7 @@ import BitacoraGlobal from './pages/BitacoraGlobal';
 import ConsolaMonitor from './pages/ConsolaMonitor';
 import ConsignasExecution from './pages/ConsignasExecution';
 import NovedadesExecution from './pages/NovedadesExecution';
+import Supervisiones from './pages/Supervisiones';
 import Placeholder from './pages/Placeholder';
 import AgentSimulator from './pages/AgentSimulator';
 
@@ -60,6 +61,8 @@ export default function App() {
         ? <ConsignasExecution />
       : active === 'Novedades'
         ? <NovedadesExecution />
+      : active === 'Supervisiones'
+        ? <Supervisiones />
       : active === 'Configuración'
         ? <SettingsPage />
       : active === SIMULATOR_MENU

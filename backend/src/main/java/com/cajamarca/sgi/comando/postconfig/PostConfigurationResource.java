@@ -33,7 +33,7 @@ public class PostConfigurationResource {
     @Inject StandardReferenceImages references;
 
     public record SkillSet(int attendance,int accessControl,int patrol,int judgement,int tactical,int bearing,int leadership,int customerService) {}
-    public record ConfigDto(UUID postId,String postType,String description,String alias,String visualTitle,UUID standardImageId,String standardImageName,String atsLocationKey,String atsLocationLabel,UUID atsPackageId,Double atsLocationX,Double atsLocationY,SkillSet skills,String adjustmentJustification,String configStatus,String updatedBy,boolean stationVisintEnabled,Double stationMatchThreshold,Double latitude,Double longitude,Integer radiusM) {}
+    public record ConfigDto(UUID postId,String postCode,String postName,String postType,String description,String alias,String visualTitle,UUID standardImageId,String standardImageName,String atsLocationKey,String atsLocationLabel,UUID atsPackageId,Double atsLocationX,Double atsLocationY,SkillSet skills,String adjustmentJustification,String configStatus,String updatedBy,boolean stationVisintEnabled,Double stationMatchThreshold,Double latitude,Double longitude,Integer radiusM) {}
     public record SaveRequest(String postType,String description,String alias,String visualTitle,String atsLocationKey,String atsLocationLabel,UUID atsPackageId,Double atsLocationX,Double atsLocationY,SkillSet skills,String adjustmentJustification,String configStatus,Boolean stationVisintEnabled,Double stationMatchThreshold,Double latitude,Double longitude,Integer radiusM) {}
 
     @GET
@@ -50,7 +50,7 @@ public class PostConfigurationResource {
         List<ConfigDto> out=new ArrayList<>();
         for(PostEntity post:posts){
             PostOperationalConfig c=byPost.get(post.id);
-            out.add(c==null?defaults(post):dto(c));
+            out.add(c==null?defaults(post):dto(post,c));
         }
         return out;
     }
@@ -127,7 +127,7 @@ public class PostConfigurationResource {
         config.updatedByUsername=identity.getPrincipal().getName();
         if(config.id==null) config.persist();
         post.configStatus="CONFIGURED".equals(config.configStatus)?"CONFIGURED":"PENDING";
-        return dto(config);
+        return dto(post,config);
     }
 
     @POST
@@ -243,7 +243,7 @@ public class PostConfigurationResource {
         String type=post.name!=null&&post.name.toLowerCase(Locale.ROOT).contains("acceso")?"CAA":post.name!=null&&post.name.toLowerCase(Locale.ROOT).contains("perímetro")?"PAT":"VIG";
         SkillSet skills=template(type);
         StandardReferenceImage image=standardImage(post.id);
-        return new ConfigDto(post.id,type,"",null,null,image==null?null:image.id,image==null?null:image.originalName,"","",null,null,null,skills,null,"DRAFT",null,false,null,null,null,null);
+        return new ConfigDto(post.id,post.code,post.name,type,"",null,null,image==null?null:image.id,image==null?null:image.originalName,"","",null,null,null,skills,null,"DRAFT",null,false,null,null,null,null);
     }
 
     private SkillSet template(String type){
@@ -255,9 +255,9 @@ public class PostConfigurationResource {
         };
     }
 
-    private ConfigDto dto(PostOperationalConfig c){
+    private ConfigDto dto(PostEntity post,PostOperationalConfig c){
         StandardReferenceImage image=standardImage(c.postId);
-        return new ConfigDto(c.postId,c.postType,c.description,c.alias,c.visualTitle,image==null?null:image.id,image==null?null:image.originalName,c.atsLocationKey,c.atsLocationLabel,c.atsPackageId,c.atsLocationX,c.atsLocationY,
+        return new ConfigDto(c.postId,post.code,post.name,c.postType,c.description,c.alias,c.visualTitle,image==null?null:image.id,image==null?null:image.originalName,c.atsLocationKey,c.atsLocationLabel,c.atsPackageId,c.atsLocationX,c.atsLocationY,
             new SkillSet(c.skillAttendance,c.skillAccessControl,c.skillPatrol,c.skillJudgement,c.skillTactical,c.skillBearing,c.skillLeadership,c.skillCustomerService),
             c.adjustmentJustification,c.configStatus,c.updatedByUsername,c.stationVisintEnabled,c.stationMatchThreshold,c.latitude,c.longitude,c.radiusM);
     }
