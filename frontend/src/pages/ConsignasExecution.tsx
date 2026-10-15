@@ -117,9 +117,11 @@ const priorityLabel=(priority:Priority)=>({LOW:'Baja',MEDIUM:'Media',HIGH:'Alta'
 const typeClass=(type:ExecutionType)=>type==='RELIEF'?'relief':type==='PATROL'?'patrol':'adhoc';
 const statusClass=(status:ExecutionStatus)=>({IN_PROGRESS:'info',COMPLETED:'success',OVERDUE:'danger',PENDING:'warning',CRITICAL:'danger'}[status]);
 const typeIcon=(type:ExecutionType)=>type==='RELIEF'?<RefreshCw size={15}/>:type==='PATROL'?<CarFront size={15}/>:<FileText size={15}/>;
-const formatDateTime=(value:string)=>new Intl.DateTimeFormat('es-EC',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}).format(new Date(value));
-const dateOnly=(value:string)=>value.slice(0,10);
-const formatTime=(value:string)=>new Intl.DateTimeFormat('es-EC',{hour:'2-digit',minute:'2-digit'}).format(new Date(value));
+// Una patrulla en curso llega con finishedAt vacío: Intl lanza RangeError con fechas inválidas y tumba la pantalla.
+const toDate=(value?:string|null)=>{if(!value)return null;const d=new Date(value);return Number.isNaN(d.getTime())?null:d};
+const formatDateTime=(value?:string|null)=>{const d=toDate(value);return d?new Intl.DateTimeFormat('es-EC',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}).format(d):'—'};
+const dateOnly=(value:string)=>(value??'').slice(0,10);
+const formatTime=(value?:string|null)=>{const d=toDate(value);return d?new Intl.DateTimeFormat('es-EC',{hour:'2-digit',minute:'2-digit'}).format(d):'en curso'};
 function withinScope(row:Execution,scope:Scope){if(scope.companies&&!scope.companies.includes(row.companyCode))return false;if(scope.zone&&row.zone!==scope.zone)return false;if(scope.region&&row.region!==scope.region)return false;return true}
 function unique(values:string[]){return Array.from(new Set(values)).sort((a,b)=>a.localeCompare(b,'es'))}
 function initials(value:string){return value.split(' ').filter(Boolean).slice(0,2).map(x=>x[0]).join('').toUpperCase()}
@@ -163,12 +165,12 @@ function patrolExecutionToExecution(item:any):Execution{
     id:`patrol-execution-${item.id}`,type:'PATROL',code:item.patrolCode,name:item.patrolName,
     client:item.clientName||'—',company:item.companyName||'—',companyCode:item.companyCode||'',city:item.city||'—',
     point:item.pointName||'—',post:item.postName||'—',responsible:item.submittedBy||'Operador',zone:'',region:'',
-    status:item.result==='COMPLETA'?'COMPLETED':'PENDING',priority:'MEDIUM',start:item.startedAt,end:item.finishedAt,
+    status:item.result==='COMPLETA'?'COMPLETED':item.result==='EN_CURSO'?'IN_PROGRESS':'PENDING',priority:'MEDIUM',start:item.startedAt,end:item.finishedAt,
     progressCurrent:completed,progressTotal:total,progressUnit:'hitos',result:`${completed}/${total} hitos · ${item.protocolCode}`,
     timeline:[
       {id:`start-${item.id}`,at:item.startedAt,title:'Inicio de patrulla',detail:`${item.protocolCode} · ${item.protocolName}`,state:'DONE'},
       ...(item.checkpointEvents||[]).map((event:any,index:number)=>({id:`checkpoint-${item.id}-${index}`,at:event.validatedAt,title:`Hito ${index+1} validado`,detail:event.name,state:'DONE' as const})),
-      {id:`finish-${item.id}`,at:item.finishedAt,title:'Patrulla completada',detail:item.result,state:'DONE'}
+      ...(item.finishedAt?[{id:`finish-${item.id}`,at:item.finishedAt,title:'Patrulla completada',detail:item.result,state:'DONE' as const}]:[])
     ]
   };
 }
