@@ -30,6 +30,7 @@ public class GenericInterconnectionExecutor {
     @Inject CoreInterconnectionResolver coreResolver;
     @Inject ResolutionCache cache;
     @Inject CredentialRefResolver credentials;
+    @Inject com.cajamarca.sgi.comando.ident.IdentServiceTokens serviceTokens;
     @Inject CircuitRegistry circuits;
     @Inject ObjectMapper objectMapper;
 
@@ -110,6 +111,13 @@ public class GenericInterconnectionExecutor {
     private void applyAuthentication(HttpRequest.Builder b, ResolvedInterconnection cfg) {
         String auth = cfg.authType == null ? "NONE" : cfg.authType.toUpperCase();
         if ("NONE".equals(auth)) return;
+        if ("OAUTH2_CLIENT_CREDENTIALS".equals(auth)) {
+            // SEG-M2M: token de servicio de IDENT; el destino valida al Sistema SGI_COM, no a la persona.
+            String target = cfg.targetProgramId != null && !cfg.targetProgramId.isBlank()
+                    ? cfg.targetProgramId : com.cajamarca.sgi.comando.ident.IdentServiceTokens.targetOf(cfg.interconnectionId);
+            b.header("Authorization", "Bearer " + serviceTokens.tokenFor(target, cfg.credentialRef));
+            return;
+        }
         String secret = credentials.resolve(cfg.credentialRef);
         switch (auth) {
             case "BEARER", "BEARER_TOKEN", "JWT", "SERVICE_TOKEN", "OAUTH2" -> b.header("Authorization", "Bearer " + secret);
