@@ -130,10 +130,10 @@ Read expected material resources/inventory for Point/Post operational configurat
 
 - SoR de los datos principales: `SIC_RRMM`
 - contractVersion: `v1`
-- estado: `DESIGN`
+- estado: `UAT_PARTIAL` (binding y autorización en RRMM pendientes de verificar en `DEVELOPMENT`)
 
-- `SGI_COM_SIC_RRMM_0001_IF01` — `GET` `/api/v1/operational-assets/posts/{postId}/expected` — Expected assets/materials assigned to Post
-- `SGI_COM_SIC_RRMM_0001_IF02` — `GET` `/api/v1/operational-assets/points/{pointId}` — Material resources visible for Point configuration
+- `SGI_COM_SIC_RRMM_0001_IF01` — `GET` `/dev.rrmm/api/v1/operations/movements/holdings?holderType=POSITION&holderReference={idPuesto}` — tenencias vigentes del puesto (activos identificados y materiales).
+- `SGI_COM_SIC_RRMM_0001_IF02` — `GET` `/api/v1/operational-assets/points/{pointId}` — interfaz reservada para configuración del Punto; proveedor aún no verificado.
 - aliases históricos: `SGI_COM__SIC_RRMM__00001__V0001`, `SGI_COM__SIC_RRMM__00001`
 
 ## `SIC_RRMM_SGI_COM_0001_v001` — SIC_RRMM → SGI_COM

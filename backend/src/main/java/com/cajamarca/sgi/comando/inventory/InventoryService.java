@@ -33,10 +33,10 @@ public class InventoryService {
     @Inject ExternalPorts.SicRrmmPort rrmm;
 
     @Transactional
-    public ObjectNode runtime(UUID postId) {
+    public ObjectNode runtime(UUID postId, String postReference) {
         UUID instance = tenant.instanceCountryId();
         try {
-            List<Map<String,Object>> assets = rrmm.expectedAssets(instance, postId);
+            List<Map<String,Object>> assets = rrmm.expectedAssets(instance, postReference);
             String sourceVersion = sourceVersion(assets);
             replaceSnapshot(instance, postId, sourceVersion, assets);
             return response(instance, postId, "AVAILABLE", sourceVersion, Instant.now(), null);
@@ -49,7 +49,7 @@ public class InventoryService {
     }
 
     public boolean isExpectedAsset(UUID postId, UUID assetId) {
-        return em.createNativeQuery("select 1 from inventory_expected_asset where instance_country_id=:t and post_id=:p and asset_id=:a and active=true")
+        return em.createNativeQuery("select 1 from inventory_expected_asset where instance_country_id=:t and post_id=:p and asset_id=:a and record_type='IDENTIFIED' and active=true")
             .setParameter("t",tenant.instanceCountryId()).setParameter("p",postId).setParameter("a",assetId).setMaxResults(1).getResultList().size()==1;
     }
 
@@ -119,11 +119,13 @@ public class InventoryService {
             em.createNativeQuery("""
                 insert into inventory_report_item(id,instance_country_id,report_id,asset_id,product_id,asset_code,asset_description,
                   expected_condition,observed_condition,observation,compliant,created_at)
-                values(:id,:t,:report,:asset,:product,:code,:description,:expected,:observed,:observation,:compliant,current_timestamp)
+                values(:id,:t,:report,:asset,:product,:code,:description,:expected,:observed,:observation,
+                  case when :expected='UNKNOWN' then null else :compliant end,current_timestamp)
                 """).setParameter("id",itemId).setParameter("t",tenant.instanceCountryId()).setParameter("report",reportId).setParameter("asset",entry.getKey())
                 .setParameter("product",nullableUuid(master.path("productId").asText(null))).setParameter("code",master.path("code").asText())
                 .setParameter("description",master.path("description").asText()).setParameter("expected",expectedCondition).setParameter("observed",condition)
-                .setParameter("observation",optionalText(item,"observation",1000)).setParameter("compliant",expectedCondition.equalsIgnoreCase(condition)).executeUpdate();
+                .setParameter("observation",optionalText(item,"observation",1000))
+                .setParameter("compliant",expectedCondition.equalsIgnoreCase(condition)).executeUpdate();
             int evidenceOrder=0; for(UUID evidenceId:evidenceIds(item)) em.createNativeQuery("insert into inventory_report_item_evidence(report_item_id,evidence_id,sort_order) values(:item,:evidence,:sort)")
                 .setParameter("item",itemId).setParameter("evidence",evidenceId).setParameter("sort",++evidenceOrder).executeUpdate();
         }
@@ -167,16 +169,21 @@ public class InventoryService {
             .setParameter("t",instance).setParameter("p",postId).executeUpdate();
         for(Map<String,Object> asset:assets) em.createNativeQuery("""
             insert into inventory_expected_asset(id,instance_country_id,post_id,asset_id,product_id,code,description,expected_condition,
-              assignment_status,critical,source_version,source_payload,active,fetched_at,created_at,updated_at)
-            values(:id,:t,:post,:asset,:product,:code,:description,:condition,:assignment,:critical,:version,:payload,true,current_timestamp,current_timestamp,current_timestamp)
+              assignment_status,critical,record_type,quantity,serial_number,lot_code,source_version,source_payload,active,fetched_at,created_at,updated_at)
+            values(:id,:t,:post,:asset,:product,:code,:description,:condition,:assignment,:critical,:recordType,:quantity,:serial,:lot,:version,:payload,true,current_timestamp,current_timestamp,current_timestamp)
             on conflict(instance_country_id,post_id,asset_id) do update set product_id=excluded.product_id,code=excluded.code,
               description=excluded.description,expected_condition=excluded.expected_condition,assignment_status=excluded.assignment_status,
-              critical=excluded.critical,source_version=excluded.source_version,source_payload=excluded.source_payload,active=true,
+              critical=excluded.critical,record_type=excluded.record_type,quantity=excluded.quantity,
+              serial_number=excluded.serial_number,lot_code=excluded.lot_code,
+              source_version=excluded.source_version,source_payload=excluded.source_payload,active=true,
               fetched_at=current_timestamp,updated_at=current_timestamp
             """).setParameter("id",UUID.randomUUID()).setParameter("t",instance).setParameter("post",postId).setParameter("asset",asset.get("assetId"))
             .setParameter("product",asset.get("productId")).setParameter("code",asset.get("code")).setParameter("description",asset.get("description"))
             .setParameter("condition",asset.get("expectedCondition")).setParameter("assignment",asset.get("assignmentStatus"))
-            .setParameter("critical",asset.get("critical")).setParameter("version",asset.get("sourceVersion")).setParameter("payload",asset.get("sourcePayload")).executeUpdate();
+            .setParameter("critical",asset.get("critical")).setParameter("recordType",asset.get("recordType"))
+            .setParameter("quantity",asset.get("quantity")).setParameter("serial",asset.get("serialNumber"))
+            .setParameter("lot",asset.get("lotCode")).setParameter("version",asset.get("sourceVersion"))
+            .setParameter("payload",asset.get("sourcePayload")).executeUpdate();
         em.createNativeQuery("""
             insert into inventory_sync_state(instance_country_id,post_id,source_version,item_count,fetched_at)
             values(:t,:p,:version,:count,current_timestamp)
@@ -185,19 +192,33 @@ public class InventoryService {
     }
 
     private ObjectNode response(UUID instance,UUID postId,String status,String version,Instant fetched,String warning) {
-        ObjectNode out=mapper.createObjectNode().put("status",status).put("sourceVersion",version).put("fetchedAt",fetched.toString());
-        if(warning!=null)out.put("warning",warning); ArrayNode items=out.putArray("items");
+        ObjectNode out=mapper.createObjectNode().put("status",status).put("fetchedAt",fetched.toString());
+        if("RRMM-EMPTY".equals(version))out.putNull("sourceVersion");else out.put("sourceVersion",version);
+        if(warning!=null)out.put("warning",warning); ArrayNode items=out.putArray("items"); ArrayNode materials=out.putArray("materials");
         @SuppressWarnings("unchecked") List<Object[]> rows=em.createNativeQuery("""
-            select asset_id,product_id,code,description,expected_condition,assignment_status,critical
+            select asset_id,product_id,code,description,expected_condition,assignment_status,critical,
+                   record_type,quantity,serial_number,lot_code
             from inventory_expected_asset where instance_country_id=:t and post_id=:p and active=true order by code,asset_id
             """).setParameter("t",instance).setParameter("p",postId).getResultList();
-        for(Object[] row:rows){ObjectNode item=items.addObject().put("assetId",row[0].toString());if(row[1]!=null)item.put("productId",row[1].toString());
+        for(Object[] row:rows){boolean identified="IDENTIFIED".equals(row[7]); ObjectNode item=(identified?items:materials).addObject().put("assetId",row[0].toString()).put("recordId",row[0].toString());if(row[1]!=null)item.put("productId",row[1].toString());
             item.put("code",row[2].toString()).put("description",row[3].toString()).put("expectedCondition",row[4].toString())
-                .put("assignmentStatus",row[5].toString()).put("critical",Boolean.TRUE.equals(row[6]));}
+                .put("assignmentStatus",row[5].toString()).put("critical",Boolean.TRUE.equals(row[6]))
+                .put("recordType",row[7].toString()).put("quantity",((java.math.BigDecimal)row[8]));
+            if(row[9]!=null)item.put("serialNumber",row[9].toString());
+            if(row[10]!=null)item.put("lotCode",row[10].toString());}
+        boolean hasHoldings=!items.isEmpty()||!materials.isEmpty();
+        out.put("hasHoldings",hasHoldings);
+        out.put("message","STALE".equals(status)
+            ? consultationFailure(warning)+(hasHoldings?" Se muestran los datos de la última consulta válida.":" La última consulta válida no registró tenencias para este puesto.")
+            : (hasHoldings?"Consulta correcta: tenencias obtenidas de RRMM.":"Consulta correcta: RRMM no registra bienes ni materiales asignados a este puesto."));
         return out;
     }
 
-    private ObjectNode empty(String status,String warning){ObjectNode out=mapper.createObjectNode().put("status",status);if(warning!=null)out.put("warning",warning);out.putArray("items");return out;}
+    private ObjectNode empty(String status,String warning){ObjectNode out=mapper.createObjectNode().put("status",status)
+        .put("message",consultationFailure(warning)+" Aún no existe una consulta válida para este puesto.");
+        out.putNull("hasHoldings");out.putNull("sourceVersion");if(warning!=null)out.put("warning",warning);out.putArray("items");out.putArray("materials");return out;}
+    private static String consultationFailure(String warning){return "RRMM_EXPECTED_ASSETS_HTTP_401".equals(warning)
+        ? "RRMM rechazó la consulta (HTTP 401: no autorizado)." : "No se pudo consultar RRMM.";}
     private Object[] syncState(UUID instance,UUID postId){List<?> rows=em.createNativeQuery("select source_version,item_count,fetched_at from inventory_sync_state where instance_country_id=:t and post_id=:p")
         .setParameter("t",instance).setParameter("p",postId).getResultList();return rows.isEmpty()?null:(Object[])rows.get(0);}
     private String sourceVersion(List<Map<String,Object>> assets){if(assets.isEmpty())return "RRMM-EMPTY";Set<String> versions=new LinkedHashSet<>();for(var a:assets)versions.add(Objects.toString(a.get("sourceVersion"),""));if(versions.size()!=1||versions.iterator().next().isBlank())throw new InterconnectionException("RRMM_MIXED_SOURCE_VERSION","SIC:RRMM devolvió versiones mezcladas.");return versions.iterator().next();}

@@ -111,6 +111,8 @@ public class GenericInterconnectionExecutor {
     private void applyAuthentication(HttpRequest.Builder b, ResolvedInterconnection cfg) {
         String auth = cfg.authType == null ? "NONE" : cfg.authType.toUpperCase();
         if ("NONE".equals(auth)) return;
+		if (cfg.credentialRef == null || cfg.credentialRef.isBlank())
+            throw new InterconnectionException("CREDENTIAL_REF_REQUIRED", "CORE enabled authentication without a credential reference");
         if ("OAUTH2_CLIENT_CREDENTIALS".equals(auth)) {
             // SEG-M2M: token de servicio de IDENT; el destino valida al Sistema SGI_COM, no a la persona.
             String target = cfg.targetProgramId != null && !cfg.targetProgramId.isBlank()
@@ -127,7 +129,7 @@ public class GenericInterconnectionExecutor {
         }
     }
 
-    private static String buildUri(ResolvedInterconnection cfg, Map<String,String> pathParams, Map<String,String> queryParams) {
+    static String buildUri(ResolvedInterconnection cfg, Map<String,String> pathParams, Map<String,String> queryParams) {
         String path = cfg.path;
         for (Map.Entry<String,String> e : pathParams.entrySet()) path = path.replace("{" + e.getKey() + "}", enc(e.getValue()));
         if (path.contains("{")) throw new InterconnectionException("UNRESOLVED_PATH_PARAMETER", "An interface path parameter was not supplied");
@@ -137,6 +139,7 @@ public class GenericInterconnectionExecutor {
         if (!queryParams.isEmpty()) {
             boolean first = !uri.toString().contains("?");
             for (Map.Entry<String,String> e : queryParams.entrySet()) {
+                if (uri.toString().matches(".*[?&]" + java.util.regex.Pattern.quote(enc(e.getKey())) + "=[^&]*.*")) continue;
                 uri.append(first ? '?' : '&'); first = false;
                 uri.append(enc(e.getKey())).append('=').append(enc(e.getValue()));
             }

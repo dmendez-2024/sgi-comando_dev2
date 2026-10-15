@@ -108,13 +108,13 @@ Todos los IDs siguen SITC-NOM-001 v3.0. Paths son contratos lógicos; host/baseP
 - Tipo: `REST_API / SYNC / HTTPS`
 - Contrato: `v1`
 - SoR: `SIC_RRMM`
-- Estado: `UAT_PARTIAL`; destino `BLOCKED` (adaptador SGI implementado; endpoint RRMM pendiente de habilitación)
+- Estado: `UAT_PARTIAL`; destino `BLOCKED` (endpoint de tenencias existe en RRMM; binding y autorización técnica pendientes de verificar en CORE `DEVELOPMENT`)
 
 ### `SGI_COM_SIC_RRMM_0001_IF01`
-`GET /api/v1/operational-assets/posts/{postId}/expected` — Expected assets/materials assigned to Post
+`GET /dev.rrmm/api/v1/operations/movements/holdings?holderType=POSITION&holderReference={idPuesto}` — tenencias vigentes del puesto (activos identificados y materiales).
 
 ### `SGI_COM_SIC_RRMM_0001_IF02`
-`GET /api/v1/operational-assets/points/{pointId}` — Material resources visible for Point configuration
+`GET /api/v1/operational-assets/points/{pointId}` — interfaz reservada para configuración del Punto; proveedor aún no verificado.
 
 ## `SGI_COM_SIC_RRMM_0002_v001` — Reportar a RRMM la condición observada durante el relevo.
 - Origen técnico: `SGI_COM`

@@ -1,7 +1,9 @@
 package com.cajamarca.sgi.comando.operations;
 
 import com.cajamarca.sgi.comando.common.TenantContext;
+import com.cajamarca.sgi.comando.inventory.InventoryService;
 import com.cajamarca.sgi.comando.territory.OperationalScopeService;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.*;
@@ -15,6 +17,7 @@ import java.util.stream.Collectors;
 public class OperationsResource {
   @Inject TenantContext tenant;
   @Inject OperationalScopeService scope;
+  @Inject InventoryService inventory;
 
   public record ClientOptionDto(UUID id, String code, String name) {}
 
@@ -43,6 +46,17 @@ public class OperationsResource {
 
   @GET @Path("/posts")
   public List<PostEntity> postsByQuery(@QueryParam("pointId") UUID pointId){ if(pointId==null) throw new BadRequestException("pointId is required"); return postsForPoint(pointId); }
+
+  @GET @Path("/posts/{postId}/inventory")
+  @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION","SUPERVISOR_SEGURIDAD"})
+  public ObjectNode postInventory(@PathParam("postId") UUID postId){
+    PostEntity post=PostEntity.find("id=?1 and instanceCountryId=?2",postId,tenant.instanceCountryId()).firstResult();
+    if(post==null) throw new NotFoundException("Puesto no encontrado.");
+    PointEntity point=PointEntity.find("id=?1 and instanceCountryId=?2",post.pointId,tenant.instanceCountryId()).firstResult();
+    if(point==null) throw new NotFoundException("Punto no encontrado.");
+    scope.requireCompany(point.companyId);
+    return inventory.runtime(post.id,post.code);
+  }
 
   private List<PostEntity> postsForPoint(UUID pointId){
     PointEntity point=PointEntity.find("id=?1 and instanceCountryId=?2",pointId,tenant.instanceCountryId()).firstResult();

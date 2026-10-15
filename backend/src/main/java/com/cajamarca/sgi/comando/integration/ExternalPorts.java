@@ -21,7 +21,7 @@ public final class ExternalPorts {
         Optional<Map<String,Object>> employee(UUID instanceCountryId, UUID employeeId);
     }
     public interface SicRrmmPort {
-        List<Map<String,Object>> expectedAssets(UUID instanceCountryId, UUID postId);
+        List<Map<String,Object>> expectedAssets(UUID instanceCountryId, String postReference);
         Map<String,Object> reportObservedState(UUID instanceCountryId, UUID clientRequestId, Map<String,Object> report);
     }
     public interface AtsPort {
