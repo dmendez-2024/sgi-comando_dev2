@@ -1086,7 +1086,7 @@ export default function Services(){
                 <td><span className={`ser-metric ${icTone(row.icAverage)}`}><i/>{metric(row.icAverage,'%')}</span></td>
                 <td><span className={`ser-news ${row.pendingNews?'pending':'zero'}`}>{row.pendingNews}</span></td>
                 <td><span className={`ser-state ${row.state.toLowerCase()}`}><i/>{stateLabel(row.state)}</span></td>
-                <td><button className="ser-action ghost" onClick={()=>{setSelectedPointId(row.pointId);setView('operation')}}><Eye size={15}/>Operación</button></td>
+                <td><button className="ser-action ghost" onClick={()=>{setSelectedPointId(row.pointId);setView('operation')}} disabled={row.state==='PENDING_ASSIGNMENT'} title={row.state==='PENDING_ASSIGNMENT'?'Asigna una Compañía para ver la operación':undefined}><Eye size={15}/>Operación</button></td>
                 <td>{row.assignmentStatus==='PENDING'?<button className="ser-action primary" onClick={()=>void openAssignment(row)} disabled={!row.canAssign} title={row.canAssign?'Asignar Servicio a una Compañía operativa':'Su perfil no puede asignar este Servicio'}><Building2 size={15}/>Asignación</button>:<div className="ser-row-actions"><button className="ser-action primary" onClick={()=>openConfiguration(row.pointId)}><Settings2 size={15}/>Configuración</button>{row.canReturn&&<button className="ser-action return" onClick={()=>openReturnToCoordination(row)} title="Retirar Servicio a Kaibil para reasignación"><ArrowLeft size={15}/>Retirar a Kaibil</button>}</div>}</td>
               </tr>;
             }):<tr><td colSpan={11}><div className="ser-empty">No existen puntos que coincidan con los filtros.</div></td></tr>}
