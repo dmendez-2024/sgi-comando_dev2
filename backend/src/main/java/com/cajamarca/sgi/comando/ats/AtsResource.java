@@ -3,6 +3,7 @@ package com.cajamarca.sgi.comando.ats;
 import com.cajamarca.sgi.comando.common.TenantContext;
 import com.cajamarca.sgi.comando.operations.PointEntity;
 import com.cajamarca.sgi.comando.operations.PostEntity;
+import com.cajamarca.sgi.comando.operations.ServiceConfigurationStatus;
 import com.cajamarca.sgi.comando.postconfig.PostOperationalConfig;
 import com.cajamarca.sgi.comando.territory.OperationalScopeService;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -137,6 +138,7 @@ public class AtsResource {
                 config.atsLocationLabel="";
             }
         }
+        ServiceConfigurationStatus.refresh(tenant.instanceCountryId(),point.serviceId);
         return dto(pkg);
     }
 

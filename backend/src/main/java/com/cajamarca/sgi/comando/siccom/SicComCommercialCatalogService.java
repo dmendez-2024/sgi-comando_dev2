@@ -7,6 +7,7 @@ import com.cajamarca.sgi.comando.operations.ClientEntity;
 import com.cajamarca.sgi.comando.operations.PointEntity;
 import com.cajamarca.sgi.comando.operations.PostEntity;
 import com.cajamarca.sgi.comando.operations.ServiceEntity;
+import com.cajamarca.sgi.comando.operations.ServiceConfigurationStatus;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonProperty;
@@ -139,6 +140,7 @@ public class SicComCommercialCatalogService {
         }
         appliedPoints.add(new AppliedPoint(pointInput.code(), point.value.id, point.action, appliedPosts));
       }
+      ServiceConfigurationStatus.refresh(instanceCountryId, service.value.id);
       appliedServices.add(new AppliedService(applied(service.value.code, service.value.id, service.action), appliedPoints));
     }
 
@@ -242,7 +244,7 @@ public class SicComCommercialCatalogService {
         throw validation("Un Puesto nuevo requiere name, format, fhe y tier.");
       }
       try {
-        post.code = nextGeneratedPostCode(instanceCountryId, pointInput, clientInput, input);
+        post.code = nextGeneratedPostCode(instanceCountryId, pointInput, clientInput);
       } catch (IllegalArgumentException e) {
         throw validation(e.getMessage());
       }
@@ -261,9 +263,12 @@ public class SicComCommercialCatalogService {
   }
 
   private String nextGeneratedPostCode(
-      UUID instanceCountryId, PointInput point, ClientInput client, PostInput post) {
-    String baseCode = PostCodeGenerator.baseCode(point.province(), point.city(), client.name(), post.name());
-    String signature = PostCodeGenerator.sourceSignature(point.province(), point.city(), client.name(), post.name());
+      UUID instanceCountryId, PointInput point, ClientInput client) {
+    // El código operativo se compone de Provincia + Ciudad + Cliente + Punto.
+    // El Puesto no interviene: varios Puestos del mismo Punto comparten la base
+    // y se distinguen por su secuencia.
+    String baseCode = PostCodeGenerator.baseCode(point.province(), point.city(), client.name(), point.name());
+    String signature = PostCodeGenerator.sourceSignature(point.province(), point.city(), client.name(), point.name());
 
     // All allocators for a base share a transaction-scoped PostgreSQL advisory lock.
     // This prevents two simultaneous SIC:COM events from receiving the same suffix.

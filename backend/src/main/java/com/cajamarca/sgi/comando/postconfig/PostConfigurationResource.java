@@ -4,6 +4,7 @@ import com.cajamarca.sgi.comando.common.TenantContext;
 import com.cajamarca.sgi.comando.ats.AtsPointPackage;
 import com.cajamarca.sgi.comando.operations.PointEntity;
 import com.cajamarca.sgi.comando.operations.PostEntity;
+import com.cajamarca.sgi.comando.operations.ServiceConfigurationStatus;
 import com.cajamarca.sgi.comando.territory.OperationalScopeService;
 import com.cajamarca.sgi.comando.storage.StandardReferenceImage;
 import com.cajamarca.sgi.comando.storage.StandardReferenceImages;
@@ -127,6 +128,7 @@ public class PostConfigurationResource {
         config.updatedByUsername=identity.getPrincipal().getName();
         if(config.id==null) config.persist();
         post.configStatus="CONFIGURED".equals(config.configStatus)?"CONFIGURED":"PENDING";
+        ServiceConfigurationStatus.refresh(tenant.instanceCountryId(),point.serviceId);
         return dto(post,config);
     }
 
