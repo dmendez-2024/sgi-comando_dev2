@@ -56,7 +56,8 @@ public class PostConfigurationResource {
         return out;
     }
 
-    /** Limits Supervisor reads to points contained in the exact route version pinned at publication. */
+    /** Limits Supervisor reads to points contained in the route version pinned at publication or,
+     * when the shift has none pinned, the post's active route (same rule as /coordination/posts/{id}/route). */
     private void requirePointInAssignedRoute(UUID pointId){
         UUID employee=operatorEmployees.employeeOf(identity);
         Instant now=Instant.now();
@@ -64,7 +65,9 @@ public class PostConfigurationResource {
           select 1 from operational_assignment a
           join shift_occurrence s on s.id=a.shift_occurrence_id and s.instance_country_id=a.instance_country_id
           join assignment_plan ap on ap.id=a.assignment_plan_id and ap.instance_country_id=a.instance_country_id
-          join supervision_route r on r.id=s.supervision_route_id and r.instance_country_id=s.instance_country_id and r.status in ('ACTIVE','REPLACED')
+          join supervision_route r on r.instance_country_id=s.instance_country_id
+            and (r.id=s.supervision_route_id and r.status in ('ACTIVE','REPLACED')
+              or s.supervision_route_id is null and r.coordination_post_id=s.coordination_post_id and r.status='ACTIVE')
           join supervision_route_point rp on rp.route_id=r.id and rp.instance_country_id=r.instance_country_id
           where a.instance_country_id=:tenant and a.status<>'REMOVED' and ap.status in ('PUBLISHED','CLOSED')
             and coalesce(a.actual_employee_id,a.employee_id)=:employee and rp.point_id=:point

@@ -95,7 +95,10 @@ public class SupervisorEvaluationResource {
           select aa.id,coalesce(aa.actual_employee_id,aa.employee_id),ss.starts_at,ss.ends_at
           from operational_assignment sa join shift_occurrence ss on ss.id=sa.shift_occurrence_id and ss.instance_country_id=sa.instance_country_id
           join assignment_plan sp on sp.id=sa.assignment_plan_id and sp.instance_country_id=sa.instance_country_id
-          join supervision_route_point rp on rp.route_id=ss.supervision_route_id and rp.instance_country_id=ss.instance_country_id
+          join supervision_route sr on sr.instance_country_id=ss.instance_country_id
+            and (sr.id=ss.supervision_route_id
+              or ss.supervision_route_id is null and sr.coordination_post_id=ss.coordination_post_id and sr.status='ACTIVE')
+          join supervision_route_point rp on rp.route_id=sr.id and rp.instance_country_id=sr.instance_country_id
           join post target on target.point_id=rp.point_id and target.instance_country_id=ss.instance_country_id and target.id=:post
           join shift_occurrence ash on ash.post_id=target.id and ash.instance_country_id=ss.instance_country_id and ash.starts_at<ss.ends_at and ash.ends_at>ss.starts_at
           join operational_assignment aa on aa.shift_occurrence_id=ash.id and aa.instance_country_id=ash.instance_country_id and aa.status<>'REMOVED'
