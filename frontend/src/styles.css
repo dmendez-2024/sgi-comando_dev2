@@ -2099,6 +2099,13 @@
 /* Operaciones: detalles completos usan el mismo panel, encabezado y cierre. */
 .operational-drawer-backdrop{z-index:1400}
 .operational-drawer>header>button:focus-visible,.operational-drawer>footer button:focus-visible{outline:3px solid rgba(45,103,216,.25);outline-offset:2px}
+.nov-readonly-copy{box-sizing:border-box;min-height:84px;width:100%;padding:14px 16px;border:1px solid #dce5f1;border-radius:10px;background:#f8faff;color:#26364f;font-size:13px;font-weight:500;line-height:1.65;white-space:pre-wrap;overflow-wrap:anywhere}
+.nov-readonly-copy.empty{color:#7b889d;font-style:italic}
+.nov-evidence-photo{min-height:92px;border:1px solid #d5e1ef;border-radius:10px;background:#f7faff;overflow:hidden;display:flex;flex-direction:column;text-align:center;text-decoration:none;color:#526078;font-size:11px;font-weight:800}
+.nov-evidence-photo img{width:100%;height:110px;object-fit:cover;display:block}
+.nov-evidence-photo span{padding:7px 5px}
+.nov-evidence-photo:focus-visible{outline:3px solid rgba(45,103,216,.3);outline-offset:2px}
+.nov-evidence-message{margin:0;padding:12px;border:1px dashed #d2ddeb;border-radius:10px;background:#f8fafc;color:#6a7890;font-size:12px;line-height:1.5}
 .csl-page .csl-workspace{grid-template-columns:minmax(0,1fr)}
 .csl-view-summary{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding-bottom:14px;border-bottom:1px solid #edf1f6}
 .csl-view-summary>strong{flex:1 1 220px;color:#24334d;font-size:16px}

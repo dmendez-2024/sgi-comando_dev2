@@ -1116,7 +1116,7 @@ public class OperatorResource {
             throw new ForbiddenException("Tu usuario no tiene un alcance operativo configurado. Solicita a Comando que parametrice tu persona y compañía.");
         }
         @SuppressWarnings("unchecked") List<Object[]> rows=em.createNativeQuery("""
-            select id,point_id,post_id,employee_id,username,title,instruction,priority,submitted_at,schedule,start_time,end_time,status
+            select id,point_id,post_id,employee_id,username,title,instruction,priority,submitted_at,schedule,start_time,end_time,status,has_photo
             from operator_consignment_review_request where instance_country_id=:t and status=:status order by submitted_at desc
             """).setParameter("t",tenant.instanceCountryId()).setParameter("status",status).setMaxResults(200).getResultList();
         ArrayNode result=mapper.createArrayNode();
@@ -1128,7 +1128,8 @@ public class OperatorResource {
             Company company=point.companyId==null?null:Company.find("id=?1 and instanceCountryId=?2",point.companyId,tenant.instanceCountryId()).firstResult();
             ObjectNode item=result.addObject().put("id",row[0].toString()).put("title",row[5].toString()).put("instruction",row[6].toString()).put("priority",row[7].toString())
                 .put("submittedAt",row[8].toString()).put("schedule",row[9].toString()).put("status",row[12].toString()).put("pointName",point.name).put("postName",post.name)
-                .put("clientName",point.clientName).put("city",point.city).put("submittedBy",row[4].toString());
+                .put("clientName",point.clientName).put("city",point.city).put("submittedBy",row[4].toString())
+                .put("hasPhoto",Boolean.TRUE.equals(row[13]));
             if(row[10]!=null) item.put("startTime",row[10].toString());
             if(row[11]!=null) item.put("endTime",row[11].toString());
             if(company!=null) { item.put("companyName",company.name); item.put("companyCode",company.code); }

@@ -1,11 +1,12 @@
 import {useCallback, useEffect, useMemo, useState, type ReactNode} from 'react';
 import {
   AlertTriangle, Building2, CalendarDays, CheckCircle2, ChevronRight, CircleAlert,
-  Download, Eye, FileImage, FilterX, MapPin, Search, ShieldCheck, Trash2,
-  UserRound, X, Pencil, Save, Clock3, Camera, Navigation, ClipboardCheck
+  Download, Eye, FilterX, MapPin, Search, ShieldCheck, Trash2,
+  UserRound, X, Pencil, Save, Clock3, Navigation, ClipboardCheck
 } from 'lucide-react';
 import {api, getUser, type UatUser} from '../api';
 import {OperationalDrawer} from '../components/OperationalDrawer';
+import {PhotoEvidenceGallery} from '../components/PhotoEvidenceGallery';
 
 type NoveltyType='FINDING'|'VULNERABILITY'|'INCIDENT';
 type NoveltyStatus='PENDING'|'APPROVED'|'DISCARDED';
@@ -64,7 +65,7 @@ type Filters={
   dateTo:string;
 };
 
-type EditableDraft=Pick<Novelty,'type'|'subcategory'|'company'|'client'|'city'|'point'|'post'|'description'|'latitude'|'longitude'|'photoCount'>;
+type EditableDraft=Pick<Novelty,'type'|'subcategory'|'company'|'client'|'city'|'point'|'post'|'description'|'latitude'|'longitude'>;
 
 const FINDING_SUBCATEGORIES=['Orden','Limpieza','Mantenimiento','Estacionamiento','Componente de seguridad'];
 const VULNERABILITY_SUBCATEGORIES=['Acceso','Perímetro','Interno'];
@@ -189,7 +190,7 @@ const canReview=(user:UatUser)=>['presidente','dnacional','dzonal','jregional','
 function withinScope(row:Novelty,scope:Scope){if(scope.companies&&!scope.companies.includes(row.companyCode))return false;if(scope.zone&&row.zone!==scope.zone)return false;if(scope.region&&row.region!==scope.region)return false;return true}
 function validateRange(from:string,to:string){if(!from||!to)return 'Debe elegir siempre una fecha inicio y una fecha fin.';if(to<from)return 'La fecha fin no puede ser menor que la fecha inicio.';const start=new Date(`${from}T00:00:00`);const max=new Date(start);max.setFullYear(max.getFullYear()+1);const end=new Date(`${to}T23:59:59`);return end>max?'El período consultado no puede ser mayor a 1 año.':''}
 function subcategories(type:NoveltyType){return type==='FINDING'?FINDING_SUBCATEGORIES:type==='VULNERABILITY'?VULNERABILITY_SUBCATEGORIES:INCIDENT_SUBCATEGORIES}
-function draftFrom(row:Novelty):EditableDraft{return {type:row.type,subcategory:row.subcategory,company:row.company,client:row.client,city:row.city,point:row.point,post:row.post,description:row.description,latitude:row.latitude,longitude:row.longitude,photoCount:row.photoCount}}
+function draftFrom(row:Novelty):EditableDraft{return {type:row.type,subcategory:row.subcategory,company:row.company,client:row.client,city:row.city,point:row.point,post:row.post,description:row.description,latitude:row.latitude,longitude:row.longitude}}
 
 export default function NovedadesExecution(){
   const user=getUser();
@@ -279,7 +280,6 @@ export default function NovedadesExecution(){
     setModalError('');setEditing(false);
   }
 
-  function addPhoto(){if(!draft)return;updateDraft('photoCount',Math.min(draft.photoCount+1,6))}
   function exportCsv(){const header=['Tipo','Código','Subcategoría','Descripción','Cliente','Compañía','Ciudad','Punto','Puesto','Reportado por','Fecha / Hora','Estado'];const body=rows.map(r=>[typeLabel(r.type),r.code,r.subcategory,r.description,r.client,r.company,r.city,r.point,r.post,r.reportedBy,formatDateTime(r.createdAt),statusLabel(r.status)]);const csv=[header,...body].map(line=>line.map(v=>`"${String(v).replaceAll('"','""')}"`).join(',')).join('\n');const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='novedades.csv';a.click();URL.revokeObjectURL(url)}
 
   return <div className="nov-page">
@@ -358,13 +358,16 @@ export default function NovedadesExecution(){
             <ModalField label="Coordenadas (opcional)"><div className="nov-coordinates"><Navigation size={15}/><input value={draft.latitude??''} disabled={!editing} onChange={e=>updateDraft('latitude',e.target.value===''?null:Number(e.target.value))}/><input value={draft.longitude??''} disabled={!editing} onChange={e=>updateDraft('longitude',e.target.value===''?null:Number(e.target.value))}/></div></ModalField>
           </div>
 
-          <ModalField label="Descripción de la novedad"><textarea value={draft.description} disabled={!editing} maxLength={500} onChange={e=>updateDraft('description',e.target.value)}/><small className="nov-count">{draft.description.length}/500</small></ModalField>
+          <ModalField label="Descripción de la novedad">{editing
+            ? <><textarea value={draft.description} maxLength={500} onChange={e=>updateDraft('description',e.target.value)}/><small className="nov-count">{draft.description.length}/500</small></>
+            : <div className="nov-readonly-copy">{draft.description||'Sin descripción registrada.'}</div>}
+          </ModalField>
 
-          <div className="nov-photo-block"><div className="nov-section-title"><strong>Evidencia fotográfica ({draft.photoCount})</strong>{editing&&draft.photoCount<6&&<button onClick={addPhoto}><Camera size={14}/>Agregar foto</button>}</div><div className="nov-photo-grid">{Array.from({length:draft.photoCount}).map((_,i)=><article key={i}><FileImage size={25}/><span>Foto {i+1}</span><small>SGI: Operador</small></article>)}</div></div>
+          <PhotoEvidenceGallery eventId={selected.id} declaredCount={selected.photoCount}/>
 
           <div className="nov-audit"><h4>Historial / Trazabilidad</h4>{selected.audit.map(event=><article key={event.id}><i/><div><strong>{event.title}</strong><span>{formatDateTime(event.at)} · {event.actor}</span><small>{event.detail}</small></div></article>)}</div>
 
-          <ModalField label="Comentario de revisión"><textarea value={reviewComment} disabled maxLength={500} placeholder="Sin revisión registrada" onChange={e=>setReviewComment(e.target.value)}/><small className="nov-count">{reviewComment.length}/500</small></ModalField>
+          <ModalField label="Comentario de revisión"><div className={`nov-readonly-copy${reviewComment?'':' empty'}`}>{reviewComment||'Sin revisión registrada.'}</div></ModalField>
           {selected.status==='APPROVED'&&<div className="nov-publication approved"><CheckCircle2 size={16}/><span>Aprobada: esta novedad está habilitada para SGI: Cliente.</span></div>}
           {selected.status==='DISCARDED'&&<div className="nov-publication discarded"><Trash2 size={16}/><span>Descartada: se conserva en histórico y no se publica a SGI: Cliente.</span></div>}
           {modalError&&<div className="nov-modal-error"><AlertTriangle size={15}/>{modalError}</div>}

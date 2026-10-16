@@ -7,6 +7,7 @@ import {
 import {api, getUser, type UatUser} from '../api';
 import IncidentNotificationPanel, {type IncidentRecord, type LocationOption, type IncidentSeverity} from '../components/IncidentNotificationPanel';
 import {OperationalDrawer} from '../components/OperationalDrawer';
+import {PhotoEvidenceGallery} from '../components/PhotoEvidenceGallery';
 
 type ItemCategory='CONSIGNAS'|'NOVEDADES'|'ALARMAS';
 type ItemStatus='PENDING'|'IN_PROGRESS'|'OVERDUE'|'COMPLETED'|'APPROVED'|'DISCARDED'|'NEW'|'ACKNOWLEDGED'|'ESCALATED'|'RESOLVED'|'CRITICAL'|'DRAFT'|'FINALIZED';
@@ -14,6 +15,8 @@ type Priority='LOW'|'MEDIUM'|'HIGH'|'CRITICAL';
 
 type ConsoleItem={
   id:string;
+  evidenceEventId?:string;
+  photoCount?:number;
   category:ItemCategory;
   subtype:string;
   code:string;
@@ -41,7 +44,7 @@ type ConsoleItem={
 type Scope={label:string;companies:string[]|null;region?:string;zone?:string};
 type ClientOption={id:string;code:string;name:string};
 type ServiceLocationRow={clientId:string;pointId:string;postId:string;companyId:string|null;companyName:string;clientName:string;pointName:string;postName:string};
-type OperatorReport={reportId:string;type:'INCIDENT'|'FINDING'|'VULNERABILITY';category:string;subcategory?:string;title:string;description:string;severity:Priority;status:string;occurredAt:string;createdAt:string;username:string;pointId:string;pointName:string;postName:string};
+type OperatorReport={reportId:string;type:'INCIDENT'|'FINDING'|'VULNERABILITY';category:string;subcategory?:string;title:string;description:string;severity:Priority;status:string;occurredAt:string;createdAt:string;username:string;pointId:string;pointName:string;postName:string;photoCount?:number};
 type Filters={
   category:'ALL'|ItemCategory;
   query:string;
@@ -113,6 +116,7 @@ function validateRange(from:string,to:string){ if(!from||!to) return 'Debe elegi
 const severityToPriority=(value:IncidentSeverity|''):Priority=>value==='CRITICAL'?'CRITICAL':value==='MAJOR'?'HIGH':value==='MODERATE'?'MEDIUM':'LOW';
 const incidentToConsoleItem=(record:IncidentRecord):ConsoleItem=>({
   id:`incident:${record.id}`,category:'NOVEDADES',subtype:'Incidente',code:record.code,title:record.title||'Incidente sin título',
+  evidenceEventId:record.id,photoCount:(record.descriptionImages?.length||0)+(record.resolutionImages?.length||0),
   company:record.company||'—',companyCode:record.companyCode||'',companyId:record.companyId,client:record.client||'—',city:record.city||'—',point:record.point||'—',post:record.post||'—',
   responsible:record.collaboratorNames.join(', ')||'Operador de Consola',zone:'Zona Costa',region:'Costa Sur',status:record.status,priority:severityToPriority(record.severity),
   createdAt:record.createdAt||record.updatedAt,updatedAt:record.updatedAt,summary:record.description||'Incidente en elaboración.',source:'NOV',originLabel:`Novedades · Incidentes · ${record.incidentType||record.subcategory||'Sin clasificar'}`,
@@ -120,6 +124,7 @@ const incidentToConsoleItem=(record:IncidentRecord):ConsoleItem=>({
 });
 const operatorReportToConsoleItem=(record:OperatorReport,location?:LocationOption):ConsoleItem=>({
   id:`operator:${record.reportId}`,category:'NOVEDADES',subtype:record.type==='INCIDENT'?'Incidente':record.type==='FINDING'?'Hallazgo':'Vulnerabilidad',
+  evidenceEventId:record.reportId,photoCount:record.photoCount||0,
   code:`OPR-${record.reportId.slice(0,8).toUpperCase()}`,title:record.title,company:location?.company||'Sin dato',companyCode:location?.companyCode||'',companyId:location?.companyId||undefined,client:location?.client||'Sin dato',city:location?.city||'Sin dato',
   point:record.pointName||'Sin dato',post:record.postName||'Sin dato',responsible:record.username||'SGI Operador',zone:'',region:'',
   status:record.severity==='CRITICAL'?'CRITICAL':'PENDING',priority:record.severity,createdAt:record.createdAt,updatedAt:record.occurredAt,
@@ -391,7 +396,9 @@ export default function ConsolaMonitor(){
         </>}>
           <div className="csl-view-summary"><span className={`csl-category ${categoryClass(inspected.category)}`}>{categoryIcon(inspected.category)}{categoryLabel(inspected.category)}</span><strong>{inspected.title}</strong><span className={`csl-priority ${priorityClass(inspected.priority)}`}>{priorityLabel(inspected.priority)}</span><span className={`csl-status ${statusClass(inspected.status)}`}>{statusLabel(inspected.status)}</span></div>
           <dl className="csl-detail-list csl-view-details"><Detail icon={<Building2 size={14}/>} label="Compañía" value={inspected.company}/><Detail icon={<Building2 size={14}/>} label="Cliente" value={inspected.client}/><Detail icon={<MapPin size={14}/>} label="Ciudad" value={inspected.city}/><Detail icon={<MapPin size={14}/>} label="Punto" value={inspected.point}/><Detail icon={<MapPin size={14}/>} label="Puesto" value={inspected.post}/><Detail icon={<UserRound size={14}/>} label="Responsable" value={inspected.responsible}/><Detail icon={<ShieldCheck size={14}/>} label="Subtipo" value={inspected.subtype}/><Detail icon={<Zap size={14}/>} label="Origen" value={inspected.originLabel}/><Detail icon={<CalendarDays size={14}/>} label="Creado" value={formatDateTime(inspected.createdAt)}/><Detail icon={<Clock3 size={14}/>} label="Actualizado" value={formatDateTime(inspected.updatedAt)}/></dl>
-          <section className="csl-view-note"><h4>Resumen operativo</h4><p>{inspected.summary}</p></section><section className="csl-view-note"><h4>Acción recomendada</h4><p>{inspected.recommendedAction}</p></section>
+          <section className="csl-view-note"><h4>Resumen operativo</h4><p>{inspected.summary}</p></section>
+          <PhotoEvidenceGallery eventId={inspected.evidenceEventId} declaredCount={inspected.photoCount}/>
+          <section className="csl-view-note"><h4>Acción recomendada</h4><p>{inspected.recommendedAction}</p></section>
         </OperationalDrawer>}
     </div>
   </div>

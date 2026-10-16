@@ -5,6 +5,7 @@ import {
   CarFront, AlertCircle, X, ChevronRight
 } from 'lucide-react';
 import {api, getUser, type UatUser} from '../api';
+import {PhotoEvidenceGallery} from '../components/PhotoEvidenceGallery';
 
 type ExecutionType='RELIEF'|'PATROL'|'ADHOC';
 type ExecutionStatus='IN_PROGRESS'|'COMPLETED'|'OVERDUE'|'PENDING'|'CRITICAL';
@@ -13,6 +14,8 @@ type Priority='LOW'|'MEDIUM'|'HIGH'|'CRITICAL';
 type TimelineEvent={id:string;at:string;title:string;detail:string;state:'DONE'|'ACTIVE'|'PENDING'};
 type Execution={
   id:string;
+  evidenceEventId?:string;
+  photoCount?:number;
   type:ExecutionType;
   code:string;
   name:string;
@@ -142,6 +145,7 @@ function reviewRequestToExecution(request:any):Execution{
   const priority:Priority=request.priority==='Crítica'?'CRITICAL':request.priority==='Alta'?'HIGH':'MEDIUM';
   return {
     id:`opr-review-${request.id}`,
+    evidenceEventId:String(request.id),photoCount:request.hasPhoto?1:0,
     type:'ADHOC',
     code:`OPR-${String(request.id).slice(0,8).toUpperCase()}`,
     name:request.title,
@@ -163,6 +167,7 @@ function patrolExecutionToExecution(item:any):Execution{
   const completed=Number(item.completedCheckpoints||0),total=Number(item.totalCheckpoints||0);
   return {
     id:`patrol-execution-${item.id}`,type:'PATROL',code:item.patrolCode,name:item.patrolName,
+    evidenceEventId:String(item.id),
     client:item.clientName||'—',company:item.companyName||'—',companyCode:item.companyCode||'',city:item.city||'—',
     point:item.pointName||'—',post:item.postName||'—',responsible:item.submittedBy||'Operador',zone:'',region:'',
     status:item.result==='COMPLETA'?'COMPLETED':item.result==='EN_CURSO'?'IN_PROGRESS':'PENDING',priority:'MEDIUM',start:item.startedAt,end:item.finishedAt,
@@ -319,6 +324,7 @@ export default function ConsignasExecution(){
             <ModalReadField label="Estado" value={statusLabel(inspected.status)}/><ModalReadField label="Resultado" value={inspected.result}/>
           </div>
           <section className="cns-detail-progress"><div><strong>Progreso {inspected.type==='RELIEF'?'del relevo':inspected.type==='PATROL'?'de hitos':'de acciones'}</strong><b>{inspected.progressCurrent}/{inspected.progressTotal}</b></div><div className="bar"><i style={{width:`${Math.round(inspected.progressCurrent/Math.max(inspected.progressTotal,1)*100)}%`}}/></div><span>{Math.round(inspected.progressCurrent/Math.max(inspected.progressTotal,1)*100)}% completado</span></section>
+          <PhotoEvidenceGallery eventId={inspected.evidenceEventId} declaredCount={inspected.photoCount}/>
           <section className="cns-timeline"><div className="cns-timeline-head"><h4>{inspected.type==='RELIEF'?'Hitos del relevo':'Últimos eventos'}</h4></div>{inspected.timeline.map(event=><article key={event.id}><i className={event.state.toLowerCase()}/><div><span>{formatDateTime(event.at)}</span><strong>{event.title}</strong><small>{event.detail}</small></div></article>)}</section>
         </div>
         <footer><button type="button" className="close" onClick={closeInspector}><X size={15}/>Cerrar</button></footer>

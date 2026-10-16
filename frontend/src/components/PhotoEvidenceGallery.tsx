@@ -1,0 +1,43 @@
+import {useEffect, useState} from 'react';
+import {api, ApiError} from '../api';
+
+type Photo={id:string;url:string|null};
+
+/** Galería de archivos realmente almacenados; un contador declarado no crea fotos ficticias. */
+export function PhotoEvidenceGallery({eventId,declaredCount=0}:{eventId?:string;declaredCount?:number}){
+  const [photos,setPhotos]=useState<Photo[]>([]);
+  const [loading,setLoading]=useState(false);
+  const [error,setError]=useState('');
+
+  useEffect(()=>{
+    let active=true;
+    const urls:string[]=[];
+    setPhotos([]);
+    setError('');
+    setLoading(false);
+    if(!eventId)return;
+    setLoading(true);
+    void api.operationalEventEvidences(eventId).then(async refs=>{
+      const loaded=await Promise.all(refs.map(async ref=>{
+        try{const blob=await api.operationalEventEvidenceImage(eventId,ref.id);const url=URL.createObjectURL(blob);urls.push(url);return {id:ref.id,url}}
+        catch{return {id:ref.id,url:null}}
+      }));
+      if(active)setPhotos(loaded);
+      else urls.forEach(url=>URL.revokeObjectURL(url));
+    }).catch(reason=>{
+      if(active && !(reason instanceof ApiError && reason.status===404))setError('No se pudieron consultar las fotografías.');
+    }).finally(()=>{if(active)setLoading(false)});
+    return()=>{active=false;urls.forEach(url=>URL.revokeObjectURL(url))};
+  },[eventId]);
+
+  const available=photos.filter((photo):photo is {id:string;url:string}=>Boolean(photo.url));
+  const unavailable=Math.max(0,declaredCount-available.length,photos.length-available.length);
+  return <section className="nov-photo-block" aria-label="Evidencia fotográfica">
+    <div className="nov-section-title"><strong>Evidencia fotográfica ({available.length})</strong></div>
+    {!loading&&available.length>0&&<div className="nov-photo-grid">{available.map((photo,index)=><a className="nov-evidence-photo" href={photo.url} target="_blank" rel="noopener noreferrer" key={photo.id} aria-label={`Abrir foto ${index+1}`}><img src={photo.url} alt={`Foto ${index+1} de la evidencia`}/><span>Foto {index+1}</span></a>)}</div>}
+    {loading&&<p className="nov-evidence-message">Cargando fotografías…</p>}
+    {!loading&&error&&<p className="nov-evidence-message">{error}</p>}
+    {!loading&&!error&&available.length>0&&unavailable>0&&<p className="nov-evidence-message">{unavailable} {unavailable===1?'fotografía declarada no tiene archivo disponible':'fotografías declaradas no tienen archivos disponibles'}.</p>}
+    {!loading&&!error&&available.length===0&&<p className="nov-evidence-message">No contiene Imagen de Evidencia.</p>}
+  </section>;
+}
