@@ -25,8 +25,11 @@ import java.util.Set;
  */
 @ApplicationScoped
 public class IdentIdentityProvider implements IdentityProvider<TokenAuthenticationRequest> {
-    /** Roles de IDENT para SGI_OPR -> Roles de SGI: Comando. Un Rol que no este aqui no da acceso. */
-    static final Map<String, String> OPERATOR_ROLES = Map.of("AGENTE", "AGENTE_SEGURIDAD", "SUPERVISOR", "SUPERVISOR_SEGURIDAD");
+    /** Roles de IDENT para SGI_OPR -> Roles de SGI: Comando. IDENT puede enviar el nombre corto (AGENTE) o el de SGI
+     *  (AGENTE_SEGURIDAD). Un Rol que no este aqui no da acceso. */
+    static final Map<String, String> OPERATOR_ROLES = Map.of(
+            "AGENTE", "AGENTE_SEGURIDAD", "SUPERVISOR", "SUPERVISOR_SEGURIDAD",
+            "AGENTE_SEGURIDAD", "AGENTE_SEGURIDAD", "SUPERVISOR_SEGURIDAD", "SUPERVISOR_SEGURIDAD");
 
     @Inject IdentTokenVerifier verifier;
     @Inject InstanceCountrySource instances;

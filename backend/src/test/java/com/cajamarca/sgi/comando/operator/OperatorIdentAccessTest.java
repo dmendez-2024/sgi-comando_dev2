@@ -55,9 +55,15 @@ class OperatorIdentAccessTest {
         bearer(expired).get("/api/v1/operator/runtime").then().statusCode(401);
     }
 
+    @Test void sgiRoleNameFromIdentGivesOperatorAccess() {
+        UUID assignment = ensureAgentAssignment(em);
+        Map<String,Object> c = agentClaims(); c.put("groups", List.of("AGENTE_SEGURIDAD"));
+        bearer(c).queryParam("assignmentId", assignment).get("/api/v1/operator/runtime").then().statusCode(200);
+    }
+
     @Test void unknownIdentRoleGivesNoOperatorAccess() {
         ensureAgentAssignment(em);
-        Map<String,Object> c = agentClaims(); c.put("groups", List.of("AGENTE_SEGURIDAD"));
+        Map<String,Object> c = agentClaims(); c.put("groups", List.of("GUARDIA"));
         bearer(c).get("/api/v1/operator/runtime").then().statusCode(403);
     }
 
