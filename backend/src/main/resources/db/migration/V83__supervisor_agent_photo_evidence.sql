@@ -3,4 +3,4 @@
 -- y el envío de la evaluación fallaba con 500. Se agrega el tipo; los existentes no cambian.
 ALTER TABLE evidence_object DROP CONSTRAINT ck_evidence_object_target_type;
 ALTER TABLE evidence_object ADD CONSTRAINT ck_evidence_object_target_type
-  CHECK (target_type IN ('PATROL_CHECKPOINT','CONSIGNMENT_EVIDENCE','LOGBOOK_FIELD','INVENTORY_ASSET','SUPERVISOR_AGENT_PHOTO'));
+  CHECK (target_type IN ('PATROL_CHECKPOINT','CONSIGNMENT_EVIDENCE','LOGBOOK_FIELD','INVENTORY_ASSET','SUPERVISOR_AGENT_PHOTO','POST_CONFIG'));
