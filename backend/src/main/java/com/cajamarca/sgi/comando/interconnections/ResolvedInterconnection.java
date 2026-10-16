@@ -34,11 +34,15 @@ public class ResolvedInterconnection {
         if (method == null) method = httpMethod;
         if (maxRetries == null) maxRetries = retries;
         if ((baseUrl == null || baseUrl.isBlank()) && resolvedUrl != null && !resolvedUrl.isBlank()) {
-            URI u = URI.create(resolvedUrl.trim());
+            String rawUrl = resolvedUrl.trim();
+            // CORE may return a URL template, including placeholders in its query string.
+            URI u = URI.create(rawUrl.replaceAll("\\{[A-Za-z][A-Za-z0-9_]*\\}", "placeholder"));
             if (u.getScheme() == null || !u.getScheme().toLowerCase().startsWith("http") || u.getRawAuthority() == null)
                 throw new InterconnectionException("INVALID_CORE_RESOLUTION", "CORE returned a non-HTTP resolvedUrl");
             baseUrl = u.getScheme() + "://" + u.getRawAuthority();
-            path = (u.getRawPath() == null || u.getRawPath().isEmpty() ? "/" : u.getRawPath()) + (u.getRawQuery() == null ? "" : "?" + u.getRawQuery());
+            int authorityEnd = rawUrl.indexOf(u.getRawAuthority(), rawUrl.indexOf("://") + 3) + u.getRawAuthority().length();
+            path = rawUrl.substring(authorityEnd);
+            if (path.isEmpty() || path.startsWith("?")) path = "/" + path;
         }
     }
 

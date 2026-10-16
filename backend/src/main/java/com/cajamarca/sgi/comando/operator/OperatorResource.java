@@ -2,6 +2,7 @@ package com.cajamarca.sgi.comando.operator;
 
 import com.cajamarca.sgi.comando.common.TenantContext;
 import com.cajamarca.sgi.comando.companies.Company;
+import com.cajamarca.sgi.comando.security.AppUser;
 import com.cajamarca.sgi.comando.assignments.*;
 import com.cajamarca.sgi.comando.coordination.CoordinationPost;
 import com.cajamarca.sgi.comando.coordination.SupervisionRoute;
@@ -20,6 +21,7 @@ import jakarta.persistence.EntityManager;
 import jakarta.transaction.Transactional;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.*;
+import org.eclipse.microprofile.config.inject.ConfigProperty;
 import java.time.*;
 import java.util.*;
 import java.security.MessageDigest;
@@ -40,6 +42,7 @@ public class OperatorResource {
     @Inject OperationalScopeService scope;
     @Inject EntityManager em;
     @Inject ObjectMapper mapper;
+    @ConfigProperty(name="sgi.operator.relief-uat-enabled",defaultValue="false") boolean enabled;
     @Inject OperatorPatrols patrols;
     @Inject PatrolExecutionService patrolExecutions;
     @Inject TaskEvidenceService taskEvidences;
@@ -57,8 +60,30 @@ public class OperatorResource {
     }
     private record NextAction(String type,UUID targetId,String title,Instant scheduledAt,Instant endsAt) {}
 
-    private void actor() { ctx.actor(); }
-    private UUID employee() { return ctx.employee(); }
+    private AppUser actor() {
+        if(!enabled) throw new NotFoundException("Integración de relevo UAT deshabilitada");
+        if(com.cajamarca.sgi.comando.security.IdentIdentity.isIdent(identity)) return null; // IDENT ya autenticó; el Rol viene del token
+        AppUser u=AppUser.find("username=?1 and instanceCountryId=?2",identity.getPrincipal().getName(),tenant.instanceCountryId()).firstResult();
+        if(u==null || !u.active) throw new ForbiddenException("Usuario no habilitado en esta instancia");
+        return u;
+    }
+    private UUID employee() {
+        AppUser u=actor();
+        if(!identity.hasRole("AGENTE_SEGURIDAD") && !identity.hasRole("SUPERVISOR_SEGURIDAD")) throw new ForbiddenException("Rol de operador requerido");
+        if(com.cajamarca.sgi.comando.security.IdentIdentity.isIdent(identity)) {
+            // Login con IDENT: el empleado se encuentra por el persona_id de DHO que envia IDENT (V29), no por app_user.
+            Long personaId=com.cajamarca.sgi.comando.security.IdentIdentity.personaId(identity);
+            if(personaId==null) throw new ForbiddenException("IDENT aún no envía el persona_id de DHO de esta persona");
+            List<?> byPersona=em.createNativeQuery("select employee_id from employee_operational_snapshot where instance_country_id=:tenant and persona_id=:persona")
+                .setParameter("tenant",tenant.instanceCountryId()).setParameter("persona",personaId).getResultList();
+            if(byPersona.size()!=1) throw new ForbiddenException("Vínculo persona empleado pendiente de configuración");
+            return UUID.fromString(byPersona.get(0).toString());
+        }
+        List<?> rows=em.createNativeQuery("select employee_id from operator_employee_binding where instance_country_id=:tenant and username=:user and active=true")
+            .setParameter("tenant",tenant.instanceCountryId()).setParameter("user",u.username).getResultList();
+        if(rows.size()!=1) throw new ForbiddenException("Vínculo usuario empleado pendiente de configuración");
+        return UUID.fromString(rows.get(0).toString());
+    }
     @GET @Path("/incident-taxonomy")
     public ObjectNode incidentTaxonomy(@QueryParam("category") String category) {
         actor();
@@ -340,7 +365,7 @@ public class OperatorResource {
         if(c.coordination()) {
             inventoryContext=mapper.createObjectNode().put("status","PENDING_SOURCE");
             inventoryContext.putArray("items");
-        } else inventoryContext=inventory.runtime(c.post.id);
+        } else inventoryContext=inventory.runtime(c.post.id,c.post.code);
         CoreInstanceCountrySnapshot country=CoreInstanceCountrySnapshot.find("instanceCountryId=?1",tenant.instanceCountryId()).firstResult();
         n.put("assignmentId",c.assignment.id.toString()).put("shiftOccurrenceId",c.shift.id.toString()).put("postId",c.targetId().toString())
             .put("postName",c.targetName()).put("assignmentTargetType",c.coordination()?"COORDINATION_POST":"OPERATIONAL_POST")
@@ -402,7 +427,7 @@ public class OperatorResource {
         ObjectNode versionedContext=n.deepCopy();
         if(versionedContext.path("inventory").isObject()) {
             ObjectNode versionedInventory=(ObjectNode)versionedContext.path("inventory");
-            versionedInventory.remove(List.of("fetchedAt","warning","status"));
+            versionedInventory.remove(List.of("fetchedAt","warning","status","message"));
         }
         versionedContext.remove("inventoryStatus");
         n.put("configurationVersion",hash(versionedContext.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8)));

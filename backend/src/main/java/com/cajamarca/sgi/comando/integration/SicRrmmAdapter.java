@@ -7,6 +7,9 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 
 import java.util.*;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.util.HexFormat;
 
 /** Adaptador de inventario. La URL y credencial efectiva siempre se resuelven en CORE. */
 @ApplicationScoped
@@ -18,44 +21,63 @@ public class SicRrmmAdapter implements ExternalPorts.SicRrmmPort {
     @Inject ObjectMapper mapper;
 
     @Override
-    public List<Map<String,Object>> expectedAssets(UUID instanceCountryId, UUID postId) {
+    public List<Map<String,Object>> expectedAssets(UUID instanceCountryId, String postReference) {
+        if (postReference == null || postReference.isBlank())
+            throw new InterconnectionException("RRMM_POST_REFERENCE_MISSING", "El Puesto no tiene una referencia para consultar SIC:RRMM.");
         IntegrationRequest request = new IntegrationRequest();
-        request.pathParams.put("postId", postId.toString());
-        request.queryParams.put("instanceCountryId", instanceCountryId.toString());
+        request.pathParams.put("idPuesto", postReference.trim());
+        request.queryParams.put("holderType", "POSITION");
+        request.queryParams.put("holderReference", postReference.trim());
         IntegrationResult result = executor.execute(InterconnectionIds.RRMM_EXPECTED_ASSETS, EXPECTED_INTERFACE, request);
         if (!result.successful()) throw new InterconnectionException("RRMM_EXPECTED_ASSETS_HTTP_" + result.statusCode,
             "SIC:RRMM respondió HTTP " + result.statusCode + " al consultar los activos del Puesto.");
+        return parseHoldings(result.body, postReference.trim());
+    }
+
+    List<Map<String,Object>> parseHoldings(String body, String postReference) {
         try {
-            JsonNode root = mapper.readTree(result.body);
-            JsonNode items = root != null && root.isArray() ? root : first(root, "items", "assets", "data");
+            JsonNode root = mapper.readTree(body);
+            JsonNode items = root == null ? null : root.path("items");
             if (items == null || !items.isArray()) throw new IllegalArgumentException("items ausente");
-            String responseVersion = text(root, "sourceVersion");
-            List<Map<String,Object>> assets = new ArrayList<>();
+            List<Map<String,Object>> holdings = new ArrayList<>();
+            Set<UUID> seen = new HashSet<>();
             for (JsonNode item : items) {
-                UUID assetId = uuid(item, "assetId", true);
-                UUID productId = uuid(item, "productId", false);
-                String code = required(item, "code", 100);
-                String description = required(item, "description", 300);
-                String sourceVersion = optional(item, "sourceVersion", 120);
-                if (sourceVersion == null) sourceVersion = responseVersion;
-                if (sourceVersion == null || sourceVersion.isBlank()) throw new IllegalArgumentException("sourceVersion ausente");
-                Map<String,Object> asset = new LinkedHashMap<>();
-                asset.put("assetId", assetId);
-                asset.put("productId", productId);
-                asset.put("code", code);
-                asset.put("description", description);
-                asset.put("expectedCondition", optional(item, "expectedCondition", 32) == null ? value(item,"condition","UNKNOWN") : optional(item,"expectedCondition",32));
-                asset.put("assignmentStatus", optional(item, "assignmentStatus", 32) == null ? value(item,"status","ASSIGNED") : optional(item,"assignmentStatus",32));
-                asset.put("critical", item.path("critical").asBoolean(false));
-                asset.put("sourceVersion", sourceVersion);
-                asset.put("sourcePayload", item.toString());
-                assets.add(asset);
+                String type = required(item, "recordType", 32);
+                if (!Set.of("IDENTIFIED", "FUNGIBLE", "LOTTED").contains(type)) throw new IllegalArgumentException("recordType inválido");
+                if (!"POSITION".equals(required(item, "holderType", 32)) ||
+                    !postReference.equalsIgnoreCase(required(item, "holderReference", 120)))
+                    throw new IllegalArgumentException("tenencia de otro Puesto");
+                UUID recordId = uuid(item, "recordId", true);
+                if (!seen.add(recordId)) throw new IllegalArgumentException("recordId duplicado");
+                UUID productId = uuid(item, "productId", true);
+                String code = "IDENTIFIED".equals(type) ? required(item, "assetCode", 100) : required(item, "productCode", 100);
+                String description = required(item, "productName", 300);
+                String status = required(item, "status", 32);
+                if (!"ASSIGNED".equals(status) || item.path("quantity").decimalValue().signum() <= 0)
+                    throw new IllegalArgumentException("tenencia sin asignación vigente");
+                Map<String,Object> holding = new LinkedHashMap<>();
+                holding.put("assetId", recordId);
+                holding.put("productId", productId);
+                holding.put("code", code);
+                holding.put("description", description);
+                holding.put("expectedCondition", "UNKNOWN");
+                holding.put("assignmentStatus", status);
+                holding.put("critical", false);
+                holding.put("recordType", type);
+                holding.put("quantity", item.path("quantity").decimalValue());
+                holding.put("serialNumber", optional(item, "serialNumber", 120));
+                holding.put("lotCode", optional(item, "lotCode", 120));
+                holding.put("sourcePayload", item.toString());
+                holdings.add(holding);
             }
-            return assets;
-        } catch (InterconnectionException e) {
-            throw e;
+            holdings.sort(Comparator.comparing(h -> h.get("assetId").toString()));
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            for (Map<String,Object> holding : holdings) digest.update(holding.get("sourcePayload").toString().getBytes(StandardCharsets.UTF_8));
+            String version = "RRMM-HOLDINGS-" + HexFormat.of().formatHex(digest.digest());
+            for (Map<String,Object> holding : holdings) holding.put("sourceVersion", version);
+            return holdings;
         } catch (Exception e) {
-            throw new InterconnectionException("RRMM_INVALID_EXPECTED_ASSETS", "SIC:RRMM devolvió un inventario inválido.", e);
+            throw new InterconnectionException("RRMM_INVALID_HOLDINGS", "SIC:RRMM devolvió tenencias inválidas para el Puesto.", e);
         }
     }
 

@@ -50,7 +50,7 @@ public class SupervisorEvaluationResource {
         List<?> completed=em.createNativeQuery("select id from supervisor_evaluation where instance_country_id=:t and supervisor_assignment_id=:a and post_id=:p limit 1")
           .setParameter("t",tenant.instanceCountryId()).setParameter("a",s.supervisorAssignmentId).setParameter("p",postId).getResultList();
         out.put("evaluationCompleted",!completed.isEmpty());if(!completed.isEmpty())out.put("evaluationId",completed.get(0).toString());
-        out.set("inventory",inventory.runtime(post.id)); out.set("novelties",novelties(s));
+        out.set("inventory",inventory.runtime(post.id,post.code)); out.set("novelties",novelties(s));
         return out;
     }
 

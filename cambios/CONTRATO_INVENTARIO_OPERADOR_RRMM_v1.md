@@ -5,7 +5,7 @@ Versión contractual: `v1`
 
 ## Responsabilidades
 
-- `SIC_RRMM` es la fuente maestra de activos, asignaciones y condición esperada.
+- `SIC_RRMM` es la fuente maestra de activos, materiales y sus tenencias; la condición observada se registra durante el relevo.
 - `SGI_COM` mantiene una instantánea por Puesto, la entrega al Operador y conserva los reportes del relevo.
 - `SGI_OPR` presenta los activos al agente, carga evidencias y reporta la condición observada.
 - Si RRMM no responde, SGI Comando entrega la última instantánea como `STALE`; sin instantánea responde `PENDING_SOURCE`.
@@ -25,33 +25,48 @@ Idempotency-Key: <clientRequestId>  # obligatorio en operaciones POST
 
 Las URL efectivas y credenciales se resuelven desde CORE. SGI Comando no almacena secretos del otro sistema en el contrato.
 
-## 1. SGI Comando consulta el inventario esperado
+## 1. SGI Comando consulta las tenencias del puesto
 
 - Interconexión: `SGI_COM_SIC_RRMM_0001_v001`
 - Interfaz: `SGI_COM_SIC_RRMM_0001_IF01`
 - Método: `GET`
-- Ruta RRMM: `/api/v1/operational-assets/posts/{postId}/expected?instanceCountryId={instanceCountryId}`
+- Ruta RRMM: `/dev.rrmm/api/v1/operations/movements/holdings?holderType=POSITION&holderReference={idPuesto}`.
+- `idPuesto` es el código del puesto en SGI Comando, no su UUID local.
 
 Respuesta:
 
 ```json
 {
-  "sourceVersion": "RRMM-2026.10.07",
   "items": [
     {
-      "assetId": "0f339371-d769-4ded-9f11-a4b42e71505c",
+      "recordType": "IDENTIFIED",
+      "recordId": "0f339371-d769-4ded-9f11-a4b42e71505c",
+      "holderType": "POSITION",
+      "holderReference": "GGTT01",
       "productId": "62799de6-9cbd-4ae7-b77a-6a0956c58abc",
-      "code": "RAD-001",
-      "description": "Radio portátil",
-      "expectedCondition": "GOOD",
-      "assignmentStatus": "ASSIGNED",
-      "critical": true
+      "productCode": "RAD",
+      "productName": "Radio portátil",
+      "assetCode": "RAD-001",
+      "quantity": 1,
+      "status": "ASSIGNED"
+    },
+    {
+      "recordType": "LOTTED",
+      "recordId": "c9bc8960-81a7-44df-807c-48ffbf67dc73",
+      "holderType": "POSITION",
+      "holderReference": "GGTT01",
+      "productId": "65c07e86-8e0d-4058-8e95-189ea4bb734f",
+      "productCode": "BAT",
+      "productName": "Batería",
+      "quantity": 3.5,
+      "lotCode": "LOT-01",
+      "status": "ASSIGNED"
     }
   ]
 }
 ```
 
-`assetId`, `code`, `description` y `sourceVersion` son obligatorios. Todos los ítems de una respuesta deben tener la misma versión.
+SGI Comando valida `recordId`, `recordType`, `holderType`, `holderReference`, `productId`, `productName`, `quantity` y `status`. El `sourceVersion` local se calcula desde el contenido recibido. Los activos `IDENTIFIED` se usan en la confirmación del relevo; los saldos `FUNGIBLE` y `LOTTED` se muestran por separado.
 
 ## 2. SGI Operador obtiene el inventario
 
@@ -66,7 +81,7 @@ Fragmento de respuesta:
 {
   "inventory": {
     "status": "AVAILABLE",
-    "sourceVersion": "RRMM-2026.10.07",
+    "sourceVersion": "RRMM-HOLDINGS-<hash>",
     "fetchedAt": "2026-10-07T18:30:00Z",
     "items": [
       {
@@ -74,9 +89,22 @@ Fragmento de respuesta:
         "productId": "62799de6-9cbd-4ae7-b77a-6a0956c58abc",
         "code": "RAD-001",
         "description": "Radio portátil",
-        "expectedCondition": "GOOD",
+        "expectedCondition": "UNKNOWN",
         "assignmentStatus": "ASSIGNED",
-        "critical": true
+        "critical": false,
+        "recordType": "IDENTIFIED",
+        "quantity": 1
+      }
+    ],
+    "materials": [
+      {
+        "recordId": "c9bc8960-81a7-44df-807c-48ffbf67dc73",
+        "productId": "65c07e86-8e0d-4058-8e95-189ea4bb734f",
+        "code": "BAT",
+        "description": "Batería",
+        "recordType": "LOTTED",
+        "quantity": 3.5,
+        "lotCode": "LOT-01"
       }
     ]
   }
@@ -87,7 +115,7 @@ Estados de lectura:
 
 | Estado | Acción del Operador |
 |---|---|
-| `AVAILABLE` | Presenta y exige confirmar todos los activos. |
+| `AVAILABLE` | Presenta activos y materiales; exige confirmar los activos identificados. |
 | `STALE` | Presenta la última instantánea, muestra advertencia y permite reportar. |
 | `PENDING_SOURCE` | No presenta activos y envía el relevo con ese mismo estado. |
 
@@ -195,9 +223,9 @@ Solo se exponen Puntos `ACTIVE`, asignados operativamente a la Compañía, y sus
 
 ## Persistencia y auditoría
 
-La migración `V68__rrmm_inventory_integration.sql` crea:
+La migración `V72__rrmm_inventory_integration.sql` crea las tablas y `V84__rrmm_holdings_snapshot.sql` agrega tipo de tenencia, cantidad, serie y lote:
 
-- `inventory_expected_asset`: instantánea vigente de activos esperados.
+- `inventory_expected_asset`: instantánea vigente de activos identificados y materiales.
 - `inventory_sync_state`: versión y fecha de la última consulta válida.
 - `inventory_report`: cabecera, JSON original, hash, correlación y estado de entrega.
 - `inventory_report_item`: condición esperada y observada por activo.
@@ -207,8 +235,8 @@ Los reportes pendientes se reintentan cada 60 segundos. Después de diez intento
 
 ## Configuración necesaria para UAT
 
-1. Registrar en CORE el binding de `SGI_COM_SIC_RRMM_0001_v001` y su interfaz `SGI_COM_SIC_RRMM_0001_IF01`.
+1. Verificar en CORE que el binding de `SGI_COM_SIC_RRMM_0001_v001` y su interfaz `SGI_COM_SIC_RRMM_0001_IF01` resuelva la ruta de tenencias indicada arriba.
 2. Registrar en CORE el binding de `SGI_COM_SIC_RRMM_0002_v001` y su interfaz `SGI_COM_SIC_RRMM_0002_IF01`.
 3. Configurar en el proveedor de credenciales la referencia `SIC_RRMM_SGI_COM_0001_v001`, o cambiar `SGI_RRMM_INBOUND_CREDENTIAL_REF`. En Docker local, el secreto se inyecta con `SGI_CREDENTIAL_SIC_RRMM_SGI_COM_0001_V001`.
-4. SIC:RRMM debe implementar los dos endpoints de activos y aceptar las cabeceras canónicas.
+4. SIC:RRMM debe exponer la consulta de tenencias y recibir el reporte de estado con las cabeceras canónicas.
 5. SGI Operador debe consumir `inventory`, cargar evidencia con `INVENTORY_ASSET` y enviar `inventoryItems[]`.
