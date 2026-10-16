@@ -174,10 +174,12 @@ public class OperationResource {
         Map<UUID,PostEntity> lastPost = new HashMap<>();
         for (OperationalAssignmentEntity a : history) {
             if (!employees.containsKey(a.effectiveEmployeeId()) || lastPost.containsKey(a.effectiveEmployeeId())) continue;
-            AssignmentPlanEntity plan = AssignmentPlanEntity.findById(a.assignmentPlanId);
+            AssignmentPlanEntity plan = AssignmentPlanEntity.find("id=?1 and instanceCountryId=?2", a.assignmentPlanId, tenant.instanceCountryId()).firstResult();
             if (plan == null || !("PUBLISHED".equals(plan.status) || "CLOSED".equals(plan.status))) continue;
-            ShiftOccurrenceEntity shift = ShiftOccurrenceEntity.findById(a.shiftOccurrenceId);
-            if (shift == null) continue;
+            ShiftOccurrenceEntity shift = ShiftOccurrenceEntity.find("id=?1 and instanceCountryId=?2", a.shiftOccurrenceId, tenant.instanceCountryId()).firstResult();
+            // Los turnos de Puestos de Coordinación no tienen postId; no forman parte
+            // de la prelación de cobertura de un Puesto operativo.
+            if (shift == null || shift.postId == null) continue;
             PostEntity assignedPost = posts.computeIfAbsent(shift.postId, id -> PostEntity.findById(id));
             if (assignedPost != null) lastPost.put(a.effectiveEmployeeId(), assignedPost);
         }
