@@ -83,7 +83,7 @@ function checkpointInputProblem(cp:Checkpoint){
   if(cp.originMode==='ATS'&&!hasAts)return `${cp.code}: seleccione el Hito en el plano ATS para guardar sus coordenadas.`;
   if(cp.originMode==='FIELD'&&!hasGps)return `${cp.code}: capture o ingrese latitud y longitud GPS.`;
   if(cp.originMode==='MIXED'&&!hasAts&&!hasGps)return `${cp.code}: agregue una ubicación del plano ATS o una ubicación GPS.`;
-  if(cp.visintEnabled&&!cp.requiresEvidence)return `${cp.code}: VISINT requiere activar «Requiere evidencia».`;
+  // VISINT sigue a «Requiere evidencia» al guardar (visintEnabled = requiresEvidence): desmarcarla lo apaga.
   return '';
 }
 function clonePatrol(p:Patrol):Patrol{return {...p,checkpoints:p.checkpoints.map(c=>({...c,rules:c.rules.map(r=>({...r}))}))}}

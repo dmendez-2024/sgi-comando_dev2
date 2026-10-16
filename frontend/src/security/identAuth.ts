@@ -52,9 +52,57 @@ async function finishLogin() {
   const r = await fetch(`${IDENT_URL}/oauth2/token`, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body });
   const x = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(x.code === 'ACCESS_DENIED' ? 'No tienes acceso a SGI: Comando. Consulta con tu administrador.' : (x.detail || x.code || 'IDENT no entregó el token.'));
-  accessToken = x.access_token;
+  setToken(x.access_token);
   sessionStorage.removeItem('sgi_pkce_verifier'); sessionStorage.removeItem('sgi_oauth_state');
   window.history.replaceState({}, '', sessionStorage.getItem('sgi_return_to') || `${BASE}/`);
+}
+
+// Renovacion sin recargar: el token de IDENT para la web dura 10 minutos y no trae refresh_token. Un minuto antes de
+// que venza se repite el login en un iframe oculto: con la sesion de IDENT abierta vuelve al callback con un code
+// (mismo dominio, se lee su URL) y se cambia por un token nuevo. Sin sesion, IDENT muestra /ingresar (no respeta
+// prompt=none): se abandona y la siguiente llamada con 401 hace el login normal.
+const RENEW_BEFORE_MS = 60_000, RENEW_TIMEOUT_MS = 15_000;
+let renewTimer: number | undefined;
+let renewing: Promise<boolean> | null = null;
+
+function setToken(token: string) {
+  accessToken = token;
+  window.clearTimeout(renewTimer);
+  const exp = identClaims()?.exp;
+  if (exp) renewTimer = window.setTimeout(() => void renewIdentToken(), Math.max(exp * 1000 - Date.now() - RENEW_BEFORE_MS, 0));
+}
+
+/** Pide un token nuevo a IDENT sin salir de la pagina. true = hay token nuevo; false = hay que hacer el login normal. */
+export function renewIdentToken(): Promise<boolean> {
+  if (!identEnabled()) return Promise.resolve(false);
+  renewing ??= renewInFrame().catch(() => false).finally(() => { renewing = null; });
+  return renewing;
+}
+
+async function renewInFrame(): Promise<boolean> {
+  const verifier = random(48), state = random(20);
+  const q = new URLSearchParams({ client_id: CLIENT_ID, redirect_uri: REDIRECT_URI, response_type: 'code', state,
+    code_challenge: await sha256(verifier), code_challenge_method: 'S256', prompt: 'none' });
+  const frame = document.createElement('iframe');
+  frame.style.display = 'none'; frame.src = `${IDENT_URL}/oauth2/authorize?${q}`;
+  document.body.appendChild(frame);
+  let code: string | null = null;
+  try {
+    for (const t0 = Date.now(); Date.now() - t0 < RENEW_TIMEOUT_MS;) {
+      await new Promise(r => setTimeout(r, 100));
+      let url: URL;
+      try { url = new URL(frame.contentWindow!.location.href); } catch { continue; }   // aun en otro origen o cargando
+      if (url.pathname === `${BASE}/oauth/callback`) { if (url.searchParams.get('state') === state) code = url.searchParams.get('code'); break; }
+      if (/\/(ingresar|login)$/.test(url.pathname)) break;                           // sin sesion de IDENT
+    }
+  } finally { frame.remove(); }
+  if (!code) return false;
+  const body = new URLSearchParams({ grant_type: 'authorization_code', code, client_id: CLIENT_ID, redirect_uri: REDIRECT_URI, code_verifier: verifier });
+  const r = await fetch(`${IDENT_URL}/oauth2/token`, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body });
+  const x = await r.json().catch(() => ({}));
+  if (!r.ok || !x.access_token) return false;
+  setToken(x.access_token);
+  return true;
 }
 
 /** Cuantas Plataformas tiene la persona en IDENT (con 2 o mas se muestra "Plataformas"). null si no se pudo saber. */
@@ -76,6 +124,8 @@ export function identSignOut() { accessToken = null; window.location.assign(`${I
 
 /** Antes de mostrar SGI: lee la configuracion y termina o inicia el login. true = se puede mostrar SGI. */
 export async function ensureIdentLogin(): Promise<boolean> {
+  // Dentro del iframe de renovacion: el callback lo procesa la pagina principal (no gastar el code ni mostrar SGI).
+  if (window.self !== window.top && window.location.pathname === `${BASE}/oauth/callback`) return false;
   const r = await fetch(`${API}/api/v1/auth/ident-config`);
   if (!r.ok) throw new Error(`SGI: Comando no pudo obtener la configuración de ingreso (HTTP ${r.status}).`);
   const c = await r.json() as { enabled: boolean; identUrl?: string; clientId?: string };

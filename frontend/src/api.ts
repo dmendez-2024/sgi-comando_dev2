@@ -1,4 +1,4 @@
-import {identEnabled,identRoles,identToken,startLogin} from './security/identAuth';
+import {identEnabled,identRoles,identToken,renewIdentToken,startLogin} from './security/identAuth';
 const API = import.meta.env.VITE_API_URL || '/dev.comando';
 // const API=import.meta.env.VITE_API_URL ?? 'http://localhost:8080';
 export type UatUser='presidente'|'dlatam'|'don'|'dnacional'|'dzonal'|'jregional'|'coord'|'asistente'|'supervisor'|'agente'|'cliente';
@@ -16,26 +16,34 @@ export const getUser=():UatUser=>{
 };
 export class ApiError extends Error{status:number;body:string;constructor(status:number,body:string){super(`${status} ${body}`);this.status=status;this.body=body}}
 async function request<T>(path:string,init?:RequestInit,user?:UatUser):Promise<T>{
- const headers=new Headers(init?.headers); headers.set('Content-Type','application/json'); headers.set('Authorization',authHeader(user));
- const res=await fetch(`${API}${path}`,{...init,headers}); if(!res.ok){reloginIfExpired(res.status,user);const body=await res.text();throw new ApiError(res.status,body)} return res.status===204?undefined as T:res.json();
+ const res=await fetchWithRenew(path,init,user,true); if(!res.ok){reloginIfExpired(res.status,user);const body=await res.text();throw new ApiError(res.status,body)} return res.status===204?undefined as T:res.json();
 }
 
 async function binaryRequest(path:string,init?:RequestInit,user?:UatUser):Promise<Blob>{
- const headers=new Headers(init?.headers); headers.set('Authorization',authHeader(user));
- const res=await fetch(`${API}${path}`,{...init,headers}); if(!res.ok){reloginIfExpired(res.status,user);const body=await res.text();throw new ApiError(res.status,body)} return res.blob();
+ const res=await fetchWithRenew(path,init,user,false); if(!res.ok){reloginIfExpired(res.status,user);const body=await res.text();throw new ApiError(res.status,body)} return res.blob();
+}
+/** fetch con el token actual; ante 401 con IDENT renueva el token sin recargar y reintenta una vez. */
+async function fetchWithRenew(path:string,init:RequestInit|undefined,user:UatUser|undefined,json:boolean):Promise<Response>{
+ const send=()=>{const headers=new Headers(init?.headers);if(json)headers.set('Content-Type','application/json');headers.set('Authorization',authHeader(user));return fetch(`${API}${path}`,{...init,headers})};
+ const res=await send(); return res.status===401&&canRenew(user)&&await renewIdentToken()?send():res;
 }
 async function atsCurrentOrNull(pointId:string):Promise<any|null>{
  try{return await request<any>(`/api/points/${encodeURIComponent(pointId)}/ats`)}catch(error){if(error instanceof ApiError&&error.status===404)return null;throw error}
 }
 /** Con IDENT: token de la persona. Sin IDENT, o para el Simulador de Agente (usuario UAT explicito): usuario y contrasena UAT. */
 const authHeader=(user?:UatUser)=>identEnabled()&&!user?`Bearer ${identToken()}`:"Basic "+btoa(`${user??currentUser}:${PASSWORD}`);
-/** Token de IDENT vencido: se pide uno nuevo (con sesion de IDENT abierta vuelve sin contrasena). */
-const reloginIfExpired=(status:number,user?:UatUser)=>{if(status===401&&identEnabled()&&!user)void startLogin()};
+const canRenew=(user?:UatUser)=>identEnabled()&&!user;
+/** Token de IDENT vencido y sin renovacion posible: login de IDENT (con sesion abierta vuelve sin contrasena). */
+const reloginIfExpired=(status:number,user?:UatUser)=>{if(status===401&&canRenew(user))void startLogin()};
 // TEMPORAL (demo UAT): el Simulador de Agente llama a la API del operador como el usuario UAT "agente",
 // sin cambiar el usuario del resto de la app. Quitar junto con el simulador.
 const SIMULATOR_USER:UatUser='agente';
 /** POST multipart/form-data con progreso de subida. No fija Content-Type: el navegador agrega el boundary. */
-export function multipartRequest<T>(path:string,form:FormData,opts:{onProgress?:(pct:number)=>void;signal?:AbortSignal;idempotencyKey?:string;user?:UatUser}={}):Promise<T>{
+export async function multipartRequest<T>(path:string,form:FormData,opts:{onProgress?:(pct:number)=>void;signal?:AbortSignal;idempotencyKey?:string;user?:UatUser}={}):Promise<T>{
+ try{return await sendMultipart<T>(path,form,opts)}
+ catch(e){if(e instanceof ApiError&&e.status===401&&canRenew(opts.user)&&await renewIdentToken())return sendMultipart<T>(path,form,opts);if(e instanceof ApiError)reloginIfExpired(e.status,opts.user);throw e}
+}
+function sendMultipart<T>(path:string,form:FormData,opts:{onProgress?:(pct:number)=>void;signal?:AbortSignal;idempotencyKey?:string;user?:UatUser}):Promise<T>{
  return new Promise((resolve,reject)=>{
   const xhr=new XMLHttpRequest(); xhr.open("POST",`${API}${path}`); xhr.setRequestHeader("Authorization",authHeader(opts.user));
   if(opts.idempotencyKey)xhr.setRequestHeader("Idempotency-Key",opts.idempotencyKey);
@@ -53,9 +61,8 @@ const patrolImageUpload=(checkpointId:string,file:File)=>standardImageUpload(`/a
 const consignmentImageUpload=(evidenceId:string,file:File)=>standardImageUpload(`/api/consignments/evidences/${encodeURIComponent(evidenceId)}/standard-images`,file);
 const postImageUpload=(postId:string,file:File)=>standardImageUpload(`/api/post-configurations/${encodeURIComponent(postId)}/standard-images`,file);
 async function atsUpload(pointId:string,file:File):Promise<any>{
- const headers=new Headers(); headers.set('Authorization',authHeader()); headers.set('Content-Type','application/octet-stream');
- const res=await fetch(`${API}/api/points/${encodeURIComponent(pointId)}/ats/upload?filename=${encodeURIComponent(file.name)}`,{method:'POST',headers,body:file});
- if(!res.ok){const body=await res.text();throw new ApiError(res.status,body)} return res.json();
+ const res=await fetchWithRenew(`/api/points/${encodeURIComponent(pointId)}/ats/upload?filename=${encodeURIComponent(file.name)}`,{method:'POST',headers:{'Content-Type':'application/octet-stream'},body:file},undefined,false);
+ if(!res.ok){reloginIfExpired(res.status);const body=await res.text();throw new ApiError(res.status,body)} return res.json();
 }
 export const api={
  operationalReports:(type?:'INCIDENT'|'FINDING'|'VULNERABILITY')=>request<any[]>(`/api/operational-reports${type?`?type=${type}`:''}`),

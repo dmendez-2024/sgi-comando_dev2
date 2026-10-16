@@ -27,7 +27,7 @@ export async function uploadStandardImages<T>(files:File[],current:number,upload
 export const uploadSummary=(uploaded:number)=>uploaded===1?'Foto estándar agregada.':`${uploaded} fotos estándar agregadas.`;
 
 /** Fotos estándar (hasta 5) de un Hito, evidencia de Consigna o campo de Bitácora; VISINT las recibe todas como referencias. */
-export default function StandardGallery({images,load,onAdd,onRemove,editable=true}:{images:StandardImageRef[];load:(id:string)=>Promise<Blob>;onAdd:()=>void;onRemove:(id:string)=>void;editable?:boolean}){
+export default function StandardGallery({images,load,onAdd,onRemove,editable=true,canAdd=true}:{images:StandardImageRef[];load:(id:string)=>Promise<Blob>;onAdd:()=>void;onRemove:(id:string)=>void;editable?:boolean;canAdd?:boolean}){
   const [urls,setUrls]=useState<Record<string,string>>({});
   const key=images.map(i=>i.id).join(',');
   useEffect(()=>{
@@ -40,6 +40,6 @@ export default function StandardGallery({images,load,onAdd,onRemove,editable=tru
   return <div className="pat-standard-gallery">
     {images.map(i=><figure key={i.id}>{urls[i.id]?<img src={urls[i.id]} alt={`Foto estándar ${i.position}`}/>:<div className="pat-standard-loading"/>}
       <figcaption><span>{i.position}</span>{editable&&<button type="button" title="Quitar foto estándar" onClick={()=>onRemove(i.id)}><Trash2 size={13}/></button>}</figcaption></figure>)}
-    {editable&&images.length<5&&<button type="button" className="pat-photo-empty pat-standard-add" onClick={onAdd}><Camera size={20}/><strong>{images.length?'Agregar fotos estándar':'Tomar / cargar fotos estándar'}</strong><span>{images.length} de {MAX_STANDARD_IMAGES} · puede elegir varias</span></button>}
+    {editable&&canAdd&&images.length<5&&<button type="button" className="pat-photo-empty pat-standard-add" onClick={onAdd}><Camera size={20}/><strong>{images.length?'Agregar fotos estándar':'Tomar / cargar fotos estándar'}</strong><span>{images.length} de {MAX_STANDARD_IMAGES} · puede elegir varias</span></button>}
   </div>;
 }
