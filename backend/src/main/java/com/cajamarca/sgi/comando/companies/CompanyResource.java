@@ -7,6 +7,7 @@ import com.cajamarca.sgi.comando.operations.PointEntity;
 import com.cajamarca.sgi.comando.operations.ServiceEntity;
 import com.cajamarca.sgi.comando.territory.CountrySubdivision;
 import com.cajamarca.sgi.comando.territory.OperationalScopeService;
+import com.cajamarca.sgi.comando.territory.ResponsibleOperationalScopeService;
 import com.cajamarca.sgi.comando.territory.TerritoryRegion;
 import com.cajamarca.sgi.comando.territory.TerritoryZone;
 import com.cajamarca.sgi.comando.territory.UserOperationalScope;
@@ -40,6 +41,7 @@ public class CompanyResource {
     @Inject ObjectMapper mapper;
     @Inject SecurityIdentity identity;
     @Inject CoreCatalogService coreCatalogService;
+    @Inject ResponsibleOperationalScopeService responsibleScopes;
 
     public record CompanyUpdateRequest(String status, UUID zoneId, List<UUID> regionIds, UUID responsibleEmployeeId, String changeReason) {}
     public record CompanyActivationRequest(UUID coreCompanyId, String status, UUID zoneId, List<UUID> regionIds, String changeReason) {}
@@ -156,6 +158,7 @@ public class CompanyResource {
         // Identity always comes from CORE and is never accepted from the SGI request.
         if(core!=null){c.name=core.name;c.logoDataUrl=core.logoDataUrl;c.historicalReview=core.historicalReview;c.sourceVersion=core.sourceVersion;c.sourceSystem="CORE";c.companyType=core.companyType;}
         c.status=nextStatus;c.zoneId=kaibil?null:selection.zone().id;c.regionId=kaibil?null:selection.regions().get(0).id;c.responsibleEmployeeId=responsible==null?null:responsible.employeeId;
+        responsibleScopes.synchronize("COMPANY",c.id,previousResponsible,c.responsibleEmployeeId);
         if(kaibil)CompanyRegion.delete("instanceCountryId=?1 and companyId=?2",tenant.instanceCountryId(),c.id);else replaceRegions(c,selection.regions());
         c.versionNumber=Math.max(c.versionNumber,1)+1;
         String changeType="UPDATED";if(!Objects.equals(previousStatus,c.status)&&"INACTIVE".equals(c.status))changeType="INACTIVATED";else if(!Objects.equals(previousStatus,c.status)&&"ACTIVE".equals(c.status))changeType="REACTIVATED";else if(!Objects.equals(previousZone,c.zoneId)||!previousRegions.equals(nextRegions))changeType="TERRITORY_UPDATED";else if(!Objects.equals(previousResponsible,c.responsibleEmployeeId))changeType="RESPONSIBLE_UPDATED";

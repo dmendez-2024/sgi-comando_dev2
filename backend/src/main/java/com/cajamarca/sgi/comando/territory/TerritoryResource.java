@@ -29,6 +29,7 @@ public class TerritoryResource {
     @Inject io.quarkus.security.identity.SecurityIdentity identity;
     @Inject ObjectMapper mapper;
     @Inject CoreCatalogService coreCatalog;
+    @Inject ResponsibleOperationalScopeService responsibleScopes;
 
     public record ZoneRequest(String code,String name,String status,UUID responsibleEmployeeId,List<UUID> provinceIds){}
     public record RegionRequest(UUID zoneId,String code,String name,String status,UUID responsibleEmployeeId,List<UUID> provinceIds){}
@@ -90,6 +91,7 @@ public class TerritoryResource {
         requireCountryEditor(); if(req==null||blank(req.code())||blank(req.name())) throw new BadRequestException("Código y nombre son obligatorios.");
         String code=req.code().trim().toUpperCase(Locale.ROOT);ensureZoneCodeUnique(code);
         TerritoryZone z=new TerritoryZone();z.instanceCountryId=tenant.instanceCountryId();z.code=code;z.name=req.name().trim();z.status=blank(req.status())?"DRAFT":req.status();z.responsibleEmployeeId=req.responsibleEmployeeId();z.persist();
+        responsibleScopes.synchronize("ZONE",z.id,null,z.responsibleEmployeeId);
         applyZoneProvinces(z,req.provinceIds(),"ACTIVE".equals(z.status)); audit("ZONE",z.id,"CREATED",Map.of("code",z.code,"name",z.name,"status",z.status));
         return Response.status(Response.Status.CREATED).entity(zoneDto(z)).build();
     }
@@ -97,16 +99,16 @@ public class TerritoryResource {
     @PUT @Path("/zones/{id}") @Transactional
     public ZoneDto updateZone(@PathParam("id") UUID id, ZoneRequest req){
         requireCountryEditor(); TerritoryZone z=zone(id); if(req==null) throw new BadRequestException("Datos obligatorios.");
-        boolean activating=!"ACTIVE".equals(z.status)&&"ACTIVE".equals(req.status());
+        boolean activating=!"ACTIVE".equals(z.status)&&"ACTIVE".equals(req.status()); UUID previousResponsibleEmployeeId=z.responsibleEmployeeId;
         if(!"ACTIVE".equals(z.status)){ if(!blank(req.name()))z.name=req.name().trim(); if(!blank(req.status()))z.status=req.status(); }
-        z.responsibleEmployeeId=req.responsibleEmployeeId(); applyZoneProvinces(z,req.provinceIds(),activating); audit("ZONE",z.id,"UPDATED",Map.of("status",z.status)); return zoneDto(z);
+        z.responsibleEmployeeId=req.responsibleEmployeeId(); responsibleScopes.synchronize("ZONE",z.id,previousResponsibleEmployeeId,z.responsibleEmployeeId); applyZoneProvinces(z,req.provinceIds(),activating); audit("ZONE",z.id,"UPDATED",Map.of("status",z.status)); return zoneDto(z);
     }
 
     @DELETE @Path("/zones/{id}") @Transactional
     public Response deleteZone(@PathParam("id") UUID id){
         requireCountryEditor(); TerritoryZone z=zone(id); if("ACTIVE".equals(z.status)) throw new WebApplicationException("Una Zona activa no se puede eliminar; debe conservarse para auditoría.", Response.Status.CONFLICT);
         long regions=TerritoryRegion.count("instanceCountryId=?1 and zoneId=?2",tenant.instanceCountryId(),z.id); if(regions>0) throw conflict("No se puede eliminar la Zona porque tiene Regiones asociadas. Elimine primero las Regiones.");
-        CountrySubdivision.update("draftZoneId=null, draftRegionId=null where instanceCountryId=?1 and draftZoneId=?2",tenant.instanceCountryId(),z.id); audit("ZONE",z.id,"DELETED",Map.of("code",z.code)); z.delete(); return Response.noContent().build();
+        CountrySubdivision.update("draftZoneId=null, draftRegionId=null where instanceCountryId=?1 and draftZoneId=?2",tenant.instanceCountryId(),z.id); responsibleScopes.synchronize("ZONE",z.id,z.responsibleEmployeeId,null); audit("ZONE",z.id,"DELETED",Map.of("code",z.code)); z.delete(); return Response.noContent().build();
     }
 
     @POST @Path("/regions") @Transactional
@@ -115,6 +117,7 @@ public class TerritoryResource {
         TerritoryZone z=zone(req.zoneId()); requireVisibleZone(z.id);
         String code=req.code().trim().toUpperCase(Locale.ROOT);ensureRegionCodeUnique(code);
         TerritoryRegion r=new TerritoryRegion();r.instanceCountryId=tenant.instanceCountryId();r.zoneId=z.id;r.code=code;r.name=req.name().trim();r.status=blank(req.status())?"DRAFT":req.status();r.responsibleEmployeeId=req.responsibleEmployeeId();r.persist();
+        responsibleScopes.synchronize("REGION",r.id,null,r.responsibleEmployeeId);
         applyRegionProvinces(r,req.provinceIds(),"ACTIVE".equals(r.status)); audit("REGION",r.id,"CREATED",Map.of("zoneId",z.id,"code",r.code,"name",r.name));
         return Response.status(Response.Status.CREATED).entity(regionDto(r)).build();
     }
@@ -122,16 +125,16 @@ public class TerritoryResource {
     @PUT @Path("/regions/{id}") @Transactional
     public RegionDto updateRegion(@PathParam("id") UUID id, RegionRequest req){
         requireRegionEditor(); TerritoryRegion r=region(id); requireVisibleZone(r.zoneId); if(req==null) throw new BadRequestException("Datos obligatorios.");
-        boolean activating=!"ACTIVE".equals(r.status)&&"ACTIVE".equals(req.status());
+        boolean activating=!"ACTIVE".equals(r.status)&&"ACTIVE".equals(req.status()); UUID previousResponsibleEmployeeId=r.responsibleEmployeeId;
         if(!"ACTIVE".equals(r.status)){ if(req.zoneId()!=null){TerritoryZone z=zone(req.zoneId());requireVisibleZone(z.id);r.zoneId=z.id;} if(!blank(req.name()))r.name=req.name().trim(); if(!blank(req.status()))r.status=req.status(); }
-        r.responsibleEmployeeId=req.responsibleEmployeeId(); applyRegionProvinces(r,req.provinceIds(),activating); audit("REGION",r.id,"UPDATED",Map.of("status",r.status)); return regionDto(r);
+        r.responsibleEmployeeId=req.responsibleEmployeeId(); responsibleScopes.synchronize("REGION",r.id,previousResponsibleEmployeeId,r.responsibleEmployeeId); applyRegionProvinces(r,req.provinceIds(),activating); audit("REGION",r.id,"UPDATED",Map.of("status",r.status)); return regionDto(r);
     }
 
     @DELETE @Path("/regions/{id}") @Transactional
     public Response deleteRegion(@PathParam("id") UUID id){
         requireRegionEditor(); TerritoryRegion r=region(id); requireVisibleZone(r.zoneId); if("ACTIVE".equals(r.status)) throw new WebApplicationException("Una Región activa no se puede eliminar; debe conservarse para auditoría.", Response.Status.CONFLICT);
         long companies=Company.count("instanceCountryId=?1 and regionId=?2",tenant.instanceCountryId(),r.id); if(companies>0) throw new WebApplicationException("La Región tiene Compañías asociadas.", Response.Status.CONFLICT);
-        CountrySubdivision.update("draftRegionId=null where instanceCountryId=?1 and draftRegionId=?2",tenant.instanceCountryId(),r.id); audit("REGION",r.id,"DELETED",Map.of("code",r.code)); r.delete(); return Response.noContent().build();
+        CountrySubdivision.update("draftRegionId=null where instanceCountryId=?1 and draftRegionId=?2",tenant.instanceCountryId(),r.id); responsibleScopes.synchronize("REGION",r.id,r.responsibleEmployeeId,null); audit("REGION",r.id,"DELETED",Map.of("code",r.code)); r.delete(); return Response.noContent().build();
     }
 
     @PUT @Path("/companies/{companyId}/region/{regionId}") @Transactional
