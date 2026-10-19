@@ -193,7 +193,7 @@ public class CompanyResource {
         if(employeeId==null)return null;
         EmployeeOperationalSnapshot employee=responsible(employeeId);
         if(employee==null||!"ACTIVE".equalsIgnoreCase(employee.employmentStatus))throw new BadRequestException("El responsable seleccionado no existe o no está activo.");
-        if(!isEligibleResponsibleRole(employee.roleCode))throw new BadRequestException("El responsable debe tener un cargo de Coordinador, Jefe, Director o Presidente.");
+        if(!isEligibleResponsibleRole(employee.roleCode))throw new BadRequestException("El responsable debe tener un cargo de Coordinador de Compañía, Jefe, Director o Presidente.");
         if(!visibleCompanyIdsForCom().contains(employee.companyId))throw new ForbiddenException("El responsable está fuera del alcance territorial del usuario.");
         return employee;
     }

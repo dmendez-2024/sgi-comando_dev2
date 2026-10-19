@@ -101,10 +101,10 @@ const INITIAL_DATA:Novelty[]=[
     company:'Seguridad Integral S.A.',companyCode:'SISA',client:'Retail Plaza',city:'Guayaquil',point:'Local Este',post:'Puesto 2',zone:'Zona Costa',region:'Costa Sur',
     reportedBy:'Carla Méndez',reporterRole:'AGENT',createdAt:'2026-09-18T09:10:00',
     description:'Foco quemado en pasillo lateral próximo al acceso de proveedores.',latitude:-2.1614,longitude:-79.8941,photoCount:2,
-    reviewComment:'Validado. Informar al cliente para gestión de mantenimiento.',reviewedBy:'Coordinador UAT',reviewedAt:'2026-09-18T09:35:00',clientVisible:true,sourceSystem:'SGI_OPR',
+    reviewComment:'Validado. Informar al cliente para gestión de mantenimiento.',reviewedBy:'Coordinador de Compañía UAT',reviewedAt:'2026-09-18T09:35:00',clientVisible:true,sourceSystem:'SGI_OPR',
     audit:[
       {id:'a1',at:'2026-09-18T09:10:00',title:'Recibido desde SGI: Operador',detail:'Hallazgo registrado en terreno.',actor:'Carla Méndez · Agente de Seguridad'},
-      {id:'a2',at:'2026-09-18T09:35:00',title:'Aprobada en SGI: Comando',detail:'Novedad habilitada para visualización en SGI: Cliente.',actor:'Coordinador UAT'}
+      {id:'a2',at:'2026-09-18T09:35:00',title:'Aprobada en SGI: Comando',detail:'Novedad habilitada para visualización en SGI: Cliente.',actor:'Coordinador de Compañía UAT'}
     ]
   },
   {
@@ -120,10 +120,10 @@ const INITIAL_DATA:Novelty[]=[
     company:'Litoral Custodia',companyCode:'LIT',client:'Edificio Corporativo',city:'Guayaquil',point:'Torre A',post:'Sala de Control',zone:'Zona Costa',region:'Costa Centro',
     reportedBy:'Ana Silva',reporterRole:'AGENT',createdAt:'2026-09-17T11:05:00',
     description:'Se reportó falla de cámara CCTV; luego se verificó que el equipo estaba en mantenimiento programado.',latitude:null,longitude:null,photoCount:1,
-    reviewComment:'Se descarta porque corresponde a mantenimiento programado previamente registrado.',reviewedBy:'Jefe Regional UAT',reviewedAt:'2026-09-17T11:20:00',clientVisible:false,sourceSystem:'SGI_OPR',
+    reviewComment:'Se descarta porque corresponde a mantenimiento programado previamente registrado.',reviewedBy:'Jefe Regional de Operaciones UAT',reviewedAt:'2026-09-17T11:20:00',clientVisible:false,sourceSystem:'SGI_OPR',
     audit:[
       {id:'a1',at:'2026-09-17T11:05:00',title:'Recibido desde SGI: Operador',detail:'Incidente reportado por el agente.',actor:'Ana Silva · Agente de Seguridad'},
-      {id:'a2',at:'2026-09-17T11:20:00',title:'Descartada en SGI: Comando',detail:'No corresponde a una novedad operativa para publicar al cliente.',actor:'Jefe Regional UAT'}
+      {id:'a2',at:'2026-09-17T11:20:00',title:'Descartada en SGI: Comando',detail:'No corresponde a una novedad operativa para publicar al cliente.',actor:'Jefe Regional de Operaciones UAT'}
     ]
   },
   {
@@ -139,10 +139,10 @@ const INITIAL_DATA:Novelty[]=[
     company:'Sur Custodia',companyCode:'SUR',client:'Bananera El Oro',city:'Machala',point:'Muelle Sur',post:'Control Interno',zone:'Zona Costa',region:'Costa Sur',
     reportedBy:'Pedro Vera',reporterRole:'SUPERVISOR',createdAt:'2026-09-15T18:10:00',
     description:'Puerta interna de acceso a cuarto técnico permanece sin cerradura funcional.',latitude:-3.2585,longitude:-79.9605,photoCount:2,
-    reviewComment:'Aprobado para conocimiento y gestión del cliente.',reviewedBy:'Director Zonal UAT',reviewedAt:'2026-09-15T18:30:00',clientVisible:true,sourceSystem:'SGI_OPR',
+    reviewComment:'Aprobado para conocimiento y gestión del cliente.',reviewedBy:'Director Zonal de Operaciones UAT',reviewedAt:'2026-09-15T18:30:00',clientVisible:true,sourceSystem:'SGI_OPR',
     audit:[
       {id:'a1',at:'2026-09-15T18:10:00',title:'Recibido desde SGI: Operador',detail:'Vulnerabilidad interna registrada.',actor:'Pedro Vera · Supervisor'},
-      {id:'a2',at:'2026-09-15T18:30:00',title:'Aprobada en SGI: Comando',detail:'Publicada para SGI: Cliente.',actor:'Director Zonal UAT'}
+      {id:'a2',at:'2026-09-15T18:30:00',title:'Aprobada en SGI: Comando',detail:'Publicada para SGI: Cliente.',actor:'Director Zonal de Operaciones UAT'}
     ]
   }
 ];
@@ -376,7 +376,7 @@ export default function NovedadesExecution(){
   </div>
 }
 
-function userLabel(user:UatUser){return ({presidente:'Presidencia UAT',ggeneral:'Gerencia General UAT',dlatam:'Director Operaciones LATAM UAT',don:'Director Operaciones Nacional UAT',dnacional:'Director Nacional UAT',dzonal:'Director Zonal UAT',jregional:'Jefe Regional UAT',coord:'Coordinador UAT',asistente:'Asistente de Coordinación UAT',supervisor:'Supervisor UAT',agente:'Agente UAT',cliente:'Cliente UAT'}[user])}
+function userLabel(user:UatUser){return ({presidente:'Presidencia UAT',ggeneral:'Gerente General Ecuador UAT',dlatam:'Director Operaciones LATAM UAT',don:'Director Nacional de Operaciones UAT',dnacional:'Director Nacional de Operaciones UAT',dzonal:'Director Zonal de Operaciones UAT',jregional:'Jefe Regional de Operaciones UAT',coord:'Coordinador de Compañía UAT',asistente:'Asistente de Operaciones UAT',supervisor:'Supervisor UAT',agente:'Agente UAT',cliente:'Cliente UAT'}[user])}
 function Metric({icon,label,detail,value,tone}:{icon:ReactNode;label:string;detail:string;value:number;tone:'blue'|'teal'|'amber'|'red'|'green'}){return <article><span className={tone}>{icon}</span><div><small>{label}</small><strong>{value}</strong><em>{detail}</em></div></article>}
 function Field({label,children}:{label:string;children:ReactNode}){return <label className="nov-field"><span>{label}</span>{children}</label>}
 function ModalField({label,children}:{label:string;children:ReactNode}){return <label className="nov-modal-field"><span>{label}</span>{children}</label>}

@@ -3,7 +3,7 @@ import {Bell} from 'lucide-react';
 import {getUser,setUser,type UatUser} from '../api';
 import {identEmail,identEnabled,identPlatforms,identPortal,identSignOut} from '../security/identAuth';
 const users:UatUser[]=['presidente','ggeneral','dnacional','dzonal','jregional','coord','asistente'];
-const labels:Record<UatUser,string>={presidente:'Presidente',ggeneral:'Gerencia General',dlatam:'Director Operaciones LATAM',don:'Director Operaciones Nacional',dnacional:'Director Nacional',dzonal:'Director Zonal',jregional:'Jefe Regional',coord:'Coordinador',asistente:'Asistente de Coordinación',supervisor:'Supervisor',agente:'Agente',cliente:'Cliente'};
+const labels:Record<UatUser,string>={presidente:'Presidente',ggeneral:'Gerente General Ecuador',dlatam:'Director Operaciones LATAM',don:'Director Nacional de Operaciones',dnacional:'Director Nacional de Operaciones',dzonal:'Director Zonal de Operaciones',jregional:'Jefe Regional de Operaciones',coord:'Coordinador de Compañía',asistente:'Asistente de Operaciones',supervisor:'Supervisor',agente:'Agente',cliente:'Cliente'};
 export default function Header({title,coreContext,onUserChange}:{title:string,coreContext?:any,onUserChange:()=>void}){
   // Con IDENT: la persona y su Rol vienen del login de IDENT; "← Plataformas" solo si tiene 2 o mas Sistemas.
   const [plataformas,setPlataformas]=useState(0);

@@ -3,18 +3,18 @@
   "note": "Roles COMUNES de SGI: Comando y SGI: Operador (mismo backend). Se publican en IDENT en los dos Sistemas por SGI_COM_IDENT_0002_v001 y en IDENT se asignan a cada Cargo. Un Rol solo de un Sistema va en roles-comando.json o roles-operador.json. INACTIVE = Roles del simulador que este catálogo reemplaza.",
   "roles": [
     {"code": "PRESIDENTE", "name": "Presidente", "scopeRequirement": "PE"},
-    {"code": "GERENCIA_GENERAL", "name": "Gerencia General", "scopeRequirement": "PE"},
+    {"code": "GERENCIA_GENERAL", "name": "Gerente General Ecuador", "scopeRequirement": "PE"},
     {"code": "DIRECTOR_OPERACIONES_LATAM", "name": "Director de Operaciones LATAM", "scopeRequirement": "PE"},
-    {"code": "DIRECTOR_OPERACIONES_NACIONAL", "name": "Director de Operaciones Nacional", "scopeRequirement": "PE"},
-    {"code": "DIRECTOR_NACIONAL", "name": "Director Nacional", "scopeRequirement": "PE"},
-    {"code": "DIRECTOR_ZONAL", "name": "Director Zonal", "scopeRequirement": "PE"},
-    {"code": "JEFE_REGIONAL", "name": "Jefe Regional", "scopeRequirement": "PE"},
+    {"code": "DIRECTOR_OPERACIONES_NACIONAL", "name": "Director Nacional de Operaciones", "scopeRequirement": "PE"},
+    {"code": "DIRECTOR_NACIONAL", "name": "Director Nacional de Operaciones", "scopeRequirement": "PE"},
+    {"code": "DIRECTOR_ZONAL", "name": "Director Zonal de Operaciones", "scopeRequirement": "PE"},
+    {"code": "JEFE_REGIONAL", "name": "Jefe Regional de Operaciones", "scopeRequirement": "PE"},
     {"code": "COORDINADOR_COMPANIA", "name": "Coordinador de Compañía", "scopeRequirement": "PE"},
-    {"code": "ASISTENTE_COORDINACION", "name": "Asistente de Coordinación", "scopeRequirement": "PE"},
+    {"code": "ASISTENTE_COORDINACION", "name": "Asistente de Operaciones", "scopeRequirement": "PE"},
     {"code": "SUPERVISOR_SEGURIDAD", "name": "Supervisor de Seguridad", "scopeRequirement": "PE"},
     {"code": "AGENTE_SEGURIDAD", "name": "Agente de Seguridad", "scopeRequirement": "PE"},
     {"code": "CLIENTE", "name": "Cliente", "scopeRequirement": "PE"},
-    {"code": "COORDINADOR", "name": "Coordinador", "scopeRequirement": "COMPANY", "status": "INACTIVE"},
+    {"code": "COORDINADOR", "name": "Coordinador de Compañía", "scopeRequirement": "COMPANY", "status": "INACTIVE"},
     {"code": "DIRECTOR_ZONA", "name": "Director Zona", "scopeRequirement": "ZONE", "status": "INACTIVE"}
   ]
 }

@@ -25,7 +25,7 @@ type CopyMode='NONE'|'DAY_SOURCE'|'DAY_TARGET'|'CYCLE_TARGET'|'SELECTION_TARGET'
 type PersonnelSort='PERSON'|'ID'|'FREE';
 type SortDirection='ASC'|'DESC';
 
-const ROLE_LABEL:Record<string,string>={AGENTE_SEGURIDAD:'Agente de Seguridad',SUPERVISOR_SEGURIDAD:'Supervisor de Seguridad',ESCOLTA_SEGURIDAD:'Escolta de Seguridad',DIRECTOR_NACIONAL:'Director Nacional',DIRECTOR_ZONAL:'Director Zonal',JEFE_REGIONAL:'Jefe Regional',MONITOR:'Monitor'};
+const ROLE_LABEL:Record<string,string>={AGENTE_SEGURIDAD:'Agente de Seguridad',SUPERVISOR_SEGURIDAD:'Supervisor de Seguridad',ESCOLTA_SEGURIDAD:'Escolta de Seguridad',DIRECTOR_NACIONAL:'Director Nacional de Operaciones',DIRECTOR_ZONAL:'Director Zonal de Operaciones',JEFE_REGIONAL:'Jefe Regional de Operaciones',MONITOR:'Monitor'};
 const UNAV_LABEL:Record<string,string>={MEDICAL_LEAVE:'Permiso médico',VACATION:'Vacaciones',PERMISSION:'Permisos generales'};
 const WEEKLY_REFERENCE_HOURS=44;
 const HORIZONTAL_DAY_RADIUS=120;
