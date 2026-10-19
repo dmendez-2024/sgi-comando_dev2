@@ -173,7 +173,7 @@ function titleCase(s:string){return s?`${s.charAt(0).toUpperCase()}${s.slice(1)}
 
 export default function Territory(){
   const currentUser=getUser();
-  const countryEditors=['presidente','dnacional'];
+  const countryEditors=['presidente','ggeneral','dnacional'];
   const canEditZones=countryEditors.includes(currentUser);
   const canEditRegions=[...countryEditors,'dzonal'].includes(currentUser);
   const [tree,setTree]=useState<Tree>({zones:[],regions:[],companies:[],provinces:[]});

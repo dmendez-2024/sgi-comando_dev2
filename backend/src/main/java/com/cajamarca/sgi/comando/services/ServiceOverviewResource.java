@@ -32,7 +32,7 @@ import java.util.stream.Collectors;
 @Path("/api/services/overview")
 @Consumes(MediaType.APPLICATION_JSON)
 @Produces(MediaType.APPLICATION_JSON)
-@RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION","SUPERVISOR_SEGURIDAD","AGENTE_SEGURIDAD","CLIENTE"})
+@RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION","SUPERVISOR_SEGURIDAD","AGENTE_SEGURIDAD","CLIENTE"})
 public class ServiceOverviewResource {
     private static final Duration EXECUTION_WINDOW = Duration.ofDays(14);
 
@@ -41,7 +41,7 @@ public class ServiceOverviewResource {
     @Inject EntityManager em;
     @Inject SecurityIdentity identity;
 
-    private static final Set<String> SERVICE_ASSIGN_ROLES = Set.of("PRESIDENTE","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL");
+    private static final Set<String> SERVICE_ASSIGN_ROLES = Set.of("PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL");
 
     public record OverviewRow(
         UUID serviceId, UUID pointId, UUID postId, UUID companyId,
@@ -175,7 +175,7 @@ public class ServiceOverviewResource {
 
     @GET
     @Path("/assignment-destinations")
-    @RolesAllowed({"PRESIDENTE","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL"})
+    @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL"})
     @Transactional
     public List<AssignmentDestinationDto> assignmentDestinations(@QueryParam("pointId") UUID pointId) {
         if (pointId == null) throw new BadRequestException("Punto obligatorio.");
@@ -191,7 +191,7 @@ public class ServiceOverviewResource {
 
     @POST
     @Path("/points/{pointId}/assign-company")
-    @RolesAllowed({"PRESIDENTE","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL"})
+    @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL"})
     @Transactional
     public AssignmentResultDto assignCompany(@PathParam("pointId") UUID pointId, AssignCompanyRequest req) {
         if (req == null || req.companyId() == null) throw new BadRequestException("Seleccione una Compañía destino.");
@@ -233,7 +233,7 @@ public class ServiceOverviewResource {
 
     @POST
     @Path("/points/{pointId}/return-to-coordination")
-    @RolesAllowed({"PRESIDENTE","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL"})
+    @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL"})
     @Transactional
     public ReturnToCoordinationResultDto returnToCoordination(@PathParam("pointId") UUID pointId, ReturnToCoordinationRequest req) {
         PointEntity point = PointEntity.find("id=?1 and instanceCountryId=?2", pointId, tenant.instanceCountryId()).firstResult();
@@ -306,7 +306,7 @@ public class ServiceOverviewResource {
     private boolean canAssignServices(){ return identity.getRoles().stream().anyMatch(SERVICE_ASSIGN_ROLES::contains); }
 
     private boolean canManagePoint(PointEntity point){
-        if (identity.getRoles().contains("PRESIDENTE") || identity.getRoles().contains("DIRECTOR_NACIONAL")) return true;
+        if (identity.getRoles().contains("PRESIDENTE") || identity.getRoles().contains("GERENCIA_GENERAL") || identity.getRoles().contains("DIRECTOR_NACIONAL")) return true;
         String province = point.province == null ? "" : point.province.trim().toLowerCase(Locale.ROOT);
         CountrySubdivision subdivision = CountrySubdivision.find("instanceCountryId=?1 and lower(name)=?2", tenant.instanceCountryId(), province).firstResult();
         if (subdivision == null) return false;
@@ -319,7 +319,7 @@ public class ServiceOverviewResource {
     private List<Company> allowedDestinationCompanies(){
         if (!canAssignServices()) return List.of();
         List<Company> active = Company.list("instanceCountryId=?1 and status='ACTIVE' and alwaysActive=false order by name", tenant.instanceCountryId());
-        if (identity.getRoles().contains("PRESIDENTE") || identity.getRoles().contains("DIRECTOR_NACIONAL")) return active;
+        if (identity.getRoles().contains("PRESIDENTE") || identity.getRoles().contains("GERENCIA_GENERAL") || identity.getRoles().contains("DIRECTOR_NACIONAL")) return active;
         List<UserOperationalScope> scopes = scope.scopes();
         if (identity.getRoles().contains("DIRECTOR_ZONAL")) {
             Set<UUID> zones = scopes.stream().filter(x -> "ZONE".equals(x.scopeType) && x.scopeId != null).map(x -> x.scopeId).collect(Collectors.toSet());

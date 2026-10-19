@@ -10,7 +10,7 @@ import java.util.UUID;
 public class RegesepResource {
  @Inject TenantContext tenant;
  @GET @Path("/current")
- @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION","SUPERVISOR_SEGURIDAD","AGENTE_SEGURIDAD","CLIENTE"})
+ @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION","SUPERVISOR_SEGURIDAD","AGENTE_SEGURIDAD","CLIENTE"})
  public RegesepVersion current(@PathParam("pointId") UUID pointId){
    RegesepVersion r=RegesepVersion.find("pointId=?1 and instanceCountryId=?2 and status='CURRENT' order by version desc",pointId,tenant.instanceCountryId()).firstResult();
    if(r==null) throw new NotFoundException();

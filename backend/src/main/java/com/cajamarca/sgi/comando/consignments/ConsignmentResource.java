@@ -48,12 +48,12 @@ public class ConsignmentResource {
  public record SaveEvidenceRequest(String name,String description,String evidenceType,boolean required,String standardImageNotes,Double matchThreshold){}
 
  @GET
- @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION","SUPERVISOR_SEGURIDAD","AGENTE_SEGURIDAD","CLIENTE"})
+ @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION","SUPERVISOR_SEGURIDAD","AGENTE_SEGURIDAD","CLIENTE"})
  public List<Consignment> legacyList(@QueryParam("pointId") UUID pointId){PointEntity point=point(pointId);scope.requireCompany(point.companyId);return Consignment.list("pointId=?1 and instanceCountryId=?2 order by createdAt desc",pointId,tenant.instanceCountryId());}
 
  @GET
  @Path("/protocols")
- @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION","SUPERVISOR_SEGURIDAD","AGENTE_SEGURIDAD","CLIENTE"})
+ @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION","SUPERVISOR_SEGURIDAD","AGENTE_SEGURIDAD","CLIENTE"})
  public List<ProtocolDto> protocols(@QueryParam("pointId") UUID pointId){
    PointEntity point=point(pointId);scope.requireCompany(point.companyId);
    List<ConsignmentProtocol> all=ConsignmentProtocol.list("instanceCountryId=?1 and pointId=?2 order by code,versionNo desc",tenant.instanceCountryId(),pointId);
@@ -64,19 +64,19 @@ public class ConsignmentResource {
 
  @GET
  @Path("/protocols/current")
- @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION","SUPERVISOR_SEGURIDAD","AGENTE_SEGURIDAD","CLIENTE"})
+ @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION","SUPERVISOR_SEGURIDAD","AGENTE_SEGURIDAD","CLIENTE"})
  public ProtocolDto current(@QueryParam("pointId") UUID pointId){PointEntity point=point(pointId);scope.requireCompany(point.companyId);ConsignmentProtocol p=ConsignmentProtocol.find("instanceCountryId=?1 and pointId=?2 and status='ACTIVO'",tenant.instanceCountryId(),pointId).firstResult();return p==null?null:dto(p);}
 
  @GET
  @Path("/protocols/{id}/history")
- @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION","SUPERVISOR_SEGURIDAD","AGENTE_SEGURIDAD","CLIENTE"})
+ @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION","SUPERVISOR_SEGURIDAD","AGENTE_SEGURIDAD","CLIENTE"})
  public List<ProtocolDto> history(@PathParam("id") UUID id){ConsignmentProtocol p=protocol(id);authorize(p);return ConsignmentProtocol.<ConsignmentProtocol>list("instanceCountryId=?1 and seriesId=?2 order by versionNo desc",tenant.instanceCountryId(),p.seriesId).stream().map(this::dto).toList();}
 
  @POST
  @Path("/protocols")
  @Consumes(MediaType.APPLICATION_JSON)
  @Transactional
- @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
+ @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
  public ProtocolDto createProtocol(CreateProtocolRequest req){
    if(req==null||req.pointId()==null)throw new BadRequestException("Punto obligatorio");PointEntity point=point(req.pointId());scope.requireCompany(point.companyId);
    ConsignmentProtocol p=new ConsignmentProtocol();p.id=UUID.randomUUID();p.instanceCountryId=tenant.instanceCountryId();p.seriesId=p.id;p.pointId=point.id;p.code=nextProtocolCode();p.name=clean(req.name(),"Nuevo protocolo de consignas");p.description="";p.status="BORRADOR";p.versionNo=1;p.updatedByUsername=user();p.persist();return dto(p);
@@ -86,13 +86,13 @@ public class ConsignmentResource {
  @Path("/protocols/{id}")
  @Consumes(MediaType.APPLICATION_JSON)
  @Transactional
- @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
+ @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
  public ProtocolDto saveProtocol(@PathParam("id")UUID id,SaveProtocolRequest req){ConsignmentProtocol p=protocol(id);authorize(p);requireDraft(p);if(req==null)throw new BadRequestException("Solicitud obligatoria");p.name=clean(req.name(),p.name);p.description=req.description()==null?"":req.description().trim();p.updatedByUsername=user();return dto(p);}
 
  @POST
  @Path("/protocols/{id}/fork")
  @Transactional
- @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
+ @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
  public ProtocolDto fork(@PathParam("id")UUID id){
    ConsignmentProtocol source=protocol(id);authorize(source);ConsignmentProtocol existing=ConsignmentProtocol.find("instanceCountryId=?1 and seriesId=?2 and status='BORRADOR'",tenant.instanceCountryId(),source.seriesId).firstResult();if(existing!=null)return dto(existing);
    ConsignmentProtocol target=new ConsignmentProtocol();target.id=UUID.randomUUID();target.instanceCountryId=tenant.instanceCountryId();target.seriesId=source.seriesId;target.basedOnProtocolId=source.id;target.pointId=source.pointId;target.code=source.code;target.name=source.name;target.description=source.description;target.status="BORRADOR";target.versionNo=source.versionNo+1;target.updatedByUsername=user();target.persist();
@@ -103,7 +103,7 @@ public class ConsignmentResource {
  @POST
  @Path("/protocols/{id}/publish")
  @Transactional
- @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
+ @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
  public ProtocolDto publish(@PathParam("id")UUID id) throws Exception{
    ConsignmentProtocol p=protocol(id);authorize(p);requireDraft(p);List<Consignment> items=consignments(p.id);if(items.isEmpty())throw new BadRequestException("El protocolo debe contener al menos una Consigna");for(Consignment c:items){validate(c);for(ConsignmentEvidence e:evidences(c.id))if(e.visintEnabled&&StandardReferenceImage.countOf(StandardReferenceImage.CONSIGNMENT_EVIDENCE,e.id)==0)throw new BadRequestException(c.code+": la evidencia \""+e.name+"\" requiere al menos una foto estándar (VISINT)");}
    p.publishedAt=Instant.now();p.status="INACTIVO";p.activatedAt=null;p.updatedByUsername=user();for(Consignment c:items){c.status="PUBLICADO";c.publishedAt=p.publishedAt;}
@@ -114,7 +114,7 @@ public class ConsignmentResource {
  @POST
  @Path("/protocols/{id}/activate")
  @Transactional
- @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
+ @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
  public ProtocolDto activate(@PathParam("id")UUID id){
    ConsignmentProtocol p=protocol(id);authorize(p);if(!"INACTIVO".equals(p.status)&&!"ACTIVO".equals(p.status))throw new ClientErrorException("Solo un Protocolo inactivo puede activarse.",409);if("ACTIVO".equals(p.status))return dto(p);
    List<ConsignmentProtocol> active=ConsignmentProtocol.list("instanceCountryId=?1 and pointId=?2 and status='ACTIVO'",tenant.instanceCountryId(),p.pointId);for(ConsignmentProtocol old:active){old.status="INACTIVO";for(Consignment c:consignments(old.id))c.status="PUBLICADO";}
@@ -126,7 +126,7 @@ public class ConsignmentResource {
  @POST
  @Path("/protocols/{id}/deactivate")
  @Transactional
- @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
+ @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
  public ProtocolDto deactivate(@PathParam("id")UUID id){
    ConsignmentProtocol p=protocol(id);authorize(p);if(!"ACTIVO".equals(p.status))throw new ClientErrorException("Solo un Protocolo activo puede inactivarse.",409);p.status="INACTIVO";p.updatedByUsername=user();for(Consignment c:consignments(p.id))c.status="PUBLICADO";return dto(p);
  }
@@ -135,7 +135,7 @@ public class ConsignmentResource {
  @Path("/protocols/{protocolId}/items")
  @Consumes(MediaType.APPLICATION_JSON)
  @Transactional
- @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
+ @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
  public ConsignmentDto createConsignment(@PathParam("protocolId")UUID protocolId,CreateConsignmentRequest req){
    ConsignmentProtocol p=protocol(protocolId);authorize(p);requireDraft(p);if(consignments(p.id).size()>=20)throw new ClientErrorException("Este Protocolo ya alcanzó el máximo de 20 Consignas. Cree un nuevo Protocolo para continuar.",409);Consignment c=new Consignment();c.instanceCountryId=tenant.instanceCountryId();c.protocolId=p.id;c.pointId=p.pointId;c.code=nextConsignmentCode();c.title=clean(req==null?null:req.title(),"Nueva consigna");c.instruction="";c.priority="MEDIUM";c.status="BORRADOR";c.scopeType="POINT";c.validityType="PERMANENT";c.applicationType="ALL_TIME";c.applicationDaysJson="[]";c.acknowledgmentRequired=false;c.confirmationRequired=true;c.evidenceRequired=false;c.gpsRequired=false;c.observationRequired=false;c.expectedLocationMode="NONE";c.updatedByUsername=user();c.persist();return itemDto(c);
  }
@@ -144,7 +144,7 @@ public class ConsignmentResource {
  @Path("/items/{id}")
  @Consumes(MediaType.APPLICATION_JSON)
  @Transactional
- @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
+ @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
  public ConsignmentDto saveConsignment(@PathParam("id")UUID id,SaveConsignmentRequest req){
    Consignment c=item(id);ConsignmentProtocol p=protocol(c.protocolId);authorize(p);requireDraft(p);if(req==null)throw new BadRequestException("Solicitud obligatoria");
    c.title=clean(req.title(),c.title);c.instruction=req.instruction()==null?"":req.instruction().trim();c.priority=norm(req.priority(),PRIORITIES,c.priority,"Prioridad inválida");c.scopeType=norm(req.scopeType(),SCOPES,c.scopeType,"Alcance inválido");c.validityType=norm(req.validityType(),VALIDITIES,c.validityType,"Vigencia inválida");c.validityFrom=req.validityFrom();c.validityUntil=req.validityUntil();c.applicationType=norm(req.applicationType(),APPLICATIONS,c.applicationType,"Aplicación inválida");c.applicationDaysJson=req.applicationDaysJson()==null?"[]":req.applicationDaysJson();c.applicationTimeFrom=parseTime(req.applicationTimeFrom());c.applicationTimeTo=parseTime(req.applicationTimeTo());c.acknowledgmentRequired=bool(req.acknowledgmentRequired(),c.acknowledgmentRequired);c.confirmationRequired=bool(req.confirmationRequired(),c.confirmationRequired);c.evidenceRequired=bool(req.evidenceRequired(),c.evidenceRequired);c.gpsRequired=bool(req.gpsRequired(),c.gpsRequired);c.observationRequired=bool(req.observationRequired(),c.observationRequired);c.expectedLocationMode=norm(req.expectedLocationMode(),LOCATION_MODES,c.expectedLocationMode,"Ubicación inválida");c.atsPackageId=req.atsPackageId();c.atsX=req.atsX();c.atsY=req.atsY();c.expectedLatitude=req.expectedLatitude();c.expectedLongitude=req.expectedLongitude();c.expectedRadiusM=com.cajamarca.sgi.comando.settings.EvidenceLocationSettings.validRadius(req.expectedRadiusM(),"de la consigna");c.updatedByUsername=user();
@@ -154,27 +154,27 @@ public class ConsignmentResource {
  @DELETE
  @Path("/items/{id}")
  @Transactional
- @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
+ @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
  public void deleteConsignment(@PathParam("id")UUID id){Consignment c=item(id);ConsignmentProtocol p=protocol(c.protocolId);authorize(p);requireDraft(p);for(ConsignmentEvidence e:evidences(c.id))StandardReferenceImage.delete("targetType=?1 and targetId=?2",StandardReferenceImage.CONSIGNMENT_EVIDENCE,e.id);ConsignmentEvidence.delete("consignmentId=?1 and instanceCountryId=?2",c.id,tenant.instanceCountryId());ConsignmentPostScope.delete("consignmentId=?1 and instanceCountryId=?2",c.id,tenant.instanceCountryId());c.delete();}
 
  @POST
  @Path("/items/{id}/evidences")
  @Consumes(MediaType.APPLICATION_JSON)
  @Transactional
- @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
+ @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
  public EvidenceDto createEvidence(@PathParam("id")UUID id,CreateEvidenceRequest req){Consignment c=item(id);ConsignmentProtocol p=protocol(c.protocolId);authorize(p);requireDraft(p);ConsignmentEvidence e=new ConsignmentEvidence();e.instanceCountryId=tenant.instanceCountryId();e.consignmentId=c.id;e.sortOrder=(int)ConsignmentEvidence.count("consignmentId=?1 and instanceCountryId=?2",c.id,tenant.instanceCountryId())+1;e.name=clean(req==null?null:req.name(),"Nueva evidencia");e.description=req==null||req.description()==null?"":req.description().trim();e.evidenceType=norm(req==null?null:req.evidenceType(),EVIDENCE_TYPES,"PHOTO","Tipo de evidencia inválido");e.required=req==null||req.required()==null||req.required();e.standardImageVersion=0;e.standardImageNotes="";e.visintEnabled=visint(e);e.persist();c.evidenceRequired=true;return evidenceDto(e);}
 
  @PUT
  @Path("/evidences/{id}")
  @Consumes(MediaType.APPLICATION_JSON)
  @Transactional
- @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
+ @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
  public EvidenceDto saveEvidence(@PathParam("id")UUID id,SaveEvidenceRequest req){ConsignmentEvidence e=evidence(id);Consignment c=item(e.consignmentId);ConsignmentProtocol p=protocol(c.protocolId);authorize(p);requireDraft(p);e.name=clean(req.name(),e.name);e.description=req.description()==null?"":req.description().trim();e.evidenceType=norm(req.evidenceType(),EVIDENCE_TYPES,e.evidenceType,"Tipo de evidencia inválido");e.required=req.required();e.standardImageNotes=req.standardImageNotes()==null?"":req.standardImageNotes().trim();if(req.matchThreshold()!=null)e.matchThreshold=com.cajamarca.sgi.comando.visint.MatchThreshold.normalize(req.matchThreshold());e.visintEnabled=visint(e);return evidenceDto(e);}
 
  @DELETE
  @Path("/evidences/{id}")
  @Transactional
- @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
+ @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
  public void deleteEvidence(@PathParam("id")UUID id){ConsignmentEvidence e=evidence(id);Consignment c=item(e.consignmentId);ConsignmentProtocol p=protocol(c.protocolId);authorize(p);requireDraft(p);StandardReferenceImage.delete("targetType=?1 and targetId=?2",StandardReferenceImage.CONSIGNMENT_EVIDENCE,e.id);e.delete();}
 
  /** Agrega una foto estándar a la evidencia (hasta 5). VISINT las recibe todas en referenceImages. */
@@ -182,18 +182,18 @@ public class ConsignmentResource {
  @Path("/evidences/{id}/standard-images")
  @Consumes(MediaType.MULTIPART_FORM_DATA)
  @Transactional
- @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
+ @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
  public EvidenceDto addStandardImage(@PathParam("id")UUID id,@org.jboss.resteasy.reactive.RestForm("file") org.jboss.resteasy.reactive.multipart.FileUpload file){ConsignmentEvidence e=evidence(id);Consignment c=item(e.consignmentId);ConsignmentProtocol p=protocol(c.protocolId);authorize(p);requireDraft(p);references.add(tenant.instanceCountryId(),StandardReferenceImage.CONSIGNMENT_EVIDENCE,e.id,"consignment",file);e.standardImageVersion++;return evidenceDto(e);}
 
  @GET
  @Path("/evidences/{id}/standard-images/{imageId}")
- @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION","SUPERVISOR_SEGURIDAD","AGENTE_SEGURIDAD","CLIENTE"})
+ @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION","SUPERVISOR_SEGURIDAD","AGENTE_SEGURIDAD","CLIENTE"})
  public Response standardImage(@PathParam("id")UUID id,@PathParam("imageId")UUID imageId){ConsignmentEvidence e=evidence(id);Consignment c=item(e.consignmentId);authorize(protocol(c.protocolId));StandardReferenceImage img=references.get(StandardReferenceImage.CONSIGNMENT_EVIDENCE,e.id,imageId);return Response.ok(references.read(img)).type(img.contentType).header(HttpHeaders.CACHE_CONTROL,"no-store").build();}
 
  @DELETE
  @Path("/evidences/{id}/standard-images/{imageId}")
  @Transactional
- @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
+ @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
  public EvidenceDto deleteStandardImage(@PathParam("id")UUID id,@PathParam("imageId")UUID imageId){ConsignmentEvidence e=evidence(id);Consignment c=item(e.consignmentId);ConsignmentProtocol p=protocol(c.protocolId);authorize(p);requireDraft(p);references.delete(StandardReferenceImage.CONSIGNMENT_EVIDENCE,e.id,imageId);e.standardImageVersion++;return evidenceDto(e);}
 
  private void validate(Consignment c){

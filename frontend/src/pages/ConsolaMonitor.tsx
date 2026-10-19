@@ -78,6 +78,7 @@ const DATA:ConsoleItem[]=[
 
 const scopeByUser:Record<UatUser,Scope>={
   presidente:{label:'Alcance: nacional / todas las compañías',companies:null},
+  ggeneral:{label:'Alcance: nacional / todas las compañías',companies:null},
   dlatam:{label:'Alcance: nacional / todas las compañías',companies:null},
   don:{label:'Alcance: nacional / todas las compañías',companies:null},
   dnacional:{label:'Alcance: nacional / todas las compañías',companies:null},

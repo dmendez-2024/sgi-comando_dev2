@@ -18,7 +18,7 @@ import java.util.UUID;
 /** Aggregates stored records; missing execution sources are not inferred from planning. */
 @Path("/api/dashboard")
 @Produces(MediaType.APPLICATION_JSON)
-@RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION","SUPERVISOR_SEGURIDAD"})
+@RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION","SUPERVISOR_SEGURIDAD"})
 public class DashboardResource {
     private static final ZoneId OPERATING_ZONE = ZoneId.of("America/Guayaquil");
     @Inject TenantContext tenant;

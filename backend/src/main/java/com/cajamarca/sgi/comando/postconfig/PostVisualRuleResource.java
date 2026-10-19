@@ -27,7 +27,7 @@ public class PostVisualRuleResource {
     public record HistoryDto(Double thresholdValue,Integer referenceImageCount,Integer historicalPresentationMonths,String legacyHistoricalPresentation,String changedBy,Instant changedAt) {}
 
     @GET
-    @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION","SUPERVISOR_SEGURIDAD","AGENTE_SEGURIDAD","CLIENTE"})
+    @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION","SUPERVISOR_SEGURIDAD","AGENTE_SEGURIDAD","CLIENTE"})
     public RuleDto get(@PathParam("postId") UUID postId){
         authorizedPost(postId);
         PostVisualRule rule=rule(postId);
@@ -36,7 +36,7 @@ public class PostVisualRuleResource {
 
     @GET
     @Path("/history")
-    @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL"})
+    @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL"})
     public List<HistoryDto> history(@PathParam("postId") UUID postId){
         authorizedPost(postId);
         List<PostVisualRuleHistory> rows=PostVisualRuleHistory.list("instanceCountryId=?1 and postId=?2 order by changedAt desc",tenant.instanceCountryId(),postId);
@@ -45,7 +45,7 @@ public class PostVisualRuleResource {
 
     @PUT
     @Transactional
-    @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL"})
+    @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL"})
     public RuleDto save(@PathParam("postId") UUID postId,SaveRequest request){
         authorizedPost(postId);
         if(request==null) throw new BadRequestException("La regla visual es obligatoria");

@@ -44,7 +44,7 @@ public class BitacoraResource {
 
     @GET
     @Path("/protocols")
-    @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION","SUPERVISOR_SEGURIDAD","AGENTE_SEGURIDAD","CLIENTE"})
+    @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION","SUPERVISOR_SEGURIDAD","AGENTE_SEGURIDAD","CLIENTE"})
     public List<ProtocolDto> list(@QueryParam("pointId") UUID pointId){
         PointEntity point=point(pointId);scope.requireCompany(point.companyId);
         List<PostEntity> posts=PostEntity.list("pointId=?1 and instanceCountryId=?2",pointId,tenant.instanceCountryId());
@@ -58,14 +58,14 @@ public class BitacoraResource {
 
     @GET
     @Path("/protocols/{protocolId}/history")
-    @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION","SUPERVISOR_SEGURIDAD","AGENTE_SEGURIDAD","CLIENTE"})
+    @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION","SUPERVISOR_SEGURIDAD","AGENTE_SEGURIDAD","CLIENTE"})
     public List<ProtocolDto> history(@PathParam("protocolId") UUID protocolId){LogbookProtocol p=protocol(protocolId);authorize(p);return LogbookProtocol.<LogbookProtocol>list("instanceCountryId=?1 and seriesId=?2 order by versionNo desc",tenant.instanceCountryId(),p.seriesId).stream().map(this::dto).toList();}
 
     @POST
     @Path("/protocols")
     @Consumes(MediaType.APPLICATION_JSON)
     @Transactional
-    @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
+    @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
     public ProtocolDto create(CreateProtocolRequest request){
         if(request==null||request.postId()==null)throw new BadRequestException("Puesto obligatorio");PostEntity post=post(request.postId());PointEntity point=point(post.pointId);scope.requireCompany(point.companyId);
         LogbookProtocol p=new LogbookProtocol();p.id=UUID.randomUUID();p.instanceCountryId=tenant.instanceCountryId();p.seriesId=p.id;p.postId=post.id;p.code=nextProtocolCode();p.name=cleanOrDefault(request.name(),"Nuevo protocolo");p.objectType=normalize(request.objectType(),OBJECT_TYPES,"PAX","Objeto inválido");p.applicationType=normalize(request.applicationType(),APPLICATION_TYPES,"INGRESO","Aplicación inválida");p.description="";p.status="BORRADOR";p.versionNo=1;
@@ -78,7 +78,7 @@ public class BitacoraResource {
     @Path("/protocols/{protocolId}")
     @Consumes(MediaType.APPLICATION_JSON)
     @Transactional
-    @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
+    @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
     public ProtocolDto save(@PathParam("protocolId") UUID protocolId,SaveProtocolRequest request){
         LogbookProtocol p=protocol(protocolId);authorize(p);requireDraft(p);if(request==null)throw new BadRequestException("Solicitud obligatoria");if(request.name()==null||request.name().isBlank())throw new BadRequestException("El nombre del protocolo es obligatorio");p.name=request.name().trim();p.objectType=normalize(request.objectType(),OBJECT_TYPES,p.objectType,"Objeto inválido");p.applicationType=normalize(request.applicationType(),APPLICATION_TYPES,p.applicationType,"Aplicación inválida");p.description=request.description()==null?"":request.description().trim();p.status="BORRADOR";p.updatedByUsername=user();setScope(p,request.applicablePostIds());return dto(p);
     }
@@ -88,7 +88,7 @@ public class BitacoraResource {
     @Path("/protocols/{protocolId}/scope")
     @Consumes(MediaType.APPLICATION_JSON)
     @Transactional
-    @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
+    @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
     public ProtocolDto saveScope(@PathParam("protocolId") UUID protocolId,SaveScopeRequest request){
         LogbookProtocol p=protocol(protocolId);authorize(p);
         if(request==null)throw new BadRequestException("Solicitud obligatoria");
@@ -104,7 +104,7 @@ public class BitacoraResource {
     @POST
     @Path("/protocols/{protocolId}/fork")
     @Transactional
-    @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
+    @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
     public ProtocolDto fork(@PathParam("protocolId") UUID protocolId){
         LogbookProtocol source=protocol(protocolId);authorize(source);LogbookProtocol existing=LogbookProtocol.find("instanceCountryId=?1 and seriesId=?2 and status='BORRADOR'",tenant.instanceCountryId(),source.seriesId).firstResult();if(existing!=null)return dto(existing);
         LogbookProtocol target=new LogbookProtocol();target.id=UUID.randomUUID();target.instanceCountryId=tenant.instanceCountryId();target.seriesId=source.seriesId;target.basedOnProtocolId=source.id;target.postId=source.postId;target.code=source.code;target.name=source.name;target.objectType=source.objectType;target.applicationType=source.applicationType;target.description=source.description;target.status="BORRADOR";target.versionNo=source.versionNo+1;target.identificationLogic=source.identificationLogic;target.verificationLogic=source.verificationLogic;target.authPreapproval=source.authPreapproval;target.authClient=source.authClient;target.authSupervisor=source.authSupervisor;target.whiteListEnabled=source.whiteListEnabled;target.blackListEnabled=source.blackListEnabled;target.captureManual=source.captureManual;target.captureQr=source.captureQr;target.captureBarcode=source.captureBarcode;target.captureNfc=source.captureNfc;target.captureAutomatic=source.captureAutomatic;target.sourceModelType=source.sourceModelType;target.sourceModelName=source.sourceModelName;target.updatedByUsername=user();target.persist();
@@ -116,7 +116,7 @@ public class BitacoraResource {
     @POST
     @Path("/protocols/{protocolId}/publish")
     @Transactional
-    @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
+    @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
     public ProtocolDto publish(@PathParam("protocolId") UUID protocolId){
         LogbookProtocol p=protocol(protocolId);authorize(p);requireDraft(p);List<LogbookAccreditation> accreditations=accreditations(p.id);if(accreditations.isEmpty())throw new BadRequestException("El protocolo debe tener al menos una acreditación");if(accreditations.size()>10)throw new BadRequestException("El protocolo no puede contener más de 10 acreditaciones");for(LogbookAccreditation accreditation:accreditations){long identification=LogbookProtocolField.count("accreditationId=?1 and instanceCountryId=?2 and section='IDENTIFICACION'",accreditation.id,tenant.instanceCountryId());if(identification==0)throw new BadRequestException("La acreditación "+accreditation.code+" debe tener al menos un campo de identificación");for(LogbookProtocolField field:fields(accreditation.id))if(field.visintEnabled&&StandardReferenceImage.countOf(StandardReferenceImage.LOGBOOK_FIELD,field.id)==0)throw new BadRequestException(accreditation.code+": el campo \""+field.name+"\" requiere al menos una foto estándar (VISINT)");}
         if(scopeIds(p).isEmpty())p.status="INACTIVO";else activateVersion(p);p.lastPublishedAt=Instant.now();p.updatedByUsername=user();return dto(p);
@@ -125,7 +125,7 @@ public class BitacoraResource {
     @POST
     @Path("/protocols/{protocolId}/activate")
     @Transactional
-    @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
+    @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
     public ProtocolDto activate(@PathParam("protocolId") UUID protocolId){
         LogbookProtocol p=protocol(protocolId);authorize(p);if(!"INACTIVO".equals(p.status)&&!"ACTIVO".equals(p.status))throw new ClientErrorException("Solo un Protocolo inactivo puede activarse.",409);if("ACTIVO".equals(p.status))return dto(p);
         List<LogbookProtocol> active=LogbookProtocol.list("instanceCountryId=?1 and seriesId=?2 and status='ACTIVO'",tenant.instanceCountryId(),p.seriesId);for(LogbookProtocol previous:active)previous.status="INACTIVO";p.status="ACTIVO";p.updatedByUsername=user();return dto(p);
@@ -134,7 +134,7 @@ public class BitacoraResource {
     @POST
     @Path("/protocols/{protocolId}/deactivate")
     @Transactional
-    @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
+    @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
     public ProtocolDto deactivate(@PathParam("protocolId") UUID protocolId){
         LogbookProtocol p=protocol(protocolId);authorize(p);if(!"ACTIVO".equals(p.status))throw new ClientErrorException("Solo un Protocolo activo puede inactivarse.",409);p.status="INACTIVO";p.updatedByUsername=user();return dto(p);
     }
@@ -143,40 +143,40 @@ public class BitacoraResource {
     @Path("/protocols/{protocolId}/accreditations")
     @Consumes(MediaType.APPLICATION_JSON)
     @Transactional
-    @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
+    @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
     public AccreditationDto createAccreditation(@PathParam("protocolId") UUID protocolId,CreateAccreditationRequest request){LogbookProtocol p=protocol(protocolId);authorize(p);requireDraft(p);long count=LogbookAccreditation.count("protocolId=?1 and instanceCountryId=?2",p.id,tenant.instanceCountryId());if(count>=10)throw new BadRequestException("Este Protocolo ya alcanzó el máximo de 10 acreditaciones. Para continuar, crea un nuevo Protocolo.");String name=cleanOrDefault(request==null?null:request.name(),"Nueva acreditación");String description=request==null||request.description()==null?"":request.description().trim();LogbookAccreditation accreditation=createDefaultAccreditation(p,name,description);if("PAX".equals(p.objectType))seedDefaultFields(p,accreditation);p.updatedByUsername=user();return accreditationDto(accreditation);}
 
     @PUT
     @Path("/accreditations/{accreditationId}")
     @Consumes(MediaType.APPLICATION_JSON)
     @Transactional
-    @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
+    @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
     public AccreditationDto saveAccreditation(@PathParam("accreditationId") UUID accreditationId,SaveAccreditationRequest request){LogbookAccreditation accreditation=accreditation(accreditationId);LogbookProtocol p=protocol(accreditation.protocolId);authorize(p);requireDraft(p);if(request==null)throw new BadRequestException("Solicitud obligatoria");if(request.name()==null||request.name().isBlank())throw new BadRequestException("El nombre de la acreditación es obligatorio");accreditation.name=request.name().trim();accreditation.description=request.description()==null?"":request.description().trim();accreditation.identificationLogic=normalize(request.identificationLogic(),LOGICS,accreditation.identificationLogic,"Lógica de identificación inválida");accreditation.verificationLogic=normalize(request.verificationLogic(),LOGICS,accreditation.verificationLogic,"Lógica de verificación inválida");accreditation.authPreapproval=request.authPreapproval();accreditation.authClient=request.authClient();accreditation.authSupervisor=request.authSupervisor();accreditation.whiteListEnabled=request.whiteListEnabled();accreditation.blackListEnabled=request.blackListEnabled();accreditation.captureManual=true;accreditation.captureQr=request.captureQr();accreditation.captureBarcode=request.captureBarcode();accreditation.captureNfc=request.captureNfc();accreditation.captureAutomatic=request.captureAutomatic();p.updatedByUsername=user();return accreditationDto(accreditation);}
 
     @DELETE
     @Path("/accreditations/{accreditationId}")
     @Transactional
-    @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
+    @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
     public void deleteAccreditation(@PathParam("accreditationId") UUID accreditationId){LogbookAccreditation a=accreditation(accreditationId);LogbookProtocol p=protocol(a.protocolId);authorize(p);requireDraft(p);if(LogbookAccreditation.count("protocolId=?1 and instanceCountryId=?2",p.id,tenant.instanceCountryId())<=1)throw new BadRequestException("El protocolo debe conservar al menos una acreditación");a.delete();p.updatedByUsername=user();}
 
     @POST
     @Path("/accreditations/{accreditationId}/fields")
     @Consumes(MediaType.APPLICATION_JSON)
     @Transactional
-    @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
+    @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
     public FieldDto createField(@PathParam("accreditationId") UUID accreditationId,SaveFieldRequest request){LogbookAccreditation a=accreditation(accreditationId);LogbookProtocol p=protocol(a.protocolId);authorize(p);requireDraft(p);LogbookProtocolField field=new LogbookProtocolField();field.instanceCountryId=tenant.instanceCountryId();field.protocolId=p.id;field.accreditationId=a.id;apply(field,request,true);field.persist();p.updatedByUsername=user();return fieldDto(field);}
 
     @PUT
     @Path("/fields/{fieldId}")
     @Consumes(MediaType.APPLICATION_JSON)
     @Transactional
-    @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
+    @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
     public FieldDto saveField(@PathParam("fieldId") UUID fieldId,SaveFieldRequest request){LogbookProtocolField field=field(fieldId);LogbookProtocol p=protocol(field.protocolId);authorize(p);requireDraft(p);apply(field,request,false);p.updatedByUsername=user();return fieldDto(field);}
 
     @DELETE
     @Path("/fields/{fieldId}")
     @Transactional
-    @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
+    @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
     public void deleteField(@PathParam("fieldId") UUID fieldId){LogbookProtocolField f=field(fieldId);LogbookProtocol p=protocol(f.protocolId);authorize(p);requireDraft(p);StandardReferenceImage.delete("targetType=?1 and targetId=?2",StandardReferenceImage.LOGBOOK_FIELD,f.id);f.delete();p.updatedByUsername=user();}
 
     /** Agrega una foto estándar al campo (hasta 5). En campos tipo DOCUMENTO, VISINT las recibe en referenceImages. */
@@ -184,18 +184,18 @@ public class BitacoraResource {
     @Path("/fields/{fieldId}/standard-images")
     @Consumes(MediaType.MULTIPART_FORM_DATA)
     @Transactional
-    @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
+    @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
     public FieldDto addStandardImage(@PathParam("fieldId") UUID fieldId,@org.jboss.resteasy.reactive.RestForm("file") org.jboss.resteasy.reactive.multipart.FileUpload file){LogbookProtocolField field=field(fieldId);LogbookProtocol p=protocol(field.protocolId);authorize(p);requireDraft(p);references.add(tenant.instanceCountryId(),StandardReferenceImage.LOGBOOK_FIELD,field.id,"bitacora",file);field.standardImageVersion++;p.updatedByUsername=user();return fieldDto(field);}
 
     @GET
     @Path("/fields/{fieldId}/standard-images/{imageId}")
-    @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION","SUPERVISOR_SEGURIDAD","AGENTE_SEGURIDAD","CLIENTE"})
+    @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION","SUPERVISOR_SEGURIDAD","AGENTE_SEGURIDAD","CLIENTE"})
     public Response standardImage(@PathParam("fieldId") UUID fieldId,@PathParam("imageId") UUID imageId){LogbookProtocolField field=field(fieldId);authorize(protocol(field.protocolId));StandardReferenceImage img=references.get(StandardReferenceImage.LOGBOOK_FIELD,field.id,imageId);return Response.ok(references.read(img)).type(img.contentType).header(HttpHeaders.CACHE_CONTROL,"no-store").build();}
 
     @DELETE
     @Path("/fields/{fieldId}/standard-images/{imageId}")
     @Transactional
-    @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
+    @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
     public FieldDto deleteStandardImage(@PathParam("fieldId") UUID fieldId,@PathParam("imageId") UUID imageId){LogbookProtocolField field=field(fieldId);LogbookProtocol p=protocol(field.protocolId);authorize(p);requireDraft(p);references.delete(StandardReferenceImage.LOGBOOK_FIELD,field.id,imageId);field.standardImageVersion++;p.updatedByUsername=user();return fieldDto(field);}
 
     private LogbookAccreditation cloneAccreditation(LogbookAccreditation old,UUID protocolId){LogbookAccreditation a=new LogbookAccreditation();a.id=UUID.randomUUID();a.instanceCountryId=tenant.instanceCountryId();a.protocolId=protocolId;a.code=old.code;a.name=old.name;a.description=old.description;a.identificationLogic=old.identificationLogic;a.verificationLogic=old.verificationLogic;a.authPreapproval=old.authPreapproval;a.authClient=old.authClient;a.authSupervisor=old.authSupervisor;a.whiteListEnabled=old.whiteListEnabled;a.blackListEnabled=old.blackListEnabled;a.captureManual=old.captureManual;a.captureQr=old.captureQr;a.captureBarcode=old.captureBarcode;a.captureNfc=old.captureNfc;a.captureAutomatic=old.captureAutomatic;a.persist();return a;}

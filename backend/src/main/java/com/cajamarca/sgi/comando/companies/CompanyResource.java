@@ -33,7 +33,7 @@ import org.jboss.logging.Logger;
 public class CompanyResource {
     private static final Logger LOG = Logger.getLogger(CompanyResource.class);
     private static final Set<String> ACTIVE_SERVICE_STATUSES = Set.of("ACTIVE", "VIGENTE");
-    private static final Set<String> KAIBIL_ROLES = Set.of("PRESIDENTE","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL");
+    private static final Set<String> KAIBIL_ROLES = Set.of("PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL");
 
     @Inject TenantContext tenant;
     @Inject OperationalScopeService scope;
@@ -57,7 +57,7 @@ public class CompanyResource {
     public record PageResponse<T>(List<T> items,long total,int page,int size) {}
 
     @GET
-    @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION","SUPERVISOR_SEGURIDAD"})
+    @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION","SUPERVISOR_SEGURIDAD"})
     public PageResponse<CompanyDto> list(@QueryParam("page") @DefaultValue("0") int page,@QueryParam("size") @DefaultValue("50") int size) {
         int safePage=Math.max(page,0),safeSize=Math.min(Math.max(size,1),100);
         Set<UUID> allowed=visibleCompanyIdsForCom();
@@ -69,7 +69,7 @@ public class CompanyResource {
     }
 
     @GET @Path("/core-catalog")
-    @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL"})
+    @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL"})
     public List<CoreCompanyDto> coreCatalog(){
         try{coreCatalogService.synchronizeActiveCompanies();}
         catch(RuntimeException e){LOG.warn("No se pudo actualizar el catálogo de Compañías desde CORE; se conserva el último snapshot local.",e);}
@@ -79,7 +79,7 @@ public class CompanyResource {
     }
 
     @GET @Path("/responsibles")
-    @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL"})
+    @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL"})
     public List<ResponsibleDto> responsibles(){
         Set<UUID> companyIds=visibleCompanyIdsForCom();
         if(companyIds.isEmpty())return List.of();
@@ -94,7 +94,7 @@ public class CompanyResource {
 
     @POST @Path("/activate")
     @Transactional
-    @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL"})
+    @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL"})
     public Response activate(CompanyActivationRequest req){
         if(req==null||req.coreCompanyId()==null) throw new BadRequestException("Seleccione una Compañía del catálogo CORE.");
         CoreCompanyCatalogSnapshot core=CoreCompanyCatalogSnapshot.find("instanceCountryId=?1 and coreCompanyId=?2",tenant.instanceCountryId(),req.coreCompanyId()).firstResult();
@@ -124,15 +124,15 @@ public class CompanyResource {
     /** Direct creation is intentionally disabled: CORE owns company identity. */
     @POST
     @Transactional
-    @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL"})
+    @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL"})
     public Response createDisabled(Object ignored){throw new BadRequestException("Las Compañías no se crean desde cero en SGI: Comando. Use Activar desde CORE.");}
 
     @GET @Path("/{id}")
-    @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION","SUPERVISOR_SEGURIDAD"})
+    @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION","SUPERVISOR_SEGURIDAD"})
     public CompanyDto detail(@PathParam("id") UUID id){requireComCompany(id);return dto(company(id));}
 
     @GET @Path("/{id}/history")
-    @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION","SUPERVISOR_SEGURIDAD"})
+    @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION","SUPERVISOR_SEGURIDAD"})
     public List<CompanyVersionDto> history(@PathParam("id") UUID id){
         requireComCompany(id);List<CompanyVersion> versions=CompanyVersion.list("instanceCountryId=?1 and companyId=?2 order by versionNumber desc",tenant.instanceCountryId(),id);
         return versions.stream().map(v->new CompanyVersionDto(v.versionNumber,v.changeType,v.changeReason,v.actorUsername,v.effectiveAt,v.snapshotJson)).toList();
@@ -140,7 +140,7 @@ public class CompanyResource {
 
     @PUT @Path("/{id}")
     @Transactional
-    @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL"})
+    @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL"})
     public CompanyDto update(@PathParam("id") UUID id,CompanyUpdateRequest req){
         requireComCompany(id);if(req==null)throw new BadRequestException("Solicitud obligatoria");Company c=company(id);CoreCompanyCatalogSnapshot core=core(c);
         boolean kaibil=c.alwaysActive||"COORDINATION".equals(c.companyType);

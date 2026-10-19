@@ -38,7 +38,7 @@ public class PostConfigurationResource {
     public record SaveRequest(String postType,String description,String alias,String visualTitle,String atsLocationKey,String atsLocationLabel,UUID atsPackageId,Double atsLocationX,Double atsLocationY,SkillSet skills,String adjustmentJustification,String configStatus,Boolean stationVisintEnabled,Double stationMatchThreshold,Double latitude,Double longitude,Integer radiusM) {}
 
     @GET
-    @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION","SUPERVISOR_SEGURIDAD","AGENTE_SEGURIDAD","CLIENTE"})
+    @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION","SUPERVISOR_SEGURIDAD","AGENTE_SEGURIDAD","CLIENTE"})
     public List<ConfigDto> list(@QueryParam("pointId") UUID pointId){
         PointEntity point=point(pointId);
         if(identity.hasRole("SUPERVISOR_SEGURIDAD")) requirePointInAssignedRoute(pointId);
@@ -80,7 +80,7 @@ public class PostConfigurationResource {
     @PUT
     @Path("/{postId}")
     @Transactional
-    @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
+    @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
     public ConfigDto save(@PathParam("postId") UUID postId, SaveRequest request){
         if(request==null) throw new BadRequestException("Solicitud obligatoria");
         PostEntity post=PostEntity.find("id=?1 and instanceCountryId=?2",postId,tenant.instanceCountryId()).firstResult();
@@ -139,7 +139,7 @@ public class PostConfigurationResource {
     @Path("/{postId}/standard-image")
     @Consumes(MediaType.MULTIPART_FORM_DATA)
     @Transactional
-    @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
+    @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
     public StandardReferenceImages.Dto uploadStandardImage(@PathParam("postId") UUID postId,@org.jboss.resteasy.reactive.RestForm("file") org.jboss.resteasy.reactive.multipart.FileUpload file){
         authorizedPost(postId);
         StandardReferenceImage current=standardImage(postId);
@@ -150,7 +150,7 @@ public class PostConfigurationResource {
 
     @GET
     @Path("/{postId}/standard-images")
-    @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION","SUPERVISOR_SEGURIDAD","AGENTE_SEGURIDAD","CLIENTE"})
+    @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION","SUPERVISOR_SEGURIDAD","AGENTE_SEGURIDAD","CLIENTE"})
     public List<StandardReferenceImages.Dto> listStandardImages(@PathParam("postId") UUID postId){
         authorizedPost(postId);
         return references.dtos(StandardReferenceImage.POST_CONFIG,postId);
@@ -160,7 +160,7 @@ public class PostConfigurationResource {
     @Path("/{postId}/standard-images")
     @Consumes(MediaType.MULTIPART_FORM_DATA)
     @Transactional
-    @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
+    @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
     public StandardReferenceImages.Dto addStandardImage(@PathParam("postId") UUID postId,@org.jboss.resteasy.reactive.RestForm("file") org.jboss.resteasy.reactive.multipart.FileUpload file){
         authorizedPost(postId);
         if(StandardReferenceImage.countOf(StandardReferenceImage.POST_CONFIG,postId)>=3) throw new BadRequestException("El puesto admite máximo 3 fotos estándar");
@@ -170,7 +170,7 @@ public class PostConfigurationResource {
 
     @GET
     @Path("/{postId}/standard-image/{imageId}")
-    @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION","SUPERVISOR_SEGURIDAD","AGENTE_SEGURIDAD","CLIENTE"})
+    @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION","SUPERVISOR_SEGURIDAD","AGENTE_SEGURIDAD","CLIENTE"})
     public Response readStandardImage(@PathParam("postId") UUID postId,@PathParam("imageId") UUID imageId){
         authorizedPost(postId);
         StandardReferenceImage image=references.get(StandardReferenceImage.POST_CONFIG,postId,imageId);
@@ -180,7 +180,7 @@ public class PostConfigurationResource {
     @DELETE
     @Path("/{postId}/standard-image/{imageId}")
     @Transactional
-    @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
+    @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
     public void deleteStandardImage(@PathParam("postId") UUID postId,@PathParam("imageId") UUID imageId){
         authorizedPost(postId);
         references.delete(StandardReferenceImage.POST_CONFIG,postId,imageId);

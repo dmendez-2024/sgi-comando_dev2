@@ -96,6 +96,7 @@ const DATA:Execution[]=[
 
 const scopeByUser:Record<UatUser,Scope>={
   presidente:{label:'Alcance: nacional / todas las compañías',companies:null,monitoredPosts:152},
+  ggeneral:{label:'Alcance: nacional / todas las compañías',companies:null,monitoredPosts:152},
   dlatam:{label:'Alcance: nacional / todas las compañías',companies:null,monitoredPosts:152},
   don:{label:'Alcance: nacional / todas las compañías',companies:null,monitoredPosts:152},
   dnacional:{label:'Alcance: nacional / todas las compañías',companies:null,monitoredPosts:152},

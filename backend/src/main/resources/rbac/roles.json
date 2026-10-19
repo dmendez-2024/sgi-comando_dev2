@@ -3,6 +3,7 @@
   "note": "Roles COMUNES de SGI: Comando y SGI: Operador (mismo backend). Se publican en IDENT en los dos Sistemas por SGI_COM_IDENT_0002_v001 y en IDENT se asignan a cada Cargo. Un Rol solo de un Sistema va en roles-comando.json o roles-operador.json. INACTIVE = Roles del simulador que este catálogo reemplaza.",
   "roles": [
     {"code": "PRESIDENTE", "name": "Presidente", "scopeRequirement": "PE"},
+    {"code": "GERENCIA_GENERAL", "name": "Gerencia General", "scopeRequirement": "PE"},
     {"code": "DIRECTOR_OPERACIONES_LATAM", "name": "Director de Operaciones LATAM", "scopeRequirement": "PE"},
     {"code": "DIRECTOR_OPERACIONES_NACIONAL", "name": "Director de Operaciones Nacional", "scopeRequirement": "PE"},
     {"code": "DIRECTOR_NACIONAL", "name": "Director Nacional", "scopeRequirement": "PE"},

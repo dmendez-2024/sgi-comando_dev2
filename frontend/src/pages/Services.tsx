@@ -517,7 +517,7 @@ function PostLocationMap({planUrl,x,y,onSelect}:{planUrl:string;x?:number|null;y
 }
 
 function PostsPage({point,onBack}:{point:PointRow;onBack:()=>void}){
-  const canEditVisualRule=['presidente','dlatam','don','dnacional','dzonal'].includes(getUser());
+  const canEditVisualRule=['presidente','ggeneral','dlatam','don','dnacional','dzonal'].includes(getUser());
   const [configs,setConfigs]=useState<PostOperationalConfig[]>([]);
   const [commercialWeek,setCommercialWeek]=useState<CommercialWeek|null>(null);
   const [atsPackage,setAtsPackage]=useState<AtsPackageDto|null>(null);

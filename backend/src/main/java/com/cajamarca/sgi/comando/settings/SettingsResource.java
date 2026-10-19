@@ -14,7 +14,7 @@ import java.util.Set;
 @Path("/api/settings/evidence-location") @Produces(MediaType.APPLICATION_JSON)
 public class SettingsResource {
     /** Roles que pueden cambiar parámetros de toda la instancia (país). */
-    static final Set<String> EDITORS = Set.of("PRESIDENTE", "DIRECTOR_OPERACIONES_LATAM", "DIRECTOR_OPERACIONES_NACIONAL", "DIRECTOR_NACIONAL");
+    static final Set<String> EDITORS = Set.of("PRESIDENTE","GERENCIA_GENERAL", "DIRECTOR_OPERACIONES_LATAM", "DIRECTOR_OPERACIONES_NACIONAL", "DIRECTOR_NACIONAL");
 
     public record EvidenceLocationDto(int defaultRadiusM, int systemRadiusM, boolean configured, String updatedBy, Instant updatedAt,
                                       boolean canEdit, int minRadiusM, int maxRadiusM) {}
@@ -25,11 +25,11 @@ public class SettingsResource {
     @Inject SecurityIdentity identity;
 
     @GET
-    @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION","SUPERVISOR_SEGURIDAD"})
+    @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION","SUPERVISOR_SEGURIDAD"})
     public EvidenceLocationDto get() { return dto(); }
 
     @PUT @Consumes(MediaType.APPLICATION_JSON) @Transactional
-    @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL"})
+    @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL"})
     public EvidenceLocationDto save(SaveEvidenceLocation req) {
         try {
             if (req == null || req.defaultRadiusM() == null) throw new BadRequestException("Ingresa el radio predeterminado en metros");

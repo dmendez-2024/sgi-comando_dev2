@@ -21,7 +21,7 @@ import java.util.UUID;
 
 /** Fotos existentes de registros operativos, siempre limitadas al alcance de compañía del lector. */
 @Path("/api/operation/events/{eventId}/evidences")
-@RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION","SUPERVISOR_SEGURIDAD"})
+@RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION","SUPERVISOR_SEGURIDAD"})
 public class OperationalEvidenceResource {
     @Inject TenantContext tenant;
     @Inject OperationalScopeService scope;

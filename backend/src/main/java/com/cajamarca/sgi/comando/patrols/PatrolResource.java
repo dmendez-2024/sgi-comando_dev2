@@ -51,11 +51,11 @@ public class PatrolResource {
     public record SaveRulesRequest(List<RuleInput> rules) {}
     public record RuleInput(String ruleType,boolean required,boolean evidenceRequired) {}
 
-    private static final String READ_ROLES="PRESIDENTE,DIRECTOR_OPERACIONES_LATAM,DIRECTOR_OPERACIONES_NACIONAL,DIRECTOR_NACIONAL,DIRECTOR_ZONAL,JEFE_REGIONAL,COORDINADOR_COMPANIA,ASISTENTE_COORDINACION,SUPERVISOR_SEGURIDAD,AGENTE_SEGURIDAD,CLIENTE";
+    private static final String READ_ROLES="PRESIDENTE,GERENCIA_GENERAL,DIRECTOR_OPERACIONES_LATAM,DIRECTOR_OPERACIONES_NACIONAL,DIRECTOR_NACIONAL,DIRECTOR_ZONAL,JEFE_REGIONAL,COORDINADOR_COMPANIA,ASISTENTE_COORDINACION,SUPERVISOR_SEGURIDAD,AGENTE_SEGURIDAD,CLIENTE";
 
     @GET
     @Path("/protocols")
-    @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION","SUPERVISOR_SEGURIDAD","AGENTE_SEGURIDAD","CLIENTE"})
+    @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION","SUPERVISOR_SEGURIDAD","AGENTE_SEGURIDAD","CLIENTE"})
     public List<ProtocolDto> list(@QueryParam("pointId") UUID pointId){
         PointEntity point=point(pointId); scope.requireCompany(point.companyId);
         List<PostEntity> posts=PostEntity.list("pointId=?1 and instanceCountryId=?2",pointId,tenant.instanceCountryId());
@@ -72,7 +72,7 @@ public class PatrolResource {
 
     @GET
     @Path("/protocols/{protocolId}/history")
-    @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION","SUPERVISOR_SEGURIDAD","AGENTE_SEGURIDAD","CLIENTE"})
+    @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION","SUPERVISOR_SEGURIDAD","AGENTE_SEGURIDAD","CLIENTE"})
     public List<ProtocolDto> history(@PathParam("protocolId") UUID protocolId){
         PatrolProtocol p=protocol(protocolId); authorize(p);
         List<PatrolProtocol> rows=PatrolProtocol.list("instanceCountryId=?1 and seriesId=?2 order by versionNo desc",tenant.instanceCountryId(),p.seriesId);
@@ -83,7 +83,7 @@ public class PatrolResource {
     @Path("/protocols")
     @Consumes(MediaType.APPLICATION_JSON)
     @Transactional
-    @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
+    @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
     public ProtocolDto createProtocol(CreateProtocolRequest req){
         if(req==null||req.postId()==null) throw new BadRequestException("Puesto obligatorio");
         PostEntity post=post(req.postId()); PointEntity point=point(post.pointId); scope.requireCompany(point.companyId);
@@ -97,7 +97,7 @@ public class PatrolResource {
     @Path("/protocols/{protocolId}")
     @Consumes(MediaType.APPLICATION_JSON)
     @Transactional
-    @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
+    @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
     public ProtocolDto saveProtocol(@PathParam("protocolId") UUID protocolId,SaveProtocolRequest req){
         PatrolProtocol p=protocol(protocolId); authorize(p); requireDraft(p); if(req==null)throw new BadRequestException("Solicitud obligatoria");
         p.name=clean(req.name(),p.name); p.description=req.description()==null?"":req.description().trim(); setScope(p,req.applicablePostIds()); p.updatedByUsername=user(); return dto(p);
@@ -107,7 +107,7 @@ public class PatrolResource {
     @Path("/protocols/{protocolId}/scope")
     @Consumes(MediaType.APPLICATION_JSON)
     @Transactional
-    @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
+    @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
     public ProtocolDto saveScope(@PathParam("protocolId") UUID protocolId,SaveScopeRequest req){
         PatrolProtocol p=protocol(protocolId); authorize(p); if(req==null)throw new BadRequestException("Solicitud obligatoria");
         setScope(p,req.applicablePostIds());
@@ -122,7 +122,7 @@ public class PatrolResource {
     @POST
     @Path("/protocols/{protocolId}/fork")
     @Transactional
-    @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
+    @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
     public ProtocolDto fork(@PathParam("protocolId") UUID protocolId){
         PatrolProtocol source=protocol(protocolId); authorize(source);
         PatrolProtocol existing=PatrolProtocol.find("instanceCountryId=?1 and seriesId=?2 and status='BORRADOR'",tenant.instanceCountryId(),source.seriesId).firstResult();
@@ -139,7 +139,7 @@ public class PatrolResource {
     @POST
     @Path("/protocols/{protocolId}/publish")
     @Transactional
-    @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
+    @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
     public ProtocolDto publish(@PathParam("protocolId") UUID protocolId){
         PatrolProtocol p=protocol(protocolId); authorize(p); requireDraft(p);
         List<PatrolDefinition> defs=patrols(p.id); if(defs.isEmpty())throw new BadRequestException("El protocolo debe contener al menos una patrulla");
@@ -150,7 +150,7 @@ public class PatrolResource {
     @POST
     @Path("/protocols/{protocolId}/activate")
     @Transactional
-    @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
+    @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
     public ProtocolDto activate(@PathParam("protocolId") UUID protocolId){
         PatrolProtocol p=protocol(protocolId);authorize(p);if("BORRADOR".equals(p.status))throw new ClientErrorException("El borrador debe publicarse antes de activarse.",409);
         if(scopeIds(p).isEmpty())setScope(p,List.of(p.postId));
@@ -160,7 +160,7 @@ public class PatrolResource {
     @POST
     @Path("/protocols/{protocolId}/deactivate")
     @Transactional
-    @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
+    @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
     public ProtocolDto deactivate(@PathParam("protocolId") UUID protocolId){
         PatrolProtocol p=protocol(protocolId);authorize(p);if("BORRADOR".equals(p.status))throw new ClientErrorException("El borrador no puede inactivarse.",409);PatrolProtocolPostScope.delete("protocolId=?1 and instanceCountryId=?2",p.id,tenant.instanceCountryId());setProtocolState(p,"INACTIVO");p.updatedByUsername=user();return dto(p);
     }
@@ -169,7 +169,7 @@ public class PatrolResource {
     @Path("/protocols/{protocolId}/patrols")
     @Consumes(MediaType.APPLICATION_JSON)
     @Transactional
-    @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
+    @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
     public PatrolDto createPatrol(@PathParam("protocolId") UUID protocolId,CreatePatrolRequest req){
         PatrolProtocol p=protocol(protocolId); authorize(p); requireDraft(p);
         int patrolCount=(int)PatrolDefinition.count("protocolId=?1 and instanceCountryId=?2",p.id,tenant.instanceCountryId());
@@ -181,7 +181,7 @@ public class PatrolResource {
     @Path("/patrols/{patrolId}")
     @Consumes(MediaType.APPLICATION_JSON)
     @Transactional
-    @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
+    @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
     public PatrolDto savePatrol(@PathParam("patrolId") UUID patrolId,SavePatrolRequest req){
         PatrolDefinition row=patrol(patrolId);PatrolProtocol protocol=protocol(row.protocolId);authorize(protocol);requireDraft(protocol);if(req==null)throw new BadRequestException("Solicitud obligatoria");
         row.name=clean(req.name(),row.name);row.description=req.description()==null?"":req.description().trim();row.structureType=normalize(req.structureType(),STRUCTURES,row.structureType,"Modalidad espacial inválida");row.scheduleType=normalize(req.scheduleType(),SCHEDULES,row.scheduleType,"Modalidad temporal inválida");
@@ -194,14 +194,14 @@ public class PatrolResource {
     @DELETE
     @Path("/patrols/{patrolId}")
     @Transactional
-    @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
+    @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
     public void deletePatrol(@PathParam("patrolId") UUID patrolId){PatrolDefinition row=patrol(patrolId);PatrolProtocol p=protocol(row.protocolId);authorize(p);requireDraft(p);for(PatrolCheckpoint cp:checkpoints(row.id)){PatrolCheckpointRule.delete("checkpointId=?1 and instanceCountryId=?2",cp.id,tenant.instanceCountryId());cp.delete();}row.delete();}
 
     @POST
     @Path("/patrols/{patrolId}/checkpoints")
     @Consumes(MediaType.APPLICATION_JSON)
     @Transactional
-    @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
+    @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
     public CheckpointDto createCheckpoint(@PathParam("patrolId") UUID patrolId,CreateCheckpointRequest req){
         PatrolDefinition pat=patrol(patrolId);PatrolProtocol p=protocol(pat.protocolId);authorize(p);requireDraft(p);if(!"CLOSED".equals(pat.structureType))throw new BadRequestException("Las Patrullas Abiertas no tienen Hitos predefinidos");
         int count=(int)PatrolCheckpoint.count("patrolId=?1 and instanceCountryId=?2",pat.id,tenant.instanceCountryId());if(count>=25)throw new BadRequestException("Una Patrulla Cerrada admite máximo 25 Hitos");
@@ -213,7 +213,7 @@ public class PatrolResource {
     @Path("/checkpoints/{checkpointId}")
     @Consumes(MediaType.APPLICATION_JSON)
     @Transactional
-    @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
+    @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
     public CheckpointDto saveCheckpoint(@PathParam("checkpointId") UUID checkpointId,SaveCheckpointRequest req){
         PatrolCheckpoint cp=checkpoint(checkpointId);PatrolDefinition pat=patrol(cp.patrolId);PatrolProtocol p=protocol(pat.protocolId);authorize(p);requireDraft(p);if(req==null)throw new BadRequestException("Solicitud obligatoria");
         cp.name=clean(req.name(),cp.name);cp.description=req.description()==null?"":req.description().trim();String oldOrigin=cp.originMode;cp.originMode=normalize(req.originMode(),ORIGINS,cp.originMode,"Origen inválido");cp.atsPackageId=req.atsPackageId();cp.atsX=req.atsX();cp.atsY=req.atsY();cp.latitude=req.latitude();cp.longitude=req.longitude();cp.gpsAccuracyM=req.gpsAccuracyM();cp.controlType=normalize(req.controlType(),CONTROL_TYPES,cp.controlType,"Tipo de control inválido");cp.requiresEvidence=req.requiresEvidence();cp.standardImageNotes=req.standardImageNotes()==null?"":req.standardImageNotes().trim();// radiusM: null = sin cambio (guardados parciales: plano/GPS), 0 = usar el predeterminado, 5..5000 = radio propio.
@@ -228,7 +228,7 @@ public class PatrolResource {
     @Path("/checkpoints/{checkpointId}/rules")
     @Consumes(MediaType.APPLICATION_JSON)
     @Transactional
-    @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
+    @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
     public CheckpointDto saveRules(@PathParam("checkpointId") UUID checkpointId,SaveRulesRequest req){
         PatrolCheckpoint cp=checkpoint(checkpointId);PatrolDefinition pat=patrol(cp.patrolId);PatrolProtocol p=protocol(pat.protocolId);authorize(p);requireDraft(p);PatrolCheckpointRule.delete("checkpointId=?1 and instanceCountryId=?2",cp.id,tenant.instanceCountryId());
         int order=1; if(req!=null&&req.rules()!=null)for(RuleInput input:req.rules()){String kind=normalize(input.ruleType(),RULE_TYPES,null,"Regla inválida");PatrolCheckpointRule r=new PatrolCheckpointRule();r.instanceCountryId=tenant.instanceCountryId();r.checkpointId=cp.id;r.sortOrder=order++;r.ruleType=kind;r.required=input.required();r.evidenceRequired=input.evidenceRequired();r.persist();}
@@ -238,7 +238,7 @@ public class PatrolResource {
     @DELETE
     @Path("/checkpoints/{checkpointId}")
     @Transactional
-    @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
+    @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
     public void deleteCheckpoint(@PathParam("checkpointId") UUID checkpointId){PatrolCheckpoint cp=checkpoint(checkpointId);PatrolDefinition pat=patrol(cp.patrolId);PatrolProtocol p=protocol(pat.protocolId);authorize(p);requireDraft(p);cp.delete();List<PatrolCheckpoint> rest=checkpoints(pat.id);int i=1;for(PatrolCheckpoint row:rest){row.sortOrder=i;row.code=String.format(Locale.ROOT,"H%02d",i);i++;}pat.versionNo++;pat.legacyVersion=pat.versionNo;pat.updatedByUsername=user();}
 
     /** Agrega una foto estándar al Hito (hasta 5). VISINT las recibe todas en referenceImages. */
@@ -246,7 +246,7 @@ public class PatrolResource {
     @Path("/checkpoints/{checkpointId}/standard-images")
     @Consumes(MediaType.MULTIPART_FORM_DATA)
     @Transactional
-    @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
+    @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
     public CheckpointDto addStandardImage(@PathParam("checkpointId") UUID checkpointId,@RestForm("file") FileUpload file) throws java.io.IOException{
         PatrolCheckpoint cp=checkpoint(checkpointId);PatrolDefinition pat=patrol(cp.patrolId);PatrolProtocol p=protocol(pat.protocolId);authorize(p);requireDraft(p);
         references.add(tenant.instanceCountryId(),StandardReferenceImage.PATROL_CHECKPOINT,cp.id,"patrol",file);
@@ -255,7 +255,7 @@ public class PatrolResource {
 
     @GET
     @Path("/checkpoints/{checkpointId}/standard-images/{imageId}")
-    @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION","SUPERVISOR_SEGURIDAD","AGENTE_SEGURIDAD","CLIENTE"})
+    @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION","SUPERVISOR_SEGURIDAD","AGENTE_SEGURIDAD","CLIENTE"})
     public Response standardImage(@PathParam("checkpointId") UUID checkpointId,@PathParam("imageId") UUID imageId){
         PatrolCheckpoint cp=checkpoint(checkpointId);PatrolDefinition pat=patrol(cp.patrolId);PatrolProtocol p=protocol(pat.protocolId);authorize(p);StandardReferenceImage img=references.get(StandardReferenceImage.PATROL_CHECKPOINT,cp.id,imageId);
         return Response.ok(references.read(img)).type(img.contentType).header(HttpHeaders.CACHE_CONTROL,"no-store").build();
@@ -265,7 +265,7 @@ public class PatrolResource {
     @DELETE
     @Path("/checkpoints/{checkpointId}/standard-images/{imageId}")
     @Transactional
-    @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
+    @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
     public CheckpointDto deleteStandardImage(@PathParam("checkpointId") UUID checkpointId,@PathParam("imageId") UUID imageId){
         PatrolCheckpoint cp=checkpoint(checkpointId);PatrolDefinition pat=patrol(cp.patrolId);PatrolProtocol p=protocol(pat.protocolId);authorize(p);requireDraft(p);
         if(references.delete(StandardReferenceImage.PATROL_CHECKPOINT,cp.id,imageId)==0)cp.visintEnabled=false;

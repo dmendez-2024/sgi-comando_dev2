@@ -12,6 +12,7 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 
 import java.util.HashSet;
+import java.util.Collection;
 import java.util.Map;
 import java.util.Set;
 
@@ -44,11 +45,7 @@ public class IdentIdentityProvider implements IdentityProvider<TokenAuthenticati
             catch (IdentTokenVerifier.InvalidTokenException e) { throw new AuthenticationFailedException(e.getMessage()); }
             boolean operatorApp = IdentTokenVerifier.PROGRAM_OPERATOR.equals(id.program());
             if (operatorApp && (id.subject() == null || id.subject().isBlank())) throw new AuthenticationFailedException("El token de IDENT no trae sub");
-            Set<String> roles = new HashSet<>();
-            for (String g : id.groups()) {
-                if (!operatorApp) roles.add(g);
-                else if (OPERATOR_ROLES.containsKey(g)) roles.add(OPERATOR_ROLES.get(g));
-            }
+            Set<String> roles = operatorApp ? operatorRoles(id.groups()) : comandoRoles(id.groups());
             String name = operatorApp ? id.subject() : id.email() != null ? id.email() : id.subject();
             QuarkusSecurityIdentity.Builder b = QuarkusSecurityIdentity.builder()
                     .setPrincipal(new QuarkusPrincipal(name))
@@ -63,5 +60,15 @@ public class IdentIdentityProvider implements IdentityProvider<TokenAuthenticati
             b.addAttribute(IdentIdentity.INSTANCE_COUNTRY_ID, id.instanceCountryId());
             return b.build();
         });
+    }
+
+    static Set<String> comandoRoles(Collection<String> groups) {
+        return new HashSet<>(groups);
+    }
+
+    private static Set<String> operatorRoles(Collection<String> groups) {
+        Set<String> roles = new HashSet<>();
+        for (String group : groups) if (OPERATOR_ROLES.containsKey(group)) roles.add(OPERATOR_ROLES.get(group));
+        return roles;
     }
 }

@@ -15,7 +15,7 @@ import java.util.*;
 
 /** Consulta (solo lectura) de las evaluaciones que los Supervisores registran desde SGI Operador (V81), acotada al tenant y al alcance territorial del usuario. */
 @Path("/api/supervision/evaluations") @Produces(MediaType.APPLICATION_JSON)
-@RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
+@RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
 public class SupervisionQueryResource {
     private static final ZoneId OPERATING_ZONE = ZoneId.of("America/Guayaquil");
     public record EvaluationRow(UUID id, Instant capturedAt, UUID companyId, String companyName, UUID pointId, String pointName, String clientName,

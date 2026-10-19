@@ -8,7 +8,7 @@ import java.util.Map;
 
 @Path("/api/internal/interconnections")
 @Produces(MediaType.APPLICATION_JSON)
-@RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL"})
+@RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL"})
 public class InterconnectionCatalogResource {
     @Inject InterconnectionCatalogService catalog;
     @Inject ResolutionCache cache;

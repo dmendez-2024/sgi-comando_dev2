@@ -11,7 +11,7 @@ import java.util.stream.Collectors;
 
 @ApplicationScoped
 public class OperationalScopeService {
-    private static final Set<String> COUNTRY_ROLES = Set.of("PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL");
+    private static final Set<String> COUNTRY_ROLES = Set.of("PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL");
     @Inject TenantContext tenant;
     @Inject SecurityIdentity identity;
 

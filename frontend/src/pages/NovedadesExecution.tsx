@@ -149,6 +149,7 @@ const INITIAL_DATA:Novelty[]=[
 
 const scopeByUser:Record<UatUser,Scope>={
   presidente:{label:'Alcance: nacional / todas las compañías',companies:null},
+  ggeneral:{label:'Alcance: nacional / todas las compañías',companies:null},
   dlatam:{label:'Alcance: nacional / todas las compañías',companies:null},
   don:{label:'Alcance: nacional / todas las compañías',companies:null},
   dnacional:{label:'Alcance: nacional / todas las compañías',companies:null},
@@ -186,7 +187,7 @@ const iconForType=(type:NoveltyType)=>type==='FINDING'?<Eye size={16}/>:type==='
 const dateOnly=(value:string)=>value.slice(0,10);
 const formatDateTime=(value:string)=>new Intl.DateTimeFormat('es-EC',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}).format(new Date(value));
 const unique=(values:string[])=>Array.from(new Set(values)).sort((a,b)=>a.localeCompare(b,'es'));
-const canReview=(user:UatUser)=>['presidente','dnacional','dzonal','jregional','coord','asistente'].includes(user);
+const canReview=(user:UatUser)=>['presidente','ggeneral','dnacional','dzonal','jregional','coord','asistente'].includes(user);
 function withinScope(row:Novelty,scope:Scope){if(scope.companies&&!scope.companies.includes(row.companyCode))return false;if(scope.zone&&row.zone!==scope.zone)return false;if(scope.region&&row.region!==scope.region)return false;return true}
 function validateRange(from:string,to:string){if(!from||!to)return 'Debe elegir siempre una fecha inicio y una fecha fin.';if(to<from)return 'La fecha fin no puede ser menor que la fecha inicio.';const start=new Date(`${from}T00:00:00`);const max=new Date(start);max.setFullYear(max.getFullYear()+1);const end=new Date(`${to}T23:59:59`);return end>max?'El período consultado no puede ser mayor a 1 año.':''}
 function subcategories(type:NoveltyType){return type==='FINDING'?FINDING_SUBCATEGORIES:type==='VULNERABILITY'?VULNERABILITY_SUBCATEGORIES:INCIDENT_SUBCATEGORIES}
@@ -375,7 +376,7 @@ export default function NovedadesExecution(){
   </div>
 }
 
-function userLabel(user:UatUser){return ({presidente:'Presidencia UAT',dlatam:'Director Operaciones LATAM UAT',don:'Director Operaciones Nacional UAT',dnacional:'Director Nacional UAT',dzonal:'Director Zonal UAT',jregional:'Jefe Regional UAT',coord:'Coordinador UAT',asistente:'Asistente de Coordinación UAT',supervisor:'Supervisor UAT',agente:'Agente UAT',cliente:'Cliente UAT'}[user])}
+function userLabel(user:UatUser){return ({presidente:'Presidencia UAT',ggeneral:'Gerencia General UAT',dlatam:'Director Operaciones LATAM UAT',don:'Director Operaciones Nacional UAT',dnacional:'Director Nacional UAT',dzonal:'Director Zonal UAT',jregional:'Jefe Regional UAT',coord:'Coordinador UAT',asistente:'Asistente de Coordinación UAT',supervisor:'Supervisor UAT',agente:'Agente UAT',cliente:'Cliente UAT'}[user])}
 function Metric({icon,label,detail,value,tone}:{icon:ReactNode;label:string;detail:string;value:number;tone:'blue'|'teal'|'amber'|'red'|'green'}){return <article><span className={tone}>{icon}</span><div><small>{label}</small><strong>{value}</strong><em>{detail}</em></div></article>}
 function Field({label,children}:{label:string;children:ReactNode}){return <label className="nov-field"><span>{label}</span>{children}</label>}
 function ModalField({label,children}:{label:string;children:ReactNode}){return <label className="nov-modal-field"><span>{label}</span>{children}</label>}

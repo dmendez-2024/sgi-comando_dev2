@@ -19,7 +19,7 @@ function statusLabel(v:string){return v==='ACTIVE'?'Activa':v==='INACTIVE'?'Inac
 function changeLabel(v:string){return ({CORE_ACTIVATED:'Activación desde CORE',UPDATED:'Actualización',TERRITORY_UPDATED:'Territorio actualizado',RESPONSIBLE_UPDATED:'Responsable actualizado',INACTIVATED:'Inactivación',REACTIVATED:'Reactivación',BASELINE:'Versión base'} as Record<string,string>)[v]??v}
 
 export default function Companies(){
- const user=getUser();const canManage=['presidente','dlatam','don','dnacional','dzonal'].includes(user);
+ const user=getUser();const canManage=['presidente','ggeneral','dlatam','don','dnacional','dzonal'].includes(user);
  const [data,setData]=useState<Company[]>([]);const [territory,setTerritory]=useState<Territory>({zones:[],regions:[]});const [catalog,setCatalog]=useState<CoreCompany[]>([]);const [responsibles,setResponsibles]=useState<Responsible[]>([]);
  const [error,setError]=useState('');const [notice,setNotice]=useState('');const [editor,setEditor]=useState<Editor>(null);const [activate,setActivate]=useState<Activate>(null);const [history,setHistory]=useState<{company:Company;versions:Version[]}|null>(null);const [busy,setBusy]=useState(false);
  const load=async()=>{try{const core=canManage?await api.companyCoreCatalog():[];const [companies,t,people]=await Promise.all([api.companies(),canManage?api.territoryAdmin():api.territory(),canManage?api.companyResponsibles():Promise.resolve([])]);setData(companies.items??[]);setTerritory(t);setCatalog(core??[]);setResponsibles(people??[]);setError('');return {core:core??[],territory:t}}catch(e){setError(msg(e));return null}};

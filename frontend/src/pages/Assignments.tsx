@@ -73,7 +73,7 @@ function clampIso(date:string,min:string,max:string){return date<min?min:date>ma
 
 export default function Assignments(){
   const user=getUser();const today=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Guayaquil',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
-  const kaibilLeadershipUsers=['presidente','dnacional','dzonal','jregional'];
+  const kaibilLeadershipUsers=['presidente','ggeneral','dnacional','dzonal','jregional'];
   const isKaibilLeadership=kaibilLeadershipUsers.includes(user);
   const [companies,setCompanies]=useState<Company[]>([]);const [companyId,setCompanyId]=useState('');const [weekStart,setWeekStart]=useState(monday());const [clientFilter,setClientFilter]=useState('');
   const selectedCompany=useMemo(()=>companies.find(c=>c.id===companyId),[companies,companyId]);const canEdit=selectedCompany?.alwaysActive?isKaibilLeadership:['coord','asistente'].includes(user);

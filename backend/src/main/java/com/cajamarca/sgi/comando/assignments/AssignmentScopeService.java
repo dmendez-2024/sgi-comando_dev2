@@ -19,8 +19,8 @@ import java.util.stream.Collectors;
 /** Scope rules for ASI, including Kaibil coordination-company permissions. */
 @ApplicationScoped
 public class AssignmentScopeService {
-    private static final Set<String> COUNTRY_READ_ROLES=Set.of("PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL");
-    private static final Set<String> KAIBIL_EDIT_ROLES=Set.of("PRESIDENTE","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL");
+    private static final Set<String> COUNTRY_READ_ROLES=Set.of("PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL");
+    private static final Set<String> KAIBIL_EDIT_ROLES=Set.of("PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL");
     private static final Set<String> STANDARD_EDIT_ROLES=Set.of("COORDINADOR_COMPANIA","ASISTENTE_COORDINACION");
 
     @Inject TenantContext tenant;
@@ -54,7 +54,7 @@ public class AssignmentScopeService {
 
     /** For Kaibil transfer decisions, zone/region roles are limited by the counterparty Company's territory. */
     public boolean canManageKaibilTransferAgainst(UUID counterpartyCompanyId){
-        if(identity.getRoles().contains("PRESIDENTE")||identity.getRoles().contains("DIRECTOR_NACIONAL"))return true;
+        if(identity.getRoles().contains("PRESIDENTE")||identity.getRoles().contains("GERENCIA_GENERAL")||identity.getRoles().contains("DIRECTOR_NACIONAL"))return true;
         Company c=Company.find("id=?1 and instanceCountryId=?2",counterpartyCompanyId,tenant.instanceCountryId()).firstResult();if(c==null)return false;
         if(identity.getRoles().contains("DIRECTOR_ZONAL"))return scopes().stream().anyMatch(s->"ZONE".equals(s.scopeType)&&Objects.equals(s.scopeId,c.zoneId));
         if(identity.getRoles().contains("JEFE_REGIONAL")){Set<UUID> regions=CompanyRegion.<CompanyRegion>list("instanceCountryId=?1 and companyId=?2",tenant.instanceCountryId(),c.id).stream().map(l->l.regionId).collect(Collectors.toSet());return scopes().stream().anyMatch(s->"REGION".equals(s.scopeType)&&regions.contains(s.scopeId));}

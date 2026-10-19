@@ -55,7 +55,7 @@ public class OperationResource {
     @Inject com.cajamarca.sgi.comando.settings.EvidenceLocationSettings locationSettings;
 
     @GET @Path("/executions")
-    @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION","SUPERVISOR_SEGURIDAD"})
+    @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION","SUPERVISOR_SEGURIDAD"})
     public List<ExecutionRow> list(@QueryParam("pointId") UUID pointId, @QueryParam("limit") @DefaultValue("50") int limit) {
         if (pointId == null) throw new BadRequestException("pointId es obligatorio");
         requirePoint(pointId);
@@ -64,7 +64,7 @@ public class OperationResource {
     }
 
     @GET @Path("/points/{pointId}/collaborators")
-    @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION","SUPERVISOR_SEGURIDAD"})
+    @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION","SUPERVISOR_SEGURIDAD"})
     public List<CollaboratorRow> collaborators(@PathParam("pointId") UUID pointId) {
         requirePoint(pointId);
         Instant now = Instant.now(), from = now.minus(Duration.ofDays(14)), upcomingUntil = now.plus(Duration.ofDays(14));
@@ -121,7 +121,7 @@ public class OperationResource {
     }
 
     @GET @Path("/points/{pointId}/coverage-options")
-    @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION","SUPERVISOR_SEGURIDAD"})
+    @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION","SUPERVISOR_SEGURIDAD"})
     public CoverageOptions coverageOptions(@PathParam("pointId") UUID pointId, @QueryParam("postId") UUID postId) {
         requirePoint(pointId);
         if (postId == null) throw new BadRequestException("Seleccione un Puesto para consultar la cobertura");
@@ -216,7 +216,7 @@ public class OperationResource {
     }
 
     @GET @Path("/executions/{id}")
-    @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION","SUPERVISOR_SEGURIDAD"})
+    @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION","SUPERVISOR_SEGURIDAD"})
     public ExecutionDetail detail(@PathParam("id") UUID id) {
         TaskExecution x = execution(id);
         VisualReview r = VisualReview.find("taskExecutionId", x.id).firstResult();
@@ -232,7 +232,7 @@ public class OperationResource {
     }
 
     @GET @Path("/evidences/{id}/content")
-    @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION","SUPERVISOR_SEGURIDAD"})
+    @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION","SUPERVISOR_SEGURIDAD"})
     public Response evidence(@PathParam("id") UUID id) {
         EvidenceObject o = EvidenceObject.find("id=?1 and instanceCountryId=?2", id, tenant.instanceCountryId()).firstResult();
         if (o == null) throw new NotFoundException("Foto no encontrada");
@@ -244,7 +244,7 @@ public class OperationResource {
 
     /** Foto estándar enviada a VISINT (snapshot de la revisión); si el Hito no tenía VISINT, la actual del Hito. */
     @GET @Path("/executions/{id}/standards/{standardId}")
-    @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION","SUPERVISOR_SEGURIDAD"})
+    @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION","SUPERVISOR_SEGURIDAD"})
     public Response standard(@PathParam("id") UUID id, @PathParam("standardId") UUID standardId) {
         TaskExecution x = execution(id);
         VisualReview r = VisualReview.find("taskExecutionId", x.id).firstResult();
@@ -259,7 +259,7 @@ public class OperationResource {
     }
 
     @POST @Path("/visual-reviews/{id}/retry") @Transactional
-    @RolesAllowed({"PRESIDENTE","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
+    @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
     public ReviewDetail retry(@PathParam("id") UUID id) {
         VisualReview r = VisualReview.find("id=?1 and instanceCountryId=?2", id, tenant.instanceCountryId()).firstResult();
         if (r == null) throw new NotFoundException("Revisión no encontrada");

@@ -44,8 +44,10 @@ class IdentRolePublisherCatalogTest {
         JsonNode common = resource(IdentRolePublisher.COMMON);
         var comando = IdentRolePublisher.payloads(IdentRolePublisher.catalog(common, resource(IdentRolePublisher.EXTRA.get(IdentRolePublisher.COM))));
         var operador = IdentRolePublisher.payloads(IdentRolePublisher.catalog(common, resource(IdentRolePublisher.EXTRA.get(IdentRolePublisher.OPR))));
-        assertEquals(13, comando.size());
+        assertEquals(14, comando.size());
         assertEquals(comando, operador);
+        assertEquals(1, comando.stream().filter(role -> "GERENCIA_GENERAL".equals(role.get("role_code"))
+                && "PE".equals(role.get("scope_requirement"))).count());
     }
 
     @Test

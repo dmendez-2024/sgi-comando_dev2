@@ -1,13 +1,13 @@
 import {identEnabled,identRoles,identToken,renewIdentToken,startLogin} from './security/identAuth';
 const API = import.meta.env.VITE_API_URL || '/dev.comando';
 // const API=import.meta.env.VITE_API_URL ?? 'http://localhost:8080';
-export type UatUser='presidente'|'dlatam'|'don'|'dnacional'|'dzonal'|'jregional'|'coord'|'asistente'|'supervisor'|'agente'|'cliente';
+export type UatUser='presidente'|'ggeneral'|'dlatam'|'don'|'dnacional'|'dzonal'|'jregional'|'coord'|'asistente'|'supervisor'|'agente'|'cliente';
 let currentUser:UatUser=(localStorage.getItem('sgi-uat-user') as UatUser)||'coord';
 const PASSWORD='CajamarcaUAT!2026';
 const contextCache=new Map<UatUser,Promise<any>>();
 export const setUser=(u:UatUser)=>{currentUser=u;contextCache.clear();localStorage.setItem('sgi-uat-user',u)};
 /** Perfil de pantalla segun el Rol que entrega IDENT (Cargo); sin IDENT, el usuario UAT elegido en el selector. */
-const PROFILE_BY_ROLE:[string,UatUser][]=[['PRESIDENTE','presidente'],['DIRECTOR_OPERACIONES_LATAM','dlatam'],['DIRECTOR_OPERACIONES_NACIONAL','don'],
+const PROFILE_BY_ROLE:[string,UatUser][]=[['GERENCIA_GENERAL','ggeneral'],['PRESIDENTE','presidente'],['DIRECTOR_OPERACIONES_LATAM','dlatam'],['DIRECTOR_OPERACIONES_NACIONAL','don'],
  ['DIRECTOR_NACIONAL','dnacional'],['DIRECTOR_ZONAL','dzonal'],['JEFE_REGIONAL','jregional'],['COORDINADOR_COMPANIA','coord'],
  ['ASISTENTE_COORDINACION','asistente'],['SUPERVISOR_SEGURIDAD','supervisor'],['AGENTE_SEGURIDAD','agente'],['CLIENTE','cliente']];
 export const getUser=():UatUser=>{
