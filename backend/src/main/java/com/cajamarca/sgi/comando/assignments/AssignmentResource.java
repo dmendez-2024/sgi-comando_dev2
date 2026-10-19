@@ -77,6 +77,15 @@ public class AssignmentResource {
     public record CoverageResponse(LocalDate weekStart, List<CoverageCompanyDto> companies, int totalRequiredShifts, int totalAssignedShifts, int totalUnassignedShifts, double overallCoveragePct) {}
     public record ValidationProblem(String code, String message) {}
     public record EvaluationDto(UUID shiftOccurrenceId, String state, BigDecimal ic, List<ValidationProblem> blockers, List<String> warnings) {}
+    record ShiftTarget(PostEntity post, PostSkillRequirement requirement, CoordinationPost coordinationPost) {}
+
+    static ShiftTarget resolveShiftTarget(ShiftOccurrenceEntity shift, Map<UUID,PostEntity> posts,
+                                          Map<UUID,PostSkillRequirement> requirements,
+                                          Map<UUID,CoordinationPost> coordinationPosts) {
+        if (shift.postId != null) return new ShiftTarget(posts.get(shift.postId), requirements.get(shift.postId), null);
+        if (shift.coordinationPostId != null) return new ShiftTarget(null, null, coordinationPosts.get(shift.coordinationPostId));
+        throw new IllegalStateException("El turno no tiene un Puesto asociado.");
+    }
     public record DraftSaveResponse(UUID planId, Instant savedAt, String savedBy) {}
     public record CompatibilitySkillDto(String code,String label,BigDecimal actual,BigDecimal required,boolean meets) {}
     public record CompatibilityDetails(UUID assignmentId,UUID employeeId,String employeeName,UUID postId,String postCode,String postName,BigDecimal ic,int skillsMet,int skillsTotal,double compliancePct,List<CompatibilitySkillDto> skills) {}
@@ -383,8 +392,8 @@ public class AssignmentResource {
 
         List<EvaluationDto> out=new ArrayList<>(shifts.size());
         for(ShiftOccurrenceEntity shift:shifts){
-            PostEntity post=posts.get(shift.postId);PostSkillRequirement req=requirements.get(shift.postId);
-            CoordinationPost coordinationPost=coordinationPosts.get(shift.coordinationPostId);
+            ShiftTarget target=resolveShiftTarget(shift,posts,requirements,coordinationPosts);
+            PostEntity post=target.post();PostSkillRequirement req=target.requirement();CoordinationPost coordinationPost=target.coordinationPost();
             List<ValidationProblem> hard=new ArrayList<>();
             if(companyMismatch)hard.add(new ValidationProblem("COMPANY","El colaborador no pertenece a la Compañía del plan."));
             if(inactive)hard.add(new ValidationProblem("EMPLOYMENT_STATUS","El colaborador no está activo en SIC: RRHH."));
