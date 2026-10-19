@@ -1,5 +1,7 @@
 # SGI: Comando — Modelo Maestro
 
+Actualización de desarrollo 2026-10-19: [CSL IMG RC1](CSL_INCIDENT_IMAGES_2026-10-16.md) completa fotos de descripción/resolución de incidentes, cinco por sección, con borrador/finalización y galería. Sustituye la limitación de solo metadata para la nueva RC; no cambia los documentos de alcance histórico congelado.
+
 **Versión documental:** 0.1 (work in progress)  
 **Fecha:** 2026-09-07
 

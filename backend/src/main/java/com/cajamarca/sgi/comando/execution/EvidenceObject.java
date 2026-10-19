@@ -14,9 +14,10 @@ public class EvidenceObject extends PanacheEntityBase {
     @Column(name="client_evidence_id", nullable=false) public UUID clientEvidenceId;
     @Column(name="upload_batch_id", nullable=false) public UUID uploadBatchId;
     @Column(name="event_id", nullable=false) public UUID eventId;
-    @Column(name="assignment_id", nullable=false) public UUID assignmentId;
-    @Column(name="employee_id", nullable=false) public UUID employeeId;
-    @Column(name="username", nullable=false, length=80) public String username;
+    @Column(name="assignment_id") public UUID assignmentId;
+    @Column(name="employee_id") public UUID employeeId;
+    @Column(name="incident_id") public UUID incidentId;
+    @Column(name="username", nullable=false, length=160) public String username;
     @Column(name="target_type", nullable=false, length=40) public String targetType;
     @Column(name="target_id", nullable=false) public UUID targetId;
     @Column(name="bucket", nullable=false, length=63) public String bucket;

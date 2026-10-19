@@ -1,5 +1,7 @@
 # CSL — persistencia de Notificaciones de Incidente (2026-10-08)
 
+Actualización posterior: [CSL IMG RC1, validada el 2026-10-19](CSL_INCIDENT_IMAGES_2026-10-16.md) implementa imágenes persistentes. La limitación binaria descrita aquí corresponde al 08/10 y queda supersedida en esa RC; routing STC continúa pendiente.
+
 Extensión posterior a la baseline CSL v0.2 congelada. No modifica el documento histórico `CSL_INCIDENT_NOTIFICATION_v0.2.md`, que describe el alcance UAT original.
 
 - SGI: Comando conserva en PostgreSQL el registro operacional de origen de las notificaciones, en `incident_notification` (`V69`).

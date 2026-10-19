@@ -1,5 +1,9 @@
 # SGI: Comando — Decisiones
 
+## SGI-CSL-IMG-DEC-001 — 2026-10-19
+
+Extensión autorizada en esta tarea y registrada antes de implementar en [CR-SGI_COM-CSL-0001](CR_SGI_COM_CSL_0001.md): almacenar adjuntos de incidentes en el MinIO existente y evolucionar evidence_object, sin tablas paralelas ni asignaciones/agentes ficticios. V85 conserva por CHECK los requisitos de las evidencias de Operador. API interna v1; sin interconexiones nuevas/modificadas/retiradas. La limitación de solo metadata queda supersedida en CSL IMG RC1. Aceptación UAT/producción pendiente. [Validación, compatibilidad y reversión](CSL_INCIDENT_IMAGES_2026-10-16.md).
+
 ## D-001 Nombre del sistema
 El módulo antes denominado SGI: Administrador pasa a llamarse **SGI: Comando**.
 

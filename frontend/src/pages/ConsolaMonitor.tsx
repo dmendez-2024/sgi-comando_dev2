@@ -288,7 +288,8 @@ export default function ConsolaMonitor(){
       <div><span>Alcance</span><strong>{scope.label.replace('Alcance: ','')}</strong></div>
     </div>
     <IncidentNotificationPanel
-      key={editingIncident?.id??`new-${nextIncidentCode}`}
+      // Keep the editor mounted when its first draft receives an ID: pending files
+      // and uploaded references belong to this editing session.
       initial={editingIncident}
       nextCode={nextIncidentCode}
       locations={locationOptions}
@@ -397,7 +398,7 @@ export default function ConsolaMonitor(){
           <div className="csl-view-summary"><span className={`csl-category ${categoryClass(inspected.category)}`}>{categoryIcon(inspected.category)}{categoryLabel(inspected.category)}</span><strong>{inspected.title}</strong><span className={`csl-priority ${priorityClass(inspected.priority)}`}>{priorityLabel(inspected.priority)}</span><span className={`csl-status ${statusClass(inspected.status)}`}>{statusLabel(inspected.status)}</span></div>
           <dl className="csl-detail-list csl-view-details"><Detail icon={<Building2 size={14}/>} label="Compañía" value={inspected.company}/><Detail icon={<Building2 size={14}/>} label="Cliente" value={inspected.client}/><Detail icon={<MapPin size={14}/>} label="Ciudad" value={inspected.city}/><Detail icon={<MapPin size={14}/>} label="Punto" value={inspected.point}/><Detail icon={<MapPin size={14}/>} label="Puesto" value={inspected.post}/><Detail icon={<UserRound size={14}/>} label="Responsable" value={inspected.responsible}/><Detail icon={<ShieldCheck size={14}/>} label="Subtipo" value={inspected.subtype}/><Detail icon={<Zap size={14}/>} label="Origen" value={inspected.originLabel}/><Detail icon={<CalendarDays size={14}/>} label="Creado" value={formatDateTime(inspected.createdAt)}/><Detail icon={<Clock3 size={14}/>} label="Actualizado" value={formatDateTime(inspected.updatedAt)}/></dl>
           <section className="csl-view-note"><h4>Resumen operativo</h4><p>{inspected.summary}</p></section>
-          <PhotoEvidenceGallery eventId={inspected.evidenceEventId} declaredCount={inspected.photoCount}/>
+          <PhotoEvidenceGallery eventId={inspected.evidenceEventId} declaredCount={inspected.photoCount} incident={inspected.id.startsWith('incident:')}/>
           <section className="csl-view-note"><h4>Acción recomendada</h4><p>{inspected.recommendedAction}</p></section>
         </OperationalDrawer>}
     </div>

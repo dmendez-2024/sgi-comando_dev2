@@ -1,5 +1,7 @@
 # SGI: Comando — SITCpack CURRENT
 
+CSL IMG RC1 (2026-10-19): sin cambios de interconexiones/SITC. Otros programas ninguno, interconexiones nuevas/modificadas/retiradas 0/0/0. Nuevas rutas internas de la web y reutilización de StorageService; sin cambio de capacidad arquitectónica ni delta de ecosistema. No se ha consultado/promovido CORE VIGENTE en esta tarea. [Alcance](CSL_INCIDENT_IMAGES_2026-10-16.md).
+
 **Norma:** SITC-NOM-001 v4.1  
 **Fecha:** 2026-09-27  
 **Código baseline:** SISTEMAS commit `8c528e8`.

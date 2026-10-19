@@ -1,5 +1,9 @@
 # SGI: Comando — impacto al ecosistema P0/P1 2026-09-27
 
+## CSL IMG RC1 — 2026-10-19
+
+Otros programas afectados: ninguno. Interconexiones nuevas/modificadas/retiradas: 0/0/0. Se reutiliza almacenamiento propio existente de SGI_COM; nuevas rutas solo para su web. Sin cambios de interconexiones/SITC. [CR, pruebas y límites](CSL_INCIDENT_IMAGES_2026-10-16.md). No requiere cambio de CORE, STC, SGI_OPR ni VISINT.
+
 **Baseline:** `sgi-comando_dev.zip` / commit `8c528e8` / 2026-09-25.  
 **Arquitectura vigente usada:** CORE `UNIVERSAL`; SITC-NOM-001 v4.1.  
 **Alcance:** seguridad de migraciones, sincronización CURRENT/SITC/handoff, normalización de interconexiones y corrección de SoR de Impulsos. **Sin EVC y sin cambios de UI.**

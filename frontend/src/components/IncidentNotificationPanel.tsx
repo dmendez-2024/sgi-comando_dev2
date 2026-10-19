@@ -10,7 +10,7 @@ import {api} from '../api';
 export type IncidentCategory='SERVICE'|'SECURITY'|'ADMINISTRATIVE';
 export type IncidentSeverity='INFORMATIVE'|'MINOR'|'MODERATE'|'MAJOR'|'CRITICAL';
 export type IncidentLifecycle='DRAFT'|'FINALIZED';
-export type AttachmentMeta={id:string;name:string;size:number;type:string};
+export type AttachmentMeta={id:string;name:string;size:number;type:string;stored?:boolean;file?:File};
 export type LocationOption={clientId:string;client:string;pointId:string;point:string;postId:string;post:string;companyId:string|null;company:string;companyCode:string;city:string};
 
 export type IncidentRecord={
@@ -172,11 +172,12 @@ export default function IncidentNotificationPanel({initial,nextCode,locations,lo
   function chooseReplacement(person:ReplacementCandidate){setForm(prev=>({...prev,replacementEmployeeId:person.employeeId,replacementEmployeeName:person.fullName}));}
   function addImages(key:'descriptionImages'|'resolutionImages',event:ChangeEvent<HTMLInputElement>){
     const files=Array.from(event.target.files??[]); event.target.value=''; setFileError('');
-    const invalid=files.find(file=>!file.type.startsWith('image/')); if(invalid){setFileError('Solo se pueden adjuntar imágenes.');return;}
+    const invalid=files.find(file=>!['image/jpeg','image/png','image/webp'].includes(file.type)||file.size===0||file.size>5*1024*1024);
+    if(invalid){setFileError('Solo imágenes JPEG, PNG o WebP de hasta 5 MiB por archivo.');return;}
     const current=form[key]; const remaining=5-current.length;
     if(remaining<=0){setFileError('El máximo es 5 imágenes por sección.');return;}
     if(files.length>remaining)setFileError(`Solo se agregaron ${remaining} imagen(es): el máximo es 5 por sección.`);
-    const metas=files.slice(0,remaining).map(file=>({id:crypto.randomUUID(),name:file.name,size:file.size,type:file.type}));
+    const metas=files.slice(0,remaining).map(file=>({id:crypto.randomUUID(),name:file.name,size:file.size,type:file.type,file,stored:false}));
     patch(key,[...current,...metas] as IncidentRecord[typeof key]);
   }
   function removeImage(key:'descriptionImages'|'resolutionImages',id:string){patch(key,form[key].filter(x=>x.id!==id) as IncidentRecord[typeof key]);}
@@ -205,7 +206,23 @@ export default function IncidentNotificationPanel({initial,nextCode,locations,lo
     const location=selectedLocation;
     setSaving(true);
     try{
-      const saved=await onSave({...form,code:form.code||nextCode,status,absenceMode,targetShiftId:targetShift?.id??form.targetShiftId,targetShiftLabel:targetShift?fmtShift(targetShift,'Turno a cubrir'):form.targetShiftLabel,companyId:location?.companyId??form.companyId,company:location?.company??form.company,companyCode:location?.companyCode??form.companyCode,city:location?.city??form.city,createdAt:form.createdAt||now,updatedAt:now});
+      let working:IncidentRecord={...form,code:form.code||nextCode,status,absenceMode,targetShiftId:targetShift?.id??form.targetShiftId,targetShiftLabel:targetShift?fmtShift(targetShift,'Turno a cubrir'):form.targetShiftLabel,companyId:location?.companyId??form.companyId,company:location?.company??form.company,companyCode:location?.companyCode??form.companyCode,city:location?.city??form.city,createdAt:form.createdAt||now,updatedAt:now};
+      const pending=working.descriptionImages.some(x=>x.file)||working.resolutionImages.some(x=>x.file);
+      if(pending){
+        // Persist the draft first; a failed upload must never finalize or lose the selected files.
+        const draft=await onSave({...working,status:'DRAFT',descriptionImages:working.descriptionImages.filter(x=>!x.file),resolutionImages:working.resolutionImages.filter(x=>!x.file)});
+        working={...working,...draft,descriptionImages:working.descriptionImages,resolutionImages:working.resolutionImages};
+        setForm(working);
+        for(const section of ['description','resolution'] as const){
+          const key=section==='description'?'descriptionImages':'resolutionImages';
+          for(const item of working[key])if(item.file){
+            const stored:AttachmentMeta=await api.uploadIncidentImage(working.id,section,item.id,item.file);
+            working={...working,[key]:working[key].map(x=>x.id===item.id?stored:x)};
+            setForm(working);
+          }
+        }
+      }
+      const saved=await onSave({...working,status});
       setForm(saved);
     }catch(error){setError(error instanceof Error?`No se pudo guardar el incidente: ${error.message}`:'No se pudo guardar el incidente.');}
     finally{setSaving(false);}
@@ -275,4 +292,4 @@ export default function IncidentNotificationPanel({initial,nextCode,locations,lo
 
 function SectionTitle({step,title}:{step:string;title:string}){return <div className="csl-section-title"><span>{step}</span><strong>{title}</strong></div>}
 function Field({label,children}:{label:string;children:ReactNode}){return <label className="csl-incident-field">{label&&<span>{label}</span>}{children}</label>}
-function ImagePicker({label,items,onAdd,onRemove}:{label:string;items:AttachmentMeta[];onAdd:(event:ChangeEvent<HTMLInputElement>)=>void;onRemove:(id:string)=>void}){return <div className="csl-image-picker"><div><strong>{label}</strong><span>{items.length}/5 imágenes</span></div><label className={items.length>=5?'disabled':''}><ImagePlus size={16}/>Adjuntar imágenes<input type="file" accept="image/*" multiple disabled={items.length>=5} onChange={onAdd}/></label>{items.length>0&&<div className="csl-image-list">{items.map(item=><div key={item.id}><span><CheckCircle2 size={14}/>{item.name}<small>{Math.max(1,Math.round(item.size/1024))} KB</small></span><button type="button" aria-label={`Quitar ${item.name}`} onClick={()=>onRemove(item.id)}><Trash2 size={14}/></button></div>)}</div>}</div>}
+function ImagePicker({label,items,onAdd,onRemove}:{label:string;items:AttachmentMeta[];onAdd:(event:ChangeEvent<HTMLInputElement>)=>void;onRemove:(id:string)=>void}){return <div className="csl-image-picker"><div><strong>{label}</strong><span>{items.length}/5 imágenes</span></div><label className={items.length>=5?'disabled':''}><ImagePlus size={16}/>Adjuntar imágenes<input type="file" accept="image/jpeg,image/png,image/webp" multiple disabled={items.length>=5} onChange={onAdd}/></label>{items.length>0&&<div className="csl-image-list">{items.map(item=><div key={item.id}><span>{item.stored?<CheckCircle2 size={14}/>:<Info size={14}/>} {item.name}<small>{Math.max(1,Math.round(item.size/1024))} KB · {item.file?'Pendiente de guardar':item.stored?'Guardada':'Archivo no disponible; vuelva a adjuntar'}</small></span><button type="button" aria-label={`Quitar ${item.name}`} onClick={()=>onRemove(item.id)}><Trash2 size={14}/></button></div>)}</div>}</div>}

@@ -1,5 +1,9 @@
 # SGI: Comando — API / Interface Catalog v4.1
 
+## API interna de imágenes de incidentes — CSL IMG RC1
+
+Contrato interno v1 de la web SGI_COM (sin nueva interconexión del ecosistema): POST/GET `/api/v1/incidents/{incidentId}/evidences` y GET `/api/v1/incidents/{incidentId}/evidences/{photoId}/content`. Multipart `section`, UUID `clientEvidenceId` y `file`; cinco imágenes por sección, JPEG/PNG/WebP, 5 MiB; autenticación y ámbito del incidente, idempotencia por UUID+contenido. Errores 400/401/403/404/409/503. Se conserva la API JSON de incidentes. [Contrato completo y validación](CSL_INCIDENT_IMAGES_2026-10-16.md).
+
 **RC:** P0/P1 2026-09-27.
 
 ## `SGI_COM_CORE_0001_v001` — SGI_COM → CORE

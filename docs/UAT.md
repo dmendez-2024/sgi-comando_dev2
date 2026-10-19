@@ -1,5 +1,9 @@
 # SGI: Comando — resumen UAT
 
+## CSL IMG RC1 — 2026-10-19
+
+[Resultados y reproducción](CSL_INCIDENT_IMAGES_2026-10-16.md): builds correctos, 33 comprobaciones HTTP sobre PostgreSQL/MinIO, escenario 503 con borrador conservado y CHECK de contexto del Operador verificados. Pendiente UAT del formulario/galería en navegador y migración vía Flyway en el ambiente. No equivale a suite JUnit ni aceptación de producción.
+
 **Estado del documento:** consolidación inicial de evidencia existente; no certifica que una regresión se haya ejecutado hoy.
 
 La aprobación UAT corresponde al usuario/Product Owner según el proceso. Los estados siguientes se copian de la documentación del proyecto y deben confirmarse contra la RC y la base exactas que se prueben.

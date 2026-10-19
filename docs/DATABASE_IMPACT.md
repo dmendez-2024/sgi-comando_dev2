@@ -1,5 +1,9 @@
 # SGI: Comando — impacto de esquema y migraciones
 
+## Actualización CSL IMG RC1 — 2026-10-19
+
+V85 agrega vínculo incident_id a la tabla canónica evidence_object, tipos de descripción/resolución y CHECK de contexto. Las evidencias de Operador siguen exigiendo asignación y empleado; las de Consola exigen incidente. Username pasa a 160 caracteres. Binarios en MinIO, referencias/hash/actor en PostgreSQL; sin tabla paralela ni cambios de migraciones anteriores. SQL validado sobre esquema aislado y CHECK comprobado; pendiente aplicación por Flyway en UAT. [Detalle y reversión](CSL_INCIDENT_IMAGES_2026-10-16.md). Las notas históricas siguientes mantienen su alcance original.
+
 **Fuente:** migraciones `backend/src/main/resources/db/migration/V27` a `V33` y Markdown bajo `cambios/`.  
 **Revisión:** documental; no se ejecutó Flyway ni se inspeccionó una base viva.  
 **Importante:** `quarkus.flyway.migrate-at-start=true` está activo en `backend/src/main/resources/application.properties`.

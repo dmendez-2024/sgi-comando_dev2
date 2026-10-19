@@ -30,6 +30,7 @@ public class IncidentNotificationResource {
     @Inject OperationResource operation;
     @Inject EntityManager em;
     @Inject ObjectMapper mapper;
+    @Inject IncidentEvidenceResource images;
 
     @GET
     public List<ObjectNode> list() throws JsonProcessingException {
@@ -66,13 +67,7 @@ public class IncidentNotificationResource {
     }
 
     private IncidentNotificationEntity findVisible(UUID id) {
-        IncidentNotificationEntity record = IncidentNotificationEntity.find(
-                "id=?1 and instanceCountryId=?2", id, tenant.instanceCountryId()).firstResult();
-        if (record == null) throw new NotFoundException("Incidente no encontrado");
-        if (record.companyId == null) {
-            if (!record.createdBy.equals(scope.username())) throw new ForbiddenException("Borrador fuera de alcance");
-        } else scope.requireCompany(record.companyId);
-        return record;
+        return images.visible(id, true);
     }
 
     private void apply(IncidentNotificationEntity record, ObjectNode body) throws JsonProcessingException {
@@ -144,6 +139,8 @@ public class IncidentNotificationResource {
         record.postId = postId;
         record.companyId = point == null ? null : point.companyId;
         record.updatedBy = scope.username();
+        try { images.normalize(record, body); }
+        catch (java.io.IOException e) { throw new InternalServerErrorException("No se pudieron validar las imágenes", e); }
         record.payloadJson = mapper.writeValueAsString(body);
         if (record.payloadJson.length() > 200_000) throw new BadRequestException("El incidente supera el tamaño permitido");
     }

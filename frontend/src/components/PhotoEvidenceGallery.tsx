@@ -4,7 +4,7 @@ import {api, ApiError} from '../api';
 type Photo={id:string;url:string|null};
 
 /** Galería de archivos realmente almacenados; un contador declarado no crea fotos ficticias. */
-export function PhotoEvidenceGallery({eventId,declaredCount=0}:{eventId?:string;declaredCount?:number}){
+export function PhotoEvidenceGallery({eventId,declaredCount=0,incident=false}:{eventId?:string;declaredCount?:number;incident?:boolean}){
   const [photos,setPhotos]=useState<Photo[]>([]);
   const [loading,setLoading]=useState(false);
   const [error,setError]=useState('');
@@ -17,18 +17,18 @@ export function PhotoEvidenceGallery({eventId,declaredCount=0}:{eventId?:string;
     setLoading(false);
     if(!eventId)return;
     setLoading(true);
-    void api.operationalEventEvidences(eventId).then(async refs=>{
+    void (incident?api.incidentEvidences(eventId):api.operationalEventEvidences(eventId)).then(async refs=>{
       const loaded=await Promise.all(refs.map(async ref=>{
-        try{const blob=await api.operationalEventEvidenceImage(eventId,ref.id);const url=URL.createObjectURL(blob);urls.push(url);return {id:ref.id,url}}
+        try{const blob=await (incident?api.incidentEvidenceImage(eventId,ref.id):api.operationalEventEvidenceImage(eventId,ref.id));const url=URL.createObjectURL(blob);urls.push(url);return {id:ref.id,url}}
         catch{return {id:ref.id,url:null}}
       }));
       if(active)setPhotos(loaded);
       else urls.forEach(url=>URL.revokeObjectURL(url));
     }).catch(reason=>{
-      if(active && !(reason instanceof ApiError && reason.status===404))setError('No se pudieron consultar las fotografías.');
+      if(active && (incident || !(reason instanceof ApiError && reason.status===404)))setError('No se pudieron consultar las fotografías.');
     }).finally(()=>{if(active)setLoading(false)});
     return()=>{active=false;urls.forEach(url=>URL.revokeObjectURL(url))};
-  },[eventId]);
+  },[eventId,incident,declaredCount]);
 
   const available=photos.filter((photo):photo is {id:string;url:string}=>Boolean(photo.url));
   const unavailable=Math.max(0,declaredCount-available.length,photos.length-available.length);
@@ -38,6 +38,6 @@ export function PhotoEvidenceGallery({eventId,declaredCount=0}:{eventId?:string;
     {loading&&<p className="nov-evidence-message">Cargando fotografías…</p>}
     {!loading&&error&&<p className="nov-evidence-message">{error}</p>}
     {!loading&&!error&&available.length>0&&unavailable>0&&<p className="nov-evidence-message">{unavailable} {unavailable===1?'fotografía declarada no tiene archivo disponible':'fotografías declaradas no tienen archivos disponibles'}.</p>}
-    {!loading&&!error&&available.length===0&&<p className="nov-evidence-message">No contiene Imagen de Evidencia.</p>}
+    {!loading&&!error&&available.length===0&&<p className="nov-evidence-message">{photos.length>0?'No se pudieron cargar las fotografías. Cierre y vuelva a abrir el detalle para reintentar.':unavailable>0?`Hay imágenes declaradas sin archivo disponible.${incident?' Vuelva a adjuntarlas desde Editar incidente.':''}`:'No contiene Imagen de Evidencia.'}</p>}
   </section>;
 }

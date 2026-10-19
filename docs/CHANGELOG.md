@@ -1,5 +1,14 @@
 # SGI: Comando — Changelog
 
+## SGI_COM — CSL IMG RC1 — 2026-10-19
+
+Corrección de alcance: retirados los cuatro scripts auxiliares de imágenes/fixtures de scripts/uat. La aceptación se realiza desde Consola con sesión y catálogos existentes, sin insertar usuarios, instancias ni UUID fijos. Los resultados técnicos previos se mantienen como historial, no como validación visual de la pantalla.
+Baseline: `79e5e5d67718e898442a57a7cc3445f4bf4df564`. Aceptación UAT de Sistemas pendiente.
+- CSL-IMG-001 | APROBADO EN ALCANCE SOLICITADO | Persistir fotos de incidentes en MinIO/evidence_object y consultarlas al reabrir/finalizar. CR-SGI_COM-CSL-0001.
+- Archivos: IncidentEvidenceResource, IncidentNotificationResource, EvidenceObject; frontend api, IncidentNotificationPanel, PhotoEvidenceGallery, ConsolaMonitor; migración nueva V85 sin modificar migraciones previas.
+- Validación: builds frontend/backend, 33 comprobaciones HTTP, fallo de almacenamiento y restricción de contexto del Operador. JUnit/UAT navegador pendientes. [Detalle y reversión](CSL_INCIDENT_IMAGES_2026-10-16.md).
+- Otros programas ninguno; interconexiones nuevas/modificadas/retiradas 0/0/0. Sin cambios de interconexiones/SITC; sin despliegue remoto.
+
 ## 2026-09-07 — Modelo Maestro v0.1
 - Renombrado SGI: Administrador → SGI: Comando.
 - Adoptado branding/logo SGI: Comando.

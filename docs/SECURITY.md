@@ -1,5 +1,9 @@
 # SGI: Comando — Seguridad y reproducibilidad P0/P1
 
+## Adjuntos de incidentes — CSL IMG RC1
+
+Reutilizan autenticación y roles del formulario y el ámbito por instancia/Compañía. Borradores sin Compañía: solo creador. Carga, listado y bytes verifican el incidente; el navegador no define tenant, claves ni vínculos ajenos. Tipos por bytes, 5 MiB, cinco fotos/sección y UUID+hash para reintentos. Filas del incidente bloqueadas para serializar escritura. No hay acceso público a MinIO; contenido privado no-store/nosniff. Actor, hash y tiempos en evidencia canónica; retirada de selección conserva objeto y metadata. [Pruebas y límites](CSL_INCIDENT_IMAGES_2026-10-16.md).
+
 **Norma:** SITC-NOM-001 v4.1  
 **Fecha:** 2026-09-27
 

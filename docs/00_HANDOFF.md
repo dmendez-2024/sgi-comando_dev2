@@ -1,5 +1,7 @@
 # Handoff final — SGI: Comando — ENTREGA SISTEMAS 2026-09-28
 
+Actualización posterior de desarrollo: [CSL IMG RC1 — persistencia de imágenes](CSL_INCIDENT_IMAGES_2026-10-16.md), CR-SGI_COM-CSL-0001 y migración V85. Leer antes del despliegue de esta extensión. Pendiente UAT de navegador; no modifica el estado de la entrega histórica siguiente.
+
 > **RC derivada 2026-10-01 — OPR-CONSIGNMENT-COMPLIANCE-001 RC1:** implementado el receptor idempotente de cumplimiento de Consignas y persistencia auditable `V38`. Reutiliza la interfaz SGI_COM–SGI_OPR existente. Validación en `docs/VALIDATION_OPR_CONSIGNMENT_COMPLIANCE_2026-10-01.md`.
 
 > **RC derivada 2026-10-01 — OPR-CONSIGNMENT-CONTEXT-001 RC1:** el runtime de Operador publica el Protocolo de Consignas vigente y sus reglas parametrizadas. Ampliación aditiva sin migración BD ni nueva interconexión SITC. Validación en `docs/VALIDATION_OPR_CONSIGNMENT_PROTOCOL_CONTEXT_2026-10-01.md`.

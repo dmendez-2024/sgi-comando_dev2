@@ -1,5 +1,7 @@
 # SGI: Comando — Arquitectura
 
+Extensión CSL IMG RC1 (2026-10-19): adjuntos de incidentes mediante StorageService/MinIO y evidence_object con vínculo al incidente. PostgreSQL conserva metadata/hash/auditoría y MinIO los binarios. APIs internas versionadas y acceso por instancia/ámbito; sin nuevos programas ni interconexiones. [Contrato y migración](CSL_INCIDENT_IMAGES_2026-10-16.md).
+
 **Norma de integración vigente:** SITC-NOM-001 v4.1. `CORE` es `UNIVERSAL`; `SGI_COM` es `PE_SPECIFIC`.
 
 ## Contexto raíz
