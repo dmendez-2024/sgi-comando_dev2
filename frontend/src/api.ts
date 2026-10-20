@@ -65,7 +65,7 @@ async function atsUpload(pointId:string,file:File):Promise<any>{
  if(!res.ok){reloginIfExpired(res.status);const body=await res.text();throw new ApiError(res.status,body)} return res.json();
 }
 export const api={
- operationalEventEvidences:(eventId:string)=>request<{id:string;source:string}[]>(`/api/operation/events/${encodeURIComponent(eventId)}/evidences`),
+ operationalEventEvidences:(eventId:string)=>request<{id:string;source:string;purpose?:string}[]>(`/api/operation/events/${encodeURIComponent(eventId)}/evidences`),
  operationalEventEvidenceImage:(eventId:string,photoId:string)=>binaryRequest(`/api/operation/events/${encodeURIComponent(eventId)}/evidences/${encodeURIComponent(photoId)}/content`),
  operationalReports:(type?:'INCIDENT'|'FINDING'|'VULNERABILITY')=>request<any[]>(`/api/operational-reports${type?`?type=${type}`:''}`),
  /** Evaluaciones de supervisión registradas desde SGI Operador (solo lectura). Filtros vacíos se omiten. */
@@ -195,6 +195,7 @@ export const api={
   consignmentReviewRequests:(status='PENDING')=>request<any[]>(`/api/v1/operator/consignment-review-requests?status=${encodeURIComponent(status)}`),
   patrolExecutions:()=>request<any[]>('/api/v1/operator/patrol-executions'),
  logbookRecords:()=>request<any[]>('/api/v1/operator/logbook-records'),
+ reliefs:(limit=100)=>request<any[]>(`/api/v1/operator/reliefs?limit=${limit}`),
  currentRegesep:(pointId:string)=>request<any>(`/api/points/${pointId}/regesep/current`),
  assignmentWeek:(companyId:string,weekStart:string,pointId?:string)=>request<any>(`/api/assignments/week?companyId=${encodeURIComponent(companyId)}&weekStart=${weekStart}${pointId?`&pointId=${encodeURIComponent(pointId)}`:''}`),
  assignmentPersonnel:(companyId:string,weekStart:string,q='',role='',availability='',page=0,size=50,sort='PERSON',direction='ASC')=>request<any>(`/api/assignments/personnel?companyId=${encodeURIComponent(companyId)}&weekStart=${weekStart}&q=${encodeURIComponent(q)}&role=${encodeURIComponent(role)}&availability=${encodeURIComponent(availability)}&page=${page}&size=${size}&sort=${encodeURIComponent(sort)}&direction=${encodeURIComponent(direction)}`),
