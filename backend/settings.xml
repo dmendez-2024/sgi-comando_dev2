@@ -1,0 +1,12 @@
+<settings xmlns="http://maven.apache.org/SETTINGS/1.2.0">
+  <proxies>
+    <proxy>
+      <id>proxy-cajamarca</id>
+      <active>true</active>
+      <protocol>http</protocol>
+      <host>172.18.1.2</host>
+      <port>3128</port>
+      <nonProxyHosts>localhost|127.0.0.1</nonProxyHosts>
+    </proxy>
+  </proxies>
+</settings>
