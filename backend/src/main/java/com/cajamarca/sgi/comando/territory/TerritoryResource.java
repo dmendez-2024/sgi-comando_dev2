@@ -79,9 +79,9 @@ public class TerritoryResource {
         if(companyIds.isEmpty()) return List.of();
         List<EmployeeOperationalSnapshot> people=EmployeeOperationalSnapshot.list(
             "instanceCountryId=?1 and companyId in ?2 and employmentStatus='ACTIVE' " +
-                "and (lower(roleCode) like ?3 or lower(roleCode) like ?4 or lower(roleCode) like ?5 or lower(roleCode) like ?6) " +
+                "and (lower(roleCode) like ?3 or lower(roleCode) like ?4 or lower(roleCode) like ?5 or lower(roleCode) like ?6 or lower(roleCode) like ?7) " +
                 "order by fullName",
-            tenant.instanceCountryId(),companyIds,"%coordinador%","%jefe%","%director%","%presidente%"
+            tenant.instanceCountryId(),companyIds,"%coordinador%","%jefe%","%director%","%presidente%","%asistente%"
         );
         return people.stream().map(e->new ResponsibleDto(e.employeeId,e.fullName,e.roleCode)).toList();
     }

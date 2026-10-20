@@ -87,9 +87,9 @@ public class CompanyResource {
         if(companyIds.isEmpty())return List.of();
         List<EmployeeOperationalSnapshot> people=EmployeeOperationalSnapshot.list(
             "instanceCountryId=?1 and companyId in ?2 and employmentStatus='ACTIVE' " +
-                "and (lower(roleCode) like ?3 or lower(roleCode) like ?4 or lower(roleCode) like ?5 or lower(roleCode) like ?6) " +
+                "and (lower(roleCode) like ?3 or lower(roleCode) like ?4 or lower(roleCode) like ?5 or lower(roleCode) like ?6 or lower(roleCode) like ?7) " +
                 "order by fullName",
-            tenant.instanceCountryId(),companyIds,"%coordinador%","%jefe%","%director%","%presidente%"
+            tenant.instanceCountryId(),companyIds,"%coordinador%","%jefe%","%director%","%presidente%","%asistente%"
         );
         return people.stream().map(e->new ResponsibleDto(e.employeeId,e.fullName,e.roleCode)).toList();
     }
@@ -193,11 +193,11 @@ public class CompanyResource {
         if(employeeId==null)return null;
         EmployeeOperationalSnapshot employee=responsible(employeeId);
         if(employee==null||!"ACTIVE".equalsIgnoreCase(employee.employmentStatus))throw new BadRequestException("El responsable seleccionado no existe o no está activo.");
-        if(!isEligibleResponsibleRole(employee.roleCode))throw new BadRequestException("El responsable debe tener un cargo de Coordinador de Compañía, Jefe, Director o Presidente.");
+        if(!isEligibleResponsibleRole(employee.roleCode))throw new BadRequestException("El responsable debe tener un cargo de Asistente de Operaciones, Coordinador de Compañía, Jefe, Director o Presidente.");
         if(!visibleCompanyIdsForCom().contains(employee.companyId))throw new ForbiddenException("El responsable está fuera del alcance territorial del usuario.");
         return employee;
     }
-    static boolean isEligibleResponsibleRole(String roleCode){String role=roleCode==null?"":roleCode.trim().toLowerCase(Locale.ROOT);return role.contains("coordinador")||role.contains("jefe")||role.contains("director")||role.contains("presidente");}
+    static boolean isEligibleResponsibleRole(String roleCode){String role=roleCode==null?"":roleCode.trim().toLowerCase(Locale.ROOT);return role.contains("asistente")||role.contains("coordinador")||role.contains("jefe")||role.contains("director")||role.contains("presidente");}
     private Company company(UUID id){Company c=Company.find("id=?1 and instanceCountryId=?2",id,tenant.instanceCountryId()).firstResult();if(c==null)throw new NotFoundException();return c;}
 
     private Set<UUID> visibleCompanyIdsForCom(){

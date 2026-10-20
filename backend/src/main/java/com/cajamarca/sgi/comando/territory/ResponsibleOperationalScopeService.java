@@ -32,10 +32,11 @@ public class ResponsibleOperationalScopeService {
         if (instanceCountryId == null) throw new BadRequestException("La Instancia-País es obligatoria para asignar el alcance operacional.");
         if (scopeId == null) throw new BadRequestException("El objeto territorial es obligatorio para asignar el alcance operacional.");
 
-        String username = usernameFor(normalizedScopeType);
         Long previousPersonaId = personaId(instanceCountryId, previousResponsibleEmployeeId);
         EmployeeOperationalSnapshot newResponsible = requireNewResponsible(instanceCountryId, newResponsibleEmployeeId);
         Long newPersonaId = newResponsible == null ? null : newResponsible.personaId;
+        String username = usernameFor(normalizedScopeType, newResponsible == null ? null : newResponsible.roleCode);
+        Set<String> managedUsernames = managedUsernamesFor(normalizedScopeType);
 
         List<UserOperationalScope> existing = UserOperationalScope.list(
             "instanceCountryId=?1 and scopeType=?2 and scopeId=?3",
@@ -45,7 +46,7 @@ public class ResponsibleOperationalScopeService {
         UserOperationalScope keeper = null;
         for (UserOperationalScope row : existing) {
             boolean belongsToNewResponsible = newPersonaId != null && Objects.equals(row.personaId, newPersonaId);
-            boolean managedRow = username.equals(row.username)
+            boolean managedRow = managedUsernames.contains(row.username)
                 || previousPersonaId != null && Objects.equals(row.personaId, previousPersonaId)
                 || belongsToNewResponsible;
             if (!managedRow) continue;
@@ -81,12 +82,29 @@ public class ResponsibleOperationalScopeService {
     }
 
     static String usernameFor(String scopeType) {
+        return usernameFor(scopeType, null);
+    }
+
+    static String usernameFor(String scopeType, String roleCode) {
         return switch (normalizeScopeType(scopeType)) {
             case "ZONE" -> "dzonal";
             case "REGION" -> "jregional";
-            case "COMPANY" -> "coord";
+            case "COMPANY" -> isAssistantRole(roleCode) ? "asistente" : "coord";
             default -> throw new IllegalStateException("Tipo de alcance no soportado.");
         };
+    }
+
+    private static Set<String> managedUsernamesFor(String scopeType) {
+        return switch (normalizeScopeType(scopeType)) {
+            case "ZONE" -> Set.of("dzonal");
+            case "REGION" -> Set.of("jregional");
+            case "COMPANY" -> Set.of("coord", "asistente");
+            default -> throw new IllegalStateException("Tipo de alcance no soportado.");
+        };
+    }
+
+    private static boolean isAssistantRole(String roleCode) {
+        return roleCode != null && roleCode.trim().toLowerCase(Locale.ROOT).contains("asistente");
     }
 
     private static String normalizeScopeType(String scopeType) {
