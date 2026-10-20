@@ -1,8 +1,9 @@
 import {useEffect, useState} from 'react';
 import {api, ApiError} from '../api';
+import {ImageOff} from 'lucide-react';
 import {ImageCarousel} from './ImageCarousel';
 
-type Photo={id:string;url:string|null;purpose?:string;label?:string;source?:string;mime?:string;loading:boolean};
+type Photo={id:string;url:string|null;purpose?:string;label?:string;source?:string;mime?:string;loading:boolean;missing?:boolean};
 type PhotoRef={id:string;source:string;purpose?:string;label?:string};
 
 const reliefLabel=(purpose:string|undefined,index:number)=>({
@@ -28,9 +29,10 @@ function useProgressiveImages(eventId:string|undefined,list:(id:string)=>Promise
     setLoading(true);
     void list(eventId).then(refs=>{
       if(!active)return;
-      setPhotos(refs.map(ref=>({id:ref.id,url:null,purpose:ref.purpose,label:ref.label,source:ref.source,loading:true})));
+      // MISSING: el registro declara la foto pero el archivo no llegó a Comando; se muestra su lugar sin intentar descargarla.
+      setPhotos(refs.map(ref=>({id:ref.id,url:null,purpose:ref.purpose,label:ref.label,source:ref.source,loading:ref.source!=='MISSING',missing:ref.source==='MISSING'})));
       setLoading(false);
-      refs.forEach(ref=>{
+      refs.filter(ref=>ref.source!=='MISSING').forEach(ref=>{
         const settle=(url:string|null,mime?:string)=>{if(active)setPhotos(current=>current.map(photo=>photo.id===ref.id?{...photo,url,mime,loading:false}:photo))};
         void image(eventId,ref.id)
           .then(blob=>{const url=URL.createObjectURL(blob);if(active){urls.push(url);settle(url,blob.type)}else URL.revokeObjectURL(url)})
@@ -47,13 +49,14 @@ function useProgressiveImages(eventId:string|undefined,list:(id:string)=>Promise
 
   const pending=photos.some(photo=>photo.loading);
   const available=photos.filter(photo=>photo.url).length;
-  return {photos,loading,error,pending,available};
+  const missing=photos.filter(photo=>photo.missing).length;
+  return {photos,loading,error,pending,available,missing};
 }
 
 /** Miniaturas del registro; al hacer clic se abre el visor en la misma página, sin navegar a la URL de la imagen. */
 function PhotoGrid({photos,label,title}:{photos:Photo[];label:(photo:Photo,index:number)=>string;title:string}){
   const [open,setOpen]=useState<number|null>(null);
-  const shown=photos.filter(photo=>photo.loading||photo.url);
+  const shown=photos.filter(photo=>photo.loading||photo.url||photo.missing);
   // El visor recorre solo las fotos ya descargadas; las que aún cargan se suman cuando llegan.
   const viewable=photos.filter((photo):photo is Photo&{url:string}=>Boolean(photo.url))
     .map(photo=>({id:photo.id,src:photo.url,mime:photo.mime,label:label(photo,photos.indexOf(photo)),fit:photo.source==='ATS_PLAN'?'contain' as const:'cover' as const}));
@@ -62,25 +65,28 @@ function PhotoGrid({photos,label,title}:{photos:Photo[];label:(photo:Photo,index
     <div className="nov-photo-grid">{shown.map(photo=>{const text=label(photo,photos.indexOf(photo));const plan=photo.source==='ATS_PLAN';return photo.url
       ?<button type="button" className={`nov-evidence-photo${plan?' plan':''}`} key={photo.id} aria-label={`Ver ${text}`} aria-haspopup="dialog"
           onClick={()=>setOpen(viewable.findIndex(image=>image.id===photo.id))}><img src={photo.url} alt={text}/><span>{text}</span></button>
-      :<div className="nov-evidence-photo pending" key={photo.id}><i aria-hidden="true"/><span>{text}</span></div>})}</div>
+      :photo.missing
+        ?<div className="nov-evidence-photo missing" key={photo.id}><i aria-hidden="true"><ImageOff size={22}/><small>No llegó a Comando</small></i><span>{text}</span></div>
+        :<div className="nov-evidence-photo pending" key={photo.id}><i aria-hidden="true"/><span>{text}</span></div>})}</div>
     {open!==null&&viewable.length>0&&<ImageCarousel images={viewable} index={Math.min(open,viewable.length-1)} onIndexChange={setOpen} onClose={()=>setOpen(null)} title={title}/>}
   </>;
 }
 
 /** Galería de archivos realmente almacenados; un contador declarado no crea fotos ficticias. */
 export function PhotoEvidenceGallery({eventId,declaredCount=0,incident=false}:{eventId?:string;declaredCount?:number;incident?:boolean}){
-  const {photos,loading,error,pending,available}=useProgressiveImages(eventId,
+  const {photos,loading,error,pending,available,missing}=useProgressiveImages(eventId,
     incident?api.incidentEvidences:api.operationalEventEvidences,
     incident?api.incidentEvidenceImage:api.operationalEventEvidenceImage,
     !incident,`${incident}:${declaredCount}`);
-  const unavailable=Math.max(0,declaredCount-available,photos.length-available);
+  // Las fotos MISSING ya se ven como tarjeta con su nombre; el aviso solo cuenta las que no se pueden ubicar.
+  const unavailable=Math.max(0,declaredCount-available,photos.length-available)-missing;
   return <section className="nov-photo-block" aria-label="Evidencia fotográfica" aria-busy={loading||pending}>
-    <div className="nov-section-title"><strong>Evidencia fotográfica ({pending?`${available}/${photos.length}`:available})</strong></div>
-    <PhotoGrid photos={photos} label={(photo,index)=>reliefLabel(photo.purpose,index)} title="Evidencia fotográfica"/>
+    <div className="nov-section-title"><strong>Evidencia fotográfica ({pending||missing?`${available}/${photos.length}`:available})</strong></div>
+    <PhotoGrid photos={photos} label={(photo,index)=>photo.label||reliefLabel(photo.purpose,index)} title="Evidencia fotográfica"/>
     {loading&&<p className="nov-evidence-message">Cargando fotografías…</p>}
     {!loading&&error&&<p className="nov-evidence-message">{error}</p>}
     {!loading&&!pending&&!error&&available>0&&unavailable>0&&<p className="nov-evidence-message">{unavailable} {unavailable===1?'fotografía declarada no tiene archivo disponible':'fotografías declaradas no tienen archivos disponibles'}.</p>}
-    {!loading&&!pending&&!error&&available===0&&<p className="nov-evidence-message">{photos.length>0?'No se pudieron cargar las fotografías. Cierre y vuelva a abrir el detalle para reintentar.':unavailable>0?`Hay imágenes declaradas sin archivo disponible.${incident?' Vuelva a adjuntarlas desde Editar incidente.':''}`:'No contiene Imagen de Evidencia.'}</p>}
+    {!loading&&!pending&&!error&&available===0&&missing===0&&<p className="nov-evidence-message">{photos.length>0?'No se pudieron cargar las fotografías. Cierre y vuelva a abrir el detalle para reintentar.':unavailable>0?`Hay imágenes declaradas sin archivo disponible.${incident?' Vuelva a adjuntarlas desde Editar incidente.':''}`:'No contiene Imagen de Evidencia.'}</p>}
   </section>;
 }
 

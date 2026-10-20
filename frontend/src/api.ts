@@ -65,7 +65,7 @@ async function atsUpload(pointId:string,file:File):Promise<any>{
  if(!res.ok){reloginIfExpired(res.status);const body=await res.text();throw new ApiError(res.status,body)} return res.json();
 }
 export const api={
- operationalEventEvidences:(eventId:string)=>request<{id:string;source:string;purpose?:string}[]>(`/api/operation/events/${encodeURIComponent(eventId)}/evidences`),
+ operationalEventEvidences:(eventId:string)=>request<{id:string;source:string;purpose?:string;label?:string}[]>(`/api/operation/events/${encodeURIComponent(eventId)}/evidences`),
  operationalEventEvidenceImage:(eventId:string,photoId:string)=>binaryRequest(`/api/operation/events/${encodeURIComponent(eventId)}/evidences/${encodeURIComponent(photoId)}/content`),
  /** Fotos guía del registro: estándar del puesto, hitos, campos o consigna, y plano ATS en patrullas. */
  operationalEventReferences:(eventId:string)=>request<{id:string;source:'STANDARD'|'ATS_PLAN';label:string}[]>(`/api/operation/events/${encodeURIComponent(eventId)}/evidences/references`),

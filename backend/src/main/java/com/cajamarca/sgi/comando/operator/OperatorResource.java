@@ -266,9 +266,9 @@ public class OperatorResource {
                 if(patrolRow[8]!=null) patrol.put("windowEnd",patrolRow[8].toString());
                 ArrayNode checkpoints=patrol.putArray("checkpoints");
                 List<Object[]> checkpointRows=em.createNativeQuery("""
-                  select id,sequence_no,code,name,description,origin_mode,control_type,requires_evidence,latitude,longitude,gps_accuracy_m,standard_image_version,standard_image_notes,visint_enabled,ats_x,ats_y,ats_package_id
-                  from patrol_checkpoint where instance_country_id=:tenant and patrol_definition_id=:patrol order by sequence_no
-                  """).setParameter("tenant",tenant.instanceCountryId()).setParameter("patrol",patrolId).getResultList();
+                  select c.id,c.sequence_no,c.code,c.name,c.description,c.origin_mode,c.control_type,%s,c.latitude,c.longitude,c.gps_accuracy_m,c.standard_image_version,c.standard_image_notes,c.visint_enabled,c.ats_x,c.ats_y,c.ats_package_id
+                  from patrol_checkpoint c where c.instance_country_id=:tenant and c.patrol_definition_id=:patrol order by c.sequence_no
+                  """.formatted(com.cajamarca.sgi.comando.patrols.PatrolCheckpoint.TAKES_PHOTO_SQL)).setParameter("tenant",tenant.instanceCountryId()).setParameter("patrol",patrolId).getResultList();
                 for(Object[] cp:checkpointRows) {
                     ObjectNode checkpoint=checkpoints.addObject().put("checkpointId",cp[0].toString()).put("sortOrder",((Number)cp[1]).intValue())
                         .put("code",cp[2].toString()).put("name",cp[3].toString()).put("description",cp[4].toString())

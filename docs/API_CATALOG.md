@@ -1,5 +1,16 @@
 # SGI: Comando — API / Interface Catalog v4.1
 
+## Foto de referencia de una consigna nueva (SGI Operador) — OPR-CNS-PHOTO-001
+
+Cambio aditivo dentro de `SGI_OPR_SGI_COM_0002_IF02` (`POST /api/v1/operator/evidences`): sin interconexión nueva ni cambios de autenticación. Nuevo `targetType` **`CONSIGNMENT_REQUEST`** para la foto que el agente toma en "Nueva consigna".
+
+- `eventId` y `targetId` = `requestId` de la solicitud (`POST /api/v1/operator/consignment-review-requests`); si difieren, 400.
+- La solicitud debe llegar antes que la foto. Si aún no llegó, **409** (reintentar desde el outbox). 400 si es de otro Puesto o si se envió con `hasPhoto=false`; 403 si la creó otro agente.
+- Una foto por solicitud (`TOO_MANY_PHOTOS` en la segunda); mismas reglas de formato, tamaño, `sha256`, GPS (comparado con la ubicación del Puesto, solo aviso) e idempotencia por `clientEvidenceId`.
+- Comando la muestra en Consignas → Ejecución → detalle de la solicitud (`GET /api/operation/events/{requestId}/evidences`). Mientras no llega y la solicitud declara `hasPhoto`, se informa `source: MISSING`.
+- Migración V87 agrega `CONSIGNMENT_REQUEST` a `ck_evidence_object_target_type`.
+
+
 ## API interna de imágenes de incidentes — CSL IMG RC1
 
 Contrato interno v1 de la web SGI_COM (sin nueva interconexión del ecosistema): POST/GET `/api/v1/incidents/{incidentId}/evidences` y GET `/api/v1/incidents/{incidentId}/evidences/{photoId}/content`. Multipart `section`, UUID `clientEvidenceId` y `file`; cinco imágenes por sección, JPEG/PNG/WebP, 5 MiB; autenticación y ámbito del incidente, idempotencia por UUID+contenido. Errores 400/401/403/404/409/503. Se conserva la API JSON de incidentes. [Contrato completo y validación](CSL_INCIDENT_IMAGES_2026-10-16.md).
@@ -345,7 +356,7 @@ Patrulla, Consigna y Bitácora: GPS en cada foto. `POST /api/v1/operator/evidenc
 
 ```json
 { "uploadBatchId": "…", "eventId": "…", "assignmentId": "…",
-  "targetType": "PATROL_CHECKPOINT | CONSIGNMENT_EVIDENCE | LOGBOOK_FIELD", "targetId": "…",
+  "targetType": "PATROL_CHECKPOINT | CONSIGNMENT_EVIDENCE | LOGBOOK_FIELD | CONSIGNMENT_REQUEST", "targetId": "…",
   "items": [{ "clientEvidenceId": "…", "capturedAt": "2026-10-05T22:15:45Z",
               "latitude": -2.154490, "longitude": -79.952253, "accuracyM": 8, "source": "CAMERA", "sha256": "…" }] }
 ```

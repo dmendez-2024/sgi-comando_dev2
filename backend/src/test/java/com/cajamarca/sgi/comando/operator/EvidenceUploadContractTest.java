@@ -55,6 +55,12 @@ class EvidenceUploadContractTest {
         ObjectNode t = meta(1).put("targetType", "RELIEF_PURPOSE");
         assertThrows(BadRequestException.class, () -> match(t, names(t)));
     }
+    @Test void consignmentRequestPhotoUsesTheRequestAsEventAndTarget() {
+        ObjectNode o = meta(1).put("targetType", "CONSIGNMENT_REQUEST");
+        assertThrows(BadRequestException.class, () -> match(o, names(o)));
+        o.put("targetId", o.path("eventId").asText());
+        assertEquals(1, match(o, names(o)).size());
+    }
     @Test void rejectsGarbageOrMissingJson() {
         assertThrows(BadRequestException.class, () -> EvidenceUploadContract.parse("{no json", m));
         assertThrows(BadRequestException.class, () -> EvidenceUploadContract.parse(null, m));

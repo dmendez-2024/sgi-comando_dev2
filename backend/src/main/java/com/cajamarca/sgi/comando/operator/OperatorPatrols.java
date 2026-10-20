@@ -47,7 +47,7 @@ public class OperatorPatrols {
                 for (PatrolCheckpoint c : PatrolCheckpoint.<PatrolCheckpoint>list("patrolId=?1 and instanceCountryId=?2 order by sortOrder", d.id, tenant.instanceCountryId())) {
                     ObjectNode cn = cps.addObject();
                     cn.put("checkpointId", c.id.toString()).put("code", c.code).put("name", c.name).put("description", c.description)
-                        .put("sortOrder", c.sortOrder).put("requiresEvidence", c.requiresEvidence)
+                        .put("sortOrder", c.sortOrder).put("requiresEvidence", c.takesPhoto())
                         .put("maxPhotos", 1).put("visintEnabled", c.visintEnabled)
                                                 .put("standardImageVersion", c.standardImageVersion).put("standardImageNotes", c.standardImageNotes)
                         .put("latitude", c.latitude).put("longitude", c.longitude).put("radiusM", c.radiusM == null ? defaultRadius() : c.radiusM);
