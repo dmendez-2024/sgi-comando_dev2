@@ -94,10 +94,14 @@ public class IncidentEvidenceResource {
     @GET
     public ArrayNode list(@PathParam("incidentId") UUID id) throws IOException{return listed(visible(id,false));}
 
+    /** Una sola consulta para todas las evidencias del incidente; el payload decide cuáles siguen referenciadas. */
     ArrayNode listed(IncidentNotificationEntity r) throws IOException {
         JsonNode payload=mapper.readTree(r.payloadJson);ArrayNode out=mapper.createArrayNode();
+        Map<String,EvidenceObject> attached=new HashMap<>();
+        for(EvidenceObject e:EvidenceObject.<EvidenceObject>list("instanceCountryId=?1 and incidentId=?2 and status='ATTACHED'",tenant.instanceCountryId(),r.id))
+            attached.put(e.targetType+":"+e.clientEvidenceId,e);
         for(String section:List.of("description","resolution"))for(JsonNode ref:payload.path(field(section))){
-            EvidenceObject e=byReference(r.id,ref.path("id").asText(),target(section));
+            EvidenceObject e=attached.get(target(section)+":"+ref.path("id").asText());
             if(e!=null)out.addObject().put("id",e.id.toString()).put("source","OBJECT").put("section",section);
         }
         return out;
@@ -106,12 +110,19 @@ public class IncidentEvidenceResource {
     @GET @Path("/{photoId}/content") @Produces("image/*")
     public Response content(@PathParam("incidentId") UUID id,@PathParam("photoId") UUID photoId) throws IOException {
         IncidentNotificationEntity r=visible(id,false);
-        for(JsonNode ref:listed(r))if(photoId.toString().equals(ref.path("id").asText())){
-            EvidenceObject e=EvidenceObject.find("id=?1 and instanceCountryId=?2 and incidentId=?3",photoId,tenant.instanceCountryId(),id).firstResult();
-            return Response.ok(storage.read(e.bucket,e.objectKey)).type(e.contentType)
-                .header(HttpHeaders.CACHE_CONTROL,"private, no-store").header("X-Content-Type-Options","nosniff").build();
-        }
-        throw new NotFoundException("Fotografía no encontrada");
+        EvidenceObject e=EvidenceObject.find("id=?1 and instanceCountryId=?2 and incidentId=?3 and status='ATTACHED'",photoId,tenant.instanceCountryId(),id).firstResult();
+        if(e==null||!referenced(r,e))throw new NotFoundException("Fotografía no encontrada");
+        return Response.ok(storage.read(e.bucket,e.objectKey)).type(e.contentType)
+            .header(HttpHeaders.CACHE_CONTROL,"private, no-store").header("X-Content-Type-Options","nosniff").build();
+    }
+
+    /** Solo se sirve una evidencia que la sección correspondiente del incidente todavía referencia. */
+    private boolean referenced(IncidentNotificationEntity r,EvidenceObject e) throws IOException {
+        String section="INCIDENT_DESCRIPTION".equals(e.targetType)?"description":"INCIDENT_RESOLUTION".equals(e.targetType)?"resolution":null;
+        if(section==null)return false;
+        for(JsonNode ref:mapper.readTree(r.payloadJson).path(field(section)))
+            if(e.clientEvidenceId.toString().equals(ref.path("id").asText()))return true;
+        return false;
     }
 
     /** Payload cannot forge object keys, hashes, tenant or links to another incident. Old metadata remains visibly unavailable. */

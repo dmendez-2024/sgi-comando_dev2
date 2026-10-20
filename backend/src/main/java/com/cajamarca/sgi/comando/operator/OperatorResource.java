@@ -556,7 +556,7 @@ public class OperatorResource {
         @SuppressWarnings("unchecked") List<Object[]> rows=em.createNativeQuery("""
           select r.id,p.object_type,a.name,r.field_values_json,r.captured_at,r.status,r.comments,r.employee_id,e.full_name,
                  pt.client_name,pt.city,pt.name,po.name,c.code,c.name,pt.company_id,lp.code,lp.name,r.protocol_version,r.username,
-                 r.exited_at,r.exited_by_username,a.id,lp.application_type
+                 r.exited_at,r.exited_by_username,a.id,lp.application_type,r.evidence_refs_json
           from operator_logbook_record r
           join logbook_protocol lp on lp.id=r.protocol_id and lp.instance_country_id=r.instance_country_id
           join logbook_accreditation a on a.id=r.accreditation_id and a.instance_country_id=r.instance_country_id
@@ -590,6 +590,8 @@ public class OperatorResource {
                 .put("protocolCode",row[16].toString()).put("protocolName",row[17].toString()).put("protocolVersion",((Number)row[18]).intValue())
                 .put("comments",row[6]==null?"":row[6].toString()).put("applicationType",row[23].toString());
             item.set("fieldValues",fieldValues);
+            // Campos de evidencia declarados: cada uno lleva una foto del agente, que Comando lista aparte.
+            try { item.put("photoCount",row[24]==null?0:mapper.readTree(row[24].toString()).size()); } catch(Exception ex) { item.put("photoCount",0); }
             ArrayNode dynamicFields=item.putArray("dynamicFields");
             Iterator<Map.Entry<String,JsonNode>> valueEntries=fieldValues.fields();
             while(valueEntries.hasNext()) {

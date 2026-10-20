@@ -67,6 +67,9 @@ async function atsUpload(pointId:string,file:File):Promise<any>{
 export const api={
  operationalEventEvidences:(eventId:string)=>request<{id:string;source:string;purpose?:string}[]>(`/api/operation/events/${encodeURIComponent(eventId)}/evidences`),
  operationalEventEvidenceImage:(eventId:string,photoId:string)=>binaryRequest(`/api/operation/events/${encodeURIComponent(eventId)}/evidences/${encodeURIComponent(photoId)}/content`),
+ /** Fotos guía del registro: estándar del puesto, hitos, campos o consigna, y plano ATS en patrullas. */
+ operationalEventReferences:(eventId:string)=>request<{id:string;source:'STANDARD'|'ATS_PLAN';label:string}[]>(`/api/operation/events/${encodeURIComponent(eventId)}/evidences/references`),
+ operationalEventReferenceImage:(eventId:string,imageId:string)=>binaryRequest(`/api/operation/events/${encodeURIComponent(eventId)}/evidences/references/${encodeURIComponent(imageId)}/content`),
  operationalReports:(type?:'INCIDENT'|'FINDING'|'VULNERABILITY')=>request<any[]>(`/api/operational-reports${type?`?type=${type}`:''}`),
  /** Evaluaciones de supervisión registradas desde SGI Operador (solo lectura). Filtros vacíos se omiten. */
  supervisionEvaluations:(filters:Record<string,string|number>)=>request<any>(`/api/supervision/evaluations?${new URLSearchParams(Object.entries(filters).filter(([,v])=>v!==''&&v!=null).map(([k,v])=>[k,String(v)]))}`),
