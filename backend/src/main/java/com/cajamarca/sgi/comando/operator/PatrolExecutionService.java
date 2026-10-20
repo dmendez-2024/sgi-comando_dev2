@@ -55,8 +55,9 @@ public class PatrolExecutionService {
 
         List<UUID> evidenceIds = new ArrayList<>();
         e.path("evidenceIds").forEach(x -> evidenceIds.add(UUID.fromString(x.asText())));
-        if (evidenceIds.size() > 1 || (cp.requiresEvidence && evidenceIds.isEmpty()))
-            throw new BadRequestException((cp.requiresEvidence ? "Este Hito requiere 1 foto" : "Este Hito admite como máximo 1 foto") + "; se enviaron " + evidenceIds.size());
+        boolean photoRequired = cp.takesPhoto();
+        if (evidenceIds.size() > 1 || (photoRequired && evidenceIds.isEmpty()))
+            throw new BadRequestException((photoRequired ? "Este Hito requiere 1 foto" : "Este Hito admite como máximo 1 foto") + "; se enviaron " + evidenceIds.size());
         List<EvidenceObject> evidences = new ArrayList<>();
         for (UUID id : evidenceIds) {
             EvidenceObject ev = EvidenceObject.find("id=?1 and instanceCountryId=?2", id, t).firstResult();

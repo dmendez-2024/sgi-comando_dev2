@@ -147,6 +147,7 @@ function reviewRequestToExecution(request:any):Execution{
   return {
     id:`opr-review-${request.id}`,
     evidenceEventId:String(request.id),photoCount:request.hasPhoto?1:0,
+    // La foto llega aparte (POST /operator/evidences, CONSIGNMENT_REQUEST); mientras no llegue, el backend la informa como MISSING.
     type:'ADHOC',
     code:`OPR-${String(request.id).slice(0,8).toUpperCase()}`,
     name:request.title,

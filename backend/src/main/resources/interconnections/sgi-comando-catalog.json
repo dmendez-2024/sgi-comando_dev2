@@ -1363,7 +1363,7 @@
         "interfaceId": "SGI_OPR_SGI_COM_0002_IF02",
         "method": "POST",
         "path": "/api/v1/operator/evidences",
-        "purpose": "Multipart upload of 1..5 task or inventory-asset photos with JSON metadata (idempotent by clientEvidenceId)",
+        "purpose": "Multipart upload of 1..5 task, inventory-asset or new-consignment-request (CONSIGNMENT_REQUEST) photos with JSON metadata (idempotent by clientEvidenceId)",
         "contentType": "multipart/form-data",
         "request": {
           "fields": [

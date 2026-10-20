@@ -11,7 +11,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.*;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
+import jakarta.persistence.EntityManager;
 import jakarta.ws.rs.BadRequestException;
+import jakarta.ws.rs.ClientErrorException;
 import java.time.Instant;
 import java.util.*;
 
@@ -30,6 +32,10 @@ public class OperatorTasks {
     @Inject com.cajamarca.sgi.comando.settings.EvidenceLocationSettings locationSettings;
     @Inject ObjectMapper mapper;
     @Inject InventoryService inventory;
+    @Inject EntityManager em;
+
+    /** Foto de referencia de una consigna nueva creada por el agente (solicitud de revisión); destino = id de la solicitud. */
+    public static final String CONSIGNMENT_REQUEST = "CONSIGNMENT_REQUEST";
 
     public Target require(String type, UUID id, PostEntity post) {
         if (type == null || id == null) throw new BadRequestException("Destino obligatorio");
@@ -37,7 +43,7 @@ public class OperatorTasks {
             case StandardReferenceImage.PATROL_CHECKPOINT -> {
                 var a = patrols.requireCheckpoint(id, post.id);
                 PatrolCheckpoint cp = a.checkpoint();
-                yield new Target(type, cp.id, a.protocol().id, a.protocol().versionNo, cp.requiresEvidence, cp.visintEnabled, cp.standardImageVersion,
+                yield new Target(type, cp.id, a.protocol().id, a.protocol().versionNo, cp.takesPhoto(), cp.visintEnabled, cp.standardImageVersion,
                     cp.latitude, cp.longitude, cp.radiusM == null ? (double) patrols.defaultRadius() : cp.radiusM);
             }
             case StandardReferenceImage.CONSIGNMENT_EVIDENCE -> {
@@ -54,10 +60,20 @@ public class OperatorTasks {
                 LogbookProtocolField f = LogbookProtocolField.find("id=?1 and instanceCountryId=?2", id, tenant.instanceCountryId()).firstResult();
                 LogbookProtocol p = f == null ? null : LogbookProtocol.findById(f.protocolId);
                 if (f == null || p == null || !applies(p, post)) throw new BadRequestException("La bitácora no está activa en este Puesto");
-                if (!f.evidenceRequired) throw new BadRequestException("Este campo de la bitácora no lleva foto");
+                if (!takesPhoto(f)) throw new BadRequestException("Este campo de la bitácora no lleva foto");
                 double[] loc = locationSettings.postReference(tenant.instanceCountryId(), post.id);
                 yield new Target(type, f.id, p.id, p.versionNo, true, f.visintEnabled, f.standardImageVersion,
                     loc == null ? null : loc[0], loc == null ? null : loc[1], loc == null ? null : loc[2]);
+            }
+            case CONSIGNMENT_REQUEST -> {
+                // La solicitud la envía antes el outbox de la app (POST /consignment-review-requests); si aún no llegó, 409 para que reintente.
+                @SuppressWarnings("unchecked") List<Object[]> rows = em.createNativeQuery("select post_id,has_photo from operator_consignment_review_request where id=:id and instance_country_id=:t")
+                    .setParameter("id", id).setParameter("t", tenant.instanceCountryId()).getResultList();
+                if (rows.isEmpty()) throw new ClientErrorException("La solicitud de consigna " + id + " aún no llega a Comando; reintente después de enviarla", 409);
+                if (!post.id.toString().equals(String.valueOf(rows.get(0)[0]))) throw new BadRequestException("La solicitud de consigna no pertenece a este Puesto");
+                if (!Boolean.TRUE.equals(rows.get(0)[1])) throw new BadRequestException("La solicitud de consigna no declara foto (hasPhoto=false)");
+                double[] loc = locationSettings.postReference(tenant.instanceCountryId(), post.id);
+                yield new Target(type, id, id, 1, true, false, 0, loc == null ? null : loc[0], loc == null ? null : loc[1], loc == null ? null : loc[2]);
             }
             case InventoryService.EVIDENCE_TARGET -> {
                 if(!inventory.isExpectedAsset(post.id,id)) throw new BadRequestException("El activo no pertenece al inventario vigente del Puesto");
@@ -101,7 +117,7 @@ public class OperatorTasks {
             double[] loc = locationSettings.postReference(tenant.instanceCountryId(), post.id);
             if (loc != null) n.put("latitude", loc[0]).put("longitude", loc[1]).put("radiusM", (int) loc[2]);
             ArrayNode fields = n.putArray("fields");
-            for (LogbookProtocolField f : LogbookProtocolField.<LogbookProtocolField>list("protocolId=?1 and evidenceRequired=true order by section, sortOrder, name", p.id)) {
+            for (LogbookProtocolField f : LogbookProtocolField.<LogbookProtocolField>list("protocolId=?1 and (evidenceRequired=true or fieldType='IMAGEN') order by section, sortOrder, name", p.id)) {
                 LogbookAccreditation a = LogbookAccreditation.findById(f.accreditationId);
                 ObjectNode x = fields.addObject().put("fieldId", f.id.toString()).put("accreditationCode", a == null ? null : a.code).put("section", f.section)
                     .put("name", f.name).put("description", f.description).put("fieldType", f.fieldType).put("required", f.required)
@@ -123,6 +139,18 @@ public class OperatorTasks {
         if (c.validityFrom != null && c.validityFrom.isAfter(now)) return false;
         if (c.validityUntil != null && c.validityUntil.isBefore(now)) return false;
         return "POINT".equals(c.scopeType) || post.id.equals(c.postId) || ConsignmentPostScope.count("consignmentId=?1 and postId=?2", c.id, post.id) > 0;
+    }
+
+    /** Un campo Imagen es en sí una foto (p. ej. Rostro), aunque no tenga marcado "requiere evidencia"; así lo trata también el registro. */
+    static boolean takesPhoto(LogbookProtocolField f) {
+        return f.evidenceRequired || "IMAGEN".equals(f.fieldType);
+    }
+
+    /** Solo el agente que creó la consigna nueva puede adjuntarle su foto, aunque otro agente comparta el Puesto. */
+    public void requireRequestAuthor(UUID requestId, UUID employee) {
+        List<?> rows = em.createNativeQuery("select employee_id from operator_consignment_review_request where id=:id and instance_country_id=:t")
+            .setParameter("id", requestId).setParameter("t", tenant.instanceCountryId()).getResultList();
+        if (!rows.isEmpty() && !employee.toString().equals(String.valueOf(rows.get(0)))) throw new jakarta.ws.rs.ForbiddenException("La solicitud de consigna pertenece a otro agente");
     }
 
     static boolean applies(LogbookProtocol p, PostEntity post) {

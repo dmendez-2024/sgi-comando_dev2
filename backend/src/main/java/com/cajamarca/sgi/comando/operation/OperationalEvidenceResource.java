@@ -9,6 +9,7 @@ import com.cajamarca.sgi.comando.territory.OperationalScopeService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
 import jakarta.persistence.EntityManager;
@@ -20,9 +21,11 @@ import jakarta.ws.rs.core.Response;
 
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -40,13 +43,14 @@ public class OperationalEvidenceResource {
     @Inject ObjectMapper mapper;
     @Inject StandardReferenceImages references;
 
-    private static final int RELIEF = 0, LOGBOOK = 1, PATROL = 4, TASK = 5;
+    private static final int RELIEF = 0, LOGBOOK = 1, CONSIGNMENT_REQUEST = 2, PATROL = 4, TASK = 5;
     private record VisibleEvent(UUID pointId, int kind) {}
     private record Reference(UUID id, String source, String label) {}
 
     @GET @Produces(MediaType.APPLICATION_JSON)
     public ArrayNode list(@PathParam("eventId") UUID eventId) {
-        UUID pointId = requireVisibleEvent(eventId);
+        VisibleEvent event = visibleEvent(eventId);
+        UUID pointId = event.pointId();
         ArrayNode result = mapper.createArrayNode();
         List<Object[]> relief = reliefPhotos(eventId);
         for (Object[] row : relief) {
@@ -54,7 +58,10 @@ public class OperationalEvidenceResource {
             if (row[2] != null && row[2].toString().startsWith("image/"))
                 result.addObject().put("id", id.toString()).put("source", "RELIEF").put("purpose", row[1].toString());
         }
-        if (relief.isEmpty()) for (Object[] row : linkedPhotos(eventId, pointId)) {
+        if (relief.isEmpty() && event.kind() == LOGBOOK) logbookPhotos(result, eventId, pointId);
+        else if (relief.isEmpty() && event.kind() == CONSIGNMENT_REQUEST) consignmentRequestPhotos(result, eventId);
+        else if (relief.isEmpty() && event.kind() == PATROL) patrolExecutionPhotos(result, eventId, pointId);
+        else if (relief.isEmpty()) for (Object[] row : linkedPhotos(eventId, pointId)) {
             UUID id = (UUID) row[0];
             if (row[1] != null && row[1].toString().startsWith("image/"))
                 result.addObject().put("id", id.toString()).put("source", "OBJECT");
@@ -63,10 +70,6 @@ public class OperationalEvidenceResource {
             if (row[1] != null && row[1].toString().startsWith("image/"))
                 result.addObject().put("id", row[0].toString()).put("source", "INVENTORY").put("purpose", "inventory");
         }
-        for (Object[] row : patrolPhotos(eventId)) {
-            if (embeddedPhoto((String) row[1]) != null)
-                result.addObject().put("id", row[0].toString()).put("source", "PATROL");
-        }
         return result;
     }
 
@@ -74,7 +77,7 @@ public class OperationalEvidenceResource {
     public Response content(@PathParam("eventId") UUID eventId, @PathParam("photoId") UUID photoId) {
         UUID pointId = requireVisibleEvent(eventId);
         // Cada fuente consulta solo la foto pedida: no se cargan los demás archivos del evento.
-        if (!linkedPhotos(eventId, pointId, photoId).isEmpty() || !inventoryPhotos(eventId, photoId).isEmpty()) {
+        if (!linkedPhotos(eventId, pointId, photoId).isEmpty() || !inventoryPhotos(eventId, photoId).isEmpty() || !requestPhotos(eventId, photoId).isEmpty()) {
             EvidenceObject object = EvidenceObject.find("id=?1 and instanceCountryId=?2 and status in ?3",
                 photoId, tenant.instanceCountryId(), List.of("STORED", "ATTACHED")).firstResult();
             if (object != null && object.contentType != null && object.contentType.startsWith("image/"))
@@ -135,21 +138,7 @@ public class OperationalEvidenceResource {
                     .setParameter("tenant", t).setParameter("point", event.pointId()).getResultList();
                 if (!plan.isEmpty()) out.add(new Reference(UUID.fromString(plan.get(0)[0].toString()), "ATS_PLAN", "Plano ATS · revisión " + plan.get(0)[1]));
             }
-            case LOGBOOK -> {
-                List<Object> refs = em.createNativeQuery("select evidence_refs_json from operator_logbook_record where id=:event and instance_country_id=:tenant")
-                    .setParameter("event", eventId).setParameter("tenant", t).getResultList();
-                List<UUID> fieldIds = new ArrayList<>();
-                if (!refs.isEmpty() && refs.get(0) != null) {
-                    try { mapper.readTree(refs.get(0).toString()).forEach(id -> fieldIds.add(UUID.fromString(id.asText()))); }
-                    catch (Exception ignored) { fieldIds.clear(); }
-                }
-                if (!fieldIds.isEmpty()) {
-                    List<Object[]> fields = em.createNativeQuery("select id,name from logbook_protocol_field where instance_country_id=:tenant and id in (:ids) order by section,sort_order")
-                        .setParameter("tenant", t).setParameter("ids", fieldIds).getResultList();
-                    standards(out, StandardReferenceImage.LOGBOOK_FIELD, fields.stream().collect(Collectors.toMap(
-                        row -> UUID.fromString(row[0].toString()), row -> row[1].toString(), (a, b) -> a, LinkedHashMap::new)));
-                }
-            }
+            case LOGBOOK -> standards(out, StandardReferenceImage.LOGBOOK_FIELD, logbookEvidenceFields(eventId));
             case TASK -> {
                 List<Object[]> target = em.createNativeQuery("select target_type,target_id from task_execution where id=:event and instance_country_id=:tenant")
                     .setParameter("event", eventId).setParameter("tenant", t).getResultList();
@@ -159,6 +148,100 @@ public class OperationalEvidenceResource {
             default -> { }
         }
         return out;
+    }
+
+    /**
+     * Fotos de un registro de Bitácora en el orden del formulario, cada una con el nombre de su campo (Credencial, Rostro…).
+     * Un campo declarado con foto que no llegó a Comando se informa como MISSING para que el detalle diga cuál falta.
+     */
+    private void logbookPhotos(ArrayNode result, UUID eventId, UUID pointId) {
+        Map<UUID, List<UUID>> byField = new LinkedHashMap<>();
+        for (Object[] row : linkedPhotos(eventId, pointId))
+            if (row[1] != null && row[1].toString().startsWith("image/"))
+                byField.computeIfAbsent(row[2] == null ? null : UUID.fromString(row[2].toString()), k -> new ArrayList<>()).add((UUID) row[0]);
+        logbookEvidenceFields(eventId).forEach((fieldId, name) -> {
+            List<UUID> photos = byField.remove(fieldId);
+            if (photos == null) result.addObject().put("id", fieldId.toString()).put("source", "MISSING").put("label", name);
+            else for (int i = 0; i < photos.size(); i++)
+                result.addObject().put("id", photos.get(i).toString()).put("source", "OBJECT").put("label", photos.size() > 1 ? name + " · captura " + (i + 1) : name);
+        });
+        byField.values().forEach(photos -> photos.forEach(id -> result.addObject().put("id", id.toString()).put("source", "OBJECT")));
+    }
+
+    /**
+     * Foto de referencia de una consigna nueva creada en SGI Operador (subida con targetType CONSIGNMENT_REQUEST).
+     * Si la solicitud declara foto (hasPhoto) y el archivo aún no llegó, se informa como MISSING para que el detalle lo diga.
+     */
+    private void consignmentRequestPhotos(ArrayNode result, UUID eventId) {
+        List<Object[]> photos = requestPhotos(eventId, null);
+        for (Object[] row : photos)
+            if (row[1] != null && row[1].toString().startsWith("image/"))
+                result.addObject().put("id", row[0].toString()).put("source", "OBJECT").put("label", "Imagen de referencia");
+        if (!photos.isEmpty()) return;
+        List<?> declared = em.createNativeQuery("select has_photo from operator_consignment_review_request where id=:event and instance_country_id=:tenant")
+            .setParameter("event", eventId).setParameter("tenant", tenant.instanceCountryId()).getResultList();
+        if (!declared.isEmpty() && Boolean.TRUE.equals(declared.get(0)))
+            result.addObject().put("id", eventId.toString()).put("source", "MISSING").put("label", "Imagen de referencia");
+    }
+
+    /**
+     * Fotos de una patrulla en el orden en que se cumplieron los Hitos, cada una con su Hito («H01 · Nombre») o el punto creado en campo.
+     * Un Hito en que el agente tomó foto (evidence.captured) pero cuyo archivo no está en Comando se informa como MISSING.
+     */
+    @SuppressWarnings("unchecked")
+    private void patrolExecutionPhotos(ArrayNode result, UUID eventId, UUID pointId) {
+        Map<UUID, List<UUID>> byCheckpoint = new LinkedHashMap<>();
+        for (Object[] row : linkedPhotos(eventId, pointId))
+            if (row[1] != null && row[1].toString().startsWith("image/") && row[2] != null)
+                byCheckpoint.computeIfAbsent(UUID.fromString(row[2].toString()), k -> new ArrayList<>()).add((UUID) row[0]);
+        List<Object[]> executed = em.createNativeQuery("""
+            select ce.id,ce.checkpoint_id,ce.evidence_json,coalesce(c.code||' · '||c.name,ce.dynamic_name) from patrol_checkpoint_execution ce
+            left join patrol_checkpoint c on c.id=ce.checkpoint_id and c.instance_country_id=ce.instance_country_id
+            where ce.instance_country_id=:tenant and ce.patrol_execution_id=:event order by ce.validated_at,ce.id""")
+            .setParameter("tenant", tenant.instanceCountryId()).setParameter("event", eventId).getResultList();
+        Set<UUID> seen = new HashSet<>();
+        for (Object[] row : executed) {
+            String label = row[3] == null ? null : row[3].toString(), json = (String) row[2];
+            UUID checkpointId = row[1] == null ? null : UUID.fromString(row[1].toString());
+            List<UUID> photos = checkpointId == null ? null : byCheckpoint.remove(checkpointId);
+            if (photos != null) for (int i = 0; i < photos.size(); i++)
+                labeled(result.addObject().put("id", photos.get(i).toString()).put("source", "OBJECT"), label == null || photos.size() == 1 ? label : label + " · captura " + (i + 1));
+            else if (embeddedPhoto(json) != null) labeled(result.addObject().put("id", row[0].toString()).put("source", "PATROL"), label);
+            // Un Hito repetido en la misma patrulla ya mostró sus fotos con la primera ejecución.
+            else if (declaresPhoto(json) && (checkpointId == null || !seen.contains(checkpointId)))
+                labeled(result.addObject().put("id", row[0].toString()).put("source", "MISSING"), label);
+            if (checkpointId != null) seen.add(checkpointId);
+        }
+        byCheckpoint.values().forEach(photos -> photos.forEach(id -> result.addObject().put("id", id.toString()).put("source", "OBJECT")));
+    }
+
+    private static void labeled(ObjectNode node, String label) {
+        if (label != null) node.put("label", label);
+    }
+
+    /** El Hito registra en la app que el agente tomó la foto ({"captured":true}). */
+    private boolean declaresPhoto(String json) {
+        if (json == null) return false;
+        try { return mapper.readTree(json).path("captured").asBoolean(false); }
+        catch (Exception ignored) { return false; }
+    }
+
+    /** Campos del registro de Bitácora que declaran foto (evidence_refs_json), con su nombre y en el orden del formulario. */
+    @SuppressWarnings("unchecked")
+    private Map<UUID, String> logbookEvidenceFields(UUID eventId) {
+        UUID t = tenant.instanceCountryId();
+        List<Object> refs = em.createNativeQuery("select evidence_refs_json from operator_logbook_record where id=:event and instance_country_id=:tenant")
+            .setParameter("event", eventId).setParameter("tenant", t).getResultList();
+        List<UUID> fieldIds = new ArrayList<>();
+        if (!refs.isEmpty() && refs.get(0) != null) {
+            try { mapper.readTree(refs.get(0).toString()).forEach(id -> fieldIds.add(UUID.fromString(id.asText()))); }
+            catch (Exception ignored) { fieldIds.clear(); }
+        }
+        if (fieldIds.isEmpty()) return Map.of();
+        List<Object[]> fields = em.createNativeQuery("select id,name from logbook_protocol_field where instance_country_id=:tenant and id in (:ids) order by section,sort_order")
+            .setParameter("tenant", t).setParameter("ids", fieldIds).getResultList();
+        return fields.stream().collect(Collectors.toMap(
+            row -> UUID.fromString(row[0].toString()), row -> row[1].toString(), (a, b) -> a, LinkedHashMap::new));
     }
 
     /** Fotos estándar de varios destinos en una sola consulta, en el orden de los destinos y de su posición. */
@@ -217,12 +300,6 @@ public class OperationalEvidenceResource {
     }
 
     @SuppressWarnings("unchecked")
-    private List<Object[]> patrolPhotos(UUID eventId) {
-        return em.createNativeQuery("select id,evidence_json from patrol_checkpoint_execution where instance_country_id=:tenant and patrol_execution_id=:event order by validated_at,id")
-            .setParameter("tenant", tenant.instanceCountryId()).setParameter("event", eventId).getResultList();
-    }
-
-    @SuppressWarnings("unchecked")
     private String patrolPhotoJson(UUID eventId, UUID photoId) {
         List<String> rows = em.createNativeQuery("select evidence_json from patrol_checkpoint_execution where instance_country_id=:tenant and patrol_execution_id=:event and id=:photo")
             .setParameter("tenant", tenant.instanceCountryId()).setParameter("event", eventId).setParameter("photo", photoId).getResultList();
@@ -242,6 +319,18 @@ public class OperationalEvidenceResource {
         return query.getResultList();
     }
 
+    /** Fotos de una solicitud de consigna nueva; con photoId solo esa foto. */
+    @SuppressWarnings("unchecked")
+    private List<Object[]> requestPhotos(UUID eventId, UUID photoId) {
+        Query query = em.createNativeQuery("""
+            select e.id,e.content_type from evidence_object e
+            where e.instance_country_id=:tenant and e.event_id=:event and e.target_id=:event and e.target_type='CONSIGNMENT_REQUEST' and e.status in ('STORED','ATTACHED')
+            """ + (photoId == null ? "" : "and e.id=:photo ") + "order by e.captured_at,e.id")
+            .setParameter("tenant", tenant.instanceCountryId()).setParameter("event", eventId);
+        if (photoId != null) query.setParameter("photo", photoId);
+        return query.getResultList();
+    }
+
     private List<Object[]> linkedPhotos(UUID eventId, UUID pointId) {
         return linkedPhotos(eventId, pointId, null);
     }
@@ -250,12 +339,12 @@ public class OperationalEvidenceResource {
     @SuppressWarnings("unchecked")
     private List<Object[]> linkedPhotos(UUID eventId, UUID pointId, UUID photoId) {
         Query query = em.createNativeQuery("""
-            select distinct e.id,e.content_type from evidence_object e
+            select distinct e.id,e.content_type,e.target_id,task.capture_no from evidence_object e
             join task_execution_evidence link on link.evidence_id=e.id
             join task_execution task on task.id=link.task_execution_id and task.instance_country_id=e.instance_country_id
             where e.instance_country_id=:tenant and e.status in ('STORED','ATTACHED') and task.point_id=:point
               and (task.id=:event or task.group_id=:event or task.patrol_execution_id=:event)
-            """ + (photoId == null ? "" : "and e.id=:photo ") + "order by e.id")
+            """ + (photoId == null ? "" : "and e.id=:photo ") + "order by task.capture_no,e.id")
             .setParameter("tenant", tenant.instanceCountryId()).setParameter("event", eventId).setParameter("point", pointId);
         if (photoId != null) query.setParameter("photo", photoId);
         return query.getResultList();

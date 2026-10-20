@@ -43,4 +43,15 @@ public class PatrolCheckpoint extends BaseEntity {
     @Column(name="visint_enabled", nullable=false) public boolean visintEnabled;
     /** Umbral de coincidencia de VISINT (0.00 a 1.00); null = predeterminado. */
     @Column(name="match_threshold") public Double matchThreshold;
+
+    /** SQL de "el Hito lleva foto" sobre el alias {@code c} de patrol_checkpoint; misma regla que {@link #takesPhoto()}. */
+    public static final String TAKES_PHOTO_SQL = "(c.requires_evidence or exists(select 1 from patrol_checkpoint_rule r where r.checkpoint_id=c.id and r.instance_country_id=c.instance_country_id and r.required and r.evidence_required))";
+
+    /**
+     * El Hito lleva foto si se marcó «Requiere evidencia» o si una de sus reglas obligatorias exige evidencia (p. ej. Fotografía),
+     * aunque la casilla del Hito quede desmarcada: la app muestra la cámara por la regla y la foto no debe perderse.
+     */
+    public boolean takesPhoto() {
+        return requiresEvidence || PatrolCheckpointRule.count("checkpointId=?1 and instanceCountryId=?2 and required=true and evidenceRequired=true", id, instanceCountryId) > 0;
+    }
 }
