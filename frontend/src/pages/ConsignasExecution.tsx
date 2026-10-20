@@ -180,6 +180,28 @@ function patrolExecutionToExecution(item:any):Execution{
     ]
   };
 }
+function reliefToExecution(item:any):Execution{
+  const event=item.event??{};
+  const context=item.context??{};
+  const at=event.executedAt||item.receivedAt;
+  const evidenceCount=Number(item.photoCount||0);
+  const unilateral=Boolean(event.unilateral);
+  return {
+    id:`relief-${item.reliefId}`,evidenceEventId:String(item.reliefId),photoCount:evidenceCount,type:'RELIEF',
+    code:`REL-${String(item.reliefId).slice(0,8).toUpperCase()}`,name:'Relevo de puesto',
+    client:item.clientName||context.clientName||'—',company:item.companyName||'—',companyCode:item.companyCode||'',city:item.city||'—',
+    point:item.pointName||context.pointName||'—',post:item.postName||context.postName||'—',
+    responsible:item.incomingEmployeeName||context.incomingEmployeeName||item.submittedBy||'Operador',zone:'',region:'',
+    status:'COMPLETED',priority:'MEDIUM',start:at,end:item.receivedAt,
+    progressCurrent:4,progressTotal:4,progressUnit:'pasos',result:unilateral?'Relevo unilateral registrado':'Relevo registrado',
+    timeline:[
+      {id:`start-${item.reliefId}`,at,title:'Inicio del relevo',detail:item.postName||context.postName||'Puesto operativo',state:'DONE'},
+      {id:`evidence-${item.reliefId}`,at,title:'Evidencias registradas',detail:`${evidenceCount} fotografía${evidenceCount===1?'':'s'}`,state:'DONE'},
+      {id:`inventory-${item.reliefId}`,at,title:'Inventario informado',detail:item.inventoryStatus||'Registrado',state:'DONE'},
+      {id:`finish-${item.reliefId}`,at:item.receivedAt,title:'Relevo finalizado',detail:item.submittedBy||'SGI Operador',state:'DONE'}
+    ]
+  };
+}
 
 export default function ConsignasExecution(){
   const user=getUser();
@@ -188,22 +210,25 @@ export default function ConsignasExecution(){
   const [inspectorId,setInspectorId]=useState<string|null>(null);
   const [reviewRequests,setReviewRequests]=useState<Execution[]>([]);
   const [patrolExecutions,setPatrolExecutions]=useState<Execution[]>([]);
+  const [reliefExecutions,setReliefExecutions]=useState<Execution[]>([]);
   const [loadWarnings,setLoadWarnings]=useState<string[]>([]);
 
   const loadReviewRequests=useCallback(async()=>{
-    const [requests,patrols]=await Promise.allSettled([api.consignmentReviewRequests('PENDING'),api.patrolExecutions()]);
+    const [requests,patrols,reliefs]=await Promise.allSettled([api.consignmentReviewRequests('PENDING'),api.patrolExecutions(),api.reliefs(100)]);
     const warnings:string[]=[];
     if(requests.status==='fulfilled') setReviewRequests(requests.value.map(reviewRequestToExecution));
     else { setReviewRequests([]); warnings.push('No fue posible consultar las consignas pendientes. Verifica el alcance operativo del usuario o inténtalo nuevamente.'); }
     if(patrols.status==='fulfilled') setPatrolExecutions(patrols.value.map(patrolExecutionToExecution));
     else { setPatrolExecutions([]); warnings.push('No fue posible consultar las ejecuciones de patrullas.'); }
+    if(reliefs.status==='fulfilled') setReliefExecutions(reliefs.value.map(reliefToExecution));
+    else { setReliefExecutions([]); warnings.push('No fue posible consultar los relevos registrados.'); }
     setLoadWarnings(warnings);
   },[]);
 
   useEffect(()=>{void loadReviewRequests()},[loadReviewRequests]);
 
   // El backend es la fuente oficial y aplica alcance RBAC; esta vista no mezcla datos DEMO.
-  const scoped=useMemo(()=>[...reviewRequests,...patrolExecutions],[reviewRequests,patrolExecutions]);
+  const scoped=useMemo(()=>[...reliefExecutions,...reviewRequests,...patrolExecutions],[reliefExecutions,reviewRequests,patrolExecutions]);
 
   const companies=useMemo(()=>unique(scoped.map(x=>x.company)),[scoped]);
   const cities=useMemo(()=>unique(scoped.map(x=>x.city)),[scoped]);

@@ -1159,9 +1159,17 @@ public class OperatorResource {
             PostEntity post=PostEntity.find("id=?1 and instanceCountryId=?2",row[1],tenant.instanceCountryId()).firstResult();
             PointEntity point=post==null?null:PointEntity.find("id=?1 and instanceCountryId=?2",post.pointId,tenant.instanceCountryId()).firstResult();
             if(point==null || (operator?!employee.toString().equals(row[2].toString()):!scope.canAccessCompany(point.companyId))) continue;
+            Company company=point.companyId==null?null:Company.find("id=?1 and instanceCountryId=?2",point.companyId,tenant.instanceCountryId()).firstResult();
+            JsonNode context; try { context=mapper.readTree(row[4].toString()); } catch(Exception e) { throw new InternalServerErrorException(); }
+            Number photoCount=(Number)em.createNativeQuery("select count(*) from operator_relief_evidence where instance_country_id=:t and event_id=:e")
+                .setParameter("t",tenant.instanceCountryId()).setParameter("e",row[0]).getSingleResult();
             ObjectNode n=result.addObject().put("reliefId",row[0].toString()).put("postName",post.name).put("pointName",point.name).put("employeeId",row[2].toString())
                 .put("receivedAt",row[3].toString()).put("status","PENDIENTE").put("inventoryStatus",row[7]==null?"PENDING_SOURCE":row[7].toString())
-                .put("inventoryDeliveryStatus",inventory.reportStatus(UUID.fromString(row[0].toString()))).put("validationStatus","PENDING_REVIEW");
+                .put("inventoryDeliveryStatus",inventory.reportStatus(UUID.fromString(row[0].toString()))).put("validationStatus","PENDING_REVIEW")
+                .put("clientName",point.clientName).put("city",point.city).put("companyCode",company==null?"":company.code)
+                .put("companyName",company==null?"—":company.name).put("submittedBy",row[6].toString()).put("photoCount",photoCount.intValue());
+            n.set("context",context);
+            if(context.hasNonNull("incomingEmployeeName")) n.put("incomingEmployeeName",context.path("incomingEmployeeName").asText());
             try { n.set("event",mapper.readTree(row[5].toString())); } catch(Exception e) { throw new InternalServerErrorException(); }
             if(result.size()>=Math.max(1,Math.min(limit,100))) break;
         } return result;

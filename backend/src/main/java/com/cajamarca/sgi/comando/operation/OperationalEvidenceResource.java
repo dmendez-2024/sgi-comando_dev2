@@ -33,7 +33,13 @@ public class OperationalEvidenceResource {
     public ArrayNode list(@PathParam("eventId") UUID eventId) {
         UUID pointId = requireVisibleEvent(eventId);
         ArrayNode result = mapper.createArrayNode();
-        for (Object[] row : linkedPhotos(eventId, pointId)) {
+        List<Object[]> relief = reliefPhotos(eventId);
+        for (Object[] row : relief) {
+            UUID id = (UUID) row[0];
+            if (row[2] != null && row[2].toString().startsWith("image/"))
+                result.addObject().put("id", id.toString()).put("source", "RELIEF").put("purpose", row[1].toString());
+        }
+        if (relief.isEmpty()) for (Object[] row : linkedPhotos(eventId, pointId)) {
             UUID id = (UUID) row[0];
             if (row[1] != null && row[1].toString().startsWith("image/"))
                 result.addObject().put("id", id.toString()).put("source", "OBJECT");
@@ -55,6 +61,11 @@ public class OperationalEvidenceResource {
                 return Response.ok(storage.read(object.bucket, object.objectKey)).type(object.contentType)
                     .header(HttpHeaders.CACHE_CONTROL, "private, max-age=300").build();
         }
+        for (Object[] row : reliefPhotos(eventId)) {
+            if (!photoId.equals(row[0])) continue;
+            return Response.ok((byte[]) row[3]).type(row[2].toString())
+                .header(HttpHeaders.CACHE_CONTROL, "private, max-age=300").build();
+        }
         for (Object[] row : patrolPhotos(eventId)) {
             if (!photoId.equals(row[0])) continue;
             byte[] photo = embeddedPhoto((String) row[1]);
@@ -66,6 +77,7 @@ public class OperationalEvidenceResource {
 
     private UUID requireVisibleEvent(UUID eventId) {
         String[] queries = {
+            "select p.id,p.company_id from relief_event r join post po on po.id=r.post_id and po.instance_country_id=r.instance_country_id join point p on p.id=po.point_id and p.instance_country_id=r.instance_country_id where r.id=:event and r.instance_country_id=:tenant",
             "select p.id,p.company_id from operator_logbook_record r join point p on p.id=r.point_id and p.instance_country_id=r.instance_country_id where r.id=:event and r.instance_country_id=:tenant",
             "select p.id,p.company_id from operator_consignment_review_request r join point p on p.id=r.point_id and p.instance_country_id=r.instance_country_id where r.id=:event and r.instance_country_id=:tenant",
             "select p.id,p.company_id from operator_operational_report r join point p on p.id=r.point_id and p.instance_country_id=r.instance_country_id where r.id=:event and r.instance_country_id=:tenant",
@@ -81,6 +93,12 @@ public class OperationalEvidenceResource {
             return UUID.fromString(rows.get(0)[0].toString());
         }
         throw new NotFoundException("Registro operativo no encontrado");
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<Object[]> reliefPhotos(UUID eventId) {
+        return em.createNativeQuery("select id,purpose,content_type,content from operator_relief_evidence where instance_country_id=:tenant and event_id=:event order by created_at,purpose")
+            .setParameter("tenant", tenant.instanceCountryId()).setParameter("event", eventId).getResultList();
     }
 
     @SuppressWarnings("unchecked")
