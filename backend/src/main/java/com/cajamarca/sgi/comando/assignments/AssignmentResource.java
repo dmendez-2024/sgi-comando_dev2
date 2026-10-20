@@ -9,6 +9,7 @@ import com.cajamarca.sgi.comando.consignments.Consignment;
 import com.cajamarca.sgi.comando.consignments.ConsignmentPostScope;
 import com.cajamarca.sgi.comando.operations.PointEntity;
 import com.cajamarca.sgi.comando.operations.PostEntity;
+import com.cajamarca.sgi.comando.operations.ServiceEntity;
 import com.cajamarca.sgi.comando.outbox.OutboxEvent;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -72,9 +73,9 @@ public class AssignmentResource {
     public record TransferDecisionRequest(String note) {}
     public record CompanyTransferDto(UUID id,UUID employeeId,String employeeName,String roleCode,BigDecimal idScore,UUID originCompanyId,String originCompanyName,UUID destinationCompanyId,String destinationCompanyName,String reasonCode,String reasonLabel,String observations,String status,String initiatedBy,Instant initiatedAt,String decisionBy,Instant decisionAt,String decisionNote,Instant effectiveAt,int releasedFutureAssignments,String rrhhSyncStatus) {}
     public record AssignmentAuditDto(String postCode, String postName, String shiftName, Instant startsAt, String assignmentStatus, String actor) {}
-    public record CoverageCompanyDto(UUID companyId, String companyName, int posts, int requiredShifts, int assignedShifts, int unassignedShifts, double coveragePct,
+    public record CoverageCompanyDto(UUID companyId, String companyName, int posts, int uncoveredPoints, int requiredShifts, int assignedShifts, int unassignedShifts, double coveragePct,
                                      Integer publishedRequiredShifts, Integer publishedAssignedShifts, Double publishedCoveragePct, String planStatus) {}
-    public record CoverageResponse(LocalDate weekStart, List<CoverageCompanyDto> companies, int totalRequiredShifts, int totalAssignedShifts, int totalUnassignedShifts, double overallCoveragePct) {}
+    public record CoverageResponse(LocalDate weekStart, List<CoverageCompanyDto> companies, int totalRequiredShifts, int totalAssignedShifts, int totalUnassignedShifts, int totalUncoveredPoints, double overallCoveragePct) {}
     public record ValidationProblem(String code, String message) {}
     public record EvaluationDto(UUID shiftOccurrenceId, String state, BigDecimal ic, List<ValidationProblem> blockers, List<String> warnings) {}
     record ShiftTarget(PostEntity post, PostSkillRequirement requirement, CoordinationPost coordinationPost) {}
@@ -523,26 +524,40 @@ public class AssignmentResource {
     @GET
     @Path("/coverage")
     @Transactional
-    public CoverageResponse coverage(@QueryParam("weekStart") String weekStart) {
+    public CoverageResponse coverage(@QueryParam("weekStart") String weekStart,
+                                     @QueryParam("companyId") UUID companyId, @QueryParam("clientId") UUID clientId) {
         LocalDate week=normalizeWeek(parseDate(weekStart));
         Set<UUID> allowedCompanies=scope.allowedCompanyIds();
+        if(companyId!=null){scope.requireCompany(companyId);allowedCompanies=Set.of(companyId);}
         List<Company> companies=allowedCompanies.isEmpty()?List.of():Company.list("instanceCountryId=?1 and status='ACTIVE' and id in ?2 order by name",tenant.instanceCountryId(),allowedCompanies);
+        Set<UUID> clientServiceIds=clientId==null?Set.of():ServiceEntity.<ServiceEntity>list("instanceCountryId=?1 and clientId=?2",tenant.instanceCountryId(),clientId).stream().map(service->service.id).collect(Collectors.toSet());
         List<CoverageCompanyDto> result=new ArrayList<>();
         int totalReq=0,totalAssigned=0;
+        Set<UUID> uncoveredPointIds=new HashSet<>();
         for(Company c:companies){
             AssignmentPlanEntity plan=ensurePlan(c.id,week);
             List<PointEntity> points=PointEntity.list("instanceCountryId=?1 and companyId=?2 and status='ACTIVE'",tenant.instanceCountryId(),c.id);
+            if(clientId!=null)points=points.stream().filter(point->clientServiceIds.contains(point.serviceId)).toList();
             Set<UUID> pids=points.stream().map(p->p.id).collect(Collectors.toSet());
             List<PostEntity> posts=pids.isEmpty()?List.of():PostEntity.list("instanceCountryId=?1 and pointId in ?2",tenant.instanceCountryId(),pids);
-            List<CoordinationPost> coordinationPosts=assignableCoordinationPosts(c.id);
+            List<CoordinationPost> coordinationPosts=clientId==null?assignableCoordinationPosts(c.id):List.of();
             List<ShiftOccurrenceEntity> shifts=planShifts(plan);
+            if(clientId!=null){Set<UUID> postIds=posts.stream().map(post->post.id).collect(Collectors.toSet());shifts=shifts.stream().filter(shift->postIds.contains(shift.postId)).toList();}
             Set<UUID> shiftIds=shifts.stream().map(s->s.id).collect(Collectors.toSet());
-            long assigned=shiftIds.isEmpty()?0:OperationalAssignmentEntity.count("instanceCountryId=?1 and assignmentPlanId=?2 and shiftOccurrenceId in ?3 and status<>'REMOVED'",tenant.instanceCountryId(),plan.id,shiftIds);
-            int req=shifts.size(), asg=(int)assigned, un=Math.max(req-asg,0); double pct=req==0?100d:roundPct(100d*asg/req);
-            result.add(new CoverageCompanyDto(c.id,c.name,posts.size()+coordinationPosts.size(),req,asg,un,pct,plan.publishedRequiredShifts,plan.publishedAssignedShifts,plan.publishedCoveragePct==null?null:plan.publishedCoveragePct.doubleValue(),plan.status)); totalReq+=req;totalAssigned+=asg;
+            Set<UUID> assignedShiftIds=shiftIds.isEmpty()?Set.of():OperationalAssignmentEntity.<OperationalAssignmentEntity>list("instanceCountryId=?1 and assignmentPlanId=?2 and shiftOccurrenceId in ?3 and status<>'REMOVED'",tenant.instanceCountryId(),plan.id,shiftIds).stream().map(assignment->assignment.shiftOccurrenceId).collect(Collectors.toSet());
+            Map<UUID,UUID> pointByPost=posts.stream().collect(Collectors.toMap(post->post.id,post->post.pointId));
+            Set<UUID> companyUncoveredPoints=uncoveredPointIds(shifts,assignedShiftIds,pointByPost);
+            uncoveredPointIds.addAll(companyUncoveredPoints);
+            int req=shifts.size(), asg=assignedShiftIds.size(), un=Math.max(req-asg,0); double pct=req==0?100d:roundPct(100d*asg/req);
+            result.add(new CoverageCompanyDto(c.id,c.name,posts.size()+coordinationPosts.size(),companyUncoveredPoints.size(),req,asg,un,pct,plan.publishedRequiredShifts,plan.publishedAssignedShifts,plan.publishedCoveragePct==null?null:plan.publishedCoveragePct.doubleValue(),plan.status)); totalReq+=req;totalAssigned+=asg;
         }
         int un=Math.max(totalReq-totalAssigned,0); double pct=totalReq==0?100d:roundPct(100d*totalAssigned/totalReq);
-        return new CoverageResponse(week,result,totalReq,totalAssigned,un,pct);
+        return new CoverageResponse(week,result,totalReq,totalAssigned,un,uncoveredPointIds.size(),pct);
+    }
+
+    static Set<UUID> uncoveredPointIds(List<ShiftOccurrenceEntity> shifts, Set<UUID> assignedShiftIds, Map<UUID,UUID> pointByPost) {
+        return shifts.stream().filter(shift->shift.postId!=null && !assignedShiftIds.contains(shift.id))
+            .map(shift->pointByPost.get(shift.postId)).filter(Objects::nonNull).collect(Collectors.toSet());
     }
 
     private AssignmentPlanEntity ensurePlan(UUID companyId, LocalDate week) {

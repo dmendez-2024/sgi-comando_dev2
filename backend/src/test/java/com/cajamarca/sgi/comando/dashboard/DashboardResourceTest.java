@@ -63,6 +63,9 @@ class DashboardResourceTest {
         as("presidente").queryParam("weekStart", "2001-01-01").queryParam("clientId", UUID.randomUUID())
             .get("/api/assignments/coverage").then().statusCode(200).body("totalUncoveredPoints", is(0)).body("totalRequiredShifts", is(0));
         as("presidente").queryParam("weekStart", "2001-01-03").queryParam("companyId", company).queryParam("clientId", client)
+            .get("/api/assignments/coverage").then().statusCode(200)
+            .body("totalRequiredShifts", is(3)).body("totalAssignedShifts", is(2)).body("totalUncoveredPoints", is(1));
+        as("presidente").queryParam("weekStart", "2001-01-03").queryParam("companyId", company).queryParam("clientId", client)
             .get("/api/dashboard/operational-risk-trend").then().statusCode(200)
             .body("find { it.date == '2001-01-02' }.scheduledPoints", is(1))
             .body("find { it.date == '2001-01-02' }.uncoveredPoints", is(1))
