@@ -27,7 +27,162 @@ public class DashboardResource {
 
     public record Metrics(LocalDate weekStart, Instant calculatedAt, Double idAverage, Double icAverage,
                           long idSamples, long icSamples, long lateReliefs, long recordedReliefs) {}
+    public record Suitability(long pointsBelowIdMinimum, long idEvaluatedPoints, Double idGapPct,
+                              long pointsBelowFullCompatibility, long icEvaluatedPoints, Double icGapPct) {}
+    public record ConsignmentCompliance(long nonCompliant, long activeConsignments, Double nonCompliancePct) {}
+    public record SupervisionRouteCompliance(long missedVisits, long expectedVisits, Double nonCompliancePct) {}
+    public record MissedReliefs(long missedShifts, long assignedShifts) {}
+    public record CriticalIncidents(long reportedCriticalIncidents) {}
     public record RiskTrendPoint(LocalDate date, long scheduledPoints, long uncoveredPoints, Double riskIndex) {}
+
+    @GET @Path("/suitability")
+    public Suitability suitability(@QueryParam("weekStart") String weekStart,
+            @QueryParam("companyId") UUID companyId, @QueryParam("clientId") UUID clientId) {
+        LocalDate week = parseWeek(weekStart);
+        Set<UUID> allowed = scope.allowedCompanyIds();
+        if (companyId != null) { scope.requireCompany(companyId); allowed = Set.of(companyId); }
+        if (allowed.isEmpty()) return new Suitability(0, 0, null, 0, 0, null);
+        String sql = """
+            select count(distinct p.id) filter (where a.id_score is not null and
+                    a.id_score < case upper(trim(coalesce(po.tier,'')))
+                        when 'IV' then 9.5 when 'III' then 8.5 when 'II' then 7.5 else 6.5 end),
+                   count(distinct p.id) filter (where a.id_score is not null),
+                   count(distinct p.id) filter (where a.compatibility_index is not null and a.compatibility_index < 100),
+                   count(distinct p.id) filter (where a.compatibility_index is not null)
+            from operational_assignment a
+            join shift_occurrence sh on sh.id=a.shift_occurrence_id and sh.instance_country_id=a.instance_country_id
+            join post po on po.id=sh.post_id and po.instance_country_id=sh.instance_country_id
+            join point p on p.id=po.point_id and p.instance_country_id=sh.instance_country_id
+            join service sv on sv.id=p.service_id and sv.instance_country_id=p.instance_country_id
+            where a.instance_country_id=:tenant and p.company_id in (:companies) and p.status='ACTIVE'
+              and a.status<>'REMOVED' and sh.required=true and sh.starts_at>=:from and sh.starts_at<:to
+              and (p.operational_transition_until is null or sh.starts_at>=p.operational_transition_until)
+            """ + (clientId == null ? "" : " and sv.client_id=:client");
+        Object[] values = (Object[]) query(sql, allowed, clientId,
+            week.atStartOfDay(OPERATING_ZONE).toInstant(), week.plusDays(7).atStartOfDay(OPERATING_ZONE).toInstant()).getSingleResult();
+        long belowId = ((Number) values[0]).longValue(), evaluatedId = ((Number) values[1]).longValue();
+        long belowIc = ((Number) values[2]).longValue(), evaluatedIc = ((Number) values[3]).longValue();
+        return new Suitability(belowId, evaluatedId, percentage(belowId, evaluatedId),
+            belowIc, evaluatedIc, percentage(belowIc, evaluatedIc));
+    }
+
+    @GET @Path("/consignment-compliance")
+    public ConsignmentCompliance consignmentCompliance(@QueryParam("weekStart") String weekStart,
+            @QueryParam("companyId") UUID companyId, @QueryParam("clientId") UUID clientId) {
+        LocalDate week = parseWeek(weekStart);
+        Set<UUID> allowed = scope.allowedCompanyIds();
+        if (companyId != null) { scope.requireCompany(companyId); allowed = Set.of(companyId); }
+        if (allowed.isEmpty()) return new ConsignmentCompliance(0, 0, null);
+        String sql = """
+            select count(*) filter (where exists (
+                     select 1 from consignment_compliance cc
+                     where cc.instance_country_id=c.instance_country_id and cc.consignment_id=c.id
+                       and cc.result='NO_CUMPLIDA' and cc.confirmed_at>=:from and cc.confirmed_at<:to)),
+                   count(*)
+            from consignment c
+            join consignment_protocol cp on cp.id=c.protocol_id and cp.instance_country_id=c.instance_country_id
+                and cp.point_id=c.point_id
+            join point p on p.id=c.point_id and p.instance_country_id=c.instance_country_id
+            join service sv on sv.id=p.service_id and sv.instance_country_id=p.instance_country_id
+            where c.instance_country_id=:tenant and p.company_id in (:companies) and p.status='ACTIVE'
+              and cp.status='ACTIVO' and c.status='VIGENTE'
+              and (c.validity_from is null or c.validity_from<:to)
+              and (c.validity_until is null or c.validity_until>=:from)
+            """ + (clientId == null ? "" : " and sv.client_id=:client");
+        Object[] counts = (Object[]) query(sql, allowed, clientId,
+            week.atStartOfDay(OPERATING_ZONE).toInstant(), week.plusDays(7).atStartOfDay(OPERATING_ZONE).toInstant()).getSingleResult();
+        long nonCompliant = ((Number) counts[0]).longValue(), active = ((Number) counts[1]).longValue();
+        return new ConsignmentCompliance(nonCompliant, active, percentage(nonCompliant, active));
+    }
+
+    @GET @Path("/supervision-route-compliance")
+    public SupervisionRouteCompliance supervisionRouteCompliance(@QueryParam("weekStart") String weekStart,
+            @QueryParam("companyId") UUID companyId, @QueryParam("clientId") UUID clientId) {
+        LocalDate week = parseWeek(weekStart);
+        Set<UUID> allowed = scope.allowedCompanyIds();
+        if (companyId != null) { scope.requireCompany(companyId); allowed = Set.of(companyId); }
+        if (allowed.isEmpty()) return new SupervisionRouteCompliance(0, 0, null);
+        String sql = """
+            select count(*) filter (where not exists (
+                     select 1 from supervisor_evaluation e
+                     join operational_assignment a on a.id=e.supervisor_assignment_id
+                         and a.instance_country_id=e.instance_country_id and a.status<>'REMOVED'
+                     where e.instance_country_id=sh.instance_country_id and e.point_id=rp.point_id
+                       and e.status='COMPLETED' and a.shift_occurrence_id=sh.id)),
+                   count(*)
+            from shift_occurrence sh
+            join coordination_post cp on cp.id=sh.coordination_post_id and cp.instance_country_id=sh.instance_country_id
+                and cp.post_type='SUPERVISION'
+            join assignment_plan ap on ap.instance_country_id=sh.instance_country_id
+                and ap.company_id=cp.company_id and ap.week_start=:week and ap.status in ('PUBLISHED','CLOSED')
+            join supervision_route sr on sr.id=sh.supervision_route_id and sr.instance_country_id=sh.instance_country_id
+                and sr.coordination_post_id=cp.id and sr.status in ('ACTIVE','REPLACED')
+            join supervision_route_point rp on rp.route_id=sr.id and rp.instance_country_id=sr.instance_country_id
+            join point p on p.id=rp.point_id and p.instance_country_id=rp.instance_country_id and p.status='ACTIVE'
+                and p.company_id=cp.company_id
+            join service sv on sv.id=p.service_id and sv.instance_country_id=p.instance_country_id
+            where sh.instance_country_id=:tenant and cp.company_id in (:companies)
+              and sh.required=true and sh.starts_at>=:from and sh.starts_at<:to and sh.ends_at<=:now
+            """ + (clientId == null ? "" : " and sv.client_id=:client");
+        Object[] counts = (Object[]) query(sql, allowed, clientId,
+            week.atStartOfDay(OPERATING_ZONE).toInstant(), week.plusDays(7).atStartOfDay(OPERATING_ZONE).toInstant())
+            .setParameter("week", week).setParameter("now", Instant.now()).getSingleResult();
+        long missed = ((Number) counts[0]).longValue(), expected = ((Number) counts[1]).longValue();
+        return new SupervisionRouteCompliance(missed, expected, percentage(missed, expected));
+    }
+
+    @GET @Path("/missed-reliefs")
+    public MissedReliefs missedReliefs(@QueryParam("weekStart") String weekStart,
+            @QueryParam("companyId") UUID companyId, @QueryParam("clientId") UUID clientId) {
+        LocalDate week = parseWeek(weekStart);
+        Set<UUID> allowed = scope.allowedCompanyIds();
+        if (companyId != null) { scope.requireCompany(companyId); allowed = Set.of(companyId); }
+        if (allowed.isEmpty()) return new MissedReliefs(0, 0);
+        String sql = """
+            select count(*) filter (where not exists (
+                     select 1 from relief_event r
+                     where r.instance_country_id=sh.instance_country_id and r.executed_at is not null
+                       and (r.shift_occurrence_id=sh.id or r.shift_occurrence_id is null
+                           and r.post_id=sh.post_id and r.planned_at=sh.starts_at))),
+                   count(*)
+            from shift_occurrence sh
+            join post po on po.id=sh.post_id and po.instance_country_id=sh.instance_country_id
+            join point p on p.id=po.point_id and p.instance_country_id=po.instance_country_id and p.status='ACTIVE'
+            join service sv on sv.id=p.service_id and sv.instance_country_id=p.instance_country_id
+            where sh.instance_country_id=:tenant and p.company_id in (:companies)
+              and sh.required=true and sh.starts_at>=:from and sh.starts_at<:to and sh.ends_at<=:now
+              and (p.operational_transition_until is null or sh.starts_at>=p.operational_transition_until)
+              and exists (select 1 from operational_assignment a
+                  join assignment_plan ap on ap.id=a.assignment_plan_id and ap.instance_country_id=a.instance_country_id
+                  where a.instance_country_id=sh.instance_country_id and a.shift_occurrence_id=sh.id
+                    and a.status<>'REMOVED' and coalesce(a.actual_employee_id,a.employee_id) is not null
+                    and ap.status in ('PUBLISHED','CLOSED'))
+            """ + (clientId == null ? "" : " and sv.client_id=:client");
+        Object[] counts = (Object[]) query(sql, allowed, clientId,
+            week.atStartOfDay(OPERATING_ZONE).toInstant(), week.plusDays(7).atStartOfDay(OPERATING_ZONE).toInstant())
+            .setParameter("now", Instant.now()).getSingleResult();
+        return new MissedReliefs(((Number) counts[0]).longValue(), ((Number) counts[1]).longValue());
+    }
+
+    @GET @Path("/critical-incidents")
+    public CriticalIncidents criticalIncidents(@QueryParam("weekStart") String weekStart,
+            @QueryParam("companyId") UUID companyId, @QueryParam("clientId") UUID clientId) {
+        LocalDate week = parseWeek(weekStart);
+        Set<UUID> allowed = scope.allowedCompanyIds();
+        if (companyId != null) { scope.requireCompany(companyId); allowed = Set.of(companyId); }
+        if (allowed.isEmpty()) return new CriticalIncidents(0);
+        String sql = """
+            select count(*) from operator_operational_report r
+            join point p on p.id=r.point_id and p.instance_country_id=r.instance_country_id
+            join service sv on sv.id=p.service_id and sv.instance_country_id=p.instance_country_id
+            where r.instance_country_id=:tenant and p.company_id in (:companies)
+              and r.report_type='INCIDENT' and r.severity='CRITICAL' and r.status='REPORTED'
+              and r.occurred_at>=:from and r.occurred_at<:to
+            """ + (clientId == null ? "" : " and sv.client_id=:client");
+        Number count = (Number) query(sql, allowed, clientId,
+            week.atStartOfDay(OPERATING_ZONE).toInstant(), week.plusDays(7).atStartOfDay(OPERATING_ZONE).toInstant()).getSingleResult();
+        return new CriticalIncidents(count.longValue());
+    }
     @GET @Path("/operational-risk-trend")
     public List<RiskTrendPoint> operationalRiskTrend(@QueryParam("weekStart") String weekStart,
             @QueryParam("companyId") UUID companyId, @QueryParam("clientId") UUID clientId,
@@ -146,6 +301,15 @@ public class DashboardResource {
         query.setParameter("to", to);
         if (clientId != null) query.setParameter("client", clientId);
         return query;
+    }
+    private static LocalDate parseWeek(String weekStart) {
+        try {
+            return (weekStart == null ? LocalDate.now(OPERATING_ZONE) : LocalDate.parse(weekStart))
+                .with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
+        } catch (DateTimeException error) { throw new BadRequestException("weekStart debe ser una fecha YYYY-MM-DD."); }
+    }
+    private static Double percentage(long numerator, long denominator) {
+        return denominator == 0 ? null : Math.round(1000d * numerator / denominator) / 10d;
     }
     private static Double value(Object value) { return value == null ? null : ((Number)value).doubleValue(); }
 }

@@ -220,6 +220,11 @@ export const api={
  assignmentPostDetails:(postId:string)=>request<any>(`/api/assignments/posts/${encodeURIComponent(postId)}/details`),
  assignmentCoverage:(weekStart:string,companyId='',clientId='')=>request<any>(`/api/assignments/coverage?${new URLSearchParams({weekStart,...(companyId?{companyId}:{}),...(clientId?{clientId}:{})})}`),
  dashboardMetrics:(weekStart:string,companyId='',clientId='')=>request<any>(`/api/dashboard/metrics?${new URLSearchParams({weekStart,...(companyId?{companyId}:{}),...(clientId?{clientId}:{})})}`),
+ dashboardSuitability:(weekStart:string,companyId='',clientId='')=>request<any>(`/api/dashboard/suitability?${new URLSearchParams({weekStart,...(companyId?{companyId}:{}),...(clientId?{clientId}:{})})}`),
+ dashboardConsignmentCompliance:(weekStart:string,companyId='',clientId='')=>request<any>(`/api/dashboard/consignment-compliance?${new URLSearchParams({weekStart,...(companyId?{companyId}:{}),...(clientId?{clientId}:{})})}`),
+ dashboardSupervisionRouteCompliance:(weekStart:string,companyId='',clientId='')=>request<any>(`/api/dashboard/supervision-route-compliance?${new URLSearchParams({weekStart,...(companyId?{companyId}:{}),...(clientId?{clientId}:{})})}`),
+ dashboardMissedReliefs:(weekStart:string,companyId='',clientId='')=>request<any>(`/api/dashboard/missed-reliefs?${new URLSearchParams({weekStart,...(companyId?{companyId}:{}),...(clientId?{clientId}:{})})}`),
+ dashboardCriticalIncidents:(weekStart:string,companyId='',clientId='')=>request<any>(`/api/dashboard/critical-incidents?${new URLSearchParams({weekStart,...(companyId?{companyId}:{}),...(clientId?{clientId}:{})})}`),
  dashboardRiskTrend:(weekStart:string,companyId='',clientId='',period:'7d'|'30d'|'6m'='30d')=>request<any>(`/api/dashboard/operational-risk-trend?${new URLSearchParams({weekStart,period,...(companyId?{companyId}:{}),...(clientId?{clientId}:{})})}`),
 
  coordinationCompanies:()=>request<any[]>('/api/coordination/companies'),

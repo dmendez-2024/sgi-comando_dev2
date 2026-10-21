@@ -11,12 +11,26 @@ type ServiceRow={
   state:'ACTIVE'|'INACTIVE'|'TO_CONFIGURE'|'PENDING_ASSIGNMENT';assignmentStatus:string;atsLoaded:boolean;
 };
 type CoverageCompany={companyId:string;companyName:string;posts:number;uncoveredPoints:number;requiredShifts:number;assignedShifts:number;unassignedShifts:number;coveragePct:number};
-type Coverage={companies:CoverageCompany[];totalUnassignedShifts:number;totalUncoveredPoints:number;overallCoveragePct:number};
+type Coverage={companies:CoverageCompany[];totalUnassignedShifts:number;totalUncoveredPoints?:number;overallCoveragePct:number};
 type PointLocation={id:string;province?:string;city?:string};
 type Province={code:string;name:string;status?:string;geometryJson?:string;coreSubdivisionId?:string;coreDatasetVersion?:string};
 type DashboardMetrics={calculatedAt:string;idAverage:number|null;icAverage:number|null;idSamples:number;icSamples:number;lateReliefs:number;recordedReliefs:number};
+type Suitability={pointsBelowIdMinimum:number;idEvaluatedPoints:number;idGapPct:number|null;pointsBelowFullCompatibility:number;icEvaluatedPoints:number;icGapPct:number|null};
+type ConsignmentCompliance={nonCompliant:number;activeConsignments:number;nonCompliancePct:number|null};
+type SupervisionRouteCompliance={missedVisits:number;expectedVisits:number;nonCompliancePct:number|null};
+type MissedReliefs={missedShifts:number;assignedShifts:number};
+type CriticalIncidents={reportedCriticalIncidents:number};
 type RiskTrendPoint={date:string;scheduledPoints:number;uncoveredPoints:number;riskIndex:number|null};
-type DashboardData={companies:Company[];rows:ServiceRow[];coverage:Coverage|null;metrics:DashboardMetrics|null;riskTrend:RiskTrendPoint[]|null;locations:PointLocation[];provinces:Province[];errors:string[]};
+type DashboardData={companies:Company[];rows:ServiceRow[];coverage:Coverage|null;metrics:DashboardMetrics|null;suitability:Suitability|null;consignments:ConsignmentCompliance|null;supervisionRoute:SupervisionRouteCompliance|null;missedReliefs:MissedReliefs|null;criticalIncidents:CriticalIncidents|null;riskTrend:RiskTrendPoint[]|null;locations:PointLocation[];provinces:Province[];errors:string[]};
+
+function hasNumber(value:unknown):value is number{return typeof value==='number'&&Number.isFinite(value)}
+function hasMetrics(value:unknown):value is DashboardMetrics{return typeof value==='object'&&value!==null&&typeof (value as Partial<DashboardMetrics>).calculatedAt==='string'&&hasNumber((value as Partial<DashboardMetrics>).lateReliefs)&&hasNumber((value as Partial<DashboardMetrics>).recordedReliefs)}
+function hasSuitability(value:unknown):value is Suitability{return typeof value==='object'&&value!==null&&hasNumber((value as Partial<Suitability>).pointsBelowIdMinimum)&&hasNumber((value as Partial<Suitability>).idEvaluatedPoints)&&hasNumber((value as Partial<Suitability>).pointsBelowFullCompatibility)&&hasNumber((value as Partial<Suitability>).icEvaluatedPoints)}
+function hasConsignmentCompliance(value:unknown):value is ConsignmentCompliance{return typeof value==='object'&&value!==null&&hasNumber((value as Partial<ConsignmentCompliance>).nonCompliant)&&hasNumber((value as Partial<ConsignmentCompliance>).activeConsignments)}
+function hasSupervisionRouteCompliance(value:unknown):value is SupervisionRouteCompliance{return typeof value==='object'&&value!==null&&hasNumber((value as Partial<SupervisionRouteCompliance>).missedVisits)&&hasNumber((value as Partial<SupervisionRouteCompliance>).expectedVisits)}
+function hasMissedReliefs(value:unknown):value is MissedReliefs{return typeof value==='object'&&value!==null&&hasNumber((value as Partial<MissedReliefs>).missedShifts)&&hasNumber((value as Partial<MissedReliefs>).assignedShifts)}
+function hasCriticalIncidents(value:unknown):value is CriticalIncidents{return typeof value==='object'&&value!==null&&hasNumber((value as Partial<CriticalIncidents>).reportedCriticalIncidents)}
+function metricPercent(value:number|null|undefined){return hasNumber(value)?`${value.toFixed(1)}%`:'S/D'}
 
 function CardSparkline({values,color}:{values:number[];color:string}){
   if(values.length<2)return null;
@@ -111,26 +125,43 @@ export default function Dashboard(){
   const [clientMenuOpen,setClientMenuOpen]=useState(false);
   const [activeCard,setActiveCard]=useState<(typeof cardCatalog)[number]['id']>('coverageGap');
   const [loading,setLoading]=useState(true);
-  const [data,setData]=useState<DashboardData>({companies:[],rows:[],coverage:null,metrics:null,riskTrend:null,locations:[],provinces:[],errors:[]});
+  const [data,setData]=useState<DashboardData>({companies:[],rows:[],coverage:null,metrics:null,suitability:null,consignments:null,supervisionRoute:null,missedReliefs:null,criticalIncidents:null,riskTrend:null,locations:[],provinces:[],errors:[]});
 
   useEffect(()=>{
     let cancelled=false;
     setLoading(true);
     void (async()=>{
-      const [companiesResult,overviewResult,coverageResult,territoryResult,metricsResult,trendResult]=await Promise.allSettled([
-        api.companies(0,100),api.serviceOverview(),api.assignmentCoverage(weekStart,companyId,clientId),api.territory(),api.dashboardMetrics(weekStart,companyId,clientId),api.dashboardRiskTrend(weekStart,companyId,clientId,period)
+      const [companiesResult,overviewResult,coverageResult,territoryResult,metricsResult,suitabilityResult,consignmentsResult,supervisionRouteResult,missedReliefsResult,criticalIncidentsResult,trendResult]=await Promise.allSettled([
+        api.companies(0,100),api.serviceOverview(),api.assignmentCoverage(weekStart,companyId,clientId),api.territory(),api.dashboardMetrics(weekStart,companyId,clientId),api.dashboardSuitability(weekStart,companyId,clientId),api.dashboardConsignmentCompliance(weekStart,companyId,clientId),api.dashboardSupervisionRouteCompliance(weekStart,companyId,clientId),api.dashboardMissedReliefs(weekStart,companyId,clientId),api.dashboardCriticalIncidents(weekStart,companyId,clientId),api.dashboardRiskTrend(weekStart,companyId,clientId,period)
       ]);
       const errors:string[]=[];
       const companies=companiesResult.status==='fulfilled'?(companiesResult.value.items??[]) as Company[]:[];
       const rows=overviewResult.status==='fulfilled'?((overviewResult.value.rows??[]) as ServiceRow[]):[];
       const coverage=coverageResult.status==='fulfilled'?coverageResult.value as Coverage:null;
-      const metrics=metricsResult.status==='fulfilled'?metricsResult.value as DashboardMetrics:null;
+      const metrics=metricsResult.status==='fulfilled'&&hasMetrics(metricsResult.value)?metricsResult.value:null;
+      const suitability=suitabilityResult.status==='fulfilled'&&hasSuitability(suitabilityResult.value)?suitabilityResult.value:null;
+      const consignments=consignmentsResult.status==='fulfilled'&&hasConsignmentCompliance(consignmentsResult.value)?consignmentsResult.value:null;
+      const supervisionRoute=supervisionRouteResult.status==='fulfilled'&&hasSupervisionRouteCompliance(supervisionRouteResult.value)?supervisionRouteResult.value:null;
+      const missedReliefs=missedReliefsResult.status==='fulfilled'&&hasMissedReliefs(missedReliefsResult.value)?missedReliefsResult.value:null;
+      const criticalIncidents=criticalIncidentsResult.status==='fulfilled'&&hasCriticalIncidents(criticalIncidentsResult.value)?criticalIncidentsResult.value:null;
       const riskTrend=trendResult.status==='fulfilled'?trendResult.value as RiskTrendPoint[]:null;
       const provinces=territoryResult.status==='fulfilled'?((territoryResult.value.provinces??[]) as Province[]):[];
       if(companiesResult.status==='rejected')errors.push('No se pudieron cargar las compañías.');
       if(overviewResult.status==='rejected')errors.push('No se pudo cargar el resumen de Servicios.');
       if(coverageResult.status==='rejected')errors.push('No se pudo cargar la cobertura de la semana.');
+      else if(!hasNumber(coverage?.totalUncoveredPoints))errors.push('El backend de cobertura no devuelve totalUncoveredPoints; actualiza el backend para mostrar la cantidad.');
       if(metricsResult.status==='rejected')errors.push('No se pudieron cargar los indicadores de la semana.');
+      else if(!metrics)errors.push('El backend no devuelve los indicadores de la semana; revisa la versión desplegada.');
+      if(suitabilityResult.status==='rejected')errors.push('No se pudo cargar la idoneidad de ID e IC.');
+      else if(!suitability)errors.push('El backend no devuelve la idoneidad de ID e IC; revisa la versión desplegada.');
+      if(consignmentsResult.status==='rejected')errors.push('No se pudo cargar el incumplimiento de consignas.');
+      else if(!consignments)errors.push('El backend no devuelve el incumplimiento de consignas; revisa la versión desplegada.');
+      if(supervisionRouteResult.status==='rejected')errors.push('No se pudo cargar el incumplimiento de rutas de supervisión.');
+      else if(!supervisionRoute)errors.push('El backend no devuelve el cumplimiento de rutas de supervisión; revisa la versión desplegada.');
+      if(missedReliefsResult.status==='rejected')errors.push('No se pudieron cargar los relevos no realizados.');
+      else if(!missedReliefs)errors.push('El backend no devuelve los relevos no realizados; revisa la versión desplegada.');
+      if(criticalIncidentsResult.status==='rejected')errors.push('No se pudieron cargar los incidentes críticos.');
+      else if(!criticalIncidents)errors.push('El backend no devuelve los incidentes críticos; revisa la versión desplegada.');
       if(trendResult.status==='rejected')errors.push('No se pudo cargar la tendencia operacional.');
       if(territoryResult.status==='rejected')errors.push('No se pudo cargar el catálogo territorial.');
 
@@ -138,7 +169,7 @@ export default function Dashboard(){
       const locationGroups=await Promise.allSettled(serviceIds.map(id=>api.points(id)));
       const locations=locationGroups.flatMap(result=>result.status==='fulfilled'?result.value as PointLocation[]:[]);
       if(locationGroups.some(result=>result.status==='rejected'))errors.push('No se pudieron cargar todas las ubicaciones de los puntos.');
-      if(!cancelled){setData({companies,rows,coverage,metrics,riskTrend,locations,provinces,errors});setLoading(false)}
+      if(!cancelled){setData({companies,rows,coverage,metrics,suitability,consignments,supervisionRoute,missedReliefs,criticalIncidents,riskTrend,locations,provinces,errors});setLoading(false)}
     })();
     return()=>{cancelled=true};
   },[weekStart,companyId,clientId,period]);
@@ -181,13 +212,13 @@ export default function Dashboard(){
   const today=data.metrics?new Intl.DateTimeFormat('es-EC',{weekday:'long',day:'numeric',month:'long',year:'numeric',hour:'2-digit',minute:'2-digit',timeZone:'America/Guayaquil'}).format(new Date(data.metrics.calculatedAt)):'pendiente de cargar';
   const metricValues:Record<(typeof cardCatalog)[number]['id'],{value:string;note:string;available:boolean}>={
     coverageGap:{value:uncoveredPoints==null?'S/D':uncoveredPoints.toLocaleString('es-EC'),note:coveragePct==null?'Cobertura S/D':`${coveragePct}% de cobertura`,available:uncoveredPoints!=null},
-    nonIdealPerformance:{value:'S/D',note:'ID sin umbral',available:false},
-    nonIdealCompat:{value:'S/D',note:'IC sin umbral',available:false},
-    faltos:{value:'S/D',note:'Sin asistencia',available:false},
+    nonIdealPerformance:{value:metricPercent(data.suitability?.idGapPct),note:data.suitability?.idEvaluatedPoints?`${data.suitability.pointsBelowIdMinimum} de ${data.suitability.idEvaluatedPoints} puntos`:'Sin ID evaluado',available:hasNumber(data.suitability?.idGapPct)},
+    nonIdealCompat:{value:metricPercent(data.suitability?.icGapPct),note:data.suitability?.icEvaluatedPoints?`${data.suitability.pointsBelowFullCompatibility} de ${data.suitability.icEvaluatedPoints} puntos`:'Sin IC evaluado',available:hasNumber(data.suitability?.icGapPct)},
+    faltos:{value:data.missedReliefs?.assignedShifts?data.missedReliefs.missedShifts.toLocaleString('es-EC'):'S/D',note:data.missedReliefs?.assignedShifts?`${data.missedReliefs.missedShifts} de ${data.missedReliefs.assignedShifts} relevos`:'Sin turnos terminados',available:!!data.missedReliefs?.assignedShifts},
     lateRelief:{value:data.metrics?data.metrics.lateReliefs.toLocaleString('es-EC'):'S/D',note:data.metrics?`${data.metrics.recordedReliefs} relevos registrados`:'Relevos S/D',available:data.metrics!=null},
-    consignas:{value:'S/D',note:'Sin cumplimiento',available:false},
-    critical:{value:'S/D',note:'Sin criticidad',available:false},
-    route:{value:'S/D',note:'Sin visitas',available:false},
+    consignas:{value:metricPercent(data.consignments?.nonCompliancePct),note:data.consignments?.activeConsignments?`${data.consignments.nonCompliant} de ${data.consignments.activeConsignments} activas`:'Sin consignas activas',available:hasNumber(data.consignments?.nonCompliancePct)},
+    critical:{value:data.criticalIncidents?data.criticalIncidents.reportedCriticalIncidents.toLocaleString('es-EC'):'S/D',note:'Críticos reportados',available:data.criticalIncidents!=null},
+    route:{value:metricPercent(data.supervisionRoute?.nonCompliancePct),note:data.supervisionRoute?.expectedVisits?`${data.supervisionRoute.missedVisits} de ${data.supervisionRoute.expectedVisits} visitas`:'Sin visitas previstas',available:hasNumber(data.supervisionRoute?.nonCompliancePct)},
     factor:{value:'S/D',note:'Sin dotación',available:false},
     rotation:{value:'S/D',note:'Sin bajas',available:false},
     cx:{value:'S/D',note:'Sin evaluaciones',available:false},
