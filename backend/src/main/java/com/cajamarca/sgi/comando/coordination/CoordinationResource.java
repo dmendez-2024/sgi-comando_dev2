@@ -7,6 +7,7 @@ import com.cajamarca.sgi.comando.operations.PointEntity;
 import com.cajamarca.sgi.comando.operations.PostEntity;
 import com.cajamarca.sgi.comando.operations.ServiceEntity;
 import com.cajamarca.sgi.comando.territory.OperationalScopeService;
+import com.cajamarca.sgi.comando.territory.UserOperationalScope;
 import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
@@ -59,7 +60,7 @@ public class CoordinationResource {
     @Path("/companies")
     public List<CompanyDto> companies(){
         if(hasAny(COMPANY_ROLES)){
-            Set<UUID> allowed=scope.allowedCompanyIds();
+            Set<UUID> allowed=directCompanyIds(scope.scopes());
             if(allowed.isEmpty())return List.of();
             List<Company> rows=Company.list("instanceCountryId=?1 and id in ?2 and status='ACTIVE' order by name",tenant.instanceCountryId(),allowed);
             return rows.stream().filter(c->!isKaibil(c)).map(this::companyDto).toList();
@@ -239,7 +240,10 @@ public class CoordinationResource {
     private record TargetShift(String code,String label,LocalTime start,LocalTime end){}
     private List<TargetShift> targetShifts(CoordinationPost p){LocalTime start=p.shiftStartTime;LocalTime end=start.plusHours(12);if("24/7".equals(p.format))return List.of(new TargetShift("T1","Turno 1 (Día)",start,end),new TargetShift("T2","Turno 2 (Noche)",end,start));return List.of(new TargetShift("T1","Turno operativo",start,end));}
 
-    private Company manageableCompany(UUID id){if(id==null)throw new BadRequestException("Compañía obligatoria.");Company c=Company.find("id=?1 and instanceCountryId=?2",id,tenant.instanceCountryId()).firstResult();if(c==null)throw new NotFoundException("Compañía no encontrada.");if(hasAny(COMPANY_ROLES)){scope.requireCompany(c.id);if(isKaibil(c))throw new ForbiddenException("Coordinación de Compañía no administra Kaibil.");return c;}if(hasAny(EXECUTIVE_ROLES)){if(!isKaibil(c))throw new ForbiddenException("Este perfil crea Puestos de Coordinación únicamente dentro de Kaibil.");return c;}throw new ForbiddenException("Perfil sin permisos para administrar Coordinación.");}
+    private Company manageableCompany(UUID id){if(id==null)throw new BadRequestException("Compañía obligatoria.");Company c=Company.find("id=?1 and instanceCountryId=?2",id,tenant.instanceCountryId()).firstResult();if(c==null)throw new NotFoundException("Compañía no encontrada.");if(hasAny(COMPANY_ROLES)){if(!directCompanyIds(scope.scopes()).contains(c.id))throw new ForbiddenException("La Compañía no está asociada al usuario.");if(isKaibil(c))throw new ForbiddenException("Coordinación de Compañía no administra Kaibil.");return c;}if(hasAny(EXECUTIVE_ROLES)){if(!isKaibil(c))throw new ForbiddenException("Este perfil crea Puestos de Coordinación únicamente dentro de Kaibil.");return c;}throw new ForbiddenException("Perfil sin permisos para administrar Coordinación.");}
+    static Set<UUID> directCompanyIds(List<UserOperationalScope> scopes){
+        return scopes.stream().filter(s->"COMPANY".equals(s.scopeType)&&s.scopeId!=null).map(s->s.scopeId).collect(Collectors.toSet());
+    }
     private Company kaibil(){return Company.find("instanceCountryId=?1 and (alwaysActive=true or upper(companyType)='COORDINATION')",tenant.instanceCountryId()).firstResult();}
     private boolean isKaibil(Company c){return c!=null&&(c.alwaysActive||"COORDINATION".equalsIgnoreCase(c.companyType));}
     private boolean hasAny(Set<String> roles){for(String r:identity.getRoles())if(roles.contains(r))return true;return false;}
