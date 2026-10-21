@@ -3,6 +3,7 @@ package com.cajamarca.sgi.comando.core;
 import com.cajamarca.sgi.comando.common.TenantContext;
 import com.cajamarca.sgi.comando.companies.Company;
 import com.cajamarca.sgi.comando.companies.CoreCompanyCatalogSnapshot;
+import com.cajamarca.sgi.comando.companies.CoreCompanyCodes;
 import com.cajamarca.sgi.comando.territory.CountrySubdivision;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -152,12 +153,16 @@ public class CoreCatalogService {
             .collect(Collectors.toMap(row -> row.coreCompanyId, Function.identity(), (left, right) -> left));
         Map<String, CoreCompanyCatalogSnapshot> byCode = local.stream()
             .collect(Collectors.toMap(row -> normalize(row.code), Function.identity(), (left, right) -> left));
+        Map<String, CoreCompanyCatalogSnapshot> byName = local.stream()
+            .collect(Collectors.toMap(row -> normalize(row.name), Function.identity(), (left, right) -> left));
+        Set<String> usedCodes = CoreCompanyCodes.usedCodes(tenant.instanceCountryId());
         Set<UUID> received = new HashSet<>();
 
         for (JsonNode item : response) {
             CompanyCatalogItem core = company(item);
             CoreCompanyCatalogSnapshot row = byCoreId.get(core.id());
-            if (row == null) row = byCode.get(normalize(core.code()));
+            if (row == null && core.code() != null) row = byCode.get(normalize(core.code()));
+            if (row == null) row = byName.get(normalize(core.name()));
             if (row == null) {
                 row = new CoreCompanyCatalogSnapshot();
                 row.instanceCountryId = tenant.instanceCountryId();
@@ -168,12 +173,14 @@ public class CoreCatalogService {
             }
 
             row.coreCompanyId = core.id();
-            row.code = limited(core.code(), 32, "code");
+            // CORE ya no envía code ni sourceVersion: se conserva el código SGI (o se genera uno) y la versión se calcula.
+            row.code = core.code() != null ? limited(core.code(), 32, "code") : row.code != null ? row.code : CoreCompanyCodes.next(usedCodes);
             row.name = limited(core.name(), 160, "name");
             row.historicalReview = limitedNullable(core.description(), 750);
             row.logoDataUrl = core.logoUrl();
-            row.companyType = core.companyType() == null || core.companyType().isBlank() ? "SECURITY" : core.companyType();
-            row.sourceVersion = limited(core.sourceVersion(), 80, "sourceVersion");
+            row.companyType = core.companyType() == null || core.companyType().isBlank() ? "SECURITY" : core.companyType().trim().toUpperCase(Locale.ROOT);
+            row.sourceVersion = core.sourceVersion() != null ? limited(core.sourceVersion(), 80, "sourceVersion")
+                : CoreCompanyCodes.sourceVersion(core.id(), core.name(), core.description(), core.logoUrl(), row.companyType, "ACTIVE");
             row.sourceStatus = "ACTIVE";
             row.syncedAt = Instant.now();
             if (!row.isPersistent()) row.persist();
@@ -301,13 +308,13 @@ public class CoreCatalogService {
     private CompanyCatalogItem company(JsonNode item) {
         return new CompanyCatalogItem(
             requiredUuid(item, "id", "Compañía"),
-            requiredText(item, "code", "Compañía"),
+            blankToNull(optionalText(item, "code")),
             requiredText(item, "name", "Compañía"),
             optionalText(item, "description"),
             optionalText(item, "logoUrl"),
             optionalText(item, "companyType"),
             optionalText(item, "status"),
-            requiredText(item, "sourceVersion", "Compañía")
+            blankToNull(optionalText(item, "sourceVersion"))
         );
     }
 
@@ -355,6 +362,10 @@ public class CoreCatalogService {
         if (value == null || value.isBlank()) throw new IllegalStateException("CORE devolvió " + field + " vacío.");
         if (value.length() > max) throw new IllegalStateException("CORE devolvió " + field + " con más de " + max + " caracteres.");
         return value;
+    }
+
+    private static String blankToNull(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
     }
 
     private static String limitedNullable(String value, int max) {
