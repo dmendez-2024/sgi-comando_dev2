@@ -1,6 +1,7 @@
 package com.cajamarca.sgi.comando.context;
 
 import com.cajamarca.sgi.comando.companies.CoreCompanyCatalogSnapshot;
+import com.cajamarca.sgi.comando.companies.CoreCompanyCodes;
 import com.cajamarca.sgi.comando.companies.Company;
 import com.cajamarca.sgi.comando.companies.CompanyRegion;
 import com.cajamarca.sgi.comando.companies.CompanyVersion;
@@ -94,9 +95,10 @@ public class CoreCatalogSyncService {
         JsonNode companyItems = companies.isArray() ? companies : collection(companies, "companies", "items", "catalog");
         if (companyItems == null || !companyItems.isArray()) throw new IllegalStateException("CORE no devolvió el catálogo de compañías como lista.");
         Set<UUID> seenCompanyIds = new HashSet<>();
+        Set<String> usedCompanyCodes = CoreCompanyCodes.usedCodes(tenantId);
         for (JsonNode item : companyItems) {
             validateTenant(item, coreInstanceCountryId);
-            seenCompanyIds.add(syncCompany(tenantId, item, datasetVersion, now));
+            seenCompanyIds.add(syncCompany(tenantId, item, usedCompanyCodes, now));
         }
         if (seenCompanyIds.isEmpty()) {
             CoreCompanyCatalogSnapshot.update(
@@ -238,13 +240,21 @@ public class CoreCatalogSyncService {
         return coreId;
     }
 
-    private UUID syncCompany(UUID tenantId, JsonNode item, String datasetVersion, Instant syncedAt) {
+    private UUID syncCompany(UUID tenantId, JsonNode item, Set<String> usedCodes, Instant syncedAt) {
         UUID coreId = uuid(text(item, "coreCompanyId", "core_company_id", "companyId", "company_id", "id", "coreId"), "company.coreCompanyId");
-        String code = required(text(item, "code", "companyCode", "company_code", "officialCode", "official_code"), "company.code");
+        // CORE ya no envía code ni sourceVersion: se aceptan si llegan; si no, se conserva el código SGI y se calcula la versión.
+        String suppliedCode = text(item, "code", "companyCode", "company_code", "officialCode", "official_code");
         String name = required(text(item, "name", "companyName", "company_name"), "company.name");
-        String sourceVersion = value(text(item, "sourceVersion", "source_version", "version"), datasetVersion);
+        String historicalReview = text(item, "historicalReview", "historical_review", "description", "review");
+        JsonNode logo = first(item, "logoDataUrl", "logo_data_url", "logoUrl", "logo_url", "logo");
+        String logoDataUrl = logo == null || logo.isNull() ? null : (logo.isTextual() ? logo.asText() : logo.toString());
+        String companyType = required(text(item, "companyType", "company_type", "type"), "company.companyType").toUpperCase(Locale.ROOT);
+        String sourceStatus = normalizeStatus(required(text(item, "status", "sourceStatus", "source_status"), "company.status"));
+        String sourceVersion = value(text(item, "sourceVersion", "source_version", "version"),
+            CoreCompanyCodes.sourceVersion(coreId, name, historicalReview, logoDataUrl, companyType, sourceStatus));
         CoreCompanyCatalogSnapshot byCoreId = CoreCompanyCatalogSnapshot.find("instanceCountryId=?1 and coreCompanyId=?2", tenantId, coreId).firstResult();
-        CoreCompanyCatalogSnapshot byCode = CoreCompanyCatalogSnapshot.find("instanceCountryId=?1 and code=?2", tenantId, code).firstResult();
+        CoreCompanyCatalogSnapshot byCode = suppliedCode == null ? null
+            : CoreCompanyCatalogSnapshot.<CoreCompanyCatalogSnapshot>find("instanceCountryId=?1 and code=?2", tenantId, suppliedCode).firstResult();
         CoreCompanyCatalogSnapshot byName = null;
         if (byCoreId == null && byCode == null) {
             var nameMatches = CoreCompanyCatalogSnapshot.<CoreCompanyCatalogSnapshot>list("instanceCountryId=?1", tenantId).stream()
@@ -252,32 +262,25 @@ public class CoreCatalogSyncService {
             if (nameMatches.size() > 1) throw new IllegalStateException("CORE devolvió el nombre de compañía ambiguo " + name + ".");
             if (!nameMatches.isEmpty()) byName = nameMatches.get(0);
         }
-        if (byCoreId != null && byCode != null && !byCoreId.id.equals(byCode.id)) throw new IllegalStateException("CORE devolvió una identidad ambigua para el código de compañía " + code + ".");
+        if (byCoreId != null && byCode != null && !byCoreId.id.equals(byCode.id)) throw new IllegalStateException("CORE devolvió una identidad ambigua para el código de compañía " + suppliedCode + ".");
         if (byCoreId != null && byName != null && !byCoreId.id.equals(byName.id)) throw new IllegalStateException("CORE devolvió una identidad ambigua para el nombre de compañía " + name + ".");
-        if (byCode != null && byName != null && !byCode.id.equals(byName.id)) throw new IllegalStateException("CORE devolvió una identidad ambigua para el código de compañía " + code + ".");
+        if (byCode != null && byName != null && !byCode.id.equals(byName.id)) throw new IllegalStateException("CORE devolvió una identidad ambigua para el código de compañía " + suppliedCode + ".");
         CoreCompanyCatalogSnapshot company = byCoreId != null ? byCoreId : byCode != null ? byCode : byName;
+        String code = suppliedCode != null ? suppliedCode : company != null ? company.code : CoreCompanyCodes.next(usedCodes);
         UUID previousCoreId = company != null && !company.coreCompanyId.equals(coreId) ? company.coreCompanyId : null;
         if (previousCoreId != null) rebindCompanyId(tenantId, company, coreId, code, sourceVersion, syncedAt);
         if (company == null) {
             company = new CoreCompanyCatalogSnapshot();
             company.instanceCountryId = tenantId;
-            company.coreCompanyId = coreId;
-            company.code = code;
-            company.name = name;
-            company.companyType = "SECURITY";
-            company.sourceVersion = datasetVersion;
-            company.sourceStatus = "ACTIVE";
-            company.syncedAt = syncedAt;
         }
         company.coreCompanyId = coreId;
         company.code = code;
         company.name = name;
-        company.historicalReview = text(item, "historicalReview", "historical_review", "description", "review");
-        JsonNode logo = first(item, "logoDataUrl", "logo_data_url", "logoUrl", "logo_url", "logo");
-        company.logoDataUrl = logo == null || logo.isNull() ? null : (logo.isTextual() ? logo.asText() : logo.toString());
-        company.companyType = required(text(item, "companyType", "company_type", "type"), "company.companyType").toUpperCase(Locale.ROOT);
+        company.historicalReview = historicalReview;
+        company.logoDataUrl = logoDataUrl;
+        company.companyType = companyType;
         company.sourceVersion = sourceVersion;
-        company.sourceStatus = normalizeStatus(required(text(item, "status", "sourceStatus", "source_status"), "company.status"));
+        company.sourceStatus = sourceStatus;
         company.syncedAt = syncedAt;
         if (company.id == null) company.persist();
         synchronizeActivatedCompany(tenantId, company, syncedAt, previousCoreId);
