@@ -28,6 +28,19 @@ La propiedad `SGI_OPERATOR_RELIEF_UAT_ENABLED=true` habilita el contrato. Ademá
 
 > Compatibilidad transitoria: los IDs v3 históricos pueden aceptarse como aliases donde esté documentado, pero no deben usarse para nuevos bindings CORE.
 
+## Modo del relevo: saliente solo con turno anterior inmediato (2026-10-22, aditivo)
+
+- **Regla.** Hay agente saliente solo si otro agente tiene un turno del mismo Puesto (o Puesto de Coordinación) cuyo `ends_at` es **exactamente** el `starts_at` del turno actual. Con intervalo entre turnos, sin turno previo, o si el turno previo es del mismo agente, no hay saliente y no es auto relevo. Los turnos consecutivos del mismo agente siguen bloqueados al planificar (`AUTO_RELEVO`).
+- **Contexto (`relief`).** `reliefMode`: `NORMAL` | `OPENING_WITHOUT_PREVIOUS_SHIFT`.
+  - `NORMAL`: incluye `expectedOutgoingEmployeeId`, `expectedOutgoingEmployeeName` y `expectedOutgoingShiftEndsAt`.
+  - `OPENING_WITHOUT_PREVIOUS_SHIFT`: no incluye datos de saliente y entrega `openingCause`: `NO_PREVIOUS_SHIFT` | `PREVIOUS_SHIFT_NOT_CONSECUTIVE` | `PREVIOUS_SHIFT_SAME_AGENT`.
+  - Relevo ya registrado: `reliefRegisteredMode` (`NORMAL` | `UNILATERAL` | `OPENING_WITHOUT_PREVIOUS_SHIFT`).
+- **Evento `RELIEF_SUBMITTED`.** Campo `reliefMode` (`NORMAL` | `UNILATERAL` | `OPENING_WITHOUT_PREVIOUS_SHIFT`), coherente con `unilateral` (`true` solo en `UNILATERAL`).
+  - `OPENING_WITHOUT_PREVIOUS_SHIFT`: `openingCause` del catálogo (no texto libre), sin `outgoingEmployeeId` ni `unilateralReason`; fotos `entrant_face`, `entrant_full`, `station_0..2`.
+  - Sin `reliefMode` (versiones anteriores de la app) se deduce de `unilateral`, como antes.
+- **Validación al recibir** (también en reintentos offline): la misma regla del contexto. `NORMAL` sin turno anterior inmediato de otro agente → `409`; saliente distinto → `400`; `OPENING_WITHOUT_PREVIOUS_SHIFT` cuando sí hay saliente → `409` (actualizar el contexto). La causa guardada es la que calcula Comando.
+- **Persistencia.** Migración V89: `relief_event.relief_mode` y `relief_event.opening_cause` (los relevos existentes quedan `NORMAL` o `UNILATERAL`).
+
 ## Ubicación GPS y VISINT del puesto (2026-10-05/06, aditivo)
 
 - El evento `RELIEF_SUBMITTED` acepta `latitude`, `longitude` y `accuracyM` (opcionales); se aplican a las 3 fotos del puesto (`station_0..2`), porque esas fotos se suben como JPEG sin metadatos.

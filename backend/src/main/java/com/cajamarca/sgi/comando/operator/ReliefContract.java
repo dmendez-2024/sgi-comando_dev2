@@ -10,7 +10,23 @@ public final class ReliefContract {
     public static final Set<String> PURPOSES=Set.of("entrant_face","entrant_full","outgoing_face","outgoing_full","station_0","station_1","station_2");
     private static final Set<String> INVENTORY_STATUSES=Set.of("PENDING_SOURCE","REPORTED","COMPLETE");
     private static final Set<String> INVENTORY_CONDITIONS=Set.of("GOOD","DAMAGED","MISSING","REPLACED","NOT_VERIFIED");
+    /** Relevo con agente saliente presente (turno anterior inmediato de otro agente). */
+    public static final String MODE_NORMAL="NORMAL";
+    /** Saliente esperado ausente; el agente escribe el motivo. */
+    public static final String MODE_UNILATERAL="UNILATERAL";
+    /** No hay turno anterior inmediato de otro agente: el agente inicia el puesto sin saliente. */
+    public static final String MODE_OPENING="OPENING_WITHOUT_PREVIOUS_SHIFT";
+    /** Causas formales del inicio sin turno precedente; Comando las calcula y la app las devuelve tal cual. */
+    public static final String CAUSE_NO_PREVIOUS_SHIFT="NO_PREVIOUS_SHIFT";
+    public static final String CAUSE_GAP="PREVIOUS_SHIFT_NOT_CONSECUTIVE";
+    public static final String CAUSE_SAME_AGENT="PREVIOUS_SHIFT_SAME_AGENT";
+    public static final Set<String> OPENING_CAUSES=Set.of(CAUSE_NO_PREVIOUS_SHIFT,CAUSE_GAP,CAUSE_SAME_AGENT);
     private ReliefContract() {}
+    /** Modo del evento; sin reliefMode (apps anteriores) se deduce de unilateral. */
+    public static String mode(JsonNode event) {
+        if(!event.hasNonNull("reliefMode")) return event.path("unilateral").asBoolean()?MODE_UNILATERAL:MODE_NORMAL;
+        return event.path("reliefMode").asText();
+    }
     public static String text(JsonNode n,String key) {
         if(n==null || !n.path(key).isTextual() || n.path(key).asText().isBlank()) throw new BadRequestException("Campo requerido: "+key);
         return n.path(key).asText();
@@ -58,14 +74,24 @@ public final class ReliefContract {
             }
         }
         if(!e.path("unilateral").isBoolean()) throw new BadRequestException("unilateral debe ser booleano");
-        if(e.path("unilateral").asBoolean()) {
-            if(text(e,"unilateralReason").length()>1000) throw new BadRequestException("Motivo demasiado largo");
-            if(e.hasNonNull("outgoingEmployeeId")) throw new BadRequestException("Relevo unilateral no identifica saliente presente");
-        } else if(employee.equals(uuid(e,"outgoingEmployeeId"))) throw new BadRequestException("No se permite auto relevo");
+        String mode=mode(e);
+        if(!Set.of(MODE_NORMAL,MODE_UNILATERAL,MODE_OPENING).contains(mode)) throw new BadRequestException("reliefMode inválido");
+        if(e.path("unilateral").asBoolean()!=MODE_UNILATERAL.equals(mode)) throw new BadRequestException("unilateral no corresponde a reliefMode");
+        switch(mode) {
+            case MODE_UNILATERAL -> {
+                if(text(e,"unilateralReason").length()>1000) throw new BadRequestException("Motivo demasiado largo");
+                if(e.hasNonNull("outgoingEmployeeId")) throw new BadRequestException("Relevo unilateral no identifica saliente presente");
+            }
+            case MODE_OPENING -> {
+                if(!OPENING_CAUSES.contains(text(e,"openingCause"))) throw new BadRequestException("openingCause inválida");
+                if(e.hasNonNull("outgoingEmployeeId")) throw new BadRequestException("El inicio sin turno anterior no identifica saliente");
+            }
+            default -> { if(employee.equals(uuid(e,"outgoingEmployeeId"))) throw new BadRequestException("No se permite auto relevo"); }
+        }
         Instant executed=time(e,"executedAt");
         if(executed.isAfter(captured.plusSeconds(300))) throw new BadRequestException("Ejecución posterior a la captura");
         Set<String> required=new HashSet<>(Set.of("entrant_face","entrant_full","station_0","station_1","station_2"));
-        if(!e.path("unilateral").asBoolean()) required.addAll(Set.of("outgoing_face","outgoing_full"));
+        if(MODE_NORMAL.equals(mode)) required.addAll(Set.of("outgoing_face","outgoing_full"));
         JsonNode evidence=e.path("evidence");
         if(!evidence.isArray()) throw new BadRequestException("Evidencias requeridas");
         Set<String> seen=new HashSet<>(); Set<UUID> ids=new HashSet<>();

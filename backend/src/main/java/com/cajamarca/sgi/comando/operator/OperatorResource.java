@@ -359,6 +359,23 @@ public class OperatorResource {
         return em.createNativeQuery("select full_name,persona_id,role_code from employee_operational_snapshot where instance_country_id=:tenant and employee_id=:employee and employment_status='ACTIVE' limit 1")
             .setParameter("tenant",tenant.instanceCountryId()).setParameter("employee",employeeId).getResultList();
     }
+    record ReliefPredecessor(String mode,UUID outgoingEmployeeId,String outgoingEmployeeName,String openingCause) {}
+    /**
+     * Saliente del relevo: solo el agente de otro turno del mismo Puesto (o Puesto de Coordinación) que termina exactamente
+     * cuando empieza el turno actual. Con intervalo, sin turno previo o con el turno previo del mismo agente, el agente
+     * inicia el puesto sin saliente; los turnos consecutivos del mismo agente ya los bloquea AUTO_RELEVO al planificar.
+     */
+    ReliefPredecessor predecessor(AssignmentContext c,UUID incoming) {
+        String target="s."+(c.coordination()?"coordination_post_id":"post_id");
+        @SuppressWarnings("unchecked") List<Object[]> consecutive=em.createNativeQuery("select coalesce(a.actual_employee_id,a.employee_id),e.full_name from operational_assignment a join shift_occurrence s on s.id=a.shift_occurrence_id and s.instance_country_id=a.instance_country_id left join employee_operational_snapshot e on e.employee_id=coalesce(a.actual_employee_id,a.employee_id) and e.instance_country_id=a.instance_country_id where a.instance_country_id=:t and "+target+"=:p and a.status<>'REMOVED' and s.ends_at=:start order by case when coalesce(a.actual_employee_id,a.employee_id)=:me then 1 else 0 end,a.created_at,a.id")
+            .setParameter("t",tenant.instanceCountryId()).setParameter("p",c.targetId()).setParameter("start",c.shift.startsAt).setParameter("me",incoming).getResultList();
+        if(!consecutive.isEmpty() && consecutive.get(0)[0]!=null && !incoming.toString().equals(consecutive.get(0)[0].toString()))
+            return new ReliefPredecessor(MODE_NORMAL,UUID.fromString(consecutive.get(0)[0].toString()),consecutive.get(0)[1]==null?null:consecutive.get(0)[1].toString(),null);
+        if(!consecutive.isEmpty()) return new ReliefPredecessor(MODE_OPENING,null,null,CAUSE_SAME_AGENT);
+        boolean earlier=!em.createNativeQuery("select 1 from operational_assignment a join shift_occurrence s on s.id=a.shift_occurrence_id and s.instance_country_id=a.instance_country_id where a.instance_country_id=:t and "+target+"=:p and a.status<>'REMOVED' and s.ends_at<:start")
+            .setParameter("t",tenant.instanceCountryId()).setParameter("p",c.targetId()).setParameter("start",c.shift.startsAt).setMaxResults(1).getResultList().isEmpty();
+        return new ReliefPredecessor(MODE_OPENING,null,null,earlier?CAUSE_GAP:CAUSE_NO_PREVIOUS_SHIFT);
+    }
     private ObjectNode context(AssignmentContext c) {
         ObjectNode n=mapper.createObjectNode();
         ObjectNode inventoryContext;
@@ -386,23 +403,21 @@ public class OperatorResource {
             if(employee[1]!=null) n.put("incomingEmployeePersonaId",employee[1].toString());
             if(employee[2]!=null) n.put("incomingEmployeeRole",employee[2].toString());
         }
-        @SuppressWarnings("unchecked") List<Object[]> registeredReliefs=em.createNativeQuery("select s.id,s.received_at,r.executed_at,r.unilateral from operator_relief_submission s join relief_event r on r.id=s.id and r.instance_country_id=s.instance_country_id where s.instance_country_id=:tenant and s.assignment_id=:assignment order by s.received_at desc limit 1")
+        @SuppressWarnings("unchecked") List<Object[]> registeredReliefs=em.createNativeQuery("select s.id,s.received_at,r.executed_at,r.unilateral,r.relief_mode from operator_relief_submission s join relief_event r on r.id=s.id and r.instance_country_id=s.instance_country_id where s.instance_country_id=:tenant and s.assignment_id=:assignment order by s.received_at desc limit 1")
             .setParameter("tenant",tenant.instanceCountryId()).setParameter("assignment",c.assignment.id).getResultList();
         boolean reliefAlreadyRegistered=!registeredReliefs.isEmpty();
         n.put("reliefAlreadyRegistered",reliefAlreadyRegistered);
         if(reliefAlreadyRegistered) {
             Object[] relief=registeredReliefs.get(0);
-            n.put("reliefId",relief[0].toString()).put("reliefReceivedAt",relief[1].toString()).put("reliefExecutedAt",relief[2].toString()).put("reliefUnilateral",Boolean.TRUE.equals(relief[3]));
+            n.put("reliefId",relief[0].toString()).put("reliefReceivedAt",relief[1].toString()).put("reliefExecutedAt",relief[2].toString()).put("reliefUnilateral",Boolean.TRUE.equals(relief[3]))
+                .put("reliefRegisteredMode",relief[4]==null?(Boolean.TRUE.equals(relief[3])?MODE_UNILATERAL:MODE_NORMAL):relief[4].toString());
         }
-        String previousSql="select coalesce(a.actual_employee_id,a.employee_id),e.full_name,s.ends_at from operational_assignment a join shift_occurrence s on s.id=a.shift_occurrence_id and s.instance_country_id=a.instance_country_id left join employee_operational_snapshot e on e.employee_id=coalesce(a.actual_employee_id,a.employee_id) and e.instance_country_id=a.instance_country_id where a.instance_country_id=:t and s."+(c.coordination()?"coordination_post_id":"post_id")+"=:p and a.status<>'REMOVED' and s.ends_at<=:start order by s.ends_at desc limit 1";
-        List<?> previous=em.createNativeQuery(previousSql)
-            .setParameter("t",tenant.instanceCountryId()).setParameter("p",c.targetId()).setParameter("start",c.shift.startsAt).getResultList();
-        if(!previous.isEmpty()) {
-            Object[] row=(Object[])previous.get(0);
-            if(row[0]!=null) n.put("expectedOutgoingEmployeeId",row[0].toString());
-            if(row[1]!=null) n.put("expectedOutgoingEmployeeName",row[1].toString());
-            if(row[2]!=null) n.put("expectedOutgoingShiftEndsAt",row[2].toString());
-        }
+        ReliefPredecessor predecessor=predecessor(c,c.assignment.effectiveEmployeeId());
+        n.put("reliefMode",predecessor.mode());
+        if(predecessor.outgoingEmployeeId()!=null) {
+            n.put("expectedOutgoingEmployeeId",predecessor.outgoingEmployeeId().toString()).put("expectedOutgoingShiftEndsAt",c.shift.startsAt.toString());
+            if(predecessor.outgoingEmployeeName()!=null) n.put("expectedOutgoingEmployeeName",predecessor.outgoingEmployeeName());
+        } else n.put("openingCause",predecessor.openingCause());
         ArrayNode assignmentConsignments=c.coordination()?mapper.createArrayNode():consignments(c);
         n.set("consignments",assignmentConsignments);
         n.set("bitacoraProtocols",c.coordination()?mapper.createArrayNode():bitacora(c));
@@ -987,13 +1002,15 @@ public class OperatorResource {
         if(!em.createNativeQuery("select id from operator_relief_submission where instance_country_id=:t and assignment_id=:a").setParameter("t",tenant.instanceCountryId()).setParameter("a",assignmentId).getResultList().isEmpty()) throw new ClientErrorException("La asignación ya tiene un relevo recibido",409);
         Instant execution=time(event,"executedAt");
         if(execution.isBefore(c.shift.startsAt.minusSeconds(43200)) || execution.isAfter(c.shift.endsAt.plusSeconds(43200))) throw new BadRequestException("Fecha fuera de ventana UAT del turno");
-        if(!event.path("unilateral").asBoolean()) {
-            UUID outgoing=uuid(event,"outgoingEmployeeId");
-            String previousSql="select coalesce(a.actual_employee_id,a.employee_id) from operational_assignment a join shift_occurrence s on s.id=a.shift_occurrence_id and s.instance_country_id=a.instance_country_id where a.instance_country_id=:t and s."+(c.coordination()?"coordination_post_id":"post_id")+"=:p and a.status<>'REMOVED' and s.ends_at<=:start order by s.ends_at desc limit 1";
-            List<?> previous=em.createNativeQuery(previousSql)
-                .setParameter("t",tenant.instanceCountryId()).setParameter("p",c.targetId()).setParameter("start",c.shift.startsAt).getResultList();
-            if(previous.isEmpty() || previous.get(0)==null || !previous.get(0).toString().equals(outgoing.toString())) throw new BadRequestException("Saliente no coincide con la asignación anterior");
-        }
+        // Misma regla que el contexto: el saliente solo existe si el turno anterior inmediato es de otro agente.
+        String mode=ReliefContract.mode(event);
+        ReliefPredecessor predecessor=predecessor(c,employee);
+        if(MODE_NORMAL.equals(mode)) {
+            if(!MODE_NORMAL.equals(predecessor.mode())) throw new ClientErrorException("No existe un turno anterior inmediato con agente saliente; actualiza el contexto del relevo",409);
+            if(!predecessor.outgoingEmployeeId().equals(uuid(event,"outgoingEmployeeId"))) throw new BadRequestException("Saliente no coincide con el turno anterior inmediato");
+        } else if(MODE_OPENING.equals(mode) && MODE_NORMAL.equals(predecessor.mode()))
+            throw new ClientErrorException("Existe un turno anterior inmediato con agente saliente; actualiza el contexto del relevo",409);
+        String openingCause=MODE_OPENING.equals(mode)?predecessor.openingCause():null;
         ObjectNode snapshot=context(c);
         if(!text(event,"configurationVersion").equals(snapshot.path("configurationVersion").asText())) throw new ClientErrorException("El contexto cambió; actualiza y vuelve a confirmar las lecturas",409);
         Map<String,String> required=new TreeMap<>(), actual=new TreeMap<>();
@@ -1008,10 +1025,11 @@ public class OperatorResource {
         }
         String inventoryStatus=text(event,"inventoryStatus").toUpperCase(Locale.ROOT);
         String reliefTargetColumn=c.coordination()?"coordination_post_id":"post_id";
-        em.createNativeQuery("insert into relief_event(id,instance_country_id,"+reliefTargetColumn+",shift_occurrence_id,outgoing_employee_id,incoming_employee_id,status,planned_at,executed_at,unilateral,inventory_result,consignments_confirmed,created_at,updated_at) values(:id,:t,:target,:s,:o,:i,'PENDIENTE',:planned,:executed,:unilateral,:inventory,true,current_timestamp,current_timestamp)")
+        em.createNativeQuery("insert into relief_event(id,instance_country_id,"+reliefTargetColumn+",shift_occurrence_id,outgoing_employee_id,incoming_employee_id,status,planned_at,executed_at,unilateral,relief_mode,opening_cause,inventory_result,consignments_confirmed,created_at,updated_at) values(:id,:t,:target,:s,:o,:i,'PENDIENTE',:planned,:executed,:unilateral,:mode,nullif(:cause,''),:inventory,true,current_timestamp,current_timestamp)")
             .setParameter("id",eventId).setParameter("t",tenant.instanceCountryId()).setParameter("target",c.targetId()).setParameter("s",c.shift.id)
-            .setParameter("o",event.path("unilateral").asBoolean()?null:uuid(event,"outgoingEmployeeId")).setParameter("i",employee).setParameter("planned",c.shift.startsAt)
-            .setParameter("executed",execution).setParameter("unilateral",event.path("unilateral").asBoolean()).setParameter("inventory",inventoryStatus).executeUpdate();
+            .setParameter("o",MODE_NORMAL.equals(mode)?uuid(event,"outgoingEmployeeId"):null).setParameter("i",employee).setParameter("planned",c.shift.startsAt)
+            .setParameter("executed",execution).setParameter("unilateral",event.path("unilateral").asBoolean()).setParameter("mode",mode)
+            .setParameter("cause",openingCause==null?"":openingCause).setParameter("inventory",inventoryStatus).executeUpdate();
         em.createNativeQuery("insert into operator_relief_submission(id,instance_country_id,assignment_id,employee_id,username,device_id,batch_id,correlation_id,payload_hash,payload_json,context_json,received_at) values(:id,:t,:a,:e,:u,:d,:b,:c,:h,:payload,:context,current_timestamp)")
             .setParameter("id",eventId).setParameter("t",tenant.instanceCountryId()).setParameter("a",assignmentId).setParameter("e",employee).setParameter("u",identity.getPrincipal().getName())
             .setParameter("d",text(batch,"deviceId")).setParameter("b",uuid(batch,"batchId")).setParameter("c",uuid(batch,"correlationId"))
