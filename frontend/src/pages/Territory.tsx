@@ -1,6 +1,6 @@
-import {useEffect,useMemo,useState} from 'react';
+import {useEffect,useId,useMemo,useRef,useState} from 'react';
 import {
-  Building2,ChevronDown,ChevronRight,ChevronsDown,ChevronsUp,Clock3,Edit3,
+  Building2,Check,ChevronDown,ChevronRight,ChevronsDown,ChevronsUp,Clock3,Edit3,
   Filter,Map as MapIcon,MoreVertical,Plus,RefreshCw,Search,ShieldCheck,Trash2,UserRound,X
 } from 'lucide-react';
 import {ApiError,api,getUser} from '../api';
@@ -27,6 +27,22 @@ const CODE_MAX_LENGTH=32;
 const NAME_MAX_LENGTH=160;
 const ZONE_COLORS=['#4d7fa9','#d18b47','#8666a9','#3b998c','#c85f68','#9a8f3d','#4770b3','#9c6748'];
 const FIXED_ZONE_COLORS:Record<string,string>={ZN:'#aa7f52',ZS:'#6aa94d'};
+
+function normalizeResponsible(value:string){return value.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase()}
+function SearchableResponsibleSelect({value,options,onChange}:{value:string;options:Responsible[];onChange:(id:string)=>void}){
+  const [open,setOpen]=useState(false);const [query,setQuery]=useState('');const rootRef=useRef<HTMLDivElement>(null);const searchRef=useRef<HTMLInputElement>(null);const listId=useId();
+  const selected=options.find(option=>option.employeeId===value);const term=normalizeResponsible(query.trim());const filtered=term?options.filter(option=>normalizeResponsible(`${option.fullName} ${option.roleCode}`).includes(term)):options;
+  useEffect(()=>{if(!open)return;searchRef.current?.focus();const close=(event:PointerEvent)=>{if(!rootRef.current?.contains(event.target as Node)){setOpen(false);setQuery('')}};window.addEventListener('pointerdown',close);return()=>window.removeEventListener('pointerdown',close)},[open]);
+  const choose=(id:string)=>{onChange(id);setOpen(false);setQuery('')};
+  return <div className="responsible-field"><span className="responsible-field-label">Responsable</span><div className={`responsible-combobox ${open?'open':''}`} ref={rootRef}>
+    <button type="button" className="responsible-combobox-trigger" aria-haspopup="listbox" aria-expanded={open} aria-controls={listId} onClick={()=>{setOpen(current=>!current);setQuery('')}} onKeyDown={event=>{if(event.key==='ArrowDown'){event.preventDefault();setOpen(true)}if(event.key==='Escape'){setOpen(false);setQuery('')}}}><span>{selected?.fullName??'Sin asignar'}</span><ChevronDown size={16}/></button>
+    {open&&<div className="responsible-combobox-menu"><label className="responsible-combobox-search"><Search size={14}/><input ref={searchRef} value={query} onChange={event=>setQuery(event.target.value)} onKeyDown={event=>{if(event.key==='Escape'){event.preventDefault();setOpen(false);setQuery('')}if(event.key==='Enter'&&filtered.length){event.preventDefault();choose(filtered[0].employeeId)}}} placeholder="Buscar por nombre…" aria-label="Buscar responsable por nombre"/></label><div className="responsible-combobox-options" id={listId} role="listbox" aria-label="Responsables">
+      {!query.trim()&&<button type="button" role="option" aria-selected={!value} className={!value?'selected':''} onClick={()=>choose('')}><span><strong>Sin asignar</strong></span>{!value&&<Check size={15}/>}</button>}
+      {filtered.map(option=><button type="button" role="option" aria-selected={option.employeeId===value} className={option.employeeId===value?'selected':''} key={option.employeeId} onClick={()=>choose(option.employeeId)}><span><strong>{option.fullName}</strong><small>{option.roleCode}</small></span>{option.employeeId===value&&<Check size={15}/>}</button>)}
+      {!filtered.length&&<div className="responsible-combobox-empty">No hay responsables coincidentes.</div>}
+    </div></div>}
+  </div></div>
+}
 
 function zoneColor(zone:Zone){
   if(FIXED_ZONE_COLORS[zone.code])return FIXED_ZONE_COLORS[zone.code];
@@ -377,7 +393,7 @@ export default function Territory(){
         {editor.kind==='REGION'&&<label>Zona<select value={editor.zoneId} disabled={editor.mode==='EDIT'&&editor.status==='ACTIVE'} onChange={e=>setEditor({...editor,zoneId:e.target.value,provinceIds:[]})}>{tree.zones.map(z=><option value={z.id} key={z.id}>{z.code} · {z.name}</option>)}</select></label>}
         <label>Código<input value={editor.code} maxLength={CODE_MAX_LENGTH} disabled={editor.mode==='EDIT'} onChange={e=>setEditor({...editor,code:e.target.value.toUpperCase()})} placeholder={editor.kind==='ZONE'?'Ej. ZC':'Ej. R-C1'}/><small>{editor.code.length}/{CODE_MAX_LENGTH} caracteres</small></label>
         <label>Nombre<input value={editor.name} maxLength={NAME_MAX_LENGTH} disabled={editor.mode==='EDIT'&&editor.status==='ACTIVE'} onChange={e=>setEditor({...editor,name:e.target.value})} placeholder={editor.kind==='ZONE'?'Ej. Zona Centro':'Ej. Región Centro 1'}/><small>{editor.name.length}/{NAME_MAX_LENGTH} caracteres</small></label>
-        <label>Responsable<select value={editor.responsibleEmployeeId} onChange={e=>setEditor({...editor,responsibleEmployeeId:e.target.value})}><option value="">Sin asignar</option>{responsibles.map(p=><option key={p.employeeId} value={p.employeeId}>{p.fullName}</option>)}</select></label>
+        <SearchableResponsibleSelect value={editor.responsibleEmployeeId} options={responsibles} onChange={responsibleEmployeeId=>setEditor({...editor,responsibleEmployeeId})}/>
         <label>Estado<select value={editor.status} disabled={editor.mode==='EDIT'&&editor.status==='ACTIVE'} onChange={e=>setEditor({...editor,status:e.target.value})}><option value="DRAFT">Borrador</option><option value="ACTIVE">Activa</option><option value="INACTIVE">Inactiva</option></select></label>
       </div>
       <div className="ter-core-picker"><div><strong>{subdivisionPlural}</strong><span>Fuente: {core.territoryCatalogSource||'CORE sin sincronizar'}</span></div><div className="ter-core-grid">{editorAllowedProvinces.map(p=><label key={p.id}><input type="checkbox" checked={editor.provinceIds.includes(p.id)} onChange={e=>setEditor({...editor,provinceIds:e.target.checked?[...editor.provinceIds,p.id]:editor.provinceIds.filter(id=>id!==p.id)})}/><span>{p.name}</span><code>{p.code}</code></label>)}</div></div>

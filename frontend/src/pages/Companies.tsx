@@ -1,5 +1,5 @@
-import {useEffect,useMemo,useState} from 'react';
-import {AlertTriangle,Building2,Database,History,Layers3,Lock,MapPin,Pencil,Plus,RefreshCw,Save,ShieldCheck,X} from 'lucide-react';
+import {useEffect,useId,useMemo,useRef,useState} from 'react';
+import {AlertTriangle,Building2,Check,ChevronDown,Database,History,Layers3,Lock,MapPin,Pencil,Plus,RefreshCw,Save,Search,ShieldCheck,X} from 'lucide-react';
 import {ApiError,api,getUser} from '../api';
 
 type Zone={id:string;code:string;name:string;status:string};
@@ -17,6 +17,21 @@ type Activate={coreCompanyId:string;zoneId:string;regionIds:string[];changeReaso
 function msg(e:unknown){return e instanceof ApiError?(e.body||e.message):String(e)}
 function statusLabel(v:string){return v==='ACTIVE'?'Activa':v==='INACTIVE'?'Inactiva':'Borrador'}
 function changeLabel(v:string){return ({CORE_ACTIVATED:'Activación desde CORE',UPDATED:'Actualización',TERRITORY_UPDATED:'Territorio actualizado',RESPONSIBLE_UPDATED:'Responsable actualizado',INACTIVATED:'Inactivación',REACTIVATED:'Reactivación',BASELINE:'Versión base'} as Record<string,string>)[v]??v}
+function normalizeResponsible(value:string){return value.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase()}
+function SearchableResponsibleSelect({value,options,onChange,helpText}:{value:string;options:Responsible[];onChange:(id:string)=>void;helpText?:string}){
+ const [open,setOpen]=useState(false);const [query,setQuery]=useState('');const rootRef=useRef<HTMLDivElement>(null);const searchRef=useRef<HTMLInputElement>(null);const listId=useId();
+ const selected=options.find(option=>option.employeeId===value);const term=normalizeResponsible(query.trim());const filtered=term?options.filter(option=>normalizeResponsible(`${option.fullName} ${option.roleCode}`).includes(term)):options;
+ useEffect(()=>{if(!open)return;searchRef.current?.focus();const close=(event:PointerEvent)=>{if(!rootRef.current?.contains(event.target as Node)){setOpen(false);setQuery('')}};window.addEventListener('pointerdown',close);return()=>window.removeEventListener('pointerdown',close)},[open]);
+ const choose=(id:string)=>{onChange(id);setOpen(false);setQuery('')};
+ return <div className="responsible-field"><span className="responsible-field-label">Responsable</span><div className={`responsible-combobox ${open?'open':''}`} ref={rootRef}>
+  <button type="button" className="responsible-combobox-trigger" aria-haspopup="listbox" aria-expanded={open} aria-controls={listId} onClick={()=>{setOpen(current=>!current);setQuery('')}} onKeyDown={event=>{if(event.key==='ArrowDown'){event.preventDefault();setOpen(true)}if(event.key==='Escape'){setOpen(false);setQuery('')}}}><span>{selected?.fullName??'Sin asignar'}</span><ChevronDown size={16}/></button>
+  {open&&<div className="responsible-combobox-menu"><label className="responsible-combobox-search"><Search size={14}/><input ref={searchRef} value={query} onChange={event=>setQuery(event.target.value)} onKeyDown={event=>{if(event.key==='Escape'){event.preventDefault();setOpen(false);setQuery('')}if(event.key==='Enter'&&filtered.length){event.preventDefault();choose(filtered[0].employeeId)}}} placeholder="Buscar por nombre…" aria-label="Buscar responsable por nombre"/></label><div className="responsible-combobox-options" id={listId} role="listbox" aria-label="Responsables">
+   {!query.trim()&&<button type="button" role="option" aria-selected={!value} className={!value?'selected':''} onClick={()=>choose('')}><span><strong>Sin asignar</strong></span>{!value&&<Check size={15}/>}</button>}
+   {filtered.map(option=><button type="button" role="option" aria-selected={option.employeeId===value} className={option.employeeId===value?'selected':''} key={option.employeeId} onClick={()=>choose(option.employeeId)}><span><strong>{option.fullName}</strong><small>{option.roleCode}</small></span>{option.employeeId===value&&<Check size={15}/>}</button>)}
+   {!filtered.length&&<div className="responsible-combobox-empty">No hay responsables coincidentes.</div>}
+  </div></div>}
+ </div>{helpText&&<small className="responsible-field-help">{helpText}</small>}</div>
+}
 
 export default function Companies(){
  const user=getUser();const canManage=['presidente','ggeneral','dlatam','don','dnacional','dzonal'].includes(user);
@@ -46,7 +61,7 @@ export default function Companies(){
    <label>Zona{editor.alwaysActive?<div className="com-readonly-field"><span>Nacional</span><em>Kaibil · Compañía de Operaciones</em></div>:<select value={editor.zoneId} disabled={editor.activeServiceCount>0} onChange={e=>setEditorZone(e.target.value)}>{territory.zones.filter(z=>z.status!=='INACTIVE'||z.id===editor.zoneId).map(z=><option key={z.id} value={z.id}>{z.code} · {z.name}</option>)}</select>}</label>
    <label className="com-review">Reseña histórica<div className="com-readonly-review"><span>{editor.historicalReview||'Sin reseña histórica en CORE.'}</span><em><Lock/>Solo lectura · Fuente CORE</em><small>{editor.historicalReview.length} / 750</small></div></label>
    <label>Estado<select value={editor.status} disabled={editor.alwaysActive} onChange={e=>setEditor({...editor,status:e.target.value})}><option value="ACTIVE">Activa</option><option value="INACTIVE" disabled={editor.activeServiceCount>0}>Inactiva</option></select>{editor.alwaysActive&&<small>Kaibil permanece siempre activa.</small>}</label>
-   <label>Responsable<select value={editor.responsibleEmployeeId} onChange={e=>setEditor({...editor,responsibleEmployeeId:e.target.value})}><option value="">Sin asignar</option>{responsibles.map(person=><option key={person.employeeId} value={person.employeeId}>{person.fullName}</option>)}</select><small>Solo personal activo con cargo de Asistente de Operaciones, Coordinador de Compañía, Jefe, Director o Presidente.</small></label>
+    <SearchableResponsibleSelect value={editor.responsibleEmployeeId} options={responsibles} onChange={responsibleEmployeeId=>setEditor({...editor,responsibleEmployeeId})} helpText="Solo personal activo con cargo de Asistente de Operaciones, Coordinador de Compañía, Jefe, Director o Presidente."/>
    <label>Motivo del cambio<input value={editor.changeReason} maxLength={500} onChange={e=>setEditor({...editor,changeReason:e.target.value})} placeholder="Opcional · queda en auditoría"/></label>
   </div>
   <div className="com-region-picker"><div><strong>Regiones operativas</strong><span>{editor.alwaysActive?'Kaibil usa cobertura operativa por rol; no se limita a una Región.':'Puede seleccionar una o más Regiones, siempre dentro de la misma Zona.'}</span></div>{editor.alwaysActive?<div className="com-national-note"><ShieldCheck/>Cobertura nacional disponible según el ámbito del rol del usuario.</div>:<div className="com-region-grid">{allowedRegions.map(r=>{const selected=editor.regionIds.includes(r.id);const load=editor.regionLoads.find(x=>x.regionId===r.id)?.activeServiceCount??0;return <label key={r.id} className={selected?'selected':''}><input type="checkbox" checked={selected} onChange={()=>toggleEditorRegion(r.id)}/><span><strong>{r.code}</strong>{r.name}</span>{load>0&&<em>{load} servicio{load===1?'':'s'} activo{load===1?'':'s'}</em>}</label>})}</div>}</div>
