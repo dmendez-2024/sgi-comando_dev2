@@ -12,6 +12,7 @@ import java.util.stream.Collectors;
 @ApplicationScoped
 public class OperationalScopeService {
     private static final Set<String> COUNTRY_ROLES = Set.of("PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL");
+    private static final Set<String> COMPANY_ROLES = Set.of("COORDINADOR_COMPANIA","ASISTENTE_COORDINACION");
     @Inject TenantContext tenant;
     @Inject SecurityIdentity identity;
 
@@ -47,6 +48,26 @@ public class OperationalScopeService {
         if(!regions.isEmpty()){List<Company> companies=Company.list("instanceCountryId=?1 and regionId in ?2",tenant.instanceCountryId(),regions);companies.forEach(c->out.add(c.id));}
         for(UserOperationalScope s:scopes()) if("COMPANY".equals(s.scopeType)&&s.scopeId!=null) out.add(s.scopeId);
         return out;
+    }
+
+    /** In operational inboxes, company roles see only companies explicitly assigned to their identity. */
+    public Set<UUID> allowedCompanyIdsForCompanyRoles(){
+        return identity.getRoles().stream().anyMatch(COMPANY_ROLES::contains)
+            ? directCompanyIds(scopes()) : allowedCompanyIds();
+    }
+
+    static Set<UUID> directCompanyIds(List<UserOperationalScope> scopes){
+        return scopes.stream().filter(s->"COMPANY".equals(s.scopeType)&&s.scopeId!=null)
+            .map(s->s.scopeId).collect(Collectors.toSet());
+    }
+
+    public boolean canAccessCompanyForCompanyRoles(UUID companyId){
+        return companyId!=null&&allowedCompanyIdsForCompanyRoles().contains(companyId);
+    }
+
+    public void requireCompanyForCompanyRoles(UUID companyId){
+        if(!canAccessCompanyForCompanyRoles(companyId))
+            throw new ForbiddenException("La Compañía no está asociada al usuario.");
     }
 
     public boolean canAccessCompany(UUID companyId){ return companyId!=null&&allowedCompanyIds().contains(companyId); }

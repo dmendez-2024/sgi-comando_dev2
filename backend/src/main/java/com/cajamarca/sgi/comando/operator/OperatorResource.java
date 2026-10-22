@@ -568,6 +568,7 @@ public class OperatorResource {
     @GET @Path("/logbook-records")
     public ArrayNode listLogbookRecords() {
         actor(); boolean operator=identity.hasRole("AGENTE_SEGURIDAD"); UUID operatorEmployee=operator?employee():null;
+        Set<UUID> visibleCompanies=operator?Set.of():scope.allowedCompanyIdsForCompanyRoles();
         @SuppressWarnings("unchecked") List<Object[]> rows=em.createNativeQuery("""
           select r.id,p.object_type,a.name,r.field_values_json,r.captured_at,r.status,r.comments,r.employee_id,e.full_name,
                  pt.client_name,pt.city,pt.name,po.name,c.code,c.name,pt.company_id,lp.code,lp.name,r.protocol_version,r.username,
@@ -591,7 +592,7 @@ public class OperatorResource {
         ArrayNode result=mapper.createArrayNode();
         for(Object[] row:rows) {
             if(operator && !operatorEmployee.toString().equals(row[7].toString())) continue;
-            UUID companyId=row[15]==null?null:UUID.fromString(row[15].toString()); if(!operator && !scope.canAccessCompany(companyId)) continue;
+            UUID companyId=row[15]==null?null:UUID.fromString(row[15].toString()); if(!operator && !visibleCompanies.contains(companyId)) continue;
             JsonNode fieldValues; try { fieldValues=mapper.readTree(row[3].toString()); } catch(Exception ex) { fieldValues=mapper.createObjectNode(); }
             String identifier=""; Iterator<JsonNode> values=fieldValues.elements(); while(values.hasNext() && identifier.isBlank()) identifier=values.next().asText("");
             String objectType=row[1].toString().toUpperCase(Locale.ROOT); String type=objectType.contains("VEH")?"VEHICLE":objectType.contains("CONT")?"CONTAINER":"PERSON";
@@ -826,6 +827,7 @@ public class OperatorResource {
     public ArrayNode listPatrolExecutions() {
         actor();
         boolean operator=identity.hasRole("AGENTE_SEGURIDAD"); UUID employee=operator?employee():null;
+        Set<UUID> visibleCompanies=operator?Set.of():scope.allowedCompanyIdsForCompanyRoles();
         @SuppressWarnings("unchecked") List<Object[]> rows=em.createNativeQuery("""
           select pe.id,d.code,d.name,pr.code,pr.name,pe.employee_id,pe.started_at,pe.finished_at,pe.result,
                  e.full_name,pt.client_name,pt.city,pt.name,po.name,c.code,c.name,pt.company_id,
@@ -848,7 +850,7 @@ public class OperatorResource {
         for(Object[] row:rows) {
             if(operator && !employee.toString().equals(row[5].toString())) continue;
             UUID companyId=row[16]==null?null:UUID.fromString(row[16].toString());
-            if(!operator && !scope.canAccessCompany(companyId)) continue;
+            if(!operator && !visibleCompanies.contains(companyId)) continue;
             UUID executionId=UUID.fromString(row[0].toString());
             ObjectNode item=result.addObject().put("id",executionId.toString()).put("patrolCode",row[1].toString()).put("patrolName",row[2].toString())
                 .put("protocolCode",row[3].toString()).put("protocolName",row[4].toString()).put("employeeId",row[5].toString())
@@ -1132,6 +1134,7 @@ public class OperatorResource {
         actor();
         if(!Set.of("PENDING","APPROVED","DISCARDED").contains(status)) throw new BadRequestException("Estado de revisión inválido");
         boolean operator=identity.hasRole("AGENTE_SEGURIDAD"); UUID employee=operator?employee():null;
+        Set<UUID> visibleCompanies=operator?Set.of():scope.allowedCompanyIdsForCompanyRoles();
         if(!operator && !scope.countryWide() && scope.scopes().isEmpty()) {
             throw new ForbiddenException("Tu usuario no tiene un alcance operativo configurado. Solicita a Comando que parametrice tu persona y compañía.");
         }
@@ -1144,7 +1147,7 @@ public class OperatorResource {
             if(operator && !employee.toString().equals(row[3].toString())) continue;
             PostEntity post=PostEntity.find("id=?1 and instanceCountryId=?2",row[2],tenant.instanceCountryId()).firstResult();
             PointEntity point=PointEntity.find("id=?1 and instanceCountryId=?2",row[1],tenant.instanceCountryId()).firstResult();
-            if(post==null || point==null || (!operator && !scope.canAccessCompany(point.companyId))) continue;
+            if(post==null || point==null || (!operator && !visibleCompanies.contains(point.companyId))) continue;
             Company company=point.companyId==null?null:Company.find("id=?1 and instanceCountryId=?2",point.companyId,tenant.instanceCountryId()).firstResult();
             ObjectNode item=result.addObject().put("id",row[0].toString()).put("title",row[5].toString()).put("instruction",row[6].toString()).put("priority",row[7].toString())
                 .put("submittedAt",row[8].toString()).put("schedule",row[9].toString()).put("status",row[12].toString()).put("pointName",point.name).put("postName",post.name)
@@ -1172,13 +1175,14 @@ public class OperatorResource {
     public ArrayNode list(@QueryParam("limit") @DefaultValue("50") int limit) {
         actor(); boolean operator=identity.hasRole("AGENTE_SEGURIDAD");
         UUID employee=operator?employee():null;
+        Set<UUID> visibleCompanies=operator?Set.of():scope.allowedCompanyIdsForCompanyRoles();
         @SuppressWarnings("unchecked") List<Object[]> rows=em.createNativeQuery("select r.id,r.post_id,s.employee_id,s.received_at,s.context_json,s.payload_json,s.username,r.inventory_result from operator_relief_submission s join relief_event r on r.id=s.id where s.instance_country_id=:t order by s.received_at desc")
             .setParameter("t",tenant.instanceCountryId()).setMaxResults(500).getResultList();
         ArrayNode result=mapper.createArrayNode();
         for(Object[] row:rows) {
             PostEntity post=PostEntity.find("id=?1 and instanceCountryId=?2",row[1],tenant.instanceCountryId()).firstResult();
             PointEntity point=post==null?null:PointEntity.find("id=?1 and instanceCountryId=?2",post.pointId,tenant.instanceCountryId()).firstResult();
-            if(point==null || (operator?!employee.toString().equals(row[2].toString()):!scope.canAccessCompany(point.companyId))) continue;
+            if(point==null || (operator?!employee.toString().equals(row[2].toString()):!visibleCompanies.contains(point.companyId))) continue;
             Company company=point.companyId==null?null:Company.find("id=?1 and instanceCountryId=?2",point.companyId,tenant.instanceCountryId()).firstResult();
             JsonNode context; try { context=mapper.readTree(row[4].toString()); } catch(Exception e) { throw new InternalServerErrorException(); }
             Number photoCount=(Number)em.createNativeQuery("select count(*) from operator_relief_evidence where instance_country_id=:t and event_id=:e")

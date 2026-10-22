@@ -14,5 +14,5 @@ import jakarta.ws.rs.core.MediaType;
 public class OperationalReportResource {
     @Inject OperatorReportResource reports;
     @Inject OperationalScopeService scope;
-    @GET public ArrayNode list(@QueryParam("type") String type) { return reports.rows(null,OperatorReportResource.normalizeType(type),scope.allowedCompanyIds()); }
+    @GET public ArrayNode list(@QueryParam("type") String type) { return reports.rows(null,OperatorReportResource.normalizeType(type),scope.allowedCompanyIdsForCompanyRoles()); }
 }

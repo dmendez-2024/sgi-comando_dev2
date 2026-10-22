@@ -49,13 +49,13 @@ public class ConsignmentResource {
 
  @GET
  @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION","SUPERVISOR_SEGURIDAD","AGENTE_SEGURIDAD","CLIENTE"})
- public List<Consignment> legacyList(@QueryParam("pointId") UUID pointId){PointEntity point=point(pointId);scope.requireCompany(point.companyId);return Consignment.list("pointId=?1 and instanceCountryId=?2 order by createdAt desc",pointId,tenant.instanceCountryId());}
+ public List<Consignment> legacyList(@QueryParam("pointId") UUID pointId){PointEntity point=point(pointId);scope.requireCompanyForCompanyRoles(point.companyId);return Consignment.list("pointId=?1 and instanceCountryId=?2 order by createdAt desc",pointId,tenant.instanceCountryId());}
 
  @GET
  @Path("/protocols")
  @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION","SUPERVISOR_SEGURIDAD","AGENTE_SEGURIDAD","CLIENTE"})
  public List<ProtocolDto> protocols(@QueryParam("pointId") UUID pointId){
-   PointEntity point=point(pointId);scope.requireCompany(point.companyId);
+   PointEntity point=point(pointId);scope.requireCompanyForCompanyRoles(point.companyId);
    List<ConsignmentProtocol> all=ConsignmentProtocol.list("instanceCountryId=?1 and pointId=?2 order by code,versionNo desc",tenant.instanceCountryId(),pointId);
    Map<UUID,ConsignmentProtocol> latest=new LinkedHashMap<>();
    for(ConsignmentProtocol p:all){ConsignmentProtocol current=latest.get(p.seriesId);if(current==null||rank(p)>rank(current)||(rank(p)==rank(current)&&p.versionNo>current.versionNo))latest.put(p.seriesId,p);}
@@ -65,7 +65,7 @@ public class ConsignmentResource {
  @GET
  @Path("/protocols/current")
  @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION","SUPERVISOR_SEGURIDAD","AGENTE_SEGURIDAD","CLIENTE"})
- public ProtocolDto current(@QueryParam("pointId") UUID pointId){PointEntity point=point(pointId);scope.requireCompany(point.companyId);ConsignmentProtocol p=ConsignmentProtocol.find("instanceCountryId=?1 and pointId=?2 and status='ACTIVO'",tenant.instanceCountryId(),pointId).firstResult();return p==null?null:dto(p);}
+ public ProtocolDto current(@QueryParam("pointId") UUID pointId){PointEntity point=point(pointId);scope.requireCompanyForCompanyRoles(point.companyId);ConsignmentProtocol p=ConsignmentProtocol.find("instanceCountryId=?1 and pointId=?2 and status='ACTIVO'",tenant.instanceCountryId(),pointId).firstResult();return p==null?null:dto(p);}
 
  @GET
  @Path("/protocols/{id}/history")
@@ -78,7 +78,7 @@ public class ConsignmentResource {
  @Transactional
  @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
  public ProtocolDto createProtocol(CreateProtocolRequest req){
-   if(req==null||req.pointId()==null)throw new BadRequestException("Punto obligatorio");PointEntity point=point(req.pointId());scope.requireCompany(point.companyId);
+   if(req==null||req.pointId()==null)throw new BadRequestException("Punto obligatorio");PointEntity point=point(req.pointId());scope.requireCompanyForCompanyRoles(point.companyId);
    ConsignmentProtocol p=new ConsignmentProtocol();p.id=UUID.randomUUID();p.instanceCountryId=tenant.instanceCountryId();p.seriesId=p.id;p.pointId=point.id;p.code=nextProtocolCode();p.name=clean(req.name(),"Nuevo protocolo de consignas");p.description="";p.status="BORRADOR";p.versionNo=1;p.updatedByUsername=user();p.persist();return dto(p);
  }
 
@@ -216,7 +216,7 @@ public class ConsignmentResource {
  private List<ConsignmentEvidence> evidences(UUID id){return ConsignmentEvidence.list("consignmentId=?1 and instanceCountryId=?2 order by sortOrder",id,tenant.instanceCountryId());}
  private int rank(ConsignmentProtocol p){return "BORRADOR".equals(p.status)?2:1;}
  private void requireDraft(ConsignmentProtocol p){if(!"BORRADOR".equals(p.status))throw new ClientErrorException("La versión publicada es inmutable. Edite el Protocolo para generar una nueva versión borrador.",409);}
- private void authorize(ConsignmentProtocol p){PointEntity point=point(p.pointId);scope.requireCompany(point.companyId);}
+ private void authorize(ConsignmentProtocol p){PointEntity point=point(p.pointId);scope.requireCompanyForCompanyRoles(point.companyId);}
  private PointEntity point(UUID id){if(id==null)throw new BadRequestException("pointId obligatorio");PointEntity p=PointEntity.find("id=?1 and instanceCountryId=?2",id,tenant.instanceCountryId()).firstResult();if(p==null)throw new NotFoundException("Punto no encontrado");return p;}
  private PostEntity post(UUID id){PostEntity p=PostEntity.find("id=?1 and instanceCountryId=?2",id,tenant.instanceCountryId()).firstResult();if(p==null)throw new NotFoundException("Puesto no encontrado");return p;}
  private ConsignmentProtocol protocol(UUID id){ConsignmentProtocol p=ConsignmentProtocol.find("id=?1 and instanceCountryId=?2",id,tenant.instanceCountryId()).firstResult();if(p==null)throw new NotFoundException("Protocolo no encontrado");return p;}

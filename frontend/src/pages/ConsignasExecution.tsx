@@ -39,7 +39,7 @@ type Execution={
   timeline:TimelineEvent[];
 };
 
-type Scope={label:string;companies:string[]|null;region?:string;zone?:string;monitoredPosts:number};
+type Scope={label:string;companies:string[]|null;region?:string;zone?:string};
 type Filters={
   type:'ALL'|ExecutionType;
   query:string;
@@ -95,18 +95,18 @@ const DATA:Execution[]=[
 ];
 
 const scopeByUser:Record<UatUser,Scope>={
-  presidente:{label:'Alcance: nacional / todas las compañías',companies:null,monitoredPosts:152},
-  ggeneral:{label:'Alcance: nacional / todas las compañías',companies:null,monitoredPosts:152},
-  dlatam:{label:'Alcance: nacional / todas las compañías',companies:null,monitoredPosts:152},
-  don:{label:'Alcance: nacional / todas las compañías',companies:null,monitoredPosts:152},
-  dnacional:{label:'Alcance: nacional / todas las compañías',companies:null,monitoredPosts:152},
-  dzonal:{label:'Alcance: 4 compañías / Zona Costa',companies:['GAL','SISA','LIT','SUR'],zone:'Zona Costa',monitoredPosts:86},
-  jregional:{label:'Alcance: 3 compañías / Región Costa Sur',companies:['GAL','SISA','SUR'],region:'Costa Sur',monitoredPosts:52},
-  coord:{label:'Alcance: 1 compañía / Galvarino',companies:['GAL'],monitoredPosts:18},
-  asistente:{label:'Alcance: 1 compañía / Galvarino',companies:['GAL'],monitoredPosts:18},
-  supervisor:{label:'Alcance: 1 compañía / Galvarino',companies:['GAL'],monitoredPosts:18},
-  agente:{label:'Alcance: 1 compañía / Galvarino',companies:['GAL'],monitoredPosts:18},
-  cliente:{label:'Alcance restringido / solo su operación',companies:['GAL'],monitoredPosts:18},
+  presidente:{label:'Alcance: nacional / todas las compañías',companies:null},
+  ggeneral:{label:'Alcance: nacional / todas las compañías',companies:null},
+  dlatam:{label:'Alcance: nacional / todas las compañías',companies:null},
+  don:{label:'Alcance: nacional / todas las compañías',companies:null},
+  dnacional:{label:'Alcance: nacional / todas las compañías',companies:null},
+  dzonal:{label:'Alcance: 4 compañías / Zona Costa',companies:['GAL','SISA','LIT','SUR'],zone:'Zona Costa'},
+  jregional:{label:'Alcance: 3 compañías / Región Costa Sur',companies:['GAL','SISA','SUR'],region:'Costa Sur'},
+  coord:{label:'Alcance: compañías asociadas',companies:null},
+  asistente:{label:'Alcance: compañías asociadas',companies:null},
+  supervisor:{label:'Alcance: 1 compañía / Galvarino',companies:['GAL']},
+  agente:{label:'Alcance: 1 compañía / Galvarino',companies:['GAL']},
+  cliente:{label:'Alcance restringido / solo su operación',companies:['GAL']},
 };
 
 const latestDate=new Date();
@@ -231,6 +231,7 @@ export default function ConsignasExecution(){
 
   // El backend es la fuente oficial y aplica alcance RBAC; esta vista no mezcla datos DEMO.
   const scoped=useMemo(()=>[...reliefExecutions,...reviewRequests,...patrolExecutions],[reliefExecutions,reviewRequests,patrolExecutions]);
+  const postsWithRecords=useMemo(()=>new Set(scoped.map(row=>`${row.companyCode}|${row.point}|${row.post}`)).size,[scoped]);
 
   const companies=useMemo(()=>unique(scoped.map(x=>x.company)),[scoped]);
   const cities=useMemo(()=>unique(scoped.map(x=>x.city)),[scoped]);
@@ -292,7 +293,7 @@ export default function ConsignasExecution(){
     <div className="cns-topbar nov-topbar"><div><div className="page-backline">Operaciones / Consignas</div><h2>Consignas</h2><p>Estado de ejecución de relevos, patrullas y consignas ad-hoc</p></div><div className="cns-scope nov-scope"><ShieldCheck size={16}/>{scope.label}</div></div>
 
     <div className="cns-kpis nov-kpis">
-      <Metric icon={<ShieldCheck size={21}/>} label="Puestos monitoreados" value={scope.monitoredPosts} subtitle="Puntos activos hoy" tone="blue"/>
+      <Metric icon={<ShieldCheck size={21}/>} label="Puestos con registros" value={postsWithRecords} subtitle="En el alcance visible" tone="blue"/>
       <Metric icon={<RefreshCw size={21}/>} label="Relevos en curso" value={metrics.reliefRunning} subtitle="En ejecución" tone="blue"/>
       <Metric icon={<Clock3 size={21}/>} label="Relevos vencidos" value={metrics.reliefOverdue} subtitle="Requieren atención" tone="red"/>
       <Metric icon={<CarFront size={21}/>} label="Patrullas en curso" value={metrics.patrolRunning} subtitle="En ejecución" tone="green"/>

@@ -42,11 +42,11 @@ public class IncidentEvidenceResource {
         IncidentNotificationEntity r=IncidentNotificationEntity.find("id=?1 and instanceCountryId=?2",id,tenant.instanceCountryId()).firstResult();
         if(r==null)throw new NotFoundException("Incidente no encontrado");
         if(r.companyId==null){if(!Objects.equals(r.createdBy,scope.username()))throw new ForbiddenException("Borrador fuera de alcance");}
-        else scope.requireCompany(r.companyId);
+        else scope.requireCompanyForCompanyRoles(r.companyId);
         if(lock)em.refresh(r,LockModeType.PESSIMISTIC_WRITE);
         // Recheck after acquiring the lock in case another editor moved its company.
         if(r.companyId==null){if(!Objects.equals(r.createdBy,scope.username()))throw new ForbiddenException("Borrador fuera de alcance");}
-        else scope.requireCompany(r.companyId);
+        else scope.requireCompanyForCompanyRoles(r.companyId);
         return r;
     }
 

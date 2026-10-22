@@ -298,7 +298,7 @@ public class OperationalEvidenceResource {
                 .setParameter("tenant", tenant.instanceCountryId()).getResultList();
             if (rows.isEmpty()) continue;
             if (rows.get(0)[1] == null) throw new NotFoundException("Registro fuera de alcance");
-            scope.requireCompany(UUID.fromString(rows.get(0)[1].toString()));
+            scope.requireCompanyForCompanyRoles(UUID.fromString(rows.get(0)[1].toString()));
             return new VisibleEvent(UUID.fromString(rows.get(0)[0].toString()), kind);
         }
         throw new NotFoundException("Registro operativo no encontrado");

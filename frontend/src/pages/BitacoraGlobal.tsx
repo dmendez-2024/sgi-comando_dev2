@@ -3,7 +3,7 @@ import {
   Building2, Briefcase, CalendarDays, CarFront, Clock3, Container, Download, Eye, FileSearch2,
   FilterX, MapPin, Search, ShieldCheck, UserRound, X, ChevronRight
 } from 'lucide-react';
-import {api, getUser, type UatUser} from '../api';
+import {api, getUser} from '../api';
 import {PhotoEvidenceGallery, ReferenceImageGallery} from '../components/PhotoEvidenceGallery';
 
 type RecordType='PERSON'|'VEHICLE'|'CONTAINER';
@@ -36,8 +36,6 @@ type BitRecord={
   applicationType?:'INGRESO'|'EGRESO'|'AMBOS';
 };
 
-type Scope={label:string;companies:string[]|null;region?:string;zone?:string};
-
 type Filters={
   type:'ALL'|RecordType;
   query:string;
@@ -51,138 +49,6 @@ type Filters={
   status:'ALL'|RecordStatus;
   dateFrom:string;
   dateTo:string;
-};
-
-const DATA:BitRecord[]=[
-  {
-    id:'rec-1', type:'PERSON', identifier:'0923456789', label:'Carlos Mendoza', firstName:'Carlos', lastName:'Mendoza',
-    client:'Maersk', company:'Seguridad Integral S.A.', companyCode:'SISA', city:'Guayaquil', point:'TPG · Acceso Principal',
-    region:'Costa Sur', zone:'Zona Costa', status:'AUTHORIZED', at:'2026-09-19T14:28:00', detailTag:'Persona', subtitle:'CI: 0923456789',
-    timeline:[
-      {id:'t1',at:'2026-09-19T14:28:00',title:'Ingreso autorizado',place:'TPG · Acceso Principal'},
-      {id:'t2',at:'2026-09-19T14:16:00',title:'Validación documental',place:'Oficina de seguridad'},
-      {id:'t3',at:'2026-09-19T14:10:00',title:'Registro en sistema',place:'Recepción'}
-    ]
-  },
-  {
-    id:'rec-2', type:'VEHICLE', identifier:'GTR-4587', label:'Camión Hino 500',
-    client:'DP World', company:'Galvarino', companyCode:'GAL', city:'Guayaquil', point:'Acceso Norte',
-    region:'Costa Sur', zone:'Zona Costa', status:'REGISTERED', at:'2026-09-19T14:15:00', detailTag:'Vehículo', subtitle:'Placa: GTR-4587',
-    timeline:[
-      {id:'t1',at:'2026-09-19T14:15:00',title:'Ingreso registrado',place:'Acceso Norte'},
-      {id:'t2',at:'2026-09-19T14:13:00',title:'Inspección visual',place:'Carril 2'},
-      {id:'t3',at:'2026-09-19T14:10:00',title:'Acreditación de conductor',place:'Garita principal'}
-    ]
-  },
-  {
-    id:'rec-3', type:'CONTAINER', identifier:'MSKU1234567', label:'Contenedor 40 HC',
-    client:'Maersk', company:'Galvarino', companyCode:'GAL', city:'Posorja', point:'Patio A',
-    region:'Costa Sur', zone:'Zona Costa', status:'RELEASED', at:'2026-09-19T13:50:00', detailTag:'Contenedor', subtitle:'MSKU1234567',
-    timeline:[
-      {id:'t1',at:'2026-09-19T13:50:00',title:'Liberado',place:'Patio A'},
-      {id:'t2',at:'2026-09-19T13:32:00',title:'Verificación de sello',place:'Inspección de contenedores'},
-      {id:'t3',at:'2026-09-19T13:20:00',title:'Registro en sistema',place:'Patio A'}
-    ]
-  },
-  {
-    id:'rec-4', type:'PERSON', identifier:'1712345678', label:'Ana Torres', firstName:'Ana', lastName:'Torres',
-    client:'Contecon', company:'Litoral Custodia', companyCode:'LIT', city:'Guayaquil', point:'Ingreso Peatonal',
-    region:'Costa Centro', zone:'Zona Costa', status:'AUTHORIZED', at:'2026-09-19T13:32:00', detailTag:'Persona', subtitle:'CI: 1712345678',
-    timeline:[
-      {id:'t1',at:'2026-09-19T13:32:00',title:'Ingreso autorizado',place:'Ingreso Peatonal'},
-      {id:'t2',at:'2026-09-19T13:28:00',title:'Verificación biométrica',place:'Control de acceso'},
-      {id:'t3',at:'2026-09-19T13:25:00',title:'Creación de visita',place:'Recepción'}
-    ]
-  },
-  {
-    id:'rec-5', type:'VEHICLE', identifier:'PBB-7621', label:'Furgón Isuzu',
-    client:'DHL', company:'Seguridad Integral S.A.', companyCode:'SISA', city:'Durán', point:'Báscula',
-    region:'Costa Sur', zone:'Zona Costa', status:'UNDER_REVIEW', at:'2026-09-19T12:48:00', detailTag:'Vehículo', subtitle:'Placa: PBB-7621',
-    timeline:[
-      {id:'t1',at:'2026-09-19T12:48:00',title:'En revisión',place:'Báscula'},
-      {id:'t2',at:'2026-09-19T12:42:00',title:'Diferencia en documentación',place:'Garita de ingreso'},
-      {id:'t3',at:'2026-09-19T12:39:00',title:'Ingreso preliminar',place:'Báscula'}
-    ]
-  },
-  {
-    id:'rec-6', type:'CONTAINER', identifier:'TCLU9876543', label:'Contenedor 20 DC',
-    client:'MSC', company:'Galvarino', companyCode:'GAL', city:'Guayaquil', point:'Patio B',
-    region:'Costa Sur', zone:'Zona Costa', status:'RETAINED', at:'2026-09-19T12:10:00', detailTag:'Contenedor', subtitle:'TCLU9876543',
-    timeline:[
-      {id:'t1',at:'2026-09-19T12:10:00',title:'Retenido',place:'Patio B'},
-      {id:'t2',at:'2026-09-19T11:56:00',title:'Alerta por sello inconsistente',place:'Control documental'},
-      {id:'t3',at:'2026-09-19T11:50:00',title:'Registro de arribo',place:'Patio B'}
-    ]
-  },
-  {
-    id:'rec-7', type:'PERSON', identifier:'1104567890', label:'Jorge Paredes', firstName:'Jorge', lastName:'Paredes',
-    client:'Holcim', company:'Andina Protección', companyCode:'AND', city:'Cuenca', point:'Recepción Planta',
-    region:'Austro', zone:'Zona Sierra', status:'AUTHORIZED', at:'2026-09-18T09:35:00', detailTag:'Persona', subtitle:'CI: 1104567890',
-    timeline:[
-      {id:'t1',at:'2026-09-18T09:35:00',title:'Ingreso autorizado',place:'Recepción Planta'},
-      {id:'t2',at:'2026-09-18T09:30:00',title:'Verificación de visita',place:'Recepción Planta'}
-    ]
-  },
-  {
-    id:'rec-8', type:'VEHICLE', identifier:'QWE-1190', label:'Camioneta Toyota Hilux',
-    client:'Holcim', company:'Andina Protección', companyCode:'AND', city:'Cuenca', point:'Portón 2',
-    region:'Austro', zone:'Zona Sierra', status:'REGISTERED', at:'2026-09-18T08:12:00', detailTag:'Vehículo', subtitle:'Placa: QWE-1190',
-    timeline:[
-      {id:'t1',at:'2026-09-18T08:12:00',title:'Registro en sistema',place:'Portón 2'},
-      {id:'t2',at:'2026-09-18T08:07:00',title:'Lectura de placa',place:'Portón 2'}
-    ]
-  },
-  {
-    id:'rec-9', type:'CONTAINER', identifier:'SEGU4455661', label:'Contenedor reefer 40',
-    client:'Bananera El Oro', company:'Sur Custodia', companyCode:'SUR', city:'Machala', point:'Muelle Sur',
-    region:'Costa Sur', zone:'Zona Costa', status:'REGISTERED', at:'2026-09-18T11:22:00', detailTag:'Contenedor', subtitle:'SEGU4455661',
-    timeline:[
-      {id:'t1',at:'2026-09-18T11:22:00',title:'Ingreso registrado',place:'Muelle Sur'},
-      {id:'t2',at:'2026-09-18T11:05:00',title:'Captura de número de contenedor',place:'Muelle Sur'}
-    ]
-  },
-  {
-    id:'rec-10', type:'PERSON', identifier:'0951112223', label:'María Vizuete', firstName:'María', lastName:'Vizuete',
-    client:'Nirsa', company:'Galvarino', companyCode:'GAL', city:'Durán', point:'Acceso Administrativo',
-    region:'Costa Sur', zone:'Zona Costa', status:'AUTHORIZED', at:'2026-09-17T16:41:00', detailTag:'Persona', subtitle:'CI: 0951112223',
-    timeline:[
-      {id:'t1',at:'2026-09-17T16:41:00',title:'Ingreso autorizado',place:'Acceso Administrativo'},
-      {id:'t2',at:'2026-09-17T16:35:00',title:'Autorización del anfitrión',place:'Recepción'}
-    ]
-  },
-  {
-    id:'rec-11', type:'VEHICLE', identifier:'AAA-9021', label:'Tractocamión Volvo FH',
-    client:'Nirsa', company:'Galvarino', companyCode:'GAL', city:'Durán', point:'Carga y descarga',
-    region:'Costa Sur', zone:'Zona Costa', status:'RELEASED', at:'2026-09-17T18:05:00', detailTag:'Vehículo', subtitle:'Placa: AAA-9021',
-    timeline:[
-      {id:'t1',at:'2026-09-17T18:05:00',title:'Salida liberada',place:'Carga y descarga'},
-      {id:'t2',at:'2026-09-17T17:40:00',title:'Inspección final',place:'Báscula'}
-    ]
-  },
-  {
-    id:'rec-12', type:'CONTAINER', identifier:'OOLU1002003', label:'Contenedor 20 OT',
-    client:'DP World', company:'Litoral Custodia', companyCode:'LIT', city:'Guayaquil', point:'Patio C',
-    region:'Costa Centro', zone:'Zona Costa', status:'UNDER_REVIEW', at:'2026-09-16T10:18:00', detailTag:'Contenedor', subtitle:'OOLU1002003',
-    timeline:[
-      {id:'t1',at:'2026-09-16T10:18:00',title:'En revisión',place:'Patio C'},
-      {id:'t2',at:'2026-09-16T09:55:00',title:'Diferencia documental',place:'Oficina de control'}
-    ]
-  }
-];
-
-const scopeByUser:Record<UatUser,Scope>={
-  presidente:{label:'Alcance: nacional / todas las compañías',companies:null},
-  ggeneral:{label:'Alcance: nacional / todas las compañías',companies:null},
-  dlatam:{label:'Alcance: nacional / todas las compañías',companies:null},
-  don:{label:'Alcance: nacional / todas las compañías',companies:null},
-  dnacional:{label:'Alcance: nacional / todas las compañías',companies:null},
-  dzonal:{label:'Alcance: 5 compañías / Zona Costa',companies:['GAL','SISA','LIT','SUR'],zone:'Zona Costa'},
-  jregional:{label:'Alcance: 3 compañías / Región Costa Sur',companies:['GAL','SISA','SUR'],region:'Costa Sur'},
-  coord:{label:'Alcance: 1 compañía / Galvarino',companies:['GAL']},
-  asistente:{label:'Alcance: 1 compañía / Galvarino',companies:['GAL']},
-  supervisor:{label:'Alcance: 1 compañía / Galvarino',companies:['GAL']},
-  agente:{label:'Alcance: 1 compañía / Galvarino',companies:['GAL']},
-  cliente:{label:'Alcance restringido / solo su operación',companies:['GAL']},
 };
 
 const EMPTY_FILTERS:Filters={
@@ -199,13 +65,6 @@ function formatDateTime(value:string){
 }
 function dateOnly(value:string){return value.slice(0,10)}
 
-function withinScope(record:BitRecord,scope:Scope){
-  if(scope.companies && !scope.companies.includes(record.companyCode)) return false;
-  if(scope.region && record.region!==scope.region) return false;
-  if(scope.zone && record.zone!==scope.zone) return false;
-  return true;
-}
-
 export default function BitacoraGlobal(){
   const [userRevision,setUserRevision]=useState(0);
   const [filters,setFilters]=useState<Filters>(EMPTY_FILTERS);
@@ -221,9 +80,9 @@ export default function BitacoraGlobal(){
   },[]);
 
   const user=getUser();
-  const scope=scopeByUser[user];
   useEffect(()=>{
     let active=true;
+    setLiveData([]);
     setLiveLoaded(false);
     setLoadError('');
     api.logbookRecords()
@@ -231,7 +90,7 @@ export default function BitacoraGlobal(){
       .catch(error=>{if(active){setLiveData([]);setLiveLoaded(true);setLoadError(error instanceof Error?error.message:'No se pudo consultar Bitácora')}});
     return()=>{active=false};
   },[user,userRevision]);
-  const scopedData=useMemo(()=>liveLoaded?liveData:DATA.filter(record=>withinScope(record,scope)),[liveLoaded,liveData,scope]);
+  const scopedData=liveData;
 
   const companyOptions=useMemo(()=>Array.from(new Map(scopedData.map(r=>[r.companyCode,r.company])).values()),[scopedData]);
   const cityOptions=useMemo(()=>Array.from(new Set(scopedData.map(r=>r.city))).sort(),[scopedData]);
@@ -286,7 +145,7 @@ export default function BitacoraGlobal(){
         <h2>Bitácora</h2>
         <p>Buscador global de registros operativos</p>
       </div>
-      <div className="bit-global-scope nov-scope"><ShieldCheck size={16}/><span>{scope.label}</span></div>
+      <div className="bit-global-scope nov-scope"><ShieldCheck size={16}/><span>Alcance operativo del usuario</span></div>
     </div>
     {loadError&&<div className="form-error">No fue posible cargar los registros reales: {loadError}</div>}
 

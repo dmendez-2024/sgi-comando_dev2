@@ -34,7 +34,7 @@ public class IncidentNotificationResource {
 
     @GET
     public List<ObjectNode> list() throws JsonProcessingException {
-        Set<UUID> allowed = scope.allowedCompanyIds();
+        Set<UUID> allowed = scope.allowedCompanyIdsForCompanyRoles();
         List<IncidentNotificationEntity> records = allowed.isEmpty()
                 ? IncidentNotificationEntity.list("instanceCountryId=?1 and companyId is null and createdBy=?2 order by updatedAt desc",
                     tenant.instanceCountryId(), scope.username())
@@ -80,7 +80,7 @@ public class IncidentNotificationResource {
         if (pointId != null) {
             point = PointEntity.find("id=?1 and instanceCountryId=?2", pointId, tenant.instanceCountryId()).firstResult();
             if (point == null) throw new NotFoundException("Punto no encontrado");
-            scope.requireCompany(point.companyId);
+            scope.requireCompanyForCompanyRoles(point.companyId);
             ServiceEntity service = ServiceEntity.find("id=?1 and instanceCountryId=?2", point.serviceId, tenant.instanceCountryId()).firstResult();
             if (service == null) throw new BadRequestException("El Punto no tiene Servicio válido");
             if (uuid(body, "clientId") != null && !service.clientId.equals(uuid(body, "clientId")))

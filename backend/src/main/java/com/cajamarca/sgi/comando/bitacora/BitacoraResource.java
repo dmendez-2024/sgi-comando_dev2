@@ -46,7 +46,7 @@ public class BitacoraResource {
     @Path("/protocols")
     @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION","SUPERVISOR_SEGURIDAD","AGENTE_SEGURIDAD","CLIENTE"})
     public List<ProtocolDto> list(@QueryParam("pointId") UUID pointId){
-        PointEntity point=point(pointId);scope.requireCompany(point.companyId);
+        PointEntity point=point(pointId);scope.requireCompanyForCompanyRoles(point.companyId);
         List<PostEntity> posts=PostEntity.list("pointId=?1 and instanceCountryId=?2",pointId,tenant.instanceCountryId());
         if(posts.isEmpty()) return List.of();
         Set<UUID> postIds=new HashSet<>();posts.forEach(post->postIds.add(post.id));
@@ -67,7 +67,7 @@ public class BitacoraResource {
     @Transactional
     @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
     public ProtocolDto create(CreateProtocolRequest request){
-        if(request==null||request.postId()==null)throw new BadRequestException("Puesto obligatorio");PostEntity post=post(request.postId());PointEntity point=point(post.pointId);scope.requireCompany(point.companyId);
+        if(request==null||request.postId()==null)throw new BadRequestException("Puesto obligatorio");PostEntity post=post(request.postId());PointEntity point=point(post.pointId);scope.requireCompanyForCompanyRoles(point.companyId);
         LogbookProtocol p=new LogbookProtocol();p.id=UUID.randomUUID();p.instanceCountryId=tenant.instanceCountryId();p.seriesId=p.id;p.postId=post.id;p.code=nextProtocolCode();p.name=cleanOrDefault(request.name(),"Nuevo protocolo");p.objectType=normalize(request.objectType(),OBJECT_TYPES,"PAX","Objeto inválido");p.applicationType=normalize(request.applicationType(),APPLICATION_TYPES,"INGRESO","Aplicación inválida");p.description="";p.status="BORRADOR";p.versionNo=1;
         p.identificationLogic="ALL";p.verificationLogic="ALL";p.authPreapproval=true;p.authClient=true;p.authSupervisor=false;p.whiteListEnabled=true;p.blackListEnabled=true;p.captureManual=true;p.captureQr=true;p.captureBarcode=false;p.captureNfc=false;p.captureAutomatic=false;p.sourceModelType="LOCAL";p.updatedByUsername=user();p.persist();
         setScope(p,List.of(post.id));
@@ -264,7 +264,7 @@ public class BitacoraResource {
     }
     private List<LogbookAccreditation> accreditations(UUID protocolId){return LogbookAccreditation.list("protocolId=?1 and instanceCountryId=?2 order by code",protocolId,tenant.instanceCountryId());}
     private List<LogbookProtocolField> fields(UUID accreditationId){return LogbookProtocolField.list("accreditationId=?1 and instanceCountryId=?2 order by section,sortOrder,name",accreditationId,tenant.instanceCountryId());}
-    private void authorize(LogbookProtocol p){PostEntity post=post(p.postId);PointEntity point=point(post.pointId);scope.requireCompany(point.companyId);}
+    private void authorize(LogbookProtocol p){PostEntity post=post(p.postId);PointEntity point=point(post.pointId);scope.requireCompanyForCompanyRoles(point.companyId);}
     private PointEntity point(UUID id){if(id==null)throw new BadRequestException("pointId obligatorio");PointEntity p=PointEntity.find("id=?1 and instanceCountryId=?2",id,tenant.instanceCountryId()).firstResult();if(p==null)throw new NotFoundException("Punto no encontrado");return p;}
     private PostEntity post(UUID id){PostEntity p=PostEntity.find("id=?1 and instanceCountryId=?2",id,tenant.instanceCountryId()).firstResult();if(p==null)throw new NotFoundException("Puesto no encontrado");return p;}
     private LogbookProtocol protocol(UUID id){LogbookProtocol p=LogbookProtocol.find("id=?1 and instanceCountryId=?2",id,tenant.instanceCountryId()).firstResult();if(p==null)throw new NotFoundException("Protocolo no encontrado");return p;}
