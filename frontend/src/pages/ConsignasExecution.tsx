@@ -187,6 +187,7 @@ function reliefToExecution(item:any):Execution{
   const at=event.executedAt||item.receivedAt;
   const evidenceCount=Number(item.photoCount||0);
   const unilateral=Boolean(event.unilateral);
+  const opening=event.reliefMode==='OPENING_WITHOUT_PREVIOUS_SHIFT';
   return {
     id:`relief-${item.reliefId}`,evidenceEventId:String(item.reliefId),photoCount:evidenceCount,type:'RELIEF',
     code:`REL-${String(item.reliefId).slice(0,8).toUpperCase()}`,name:'Relevo de puesto',
@@ -194,7 +195,7 @@ function reliefToExecution(item:any):Execution{
     point:item.pointName||context.pointName||'—',post:item.postName||context.postName||'—',
     responsible:item.incomingEmployeeName||context.incomingEmployeeName||item.submittedBy||'Operador',zone:'',region:'',
     status:'COMPLETED',priority:'MEDIUM',start:at,end:item.receivedAt,
-    progressCurrent:4,progressTotal:4,progressUnit:'pasos',result:unilateral?'Relevo unilateral registrado':'Relevo registrado',
+    progressCurrent:4,progressTotal:4,progressUnit:'pasos',result:opening?'Inicio de puesto sin turno anterior':unilateral?'Relevo unilateral registrado':'Relevo registrado',
     timeline:[
       {id:`start-${item.reliefId}`,at,title:'Inicio del relevo',detail:item.postName||context.postName||'Puesto operativo',state:'DONE'},
       {id:`evidence-${item.reliefId}`,at,title:'Evidencias registradas',detail:`${evidenceCount} fotografía${evidenceCount===1?'':'s'}`,state:'DONE'},

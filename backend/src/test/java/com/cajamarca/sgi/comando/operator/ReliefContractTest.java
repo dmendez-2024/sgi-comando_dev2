@@ -24,5 +24,13 @@ class ReliefContractTest {
  @Test void refusesInventedInventoryCompletion(){var b=batch(true);event(b).put("inventoryStatus","OK");assertThrows(jakarta.ws.rs.BadRequestException.class,()->ReliefContract.validate(b,employee,country,now));}
  @Test void refusesSelfRelief(){var b=batch(false);event(b).put("outgoingEmployeeId",employee.toString());assertThrows(jakarta.ws.rs.BadRequestException.class,()->ReliefContract.validate(b,employee,country,now));}
  @Test void refusesCrossTenant(){assertThrows(jakarta.ws.rs.ForbiddenException.class,()->ReliefContract.validate(batch(true),employee,UUID.randomUUID(),now));}
+ ObjectNode opening(){var b=batch(true);event(b).remove("unilateralReason");event(b).put("unilateral",false).put("reliefMode",ReliefContract.MODE_OPENING).put("openingCause",ReliefContract.CAUSE_GAP);return b;}
+ @Test void acceptsOpeningWithoutOutgoingPhotosNorReason(){assertDoesNotThrow(()->ReliefContract.validate(opening(),employee,country,now));}
+ @Test void openingRequiresAFormalCause(){var b=opening();event(b).put("openingCause","Sin saliente");assertThrows(jakarta.ws.rs.BadRequestException.class,()->ReliefContract.validate(b,employee,country,now));
+  var missing=opening();event(missing).remove("openingCause");assertThrows(jakarta.ws.rs.BadRequestException.class,()->ReliefContract.validate(missing,employee,country,now));}
+ @Test void openingRefusesAnOutgoingAgent(){var b=opening();event(b).put("outgoingEmployeeId",UUID.randomUUID().toString());assertThrows(jakarta.ws.rs.BadRequestException.class,()->ReliefContract.validate(b,employee,country,now));}
+ @Test void modeMustMatchUnilateralFlag(){var b=opening();event(b).put("unilateral",true).put("unilateralReason","x");assertThrows(jakarta.ws.rs.BadRequestException.class,()->ReliefContract.validate(b,employee,country,now));
+  var normal=batch(false);event(normal).put("reliefMode","OTRO");assertThrows(jakarta.ws.rs.BadRequestException.class,()->ReliefContract.validate(normal,employee,country,now));}
+ @Test void legacyEventsWithoutModeKeepTheirMeaning(){assertEquals(ReliefContract.MODE_UNILATERAL,ReliefContract.mode(event(batch(true))));assertEquals(ReliefContract.MODE_NORMAL,ReliefContract.mode(event(batch(false))));}
  @Test void refusesMissingUnilateralReason(){var b=batch(true);event(b).remove("unilateralReason");assertThrows(jakarta.ws.rs.BadRequestException.class,()->ReliefContract.validate(b,employee,country,now));}
 }
