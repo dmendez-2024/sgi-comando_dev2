@@ -49,6 +49,7 @@ public class OperatorEvidenceResource {
         OperatorContext.Assignment a = ctx.assignment(meta.assignmentId(), employee);
         OperatorTasks.Target target = tasks.require(meta.targetType(), meta.targetId(), a.post());
         if (OperatorTasks.CONSIGNMENT_REQUEST.equals(meta.targetType())) tasks.requireRequestAuthor(meta.targetId(), employee);
+        if (OperatorTasks.OPERATIONAL_REPORT.equals(meta.targetType())) tasks.requireReportAuthor(meta.targetId(), employee);
         if (!target.requiresEvidence()) throw new BadRequestException("Este Hito no requiere fotos");
         ctx.lock(meta.assignmentId());
         UUID t = tenant.instanceCountryId();

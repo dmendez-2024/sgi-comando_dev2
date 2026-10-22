@@ -61,6 +61,12 @@ class EvidenceUploadContractTest {
         o.put("targetId", o.path("eventId").asText());
         assertEquals(1, match(o, names(o)).size());
     }
+    @Test void operationalReportPhotoUsesTheReportAsEventAndTarget() {
+        ObjectNode o = meta(1).put("targetType", "OPERATIONAL_REPORT");
+        assertThrows(BadRequestException.class, () -> match(o, names(o)));
+        o.put("targetId", o.path("eventId").asText());
+        assertEquals(1, match(o, names(o)).size());
+    }
     @Test void rejectsGarbageOrMissingJson() {
         assertThrows(BadRequestException.class, () -> EvidenceUploadContract.parse("{no json", m));
         assertThrows(BadRequestException.class, () -> EvidenceUploadContract.parse(null, m));

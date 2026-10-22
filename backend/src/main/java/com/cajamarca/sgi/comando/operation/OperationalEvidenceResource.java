@@ -2,6 +2,7 @@ package com.cajamarca.sgi.comando.operation;
 
 import com.cajamarca.sgi.comando.common.TenantContext;
 import com.cajamarca.sgi.comando.execution.EvidenceObject;
+import com.cajamarca.sgi.comando.operator.OperatorTasks;
 import com.cajamarca.sgi.comando.storage.StandardReferenceImage;
 import com.cajamarca.sgi.comando.storage.StandardReferenceImages;
 import com.cajamarca.sgi.comando.storage.StorageService;
@@ -43,7 +44,7 @@ public class OperationalEvidenceResource {
     @Inject ObjectMapper mapper;
     @Inject StandardReferenceImages references;
 
-    private static final int RELIEF = 0, LOGBOOK = 1, CONSIGNMENT_REQUEST = 2, PATROL = 4, TASK = 5;
+    private static final int RELIEF = 0, LOGBOOK = 1, CONSIGNMENT_REQUEST = 2, OPERATIONAL_REPORT = 3, PATROL = 4, TASK = 5;
     private record VisibleEvent(UUID pointId, int kind) {}
     private record Reference(UUID id, String source, String label) {}
 
@@ -60,6 +61,7 @@ public class OperationalEvidenceResource {
         }
         if (relief.isEmpty() && event.kind() == LOGBOOK) logbookPhotos(result, eventId, pointId);
         else if (relief.isEmpty() && event.kind() == CONSIGNMENT_REQUEST) consignmentRequestPhotos(result, eventId);
+        else if (relief.isEmpty() && event.kind() == OPERATIONAL_REPORT) operationalReportPhotos(result, eventId);
         else if (relief.isEmpty() && event.kind() == PATROL) patrolExecutionPhotos(result, eventId, pointId);
         else if (relief.isEmpty()) for (Object[] row : linkedPhotos(eventId, pointId)) {
             UUID id = (UUID) row[0];
@@ -77,7 +79,8 @@ public class OperationalEvidenceResource {
     public Response content(@PathParam("eventId") UUID eventId, @PathParam("photoId") UUID photoId) {
         UUID pointId = requireVisibleEvent(eventId);
         // Cada fuente consulta solo la foto pedida: no se cargan los demás archivos del evento.
-        if (!linkedPhotos(eventId, pointId, photoId).isEmpty() || !inventoryPhotos(eventId, photoId).isEmpty() || !requestPhotos(eventId, photoId).isEmpty()) {
+        if (!linkedPhotos(eventId, pointId, photoId).isEmpty() || !inventoryPhotos(eventId, photoId).isEmpty()
+            || !ownPhotos(eventId, OperatorTasks.CONSIGNMENT_REQUEST, photoId).isEmpty() || !ownPhotos(eventId, OperatorTasks.OPERATIONAL_REPORT, photoId).isEmpty()) {
             EvidenceObject object = EvidenceObject.find("id=?1 and instanceCountryId=?2 and status in ?3",
                 photoId, tenant.instanceCountryId(), List.of("STORED", "ATTACHED")).firstResult();
             if (object != null && object.contentType != null && object.contentType.startsWith("image/"))
@@ -173,7 +176,7 @@ public class OperationalEvidenceResource {
      * Si la solicitud declara foto (hasPhoto) y el archivo aún no llegó, se informa como MISSING para que el detalle lo diga.
      */
     private void consignmentRequestPhotos(ArrayNode result, UUID eventId) {
-        List<Object[]> photos = requestPhotos(eventId, null);
+        List<Object[]> photos = ownPhotos(eventId, OperatorTasks.CONSIGNMENT_REQUEST, null);
         for (Object[] row : photos)
             if (row[1] != null && row[1].toString().startsWith("image/"))
                 result.addObject().put("id", row[0].toString()).put("source", "OBJECT").put("label", "Imagen de referencia");
@@ -182,6 +185,22 @@ public class OperationalEvidenceResource {
             .setParameter("event", eventId).setParameter("tenant", tenant.instanceCountryId()).getResultList();
         if (!declared.isEmpty() && Boolean.TRUE.equals(declared.get(0)))
             result.addObject().put("id", eventId.toString()).put("source", "MISSING").put("label", "Imagen de referencia");
+    }
+
+    /**
+     * Foto de un reporte operativo (Incidente, Hallazgo, Vulnerabilidad) de SGI Operador (subida con targetType OPERATIONAL_REPORT).
+     * Si el reporte declara foto (photo_count) y el archivo aún no llegó, se informa como MISSING para que el detalle lo diga.
+     */
+    private void operationalReportPhotos(ArrayNode result, UUID eventId) {
+        List<Object[]> photos = ownPhotos(eventId, OperatorTasks.OPERATIONAL_REPORT, null);
+        for (Object[] row : photos)
+            if (row[1] != null && row[1].toString().startsWith("image/"))
+                result.addObject().put("id", row[0].toString()).put("source", "OBJECT").put("label", "Fotografía del reporte");
+        if (!photos.isEmpty()) return;
+        List<?> declared = em.createNativeQuery("select photo_count from operator_operational_report where id=:event and instance_country_id=:tenant")
+            .setParameter("event", eventId).setParameter("tenant", tenant.instanceCountryId()).getResultList();
+        if (!declared.isEmpty() && declared.get(0) instanceof Number n && n.intValue() > 0)
+            result.addObject().put("id", eventId.toString()).put("source", "MISSING").put("label", "Fotografía del reporte");
     }
 
     /**
@@ -319,14 +338,14 @@ public class OperationalEvidenceResource {
         return query.getResultList();
     }
 
-    /** Fotos de una solicitud de consigna nueva; con photoId solo esa foto. */
+    /** Fotos cuyo evento es a la vez su destino (solicitud de consigna nueva, reporte operativo); con photoId solo esa foto. */
     @SuppressWarnings("unchecked")
-    private List<Object[]> requestPhotos(UUID eventId, UUID photoId) {
+    private List<Object[]> ownPhotos(UUID eventId, String targetType, UUID photoId) {
         Query query = em.createNativeQuery("""
             select e.id,e.content_type from evidence_object e
-            where e.instance_country_id=:tenant and e.event_id=:event and e.target_id=:event and e.target_type='CONSIGNMENT_REQUEST' and e.status in ('STORED','ATTACHED')
+            where e.instance_country_id=:tenant and e.event_id=:event and e.target_id=:event and e.target_type=:type and e.status in ('STORED','ATTACHED')
             """ + (photoId == null ? "" : "and e.id=:photo ") + "order by e.captured_at,e.id")
-            .setParameter("tenant", tenant.instanceCountryId()).setParameter("event", eventId);
+            .setParameter("tenant", tenant.instanceCountryId()).setParameter("event", eventId).setParameter("type", targetType);
         if (photoId != null) query.setParameter("photo", photoId);
         return query.getResultList();
     }

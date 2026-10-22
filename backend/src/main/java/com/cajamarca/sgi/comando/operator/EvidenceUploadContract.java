@@ -32,9 +32,11 @@ public final class EvidenceUploadContract {
 
     /** Devuelve clientEvidenceId → índice del archivo en la lista recibida. */
     public static Map<UUID,Integer> matchFiles(Metadata m, List<String> fileNames, int maxFiles, Instant now) {
-        if (!Set.of("PATROL_CHECKPOINT", "CONSIGNMENT_EVIDENCE", "LOGBOOK_FIELD", "INVENTORY_ASSET", OperatorTasks.CONSIGNMENT_REQUEST).contains(m.targetType())) throw new BadRequestException("Tipo de destino no soportado: " + m.targetType());
+        if (!Set.of("PATROL_CHECKPOINT", "CONSIGNMENT_EVIDENCE", "LOGBOOK_FIELD", "INVENTORY_ASSET", OperatorTasks.CONSIGNMENT_REQUEST, OperatorTasks.OPERATIONAL_REPORT).contains(m.targetType())) throw new BadRequestException("Tipo de destino no soportado: " + m.targetType());
         // La foto de una consigna nueva no tiene otro evento: la solicitud es a la vez el evento y el destino.
         if (OperatorTasks.CONSIGNMENT_REQUEST.equals(m.targetType()) && !m.targetId().equals(m.eventId())) throw new BadRequestException("En CONSIGNMENT_REQUEST eventId y targetId deben ser el requestId de la solicitud");
+        // Igual para la foto de un reporte operativo: el reporte es el evento y el destino.
+        if (OperatorTasks.OPERATIONAL_REPORT.equals(m.targetType()) && !m.targetId().equals(m.eventId())) throw new BadRequestException("En OPERATIONAL_REPORT eventId y targetId deben ser el reportId del reporte");
         if (m.items().isEmpty() || m.items().size() > maxFiles) throw new BadRequestException("Se admiten entre 1 y " + maxFiles + " fotos por envío");
         if (fileNames.size() != m.items().size()) throw new BadRequestException("La cantidad de archivos no coincide con los metadatos");
         Map<String,Integer> byName = new HashMap<>();

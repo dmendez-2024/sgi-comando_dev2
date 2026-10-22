@@ -36,6 +36,8 @@ public class OperatorTasks {
 
     /** Foto de referencia de una consigna nueva creada por el agente (solicitud de revisión); destino = id de la solicitud. */
     public static final String CONSIGNMENT_REQUEST = "CONSIGNMENT_REQUEST";
+    /** Foto de un reporte operativo (Incidente, Hallazgo, Vulnerabilidad) creado por el agente; destino = id del reporte. */
+    public static final String OPERATIONAL_REPORT = "OPERATIONAL_REPORT";
 
     public Target require(String type, UUID id, PostEntity post) {
         if (type == null || id == null) throw new BadRequestException("Destino obligatorio");
@@ -72,6 +74,16 @@ public class OperatorTasks {
                 if (rows.isEmpty()) throw new ClientErrorException("La solicitud de consigna " + id + " aún no llega a Comando; reintente después de enviarla", 409);
                 if (!post.id.toString().equals(String.valueOf(rows.get(0)[0]))) throw new BadRequestException("La solicitud de consigna no pertenece a este Puesto");
                 if (!Boolean.TRUE.equals(rows.get(0)[1])) throw new BadRequestException("La solicitud de consigna no declara foto (hasPhoto=false)");
+                double[] loc = locationSettings.postReference(tenant.instanceCountryId(), post.id);
+                yield new Target(type, id, id, 1, true, false, 0, loc == null ? null : loc[0], loc == null ? null : loc[1], loc == null ? null : loc[2]);
+            }
+            case OPERATIONAL_REPORT -> {
+                // El reporte lo envía antes el outbox de la app (POST /operator/reports); si aún no llegó, 409 para que reintente.
+                @SuppressWarnings("unchecked") List<Object[]> rows = em.createNativeQuery("select post_id,photo_count from operator_operational_report where id=:id and instance_country_id=:t")
+                    .setParameter("id", id).setParameter("t", tenant.instanceCountryId()).getResultList();
+                if (rows.isEmpty()) throw new ClientErrorException("El reporte " + id + " aún no llega a Comando; reintente después de enviarlo", 409);
+                if (!post.id.toString().equals(String.valueOf(rows.get(0)[0]))) throw new BadRequestException("El reporte no pertenece a este Puesto");
+                if (!(rows.get(0)[1] instanceof Number n) || n.intValue() < 1) throw new BadRequestException("El reporte no declara foto (photoCount=0)");
                 double[] loc = locationSettings.postReference(tenant.instanceCountryId(), post.id);
                 yield new Target(type, id, id, 1, true, false, 0, loc == null ? null : loc[0], loc == null ? null : loc[1], loc == null ? null : loc[2]);
             }
@@ -151,6 +163,12 @@ public class OperatorTasks {
         List<?> rows = em.createNativeQuery("select employee_id from operator_consignment_review_request where id=:id and instance_country_id=:t")
             .setParameter("id", requestId).setParameter("t", tenant.instanceCountryId()).getResultList();
         if (!rows.isEmpty() && !employee.toString().equals(String.valueOf(rows.get(0)))) throw new jakarta.ws.rs.ForbiddenException("La solicitud de consigna pertenece a otro agente");
+    }
+
+    public void requireReportAuthor(UUID reportId, UUID employee) {
+        List<?> rows = em.createNativeQuery("select employee_id from operator_operational_report where id=:id and instance_country_id=:t")
+            .setParameter("id", reportId).setParameter("t", tenant.instanceCountryId()).getResultList();
+        if (!rows.isEmpty() && !employee.toString().equals(String.valueOf(rows.get(0)))) throw new jakarta.ws.rs.ForbiddenException("El reporte pertenece a otro agente");
     }
 
     static boolean applies(LogbookProtocol p, PostEntity post) {
