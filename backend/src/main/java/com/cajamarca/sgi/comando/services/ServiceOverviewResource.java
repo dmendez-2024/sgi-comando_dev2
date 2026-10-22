@@ -42,6 +42,7 @@ public class ServiceOverviewResource {
     @Inject SecurityIdentity identity;
 
     private static final Set<String> SERVICE_ASSIGN_ROLES = Set.of("PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL");
+    private static final Set<String> COMPANY_ROLES = Set.of("COORDINADOR_COMPANIA","ASISTENTE_COORDINACION");
 
     public record OverviewRow(
         UUID serviceId, UUID pointId, UUID postId, UUID companyId,
@@ -72,14 +73,16 @@ public class ServiceOverviewResource {
     @GET
     @Transactional
     public OverviewResponse overview() {
-        Set<UUID> allowed = scope.allowedCompanyIds();
+        boolean companyScoped = identity.getRoles().stream().anyMatch(COMPANY_ROLES::contains);
+        Set<UUID> allowed = companyScoped
+            ? directCompanyIds(scope.scopes()) : scope.allowedCompanyIds();
         Instant to = Instant.now();
         Instant from = to.minus(EXECUTION_WINDOW);
         List<PointEntity> points = new ArrayList<>();
         if (!allowed.isEmpty()) {
             points.addAll(PointEntity.list("instanceCountryId=?1 and companyId in ?2 order by name", tenant.instanceCountryId(), allowed));
         }
-        if (canAssignServices()) {
+        if (!companyScoped && canAssignServices()) {
             List<PointEntity> pending = PointEntity.list("instanceCountryId=?1 and operationalAssignmentStatus='PENDING' order by name", tenant.instanceCountryId());
             Set<UUID> seen = points.stream().map(p -> p.id).collect(Collectors.toSet());
             for (PointEntity p : pending) if (canManagePoint(p) && seen.add(p.id)) points.add(p);
@@ -304,6 +307,11 @@ public class ServiceOverviewResource {
     }
 
     private boolean canAssignServices(){ return identity.getRoles().stream().anyMatch(SERVICE_ASSIGN_ROLES::contains); }
+
+    static Set<UUID> directCompanyIds(List<UserOperationalScope> scopes){
+        return scopes.stream().filter(s -> "COMPANY".equals(s.scopeType) && s.scopeId != null)
+            .map(s -> s.scopeId).collect(Collectors.toSet());
+    }
 
     private boolean canManagePoint(PointEntity point){
         if (identity.getRoles().contains("PRESIDENTE") || identity.getRoles().contains("GERENCIA_GENERAL") || identity.getRoles().contains("DIRECTOR_NACIONAL")) return true;
