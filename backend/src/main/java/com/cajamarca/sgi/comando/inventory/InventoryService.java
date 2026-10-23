@@ -3,6 +3,7 @@ package com.cajamarca.sgi.comando.inventory;
 import com.cajamarca.sgi.comando.common.TenantContext;
 import com.cajamarca.sgi.comando.integration.ExternalPorts;
 import com.cajamarca.sgi.comando.interconnections.InterconnectionException;
+import com.cajamarca.sgi.comando.operator.ReliefContract;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -56,11 +57,11 @@ public class InventoryService {
     @Transactional
     public String recordReport(JsonNode event, JsonNode inventoryContext, UUID reliefId, UUID assignmentId, UUID postId,
                                UUID pointId, UUID employeeId, String username, UUID correlationId) {
-        String submitted = requiredText(event,"inventoryStatus",32).toUpperCase(Locale.ROOT);
+        String submitted = ReliefContract.inventoryStatus(event);
         String available = inventoryContext.path("status").asText("PENDING_SOURCE");
-        if ("PENDING_SOURCE".equals(submitted)) {
-            if (!"PENDING_SOURCE".equals(available)) throw new BadRequestException("El inventario está disponible y debe ser confirmado.");
-            if (event.path("inventoryItems").isArray() && !event.path("inventoryItems").isEmpty()) throw new BadRequestException("No envíe activos cuando el inventario está pendiente de fuente.");
+        // Inventario opcional: sin activos (no enviado o pendiente de fuente) el relevo se acepta aunque RRMM tenga tenencias.
+        if (ReliefContract.INVENTORY_WITHOUT_ITEMS.contains(submitted)) {
+            if (event.path("inventoryItems").isArray() && !event.path("inventoryItems").isEmpty()) throw new BadRequestException("No envíe activos sin reportar el inventario.");
             return "NOT_REQUIRED";
         }
         if (!Set.of("REPORTED","COMPLETE").contains(submitted)) throw new BadRequestException("Estado de inventario inválido.");
