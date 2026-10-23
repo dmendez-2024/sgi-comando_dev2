@@ -268,7 +268,7 @@ export default function Dashboard(){
           {loading?<div className="dash-v6-no-history">Cargando tendencia operacional…</div>:activeCard!=='coverageGap'&&activeCard!=='risk'?<div className="dash-v6-no-history"><Activity size={24}/><strong>S/D</strong><span>Sin histórico para este indicador.</span></div>:!data.riskTrend?<div className="dash-v6-no-history"><Activity size={24}/><strong>S/D</strong><span>Tendencia no disponible.</span></div>:data.riskTrend.every(point=>point.riskIndex==null)?<div className="dash-v6-no-history"><Activity size={24}/><strong>S/D</strong><span>Sin turnos en el período.</span></div>:<RiskTrendChart points={data.riskTrend} mode={activeCard==='risk'?'risk':'uncovered'}/>}
         </section>
         <section className="dash-v6-panel dash-v6-geography">
-          <div className="dash-v6-panel-title"><span className="blue-icon"><MapPin size={18}/></span><div><h3>Mapa operacional por provincia</h3><small>{pointIds.size} puntos en el alcance seleccionado</small></div></div>
+          <div className="dash-v6-panel-title"><span className="blue-icon"><MapPin size={18}/></span><div><h3>Mapa operacional por provincia</h3><small>{pointIds.size} punto{pointIds.size===1?'':'s'} en el alcance seleccionado</small></div></div>
           <DashboardProvinceMap provinces={provinceCounts} subdivisions={data.provinces as DashboardProvinceSubdivision[]}/>
         </section>
       </div>

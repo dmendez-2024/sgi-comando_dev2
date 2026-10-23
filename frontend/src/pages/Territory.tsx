@@ -56,6 +56,7 @@ function geoRings(feature:GeoFeature):MapPoint[][]{
 }
 
 type MapBounds={minX:number;maxX:number;minY:number;maxY:number};
+type MapFrame={x:number;y:number;width:number;height:number};
 function geometryMapShape(raw?:string):MapShape|null{
   if(!raw)return null;
   try{
@@ -72,14 +73,16 @@ function shapeBounds(shapes:MapShape[]):MapBounds|null{
   if(!points.length)return null;
   return{minX:Math.min(...points.map(p=>p[0])),maxX:Math.max(...points.map(p=>p[0])),minY:Math.min(...points.map(p=>p[1])),maxY:Math.max(...points.map(p=>p[1]))};
 }
-function projectDynamicPoint([x,y]:MapPoint,bounds:MapBounds):MapPoint{
-  const width=450,height=320,padding=24;
-  const scale=Math.min((width-padding*2)/Math.max(bounds.maxX-bounds.minX,.001),(height-padding*2)/Math.max(bounds.maxY-bounds.minY,.001));
-  const mapWidth=(bounds.maxX-bounds.minX)*scale,mapHeight=(bounds.maxY-bounds.minY)*scale;
-  return[(width-mapWidth)/2+(x-bounds.minX)*scale,(height-mapHeight)/2+(bounds.maxY-y)*scale];
+function projectDynamicPoint([x,y]:MapPoint,bounds:MapBounds,frame:MapFrame):MapPoint{
+  const spanX=Math.max(bounds.maxX-bounds.minX,.001),spanY=Math.max(bounds.maxY-bounds.minY,.001);
+  const scale=Math.min(frame.width/spanX,frame.height/spanY);
+  return[
+    frame.x+(frame.width-spanX*scale)/2+(x-bounds.minX)*scale,
+    frame.y+(frame.height-spanY*scale)/2+(bounds.maxY-y)*scale
+  ];
 }
-function dynamicMapPath(shape:MapShape,bounds:MapBounds){
-  return shapeRings(shape).map(ring=>ring.map((point,index)=>{const [x,y]=projectDynamicPoint(point,bounds);return`${index?'L':'M'}${x.toFixed(1)} ${y.toFixed(1)}`}).join(' ')+' Z').join(' ');
+function dynamicMapPath(shape:MapShape,bounds:MapBounds,frame:MapFrame){
+  return shapeRings(shape).map(ring=>ring.map((point,index)=>{const [x,y]=projectDynamicPoint(point,bounds,frame);return`${index?'L':'M'}${x.toFixed(1)} ${y.toFixed(1)}`}).join(' ')+' Z').join(' ');
 }
 function projector(features:GeoFeature[],frame:{x:number;y:number;width:number;height:number}){
   const points=features.flatMap(feature=>geoRings(feature).flat());
@@ -161,24 +164,39 @@ export function DashboardProvinceMap({provinces,subdivisions=[]}:{provinces:Dash
   const totalPoints=provinces.reduce((sum,province)=>sum+province.points,0);
   const catalog=subdivisions.length?subdivisions:provinces;
   const shapes=catalog.flatMap(province=>{if(province.status&&province.status!=='ACTIVE')return[];const shape=geometryMapShape(province.geometryJson);return shape?[{province,shape}]:[]});
-  const bounds=shapeBounds(shapes.map(item=>item.shape));
+  const isIsland=(province:DashboardProvinceSubdivision)=>['galapagos','galapagos islands'].includes(geoKey(province.name))||['GAL','EC-W'].includes(province.code.toUpperCase());
+  const mainland=shapes.filter(item=>!isIsland(item.province));
+  const islands=mainland.length?shapes.filter(item=>isIsland(item.province)):[];
+  const mainShapes=mainland.length?mainland:shapes;
+  const mainBounds=shapeBounds(mainShapes.map(item=>item.shape));
+  const islandBounds=shapeBounds(islands.map(item=>item.shape));
+  const mainFrame:MapFrame=islands.length?{x:100,y:12,width:382,height:290}:{x:18,y:12,width:464,height:290};
+  const islandFrame:MapFrame={x:14,y:206,width:84,height:76};
+  const active=provinces.filter(province=>province.points>0).sort((a,b)=>b.points-a.points||a.name.localeCompare(b.name,'es'));
   return <div className="dash-v6-map-wrap">
-    <svg className="dash-v6-ecuador-map" viewBox="0 0 450 320" role="img" aria-label={`Mapa de subdivisiones CORE con ${totalPoints} puntos operativos`}>
+    <div className="dash-v6-map-stage">
+    {shapes.length?<svg className="dash-v6-ecuador-map" viewBox="0 0 500 320" role="img" aria-label={`Mapa de subdivisiones CORE con ${totalPoints} puntos operativos en ${active.length} provincias`}>
+      {islands.length>0&&<><rect className="dash-v6-map-inset" x="8" y="196" width="96" height="96" rx="10"/><text className="dash-v6-map-inset-label" x="56" y="306">Galápagos</text></>}
       {shapes.map(({province,shape})=>{
         const count=byCode.get(province.code)?.points??0;
-        const ring=(typeof shape[0][0]==='number'?shape:(shape as MapPoint[][])[0]) as MapPoint[];
-        const center=ring.reduce((sum,point)=>{const [x,y]=bounds?projectDynamicPoint(point,bounds):[0,0];return [sum[0]+x,sum[1]+y] as MapPoint},[0,0] as MapPoint);
-        const x=center[0]/ring.length;const y=center[1]/ring.length;
+        const island=islands.length>0&&isIsland(province);
+        const bounds=island?islandBounds:mainBounds;
+        const frame=island?islandFrame:mainFrame;
+        const ring=shapeRings(shape).slice().sort((a,b)=>b.length-a.length)[0];
+        const center=ring?.reduce((sum,point)=>{const [x,y]=bounds?projectDynamicPoint(point,bounds,frame):[0,0];return [sum[0]+x,sum[1]+y] as MapPoint},[0,0] as MapPoint);
+        const x=center&&ring.length?center[0]/ring.length:0;const y=center&&ring.length?center[1]/ring.length:0;
         const mapped=byCode.get(province.code);
-        return <g key={province.code} className="dash-v6-map-province">
-          <path d={bounds?dynamicMapPath(shape,bounds):''} fill={count?'#2483d5':'#e6edf4'} fillOpacity={count?0.4+(count/maxPoints)*0.6:1}>
+        return <g key={province.code} className={`dash-v6-map-province ${count?'has-points':''}`}>
+          <path d={bounds?dynamicMapPath(shape,bounds,frame):''} fill={count?'#1681cf':'#e0eaf4'} fillOpacity={count?0.65+(count/maxPoints)*0.35:1}>
             <title>{mapped?.name||province.name}: {count} punto{count===1?'':'s'}</title>
           </path>
-          {count>0&&<text x={x} y={y}>{count}</text>}
+          {count>0&&<g className="dash-v6-map-marker" transform={`translate(${x} ${y})`}><circle r="11"/><text y="3.5">{count}</text></g>}
         </g>
       })}
-    </svg>
-    <div className="dash-v6-map-legend">{shapes.length?<><span><i className="low"/>Sin puntos</span><span><i className="high"/>Más puntos</span></>:<span>CORE aún no entrega geometrías para este país.</span>}<strong>{totalPoints} puntos</strong></div>
+    </svg>:<div className="dash-v6-map-empty">CORE aún no entrega geometrías para este país.</div>}
+    </div>
+    <div className="dash-v6-map-legend">{shapes.length>0&&<><span><i className="low"/>Sin puntos</span><span><i className="high"/>Con puntos</span></>}<strong>{totalPoints} punto{totalPoints===1?'':'s'} · {active.length} provincia{active.length===1?'':'s'}</strong></div>
+    {active.length>0&&<div className="dash-v6-map-active" aria-label="Provincias con puntos operativos">{active.slice(0,3).map(province=><div key={province.code}><span>{province.name}</span><strong>{province.points} punto{province.points===1?'':'s'}</strong></div>)}{active.length>3&&<small>Y {active.length-3} provincias más</small>}</div>}
   </div>
 }
 
