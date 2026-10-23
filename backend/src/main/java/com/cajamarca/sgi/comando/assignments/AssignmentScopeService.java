@@ -31,6 +31,9 @@ public class AssignmentScopeService {
 
     public Set<UUID> allowedCompanyIds(){
         if(countryWide())return Company.<Company>list("instanceCountryId=?1",tenant.instanceCountryId()).stream().map(c->c.id).collect(Collectors.toCollection(LinkedHashSet::new));
+        if(identity.getRoles().stream().anyMatch(STANDARD_EDIT_ROLES::contains)
+                && !identity.getRoles().contains("DIRECTOR_ZONAL")
+                && !identity.getRoles().contains("JEFE_REGIONAL"))return directCompanyIds(scopes());
         LinkedHashSet<UUID> out=new LinkedHashSet<>();
         for(UserOperationalScope s:scopes()){
             if(s.scopeId==null)continue;
@@ -40,6 +43,11 @@ public class AssignmentScopeService {
         }
         if(identity.getRoles().stream().anyMatch(KAIBIL_EDIT_ROLES::contains))Company.<Company>list("instanceCountryId=?1 and alwaysActive=true",tenant.instanceCountryId()).forEach(c->out.add(c.id));
         return out;
+    }
+
+    static Set<UUID> directCompanyIds(List<UserOperationalScope> scopes){
+        return scopes.stream().filter(s->"COMPANY".equals(s.scopeType)&&s.scopeId!=null)
+                .map(s->s.scopeId).collect(Collectors.toCollection(LinkedHashSet::new));
     }
 
     public void requireCompany(UUID companyId){if(companyId==null||!allowedCompanyIds().contains(companyId))throw new ForbiddenException("La Compañía está fuera del alcance territorial del usuario.");}

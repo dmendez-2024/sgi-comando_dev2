@@ -93,6 +93,16 @@ public class AssignmentResource {
     public record PostRequirementDto(String code,String label,BigDecimal required) {}
     public record ConsignmentMini(String code,String title,String instruction,String priority) {}
     public record PostDetails(UUID postId,String postCode,String postName,String tier,BigDecimal fhe,String clientName,String pointName,String city,List<PostRequirementDto> requirements,List<ConsignmentMini> consignments,List<Map<String,String>> recentNews) {}
+    public record AssignmentCompanyDto(UUID id,String code,String name,String companyType,boolean alwaysActive) {}
+
+    @GET
+    @Path("/companies")
+    public List<AssignmentCompanyDto> companies(){
+        Set<UUID> allowed=scope.allowedCompanyIds();
+        if(allowed.isEmpty())return List.of();
+        return Company.<Company>list("instanceCountryId=?1 and status='ACTIVE' and id in ?2 order by name",tenant.instanceCountryId(),allowed).stream()
+                .map(c->new AssignmentCompanyDto(c.id,c.code,c.name,c.companyType,c.alwaysActive)).toList();
+    }
 
     @POST
     @Path("/plans/ensure")
