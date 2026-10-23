@@ -25,7 +25,7 @@ type CopyMode='NONE'|'DAY_SOURCE'|'DAY_TARGET'|'CYCLE_TARGET'|'SELECTION_TARGET'
 type PersonnelSort='PERSON'|'ID'|'FREE';
 type SortDirection='ASC'|'DESC';
 
-const ROLE_LABEL:Record<string,string>={AGENTE_SEGURIDAD:'Agente de Seguridad',SUPERVISOR_SEGURIDAD:'Supervisor de Seguridad',ESCOLTA_SEGURIDAD:'Escolta de Seguridad',DIRECTOR_NACIONAL:'Director Nacional de Operaciones',DIRECTOR_ZONAL:'Director Zonal de Operaciones',JEFE_REGIONAL:'Jefe Regional de Operaciones',MONITOR:'Monitor'};
+const ROLE_LABEL:Record<string,string>={AGENTE_SEGURIDAD:'Agente de Seguridad',SUPERVISOR_SEGURIDAD:'Supervisor de Seguridad',ESCOLTA_SEGURIDAD:'Escolta de Seguridad',DIRECTOR_OPERACIONES_NACIONAL:'Director Nacional de Operaciones',DIRECTOR_NACIONAL:'Director Nacional de Operaciones',DIRECTOR_ZONAL:'Director Zonal de Operaciones',JEFE_REGIONAL:'Jefe Regional de Operaciones',MONITOR:'Monitor'};
 const UNAV_LABEL:Record<string,string>={MEDICAL_LEAVE:'Permiso médico',VACATION:'Vacaciones',PERMISSION:'Permisos generales'};
 const WEEKLY_REFERENCE_HOURS=44;
 const HORIZONTAL_DAY_RADIUS=120;
@@ -73,7 +73,7 @@ function clampIso(date:string,min:string,max:string){return date<min?min:date>ma
 
 export default function Assignments(){
   const user=getUser();const today=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Guayaquil',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
-  const kaibilLeadershipUsers=['presidente','ggeneral','dnacional','dzonal','jregional'];
+  const kaibilLeadershipUsers=['presidente','ggeneral','don','dnacional','dzonal','jregional'];
   const isKaibilLeadership=kaibilLeadershipUsers.includes(user);
   const [companies,setCompanies]=useState<Company[]>([]);const [companyId,setCompanyId]=useState('');const [weekStart,setWeekStart]=useState(monday());const [clientFilter,setClientFilter]=useState('');
   const selectedCompany=useMemo(()=>companies.find(c=>c.id===companyId),[companies,companyId]);const canEdit=selectedCompany?.alwaysActive?isKaibilLeadership:['coord','asistente'].includes(user);

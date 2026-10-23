@@ -2,7 +2,7 @@ import {useEffect,useState} from 'react';
 import {Bell} from 'lucide-react';
 import {getUser,setUser,type UatUser} from '../api';
 import {identEmail,identEnabled,identPlatforms,identPortal,identSignOut} from '../security/identAuth';
-const users:UatUser[]=['presidente','ggeneral','dnacional','dzonal','jregional','coord','asistente'];
+const users:UatUser[]=['presidente','ggeneral','don','dnacional','dzonal','jregional','coord','asistente'];
 const labels:Record<UatUser,string>={presidente:'Presidente',ggeneral:'Gerente General Ecuador',dlatam:'Director Operaciones LATAM',don:'Director Nacional de Operaciones',dnacional:'Director Nacional de Operaciones',dzonal:'Director Zonal de Operaciones',jregional:'Jefe Regional de Operaciones',coord:'Coordinador de Compañía',asistente:'Asistente de Operaciones',supervisor:'Supervisor',agente:'Agente',cliente:'Cliente'};
 export default function Header({title,coreContext,onUserChange}:{title:string,coreContext?:any,onUserChange:()=>void}){
   // Con IDENT: la persona y su Rol vienen del login de IDENT; "← Plataformas" solo si tiene 2 o mas Sistemas.
@@ -18,7 +18,7 @@ export default function Header({title,coreContext,onUserChange}:{title:string,co
           {plataformas>1&&<button className="secondary-button" style={{whiteSpace:'nowrap'}} onClick={identPortal}>← Plataformas</button>}
           <button className="secondary-button" style={{whiteSpace:'nowrap'}} onClick={identSignOut}>Cerrar sesión</button>
         </>
-        :<div className="userbox"><span>Usuario UAT</span><select defaultValue={getUser()} onChange={e=>{setUser(e.target.value as UatUser);onUserChange()}}>{users.map(u=><option key={u} value={u}>{labels[u]}</option>)}</select></div>}
+        :<div className="userbox"><span>Usuario UAT</span><select defaultValue={getUser()} onChange={e=>{setUser(e.target.value as UatUser);onUserChange()}}>{users.map(u=><option key={u} value={u}>{labels[u]}{u==='don'?' (OPERACIONES_NACIONAL)':u==='dnacional'?' (DIRECTOR_NACIONAL)':''}</option>)}</select></div>}
     </div>
   </header>
 }

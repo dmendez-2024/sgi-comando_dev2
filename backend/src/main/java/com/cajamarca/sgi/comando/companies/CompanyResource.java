@@ -34,7 +34,7 @@ import org.jboss.logging.Logger;
 public class CompanyResource {
     private static final Logger LOG = Logger.getLogger(CompanyResource.class);
     private static final Set<String> ACTIVE_SERVICE_STATUSES = Set.of("ACTIVE", "VIGENTE");
-    private static final Set<String> KAIBIL_ROLES = Set.of("PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL");
+    private static final Set<String> KAIBIL_ROLES = Set.of("PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL");
 
     @Inject TenantContext tenant;
     @Inject OperationalScopeService scope;
