@@ -130,8 +130,11 @@ public class SicComCommercialCatalogService {
     for (ServicePayload payload : servicePayloads(request)) {
       Upsert<ServiceEntity> service = upsertService(instanceCountryId, payload.service(), client.value, request.commercialVersion());
       List<AppliedPoint> appliedPoints = new ArrayList<>();
+      Set<UUID> servicesToRefresh = new HashSet<>();
+      servicesToRefresh.add(service.value.id);
       for (PointInput pointInput : payload.points()) {
-        Upsert<PointEntity> point = upsertPoint(instanceCountryId, pointInput, service.value, client.value.name);
+        PointUpsert point = upsertPoint(instanceCountryId, pointInput, service.value, client.value.name);
+        if (point.previousServiceId != null) servicesToRefresh.add(point.previousServiceId);
         List<AppliedEntity> appliedPosts = new ArrayList<>();
         for (PostInput postInput : safe(pointInput.posts())) {
           Upsert<PostEntity> post = upsertPost(instanceCountryId, postInput, pointInput, request.client(), point.value);
@@ -140,7 +143,7 @@ public class SicComCommercialCatalogService {
         }
         appliedPoints.add(new AppliedPoint(pointInput.code(), point.value.id, point.action, appliedPosts));
       }
-      ServiceConfigurationStatus.refresh(instanceCountryId, service.value.id);
+      servicesToRefresh.forEach(serviceId -> ServiceConfigurationStatus.refresh(instanceCountryId, serviceId));
       appliedServices.add(new AppliedService(applied(service.value.code, service.value.id, service.action), appliedPoints));
     }
 
@@ -199,12 +202,10 @@ public class SicComCommercialCatalogService {
     return new Upsert<>(service, created ? "CREATED" : "UPDATED");
   }
 
-  private Upsert<PointEntity> upsertPoint(UUID instanceCountryId, PointInput input, ServiceEntity service, String clientName) {
+  private PointUpsert upsertPoint(UUID instanceCountryId, PointInput input, ServiceEntity service, String clientName) {
     PointEntity point = PointEntity.find("instanceCountryId=?1 and code=?2", instanceCountryId, input.code()).firstResult();
     boolean created = point == null;
-    if (!created && !point.serviceId.equals(service.id)) {
-      throw conflict("El Punto " + input.code() + " pertenece a otro Servicio.");
-    }
+    UUID previousServiceId = !created && !point.serviceId.equals(service.id) ? point.serviceId : null;
     if (created) {
       point = new PointEntity();
       point.instanceCountryId = instanceCountryId;
@@ -212,6 +213,10 @@ public class SicComCommercialCatalogService {
       point.companyId = null;
       point.operationalAssignmentStatus = "PENDING";
       point.receivedFromSicComAt = Instant.now();
+    } else if (previousServiceId != null) {
+      // SIC:COM is the source of truth for the commercial Service → Point relation.
+      // Preserve the point identity and its operational assignment/configuration.
+      point.serviceId = service.id;
     }
     point.code = input.code();
     point.name = input.name();
@@ -220,7 +225,7 @@ public class SicComCommercialCatalogService {
     point.clientName = clientName;
     point.status = commercialStatus(input.status());
     if (created) point.persist();
-    return new Upsert<>(point, created ? "CREATED" : "UPDATED");
+    return new PointUpsert(point, created ? "CREATED" : previousServiceId == null ? "UPDATED" : "MOVED", previousServiceId);
   }
 
   private Upsert<PostEntity> upsertPost(
@@ -387,6 +392,7 @@ public class SicComCommercialCatalogService {
     }
 
     boolean inactivation = INACTIVE.equals(commercialStatus(request.client().commercialStatus()));
+    Set<String> pointCodes = new HashSet<>();
     for (ServicePayload payload : servicePayloads(request)) {
       ServiceInput service = payload.service();
       if (service == null) throw validation("services no puede contener valores nulos.");
@@ -397,6 +403,7 @@ public class SicComCommercialCatalogService {
       for (PointInput point : payload.points()) {
         if (point == null) throw validation("services.points no puede contener valores nulos.");
         required(point.code(), "points.code"); required(point.name(), "points.name"); required(point.province(), "points.province"); required(point.city(), "points.city");
+        if (!pointCodes.add(point.code())) throw validation("Un Punto no puede pertenecer a más de un Servicio en el mismo evento: " + point.code() + ".");
         if (safe(point.posts()).isEmpty()) throw validation("points.posts es obligatorio.");
         inactivation |= INACTIVE.equals(commercialStatus(point.status()));
         for (PostInput post : point.posts()) {
@@ -489,5 +496,6 @@ public class SicComCommercialCatalogService {
   }
 
   private record Upsert<T>(T value, String action) {}
+  private record PointUpsert(PointEntity value, String action, UUID previousServiceId) {}
   private record ServicePayload(ServiceInput service, List<PointInput> points) {}
 }
