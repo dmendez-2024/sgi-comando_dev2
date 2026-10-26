@@ -141,7 +141,7 @@ public class AssignmentResource {
         List<PointEntity> allPoints=PointEntity.list("instanceCountryId=?1 and companyId=?2 and status='ACTIVE' order by name",tenant.instanceCountryId(),companyId);
         List<PointEntity> visiblePoints=pointId==null?allPoints:allPoints.stream().filter(p->p.id.equals(pointId)).toList();
         Set<UUID> pointIds=visiblePoints.stream().map(p->p.id).collect(Collectors.toSet());
-        List<PostEntity> allPosts=pointIds.isEmpty()?List.of():PostEntity.list("instanceCountryId=?1 and pointId in ?2 order by code",tenant.instanceCountryId(),pointIds);
+        List<PostEntity> allPosts=activeOperationalPosts(pointIds);
         Set<UUID> postIds=allPosts.stream().map(p->p.id).collect(Collectors.toSet());
         List<CoordinationPost> coordinationPosts=pointId==null?assignableCoordinationPosts(companyId):List.of();
         Set<UUID> coordinationPostIds=coordinationPosts.stream().map(p->p.id).collect(Collectors.toSet());
@@ -446,6 +446,8 @@ public class AssignmentResource {
         if(post!=null){
             PointEntity point=PointEntity.find("id=?1 and instanceCountryId=?2",post.pointId,tenant.instanceCountryId()).firstResult();
             if(point==null||!Objects.equals(point.companyId,plan.companyId)) throw conflict("COMPANIA_INVALIDA","El turno no pertenece a la Compañía del plan.");
+            if(!"ACTIVE".equalsIgnoreCase(point.status)||!"ACTIVE".equalsIgnoreCase(post.commercialStatus))
+                throw conflict("PUESTO_INACTIVO","El Puesto o Punto ya no está activo para nuevas Asignaciones.");
             if(point.operationalTransitionUntil!=null&&shift.startsAt.isBefore(point.operationalTransitionUntil)) throw conflict("SERVICIO_EN_TRANSICION","El Servicio conserva un turno de la Compañía anterior hasta "+point.operationalTransitionUntil+". No puede asignarse personal nuevo antes de ese momento.");
         }else if(!Objects.equals(coordinationPost.companyId,plan.companyId)||!"ACTIVE".equals(coordinationPost.status)||("SUPERVISION".equals(coordinationPost.postType)&&!hasPublishedRoute(coordinationPost.id)))throw conflict("COORDINATION_POST_INVALID","El Puesto de Coordinación no está activo o no pertenece a la Compañía del plan.");
         EmployeeOperationalSnapshot employee=EmployeeOperationalSnapshot.find("instanceCountryId=?1 and employeeId=?2",tenant.instanceCountryId(),req.employeeId()).firstResult();
@@ -549,7 +551,7 @@ public class AssignmentResource {
             List<PointEntity> points=PointEntity.list("instanceCountryId=?1 and companyId=?2 and status='ACTIVE'",tenant.instanceCountryId(),c.id);
             if(clientId!=null)points=points.stream().filter(point->clientServiceIds.contains(point.serviceId)).toList();
             Set<UUID> pids=points.stream().map(p->p.id).collect(Collectors.toSet());
-            List<PostEntity> posts=pids.isEmpty()?List.of():PostEntity.list("instanceCountryId=?1 and pointId in ?2",tenant.instanceCountryId(),pids);
+            List<PostEntity> posts=activeOperationalPosts(pids);
             List<CoordinationPost> coordinationPosts=clientId==null?assignableCoordinationPosts(c.id):List.of();
             List<ShiftOccurrenceEntity> shifts=planShifts(plan);
             if(clientId!=null){Set<UUID> postIds=posts.stream().map(post->post.id).collect(Collectors.toSet());shifts=shifts.stream().filter(shift->postIds.contains(shift.postId)).toList();}
@@ -584,7 +586,7 @@ public class AssignmentResource {
     private void materializeShifts(UUID companyId, LocalDate week){
         List<PointEntity> points=PointEntity.list("instanceCountryId=?1 and companyId=?2 and status='ACTIVE'",tenant.instanceCountryId(),companyId);
         Set<UUID> pointIds=points.stream().map(p->p.id).collect(Collectors.toSet());
-        List<PostEntity> posts=pointIds.isEmpty()?List.of():PostEntity.list("instanceCountryId=?1 and pointId in ?2",tenant.instanceCountryId(),pointIds);
+        List<PostEntity> posts=activeOperationalPosts(pointIds);
         Set<UUID> postIds=posts.stream().map(p->p.id).collect(Collectors.toSet());
         List<PostShiftTemplate> templates=postIds.isEmpty()?List.of():PostShiftTemplate.list("instanceCountryId=?1 and postId in ?2 and active=true",tenant.instanceCountryId(),postIds);
         for(PostShiftTemplate t:templates){
@@ -600,6 +602,12 @@ public class AssignmentResource {
             }
         }
         materializeCoordinationShifts(companyId,week);
+    }
+
+    private List<PostEntity> activeOperationalPosts(Set<UUID> pointIds){
+        return pointIds.isEmpty()?List.of():PostEntity.list(
+            "instanceCountryId=?1 and pointId in ?2 and upper(commercialStatus)='ACTIVE' order by code",
+            tenant.instanceCountryId(),pointIds);
     }
 
     private record CoordinationShift(String code,String name,LocalTime start,LocalTime end) {}
@@ -728,7 +736,7 @@ public class AssignmentResource {
     private List<ShiftOccurrenceEntity> planShifts(AssignmentPlanEntity plan){
         List<PointEntity> points=PointEntity.list("instanceCountryId=?1 and companyId=?2 and status='ACTIVE'",tenant.instanceCountryId(),plan.companyId);
         Set<UUID> pids=points.stream().map(p->p.id).collect(Collectors.toSet());
-        List<PostEntity> posts=pids.isEmpty()?List.of():PostEntity.list("instanceCountryId=?1 and pointId in ?2",tenant.instanceCountryId(),pids); Set<UUID> postIds=posts.stream().map(p->p.id).collect(Collectors.toSet());
+        List<PostEntity> posts=activeOperationalPosts(pids); Set<UUID> postIds=posts.stream().map(p->p.id).collect(Collectors.toSet());
         Set<UUID> coordinationPostIds=assignableCoordinationPosts(plan.companyId).stream().map(p->p.id).collect(Collectors.toSet());
         Instant from=plan.weekStart.atStartOfDay(OPERATING_ZONE).toInstant(),to=plan.weekStart.plusDays(7).atStartOfDay(OPERATING_ZONE).toInstant();
         List<ShiftOccurrenceEntity> operational=postIds.isEmpty()?List.of():ShiftOccurrenceEntity.list("instanceCountryId=?1 and postId in ?2 and startsAt>=?3 and startsAt<?4 order by startsAt",tenant.instanceCountryId(),postIds,from,to);
