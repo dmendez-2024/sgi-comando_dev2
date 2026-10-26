@@ -95,19 +95,27 @@ public class OperatorReportResource {
 
     ArrayNode rows(UUID employee,String type) { return rows(employee,type,null); }
 
-    ArrayNode rows(UUID employee,String type,Set<UUID> companyIds) {
-        if(companyIds!=null && companyIds.isEmpty()) return mapper.createArrayNode();
-        String sql="""
+    /** Las coordenadas no viven en el reporte: se toman de su fotografía (evidence_object), la primera con ubicación. */
+    private static final String SELECT="""
           select r.id,r.employee_id,r.report_type,r.category,r.subcategory,r.title,r.description,r.severity,r.status,
                  r.occurred_at,r.created_at,r.assignment_id,r.point_id,r.post_id,r.username,p.name,coalesce(po.name,'—'),
-                 p.client_name,p.city,p.company_id,co.code,co.name,r.payload_hash,r.routing_target,r.routing_status,r.routing_reference_id,r.photo_count
+                 p.client_name,p.city,p.company_id,co.code,co.name,r.payload_hash,r.routing_target,r.routing_status,r.routing_reference_id,r.photo_count,
+                 ev.latitude,ev.longitude,ev.accuracy_m
           from operator_operational_report r join point p on p.id=r.point_id and p.instance_country_id=r.instance_country_id
           left join post po on po.id=r.post_id and po.instance_country_id=r.instance_country_id
           left join company co on co.id=p.company_id and co.instance_country_id=r.instance_country_id
-          where r.instance_country_id=:tenant order by r.occurred_at desc limit 200
-          """;
+          left join lateral (
+            select e.latitude,e.longitude,e.accuracy_m from evidence_object e
+            where e.instance_country_id=r.instance_country_id and e.event_id=r.id and e.target_id=r.id and e.target_type='OPERATIONAL_REPORT'
+              and e.status in ('STORED','ATTACHED') and e.latitude is not null and e.longitude is not null
+            order by e.captured_at,e.id limit 1
+          ) ev on true
+          where r.instance_country_id=:tenant""";
+
+    ArrayNode rows(UUID employee,String type,Set<UUID> companyIds) {
+        if(companyIds!=null && companyIds.isEmpty()) return mapper.createArrayNode();
         String filters=(employee==null?"":" and r.employee_id=:employee")+(type==null?"":" and r.report_type=:type")+(companyIds==null?"":" and p.company_id in (:companyIds)");
-        sql=sql.replace(" order by",filters+" order by");
+        String sql=SELECT+filters+" order by r.occurred_at desc limit 200";
         var query=em.createNativeQuery(sql).setParameter("tenant",tenant.instanceCountryId());
         if(employee!=null) query.setParameter("employee",employee);
         if(type!=null) query.setParameter("type",type);
@@ -117,15 +125,8 @@ public class OperatorReportResource {
     }
 
     private Object[] find(UUID id) {
-        @SuppressWarnings("unchecked") List<Object[]> rows=em.createNativeQuery("""
-          select r.id,r.employee_id,r.report_type,r.category,r.subcategory,r.title,r.description,r.severity,r.status,
-                 r.occurred_at,r.created_at,r.assignment_id,r.point_id,r.post_id,r.username,p.name,coalesce(po.name,'—'),
-                 p.client_name,p.city,p.company_id,co.code,co.name,r.payload_hash,r.routing_target,r.routing_status,r.routing_reference_id,r.photo_count
-          from operator_operational_report r join point p on p.id=r.point_id and p.instance_country_id=r.instance_country_id
-          left join post po on po.id=r.post_id and po.instance_country_id=r.instance_country_id
-          left join company co on co.id=p.company_id and co.instance_country_id=r.instance_country_id
-          where r.instance_country_id=:tenant and r.id=:id
-          """).setParameter("tenant",tenant.instanceCountryId()).setParameter("id",id).getResultList();
+        @SuppressWarnings("unchecked") List<Object[]> rows=em.createNativeQuery(SELECT+" and r.id=:id")
+          .setParameter("tenant",tenant.instanceCountryId()).setParameter("id",id).getResultList();
         return rows.isEmpty()?null:rows.get(0);
     }
     ObjectNode response(Object[] r,boolean duplicate) {
@@ -139,6 +140,8 @@ public class OperatorReportResource {
         if(r[19]!=null)x.put("companyId",r[19].toString()); if(r[20]!=null)x.put("companyCode",r[20].toString()); if(r[21]!=null)x.put("companyName",r[21].toString());
         if(r[23]!=null)x.put("routingTarget",r[23].toString()); if(r[24]!=null)x.put("routingStatus",r[24].toString()); if(r[25]!=null)x.put("routingReferenceId",r[25].toString());
         if(r[26]!=null)x.put("photoCount",((Number)r[26]).intValue());
+        if(r[27]!=null&&r[28]!=null)x.put("latitude",((Number)r[27]).doubleValue()).put("longitude",((Number)r[28]).doubleValue());
+        if(r[29]!=null)x.put("accuracyM",((Number)r[29]).doubleValue());
         if(r[4]!=null)x.put("subcategory",r[4].toString()); if(r[13]!=null)x.put("postId",r[13].toString()); return x;
     }
     static String normalizeType(String value) { if(value==null||value.isBlank())return null; String x=value.trim().toUpperCase(Locale.ROOT); if(!TYPES.contains(x))throw new BadRequestException("Tipo de reporte inválido"); return x; }

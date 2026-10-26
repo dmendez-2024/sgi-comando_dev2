@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.node.*;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.test.junit.QuarkusTest;
 import io.restassured.http.ContentType;
+import io.restassured.path.json.config.JsonPathConfig;
 import jakarta.inject.Inject;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.*;
@@ -37,10 +38,15 @@ class OperationalReportPhotoTest {
     }
 
     io.restassured.response.ValidatableResponse uploadPhoto(UUID reportId, UUID clientEvidenceId) throws Exception {
+        return uploadPhoto(reportId, clientEvidenceId, null);
+    }
+
+    io.restassured.response.ValidatableResponse uploadPhoto(UUID reportId, UUID clientEvidenceId, double[] location) throws Exception {
         ObjectNode meta = m.createObjectNode().put("uploadBatchId", UUID.randomUUID().toString()).put("eventId", reportId.toString())
             .put("assignmentId", assignment.toString()).put("targetType", "OPERATIONAL_REPORT").put("targetId", reportId.toString());
-        meta.putArray("items").addObject().put("clientEvidenceId", clientEvidenceId.toString()).put("capturedAt", Instant.now().toString())
+        ObjectNode item = meta.putArray("items").addObject().put("clientEvidenceId", clientEvidenceId.toString()).put("capturedAt", Instant.now().toString())
             .put("source", "CAMERA").put("sha256", Digests.sha256Hex(Files.readAllBytes(JPG)));
+        if (location != null) item.put("latitude", location[0]).put("longitude", location[1]).put("accuracyM", location[2]);
         return as("agente").multiPart("metadata", meta.toString()).multiPart("files", clientEvidenceId + ".jpg", Files.readAllBytes(JPG), "image/jpeg")
             .post("/api/v1/operator/evidences").then();
     }
@@ -61,6 +67,25 @@ class OperationalReportPhotoTest {
         byte[] served = as(CONSOLE).get("/api/operation/events/" + reportId + "/evidences/" + photoId + "/content").then()
             .statusCode(200).contentType(startsWith("image/jpeg")).extract().asByteArray();
         Assertions.assertArrayEquals(Files.readAllBytes(JPG), served);
+    }
+
+    @Test void reviewListShowsTheLocationOfThePhoto() throws Exception {
+        UUID reportId = UUID.randomUUID();
+        submitReport(reportId, 1);
+        String row = "find { it.reportId == '" + reportId + "' }";
+
+        // Sin foto todavía, el reporte no tiene ubicación.
+        as(CONSOLE).get("/api/operational-reports").then().statusCode(200)
+            .body(row + ".latitude", nullValue()).body(row + ".accuracyM", nullValue());
+
+        uploadPhoto(reportId, UUID.randomUUID(), new double[]{-2.189134, -79.889903, 7.5}).statusCode(200).body("results[0].status", is("STORED"));
+
+        // Como double: el Float por defecto de RestAssured no conserva los decimales de la longitud.
+        var json = as(CONSOLE).get("/api/operational-reports").then().statusCode(200).extract()
+            .jsonPath(JsonPathConfig.jsonPathConfig().numberReturnType(JsonPathConfig.NumberReturnType.DOUBLE));
+        Assertions.assertEquals(-2.189134, json.getDouble(row + ".latitude"), 1e-9);
+        Assertions.assertEquals(-79.889903, json.getDouble(row + ".longitude"), 1e-9);
+        Assertions.assertEquals(7.5, json.getDouble(row + ".accuracyM"), 1e-9);
     }
 
     @Test void retryFromTheOutboxIsIdempotentAndOnlyOnePhotoIsKept() throws Exception {

@@ -8,7 +8,11 @@ import java.util.*;
 /** Contrato v1 del relevo, incluida la confirmación del inventario entregado por RRMM. */
 public final class ReliefContract {
     public static final Set<String> PURPOSES=Set.of("entrant_face","entrant_full","outgoing_face","outgoing_full","station_0","station_1","station_2");
-    private static final Set<String> INVENTORY_STATUSES=Set.of("PENDING_SOURCE","REPORTED","COMPLETE");
+    /** El relevo llegó sin inventario (sin inventoryStatus ni activos): el inventario es opcional. */
+    public static final String INVENTORY_NOT_REPORTED="NOT_REPORTED";
+    private static final Set<String> INVENTORY_STATUSES=Set.of("PENDING_SOURCE","REPORTED","COMPLETE",INVENTORY_NOT_REPORTED);
+    /** Estados con los que el relevo se acepta sin activos, aunque RRMM tenga inventario del puesto. */
+    public static final Set<String> INVENTORY_WITHOUT_ITEMS=Set.of("PENDING_SOURCE",INVENTORY_NOT_REPORTED);
     private static final Set<String> INVENTORY_CONDITIONS=Set.of("GOOD","DAMAGED","MISSING","REPLACED","NOT_VERIFIED");
     /** Relevo con agente saliente presente (turno anterior inmediato de otro agente). */
     public static final String MODE_NORMAL="NORMAL";
@@ -26,6 +30,12 @@ public final class ReliefContract {
     public static String mode(JsonNode event) {
         if(!event.hasNonNull("reliefMode")) return event.path("unilateral").asBoolean()?MODE_UNILATERAL:MODE_NORMAL;
         return event.path("reliefMode").asText();
+    }
+    /** inventoryStatus del evento; si no viene (inventario no enviado) es NOT_REPORTED. */
+    public static String inventoryStatus(JsonNode event) {
+        JsonNode status=event.path("inventoryStatus");
+        if(status.isMissingNode() || status.isNull() || (status.isTextual() && status.asText().isBlank())) return INVENTORY_NOT_REPORTED;
+        return text(event,"inventoryStatus").toUpperCase(Locale.ROOT);
     }
     public static String text(JsonNode n,String key) {
         if(n==null || !n.path(key).isTextual() || n.path(key).asText().isBlank()) throw new BadRequestException("Campo requerido: "+key);
@@ -48,11 +58,12 @@ public final class ReliefContract {
         JsonNode e=events.get(0); uuid(e,"eventId"); uuid(e,"assignmentId"); uuid(e,"postId"); uuid(e,"shiftOccurrenceId");
         if(!"RELIEF_SUBMITTED".equals(text(e,"type"))) throw new BadRequestException("Tipo de evento no soportado");
         if(!employee.equals(uuid(e,"incomingEmployeeId"))) throw new jakarta.ws.rs.ForbiddenException("Agente entrante incorrecto");
-        String inventoryStatus=text(e,"inventoryStatus").toUpperCase(Locale.ROOT);
+        String inventoryStatus=inventoryStatus(e);
         if(!INVENTORY_STATUSES.contains(inventoryStatus)) throw new BadRequestException("Estado de inventario inválido");
         JsonNode inventoryItems=e.path("inventoryItems");
-        if("PENDING_SOURCE".equals(inventoryStatus)) {
-            if(inventoryItems.isArray() && !inventoryItems.isEmpty()) throw new BadRequestException("No envíe activos mientras el inventario está pendiente de fuente");
+        if(INVENTORY_WITHOUT_ITEMS.contains(inventoryStatus)) {
+            if(inventoryItems.isArray() && !inventoryItems.isEmpty()) throw new BadRequestException(INVENTORY_NOT_REPORTED.equals(inventoryStatus)
+                ? "inventoryStatus es obligatorio cuando se envían activos de inventario" : "No envíe activos mientras el inventario está pendiente de fuente");
         } else {
             if(!inventoryItems.isArray()) throw new BadRequestException("inventoryItems es obligatorio cuando se reporta inventario");
             Set<UUID> inventoryAssets=new HashSet<>();

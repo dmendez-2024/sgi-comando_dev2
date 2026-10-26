@@ -1025,7 +1025,7 @@ public class OperatorResource {
                 .setParameter("id",uuid(photo,"evidenceId")).setParameter("t",tenant.instanceCountryId()).setParameter("e",eventId).setParameter("a",assignmentId).setParameter("u",identity.getPrincipal().getName()).setParameter("p",text(photo,"purpose")).getResultList();
             if(rows.isEmpty()) throw new BadRequestException("Evidencia no autorizada o no cargada");
         }
-        String inventoryStatus=text(event,"inventoryStatus").toUpperCase(Locale.ROOT);
+        String inventoryStatus=ReliefContract.inventoryStatus(event);
         String reliefTargetColumn=c.coordination()?"coordination_post_id":"post_id";
         em.createNativeQuery("insert into relief_event(id,instance_country_id,"+reliefTargetColumn+",shift_occurrence_id,outgoing_employee_id,incoming_employee_id,status,planned_at,executed_at,unilateral,relief_mode,opening_cause,inventory_result,consignments_confirmed,created_at,updated_at) values(:id,:t,:target,:s,:o,:i,'PENDIENTE',:planned,:executed,:unilateral,:mode,nullif(:cause,''),:inventory,true,current_timestamp,current_timestamp)")
             .setParameter("id",eventId).setParameter("t",tenant.instanceCountryId()).setParameter("target",c.targetId()).setParameter("s",c.shift.id)
@@ -1072,6 +1072,7 @@ public class OperatorResource {
         ObjectNode n=mapper.createObjectNode().put("serverVersion","relief-uat-v1"); n.putArray("acknowledgedEventIds").add(id.toString()); n.putArray("rejectedEvents");
         ArrayNode pending=n.putArray("pendingMessages");
         if("PENDING_SOURCE".equals(inventoryStatus)) pending.add("Inventario pendiente de SIC:RRMM");
+        else if(ReliefContract.INVENTORY_NOT_REPORTED.equals(inventoryStatus)) pending.add("Relevo recibido sin inventario");
         else if(Set.of("PENDING","FAILED").contains(inventoryDeliveryStatus)) pending.add("Reporte de inventario pendiente de entrega a SIC:RRMM");
         pending.add("Novedades pendientes de fuente; revisión visual pendiente");
         n.putArray("results").addObject().put("eventId",id.toString()).put("reliefId",id.toString()).put("status","PENDIENTE")

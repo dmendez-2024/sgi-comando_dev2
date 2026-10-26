@@ -4,6 +4,7 @@ import com.cajamarca.sgi.comando.common.TenantContext;
 import com.cajamarca.sgi.comando.inventory.InventoryService;
 import com.cajamarca.sgi.comando.territory.OperationalScopeService;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import jakarta.annotation.security.PermitAll;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.*;
@@ -47,14 +48,12 @@ public class OperationsResource {
   @GET @Path("/posts")
   public List<PostEntity> postsByQuery(@QueryParam("pointId") UUID pointId){ if(pointId==null) throw new BadRequestException("pointId is required"); return postsForPoint(pointId); }
 
+  /** SGI_OPR_SGI_COM_0027_v001: SGI Operador lo consume sin autenticacion, por eso no se valida rol ni alcance territorial. */
   @GET @Path("/posts/{postId}/inventory")
-  @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION","SUPERVISOR_SEGURIDAD"})
+  @PermitAll
   public ObjectNode postInventory(@PathParam("postId") UUID postId){
     PostEntity post=PostEntity.find("id=?1 and instanceCountryId=?2",postId,tenant.instanceCountryId()).firstResult();
     if(post==null) throw new NotFoundException("Puesto no encontrado.");
-    PointEntity point=PointEntity.find("id=?1 and instanceCountryId=?2",post.pointId,tenant.instanceCountryId()).firstResult();
-    if(point==null) throw new NotFoundException("Punto no encontrado.");
-    scope.requireCompany(point.companyId);
     return inventory.runtime(post.id,post.code);
   }
 

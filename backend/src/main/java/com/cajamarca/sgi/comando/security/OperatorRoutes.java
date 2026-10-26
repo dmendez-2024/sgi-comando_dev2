@@ -6,6 +6,7 @@ import java.util.regex.Pattern;
 public final class OperatorRoutes {
     private static final Pattern SUPERVISOR_ROUTE = Pattern.compile("/?api/coordination/posts/[^/]+/route/?");
     private static final Pattern SUPERVISOR_POSTS = Pattern.compile("/?api/post-configurations/?");
+    private static final Pattern POST_INVENTORY = Pattern.compile("/?api/posts/[^/]+/inventory/?");
 
     private OperatorRoutes() {}
 
@@ -14,10 +15,14 @@ public final class OperatorRoutes {
         return path != null && (path.startsWith("/api/v1/operator") || path.startsWith("api/v1/operator"));
     }
 
-    /** Rutas que puede llamar el token de SGI Operador: su API y las dos lecturas del Supervisor (ruta y puestos del punto). */
+    /**
+     * Rutas que puede llamar el token de SGI Operador: su API, las dos lecturas del Supervisor (ruta y puestos del punto)
+     * y el inventario del Puesto (0027, publico: si la app manda token no debe recibir 403).
+     */
     public static boolean allowsOperatorApp(String method, String path) {
         if (isOperatorApi(path)) return true;
         return "GET".equalsIgnoreCase(method) && path != null
-                && (SUPERVISOR_ROUTE.matcher(path).matches() || SUPERVISOR_POSTS.matcher(path).matches());
+                && (SUPERVISOR_ROUTE.matcher(path).matches() || SUPERVISOR_POSTS.matcher(path).matches()
+                    || POST_INVENTORY.matcher(path).matches());
     }
 }
