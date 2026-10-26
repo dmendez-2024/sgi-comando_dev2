@@ -41,6 +41,7 @@ type Novelty={
   description:string;
   latitude:number|null;
   longitude:number|null;
+  accuracyM?:number|null;
   photoCount:number;
   reviewComment:string;
   reviewedBy:string|null;
@@ -168,13 +169,13 @@ const defaultFromDate=new Date(latestDate);defaultFromDate.setDate(defaultFromDa
 const DEFAULT_FROM=defaultFromDate.toISOString().slice(0,10);
 const EMPTY_FILTERS:Filters={type:'ALL',query:'',city:'',company:'ALL',client:'',point:'',post:'',status:'ALL',reporter:'',dateFrom:DEFAULT_FROM,dateTo:DEFAULT_TO};
 
-type OperatorReport={reportId:string;type:NoveltyType;category:string;subcategory?:string;title:string;description:string;severity:'LOW'|'MEDIUM'|'HIGH'|'CRITICAL';status:string;occurredAt:string;createdAt:string;username:string;pointName:string;postName:string;clientName?:string;city?:string;companyCode?:string;companyName?:string;latitude?:number;longitude?:number;photoCount?:number};
+type OperatorReport={reportId:string;type:NoveltyType;category:string;subcategory?:string;title:string;description:string;severity:'LOW'|'MEDIUM'|'HIGH'|'CRITICAL';status:string;occurredAt:string;createdAt:string;username:string;pointName:string;postName:string;clientName?:string;city?:string;companyCode?:string;companyName?:string;latitude?:number;longitude?:number;accuracyM?:number;photoCount?:number};
 function fromOperatorReport(row:OperatorReport):Novelty{return {
   id:row.reportId,code:`OPR-${row.reportId.slice(0,8).toUpperCase()}`,type:row.type,subcategory:row.subcategory||row.category,
   status:row.status==='APPROVED'?'APPROVED':row.status==='DISCARDED'?'DISCARDED':'PENDING',critical:row.severity==='CRITICAL',
   company:row.companyName||'—',companyCode:row.companyCode||'',client:row.clientName||'—',city:row.city||'—',point:row.pointName||'—',post:row.postName||'—',zone:'',region:'',
   reportedBy:row.username||'Operador',reporterRole:'AGENT',createdAt:row.occurredAt||row.createdAt,description:row.description,
-  latitude:row.latitude??null,longitude:row.longitude??null,photoCount:row.photoCount||0,reviewComment:'',reviewedBy:null,reviewedAt:null,clientVisible:false,sourceSystem:'SGI_OPR',
+  latitude:row.latitude??null,longitude:row.longitude??null,accuracyM:row.accuracyM??null,photoCount:row.photoCount||0,reviewComment:'',reviewedBy:null,reviewedAt:null,clientVisible:false,sourceSystem:'SGI_OPR',
   audit:[{id:`received-${row.reportId}`,at:row.createdAt,title:'Recibido desde SGI Operador',detail:row.title,actor:row.username||'Operador'}]
 }}
 
@@ -354,9 +355,10 @@ export default function NovedadesExecution(){
             <ModalField label="Reportado por"><input value={selected.reportedBy} disabled/></ModalField>
             <ModalField label="Cargo"><input value={roleLabel(selected.reporterRole)} disabled/></ModalField>
           </div>
-          <div className="nov-edit-grid two">
+          <div className="nov-edit-grid three">
             <ModalField label="Fecha y hora"><input value={formatDateTime(selected.createdAt)} disabled/></ModalField>
-            <ModalField label="Coordenadas (opcional)"><div className="nov-coordinates"><Navigation size={15}/><input value={draft.latitude??''} disabled={!editing} onChange={e=>updateDraft('latitude',e.target.value===''?null:Number(e.target.value))}/><input value={draft.longitude??''} disabled={!editing} onChange={e=>updateDraft('longitude',e.target.value===''?null:Number(e.target.value))}/></div></ModalField>
+            <ModalField label="Coordenadas (opcional)"><div className="nov-coordinates"><Navigation size={15}/><input value={draft.latitude??''} placeholder="Sin ubicación" disabled={!editing} onChange={e=>updateDraft('latitude',e.target.value===''?null:Number(e.target.value))}/><input value={draft.longitude??''} placeholder="Sin ubicación" disabled={!editing} onChange={e=>updateDraft('longitude',e.target.value===''?null:Number(e.target.value))}/></div></ModalField>
+            <ModalField label="Precisión GPS"><input value={selected.accuracyM!=null?`± ${Math.round(selected.accuracyM)} m`:''} placeholder="Sin dato" disabled/></ModalField>
           </div>
 
           <ModalField label="Descripción de la novedad">{editing
