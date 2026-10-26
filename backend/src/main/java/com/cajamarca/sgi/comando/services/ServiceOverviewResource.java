@@ -20,6 +20,7 @@ import jakarta.transaction.Transactional;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
+import org.hibernate.query.NativeQuery;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -94,6 +95,9 @@ public class ServiceOverviewResource {
         Set<UUID> serviceIds = points.stream().map(p -> p.serviceId).collect(Collectors.toSet());
         Set<UUID> pointIds = points.stream().map(p -> p.id).collect(Collectors.toSet());
         Set<UUID> companyIds = points.stream().map(p -> p.companyId).filter(Objects::nonNull).collect(Collectors.toSet());
+        Set<UUID> pendingPointIds = points.stream()
+            .filter(p -> "PENDING".equalsIgnoreCase(p.operationalAssignmentStatus) || p.companyId == null)
+            .map(p -> p.id).collect(Collectors.toSet());
 
         Map<UUID,ServiceEntity> services = ServiceEntity.<ServiceEntity>list("instanceCountryId=?1 and id in ?2", tenant.instanceCountryId(), serviceIds)
             .stream().collect(Collectors.toMap(x -> x.id, Function.identity()));
@@ -105,6 +109,9 @@ public class ServiceOverviewResource {
         Set<UUID> atsLoadedPointIds = AtsPointPackage.<AtsPointPackage>list(
                 "instanceCountryId=?1 and pointId in ?2 and current=true", tenant.instanceCountryId(), pointIds)
             .stream().map(p -> p.pointId).collect(Collectors.toSet());
+        Company kaibil = pendingPointIds.isEmpty() ? null : kaibilCompany();
+        Set<UUID> returnedPointIds = returnedPointIds(pendingPointIds);
+        PendingNewsCounts newsCounts = pendingNewsCounts(pointIds);
 
         Map<UUID,WeightedMetric> idMetrics = new HashMap<>();
         Map<UUID,WeightedMetric> icMetrics = new HashMap<>();
@@ -139,8 +146,7 @@ public class ServiceOverviewResource {
             if (service == null) continue;
             boolean pendingAssignment = "PENDING".equalsIgnoreCase(point.operationalAssignmentStatus) || point.companyId == null;
             String state = state(service, point, post);
-            int pendingNews = pendingAssignment ? 0 : pendingNews(point.id, post.id);
-            Company kaibil = pendingAssignment ? kaibilCompany() : null;
+            int pendingNews = pendingAssignment ? 0 : newsCounts.forPost(point.id, post.id);
             rows.add(new OverviewRow(
                 service.id, point.id, post.id, point.companyId,
                 pendingAssignment ? (kaibil == null ? "Kaibil" : kaibil.name) : (company == null ? "—" : company.name),
@@ -152,7 +158,7 @@ public class ServiceOverviewResource {
                 pendingNews, state, pendingAssignment ? "PENDING" : "ASSIGNED",
                 pendingAssignment && canAssignServices() && "ACTIVE".equalsIgnoreCase(service.commercialStatus) && "ACTIVE".equalsIgnoreCase(point.status),
                 !pendingAssignment && canAssignServices() && canManagePoint(point),
-                pendingAssignment && wasReturnedToCoordination(point.id),
+                pendingAssignment && returnedPointIds.contains(point.id),
                 atsLoadedPointIds.contains(point.id)
             ));
         }
@@ -161,7 +167,7 @@ public class ServiceOverviewResource {
         int active = (int) rows.stream().filter(r -> "ACTIVE".equals(r.state())).count();
         int toConfigure = (int) rows.stream().filter(r -> "TO_CONFIGURE".equals(r.state())).count();
         int inactive = (int) rows.stream().filter(r -> "INACTIVE".equals(r.state())).count();
-        int pending = pendingNewsTotal(pointIds);
+        int pending = newsCounts.total();
         Double icAverage = roundedAverage(rows.stream().filter(r -> "ACTIVE".equals(r.state())).map(OverviewRow::icAverage).filter(Objects::nonNull).toList());
         OverviewSummary summary = new OverviewSummary(rows.size(), active, toConfigure, inactive, pending, icAverage);
         return new OverviewResponse(from, to, "ENDED_ASSIGNMENTS_UAT_PROXY", summary, rows);
@@ -349,25 +355,56 @@ public class ServiceOverviewResource {
     private Company kaibilCompany(){ return Company.find("instanceCountryId=?1 and alwaysActive=true", tenant.instanceCountryId()).firstResult(); }
     private WebApplicationException conflict(String message){ return new WebApplicationException(message, Response.Status.CONFLICT); }
 
-    private int pendingNewsTotal(Set<UUID> pointIds) {
-        if (pointIds.isEmpty()) return 0;
-        String closed = "('CLOSED','RESOLVED','REVIEWED','DISMISSED')";
-        String ids = pointIds.stream().map(id -> "'" + id + "'::uuid").collect(Collectors.joining(","));
-        Number findings = (Number) em.createNativeQuery("select count(*) from finding where instance_country_id=?1 and point_id in (" + ids + ") and upper(status) not in " + closed)
-            .setParameter(1, tenant.instanceCountryId()).getSingleResult();
-        Number vulnerabilities = (Number) em.createNativeQuery("select count(*) from vulnerability where instance_country_id=?1 and point_id in (" + ids + ") and upper(status) not in " + closed)
-            .setParameter(1, tenant.instanceCountryId()).getSingleResult();
-        return findings.intValue() + vulnerabilities.intValue();
+    private Set<UUID> returnedPointIds(Set<UUID> pointIds) {
+        if (pointIds.isEmpty()) return Set.of();
+        NativeQuery<?> query = em.createNativeQuery("""
+            select distinct point_id from service_company_assignment_event
+            where instance_country_id=:tenant and point_id in (:points) and action='RETURN_TO_COORDINATION'
+            """).unwrap(NativeQuery.class);
+        query.setParameter("tenant", tenant.instanceCountryId());
+        query.setParameterList("points", pointIds);
+        Set<UUID> returned = new HashSet<>();
+        for (Object result : query.getResultList()) returned.add((UUID) result);
+        return returned;
     }
 
-    private int pendingNews(UUID pointId, UUID postId) {
+    private PendingNewsCounts pendingNewsCounts(Set<UUID> pointIds) {
+        PendingNewsCounts counts = new PendingNewsCounts();
+        if (pointIds.isEmpty()) return counts;
         String closed = "('CLOSED','RESOLVED','REVIEWED','DISMISSED')";
-        Number findings = (Number) em.createNativeQuery("select count(*) from finding where instance_country_id=?1 and point_id=?2 and (post_id is null or post_id=?3) and upper(status) not in " + closed)
-            .setParameter(1, tenant.instanceCountryId()).setParameter(2, pointId).setParameter(3, postId).getSingleResult();
-        Number vulnerabilities = (Number) em.createNativeQuery("select count(*) from vulnerability where instance_country_id=?1 and point_id=?2 and (post_id is null or post_id=?3) and upper(status) not in " + closed)
-            .setParameter(1, tenant.instanceCountryId()).setParameter(2, pointId).setParameter(3, postId).getSingleResult();
-        return findings.intValue() + vulnerabilities.intValue();
+        for (String table : List.of("finding", "vulnerability")) {
+            NativeQuery<?> query = em.createNativeQuery("select point_id, post_id, count(*) from " + table
+                + " where instance_country_id=:tenant and point_id in (:points) and upper(status) not in "
+                + closed + " group by point_id, post_id").unwrap(NativeQuery.class);
+            query.setParameter("tenant", tenant.instanceCountryId());
+            query.setParameterList("points", pointIds);
+            for (Object result : query.getResultList()) {
+                Object[] row = (Object[]) result;
+                counts.add((UUID) row[0], (UUID) row[1], ((Number) row[2]).intValue());
+            }
+        }
+        return counts;
     }
+
+    static final class PendingNewsCounts {
+        private final Map<UUID,Integer> pointWide = new HashMap<>();
+        private final Map<NewsTarget,Integer> byPost = new HashMap<>();
+        private int total;
+
+        void add(UUID pointId, UUID postId, int count) {
+            total += count;
+            if (postId == null) pointWide.merge(pointId, count, Integer::sum);
+            else byPost.merge(new NewsTarget(pointId, postId), count, Integer::sum);
+        }
+
+        int forPost(UUID pointId, UUID postId) {
+            return pointWide.getOrDefault(pointId, 0) + byPost.getOrDefault(new NewsTarget(pointId, postId), 0);
+        }
+
+        int total() { return total; }
+    }
+
+    private record NewsTarget(UUID pointId, UUID postId) {}
 
     private static Double metricValue(WeightedMetric metric) {
         return metric == null ? null : metric.value();

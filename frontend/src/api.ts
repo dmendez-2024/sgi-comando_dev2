@@ -220,6 +220,7 @@ export const api={
  assignmentCompatibility:(assignmentId:string)=>request<any>(`/api/assignments/compatibility/${encodeURIComponent(assignmentId)}`),
  assignmentPostDetails:(postId:string)=>request<any>(`/api/assignments/posts/${encodeURIComponent(postId)}/details`),
  assignmentCoverage:(weekStart:string,companyId='',clientId='')=>request<any>(`/api/assignments/coverage?${new URLSearchParams({weekStart,...(companyId?{companyId}:{}),...(clientId?{clientId}:{})})}`),
+ dashboardPointLocations:()=>request<any[]>('/api/dashboard/point-locations'),
  dashboardMetrics:(weekStart:string,companyId='',clientId='')=>request<any>(`/api/dashboard/metrics?${new URLSearchParams({weekStart,...(companyId?{companyId}:{}),...(clientId?{clientId}:{})})}`),
  dashboardSuitability:(weekStart:string,companyId='',clientId='')=>request<any>(`/api/dashboard/suitability?${new URLSearchParams({weekStart,...(companyId?{companyId}:{}),...(clientId?{clientId}:{})})}`),
  dashboardConsignmentCompliance:(weekStart:string,companyId='',clientId='')=>request<any>(`/api/dashboard/consignment-compliance?${new URLSearchParams({weekStart,...(companyId?{companyId}:{}),...(clientId?{clientId}:{})})}`),

@@ -130,9 +130,9 @@ export default function Dashboard(){
   useEffect(()=>{
     let cancelled=false;
     setLoading(true);
-    void (async()=>{
-      const [companiesResult,overviewResult,coverageResult,territoryResult,metricsResult,suitabilityResult,consignmentsResult,supervisionRouteResult,missedReliefsResult,criticalIncidentsResult,trendResult]=await Promise.allSettled([
-        api.companies(0,100),api.serviceOverview(),api.assignmentCoverage(weekStart,companyId,clientId),api.territory(),api.dashboardMetrics(weekStart,companyId,clientId),api.dashboardSuitability(weekStart,companyId,clientId),api.dashboardConsignmentCompliance(weekStart,companyId,clientId),api.dashboardSupervisionRouteCompliance(weekStart,companyId,clientId),api.dashboardMissedReliefs(weekStart,companyId,clientId),api.dashboardCriticalIncidents(weekStart,companyId,clientId),api.dashboardRiskTrend(weekStart,companyId,clientId,period)
+    const load=async()=>{
+      const [companiesResult,overviewResult,coverageResult,territoryResult,locationsResult,metricsResult,suitabilityResult,consignmentsResult,supervisionRouteResult,missedReliefsResult,criticalIncidentsResult,trendResult]=await Promise.allSettled([
+        api.companies(0,100),api.serviceOverview(),api.assignmentCoverage(weekStart,companyId,clientId),api.territory(),api.dashboardPointLocations(),api.dashboardMetrics(weekStart,companyId,clientId),api.dashboardSuitability(weekStart,companyId,clientId),api.dashboardConsignmentCompliance(weekStart,companyId,clientId),api.dashboardSupervisionRouteCompliance(weekStart,companyId,clientId),api.dashboardMissedReliefs(weekStart,companyId,clientId),api.dashboardCriticalIncidents(weekStart,companyId,clientId),api.dashboardRiskTrend(weekStart,companyId,clientId,period)
       ]);
       const errors:string[]=[];
       const companies=companiesResult.status==='fulfilled'?(companiesResult.value.items??[]) as Company[]:[];
@@ -146,6 +146,7 @@ export default function Dashboard(){
       const criticalIncidents=criticalIncidentsResult.status==='fulfilled'&&hasCriticalIncidents(criticalIncidentsResult.value)?criticalIncidentsResult.value:null;
       const riskTrend=trendResult.status==='fulfilled'?trendResult.value as RiskTrendPoint[]:null;
       const provinces=territoryResult.status==='fulfilled'?((territoryResult.value.provinces??[]) as Province[]):[];
+      const locations=locationsResult.status==='fulfilled'?locationsResult.value as PointLocation[]:[];
       if(companiesResult.status==='rejected')errors.push('No se pudieron cargar las compañías.');
       if(overviewResult.status==='rejected')errors.push('No se pudo cargar el resumen de Servicios.');
       if(coverageResult.status==='rejected')errors.push('No se pudo cargar la cobertura de la semana.');
@@ -165,13 +166,11 @@ export default function Dashboard(){
       if(trendResult.status==='rejected')errors.push('No se pudo cargar la tendencia operacional.');
       if(territoryResult.status==='rejected')errors.push('No se pudo cargar el catálogo territorial.');
 
-      const serviceIds=Array.from(new Set(rows.map(row=>row.serviceId).filter(Boolean)));
-      const locationGroups=await Promise.allSettled(serviceIds.map(id=>api.points(id)));
-      const locations=locationGroups.flatMap(result=>result.status==='fulfilled'?result.value as PointLocation[]:[]);
-      if(locationGroups.some(result=>result.status==='rejected'))errors.push('No se pudieron cargar todas las ubicaciones de los puntos.');
+      if(locationsResult.status==='rejected')errors.push('No se pudieron cargar todas las ubicaciones de los puntos.');
       if(!cancelled){setData({companies,rows,coverage,metrics,suitability,consignments,supervisionRoute,missedReliefs,criticalIncidents,riskTrend,locations,provinces,errors});setLoading(false)}
-    })();
-    return()=>{cancelled=true};
+    };
+    const loadTimer=window.setTimeout(()=>{void load()},0);
+    return()=>{cancelled=true;window.clearTimeout(loadTimer)};
   },[weekStart,companyId,clientId,period]);
 
   const clients=useMemo(()=>{

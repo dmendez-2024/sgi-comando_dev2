@@ -205,7 +205,7 @@ function labelStatus(s:string){return s==='ACTIVE'?'Activa':s==='DRAFT'?'Borrado
 function statusClass(s:string){return s==='ACTIVE'?'active':s==='DRAFT'?'draft':'inactive'}
 function titleCase(s:string){return s?`${s.charAt(0).toUpperCase()}${s.slice(1)}`:s}
 
-export default function Territory(){
+export default function Territory({coreContext}:{coreContext?:CoreContext|null}){
   const currentUser=getUser();
   const countryEditors=['presidente','ggeneral','don','dnacional'];
   const canEditZones=countryEditors.includes(currentUser);
@@ -230,20 +230,22 @@ export default function Territory(){
   const subdivisionSingular=core.subdivisionSingular||'Subdivisión';
   const subdivisionPlural=core.subdivisionPlural||'Subdivisiones';
 
-  const load=async()=>{
+  const load=async(isCurrent:()=>boolean=()=>true)=>{
     try{
-      const map=await api.territoryMap().catch(e=>{setMapError(msg(e));return null});
-      const [t,r,c]=await Promise.all([
+      const [t,r,mapResult]=await Promise.all([
         canEditRegions?api.territoryAdmin():api.territory(),
         api.territoryResponsibles().catch(()=>[]),
-        api.context().catch(()=>({}))
+        api.territoryMap().then((value:TerritoryGeoJson)=>({value,error:''})).catch((e:unknown)=>({value:null,error:msg(e)}))
       ]);
+      if(!isCurrent())return;
+      const map=mapResult.value;
       setTree(t);setResponsibles(r);setTerritoryMap(map);if(map)setMapError('');
-      setCore(prev=>({...prev,...c,...(map?{country:map.countryName,countryCode:map.countryCode||'EC',subdivisionType:map.subdivisionType,subdivisionSingular:map.subdivisionSingular,subdivisionPlural:map.subdivisionPlural,territoryCatalogSource:`CORE · ${map.datasetVersion}`}:{})}));setError('');
+      else setMapError(mapResult.error);
+      setCore(prev=>({...prev,...coreContext,...(map?{country:map.countryName,countryCode:map.countryCode||'EC',subdivisionType:map.subdivisionType,subdivisionSingular:map.subdivisionSingular,subdivisionPlural:map.subdivisionPlural,territoryCatalogSource:`CORE · ${map.datasetVersion}`}:{})}));setError('');
       setExpandedZones(prev=>prev.size?prev:new Set(t.zones.map((z:Zone)=>z.id)));
-    }catch(e){setError(msg(e))}
+    }catch(e){if(isCurrent())setError(msg(e))}
   };
-  useEffect(()=>{void load()},[currentUser]);
+  useEffect(()=>{let current=true;const timer=window.setTimeout(()=>{void load(()=>current)},0);return()=>{current=false;window.clearTimeout(timer)}},[currentUser,coreContext]);
   useEffect(()=>{if(!notice)return;const id=window.setTimeout(()=>setNotice(''),5000);return()=>window.clearTimeout(id)},[notice]);
   useEffect(()=>{if(!error)return;const id=window.setTimeout(()=>setError(''),5000);return()=>window.clearTimeout(id)},[error]);
   useEffect(()=>{const close=()=>setMenu(null);window.addEventListener('click',close);return()=>window.removeEventListener('click',close)},[]);

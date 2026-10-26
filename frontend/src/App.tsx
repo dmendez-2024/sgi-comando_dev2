@@ -44,7 +44,7 @@ export default function App() {
   const page = active === 'Dashboard'
     ? <Dashboard />
     : active === 'Territorio'
-      ? <Territory />
+      ? <Territory coreContext={coreContext} />
     : active === 'Compañías'
       ? <Companies />
       : active === 'Servicios'
