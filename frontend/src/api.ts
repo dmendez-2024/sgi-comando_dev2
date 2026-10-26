@@ -15,11 +15,11 @@ export const getUser=():UatUser=>{
  const roles=identRoles(); return PROFILE_BY_ROLE.find(([r])=>roles.includes(r))?.[1]??'cliente';
 };
 export class ApiError extends Error{status:number;body:string;constructor(status:number,body:string){super(`${status} ${body}`);this.status=status;this.body=body}}
-async function request<T>(path:string,init?:RequestInit,user?:UatUser):Promise<T>{
+export async function request<T>(path:string,init?:RequestInit,user?:UatUser):Promise<T>{
  const res=await fetchWithRenew(path,init,user,true); if(!res.ok){reloginIfExpired(res.status,user);const body=await res.text();throw new ApiError(res.status,body)} return res.status===204?undefined as T:res.json();
 }
 
-async function binaryRequest(path:string,init?:RequestInit,user?:UatUser):Promise<Blob>{
+export async function binaryRequest(path:string,init?:RequestInit,user?:UatUser):Promise<Blob>{
  const res=await fetchWithRenew(path,init,user,false); if(!res.ok){reloginIfExpired(res.status,user);const body=await res.text();throw new ApiError(res.status,body)} return res.blob();
 }
 /** fetch con el token actual; ante 401 con IDENT renueva el token sin recargar y reintenta una vez. */

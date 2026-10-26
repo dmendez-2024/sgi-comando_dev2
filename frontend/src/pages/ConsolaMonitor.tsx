@@ -4,6 +4,7 @@ import {
   Download, FileWarning, FilterX, MapPin, Monitor,
   RefreshCw, Save, Search, ShieldAlert, ShieldCheck, UserRound, Zap, CircleAlert, ChevronRight, Filter, ChevronDown, Plus, X
 } from 'lucide-react';
+import ObsintConsole, {ObsintButton} from '../obsint/ObsintConsole';
 import {api, getUser, type UatUser} from '../api';
 import IncidentNotificationPanel, {type IncidentRecord, type LocationOption, type IncidentSeverity} from '../components/IncidentNotificationPanel';
 import {OperationalDrawer} from '../components/OperationalDrawer';
@@ -150,6 +151,7 @@ export default function ConsolaMonitor(){
   const [locationsLoading,setLocationsLoading]=useState(true);
   const [locationsError,setLocationsError]=useState('');
   const [locationsRefresh,setLocationsRefresh]=useState(0);
+  const [obsintOpen,setObsintOpen]=useState(false);
 
   useEffect(()=>{
     let current=true;
@@ -275,6 +277,8 @@ export default function ConsolaMonitor(){
   }
   const nextIncidentCode=`INC-${new Date().getFullYear()}-${String(incidents.length+1).padStart(4,'0')}`;
 
+  if(obsintOpen) return <ObsintConsole onBack={()=>setObsintOpen(false)}/>;
+
   if(incidentEditorOpen) return <div className="csl-page csl-incident-page">
     <div className="ser-breadcrumbs"><button type="button" onClick={()=>{setIncidentEditorOpen(false);setEditingIncidentId('');setDetailId('')}}><ArrowLeft size={15}/>Volver a Consola</button><span>/</span><small>Notificación de Incidente</small></div>
     {incidentsError&&<div className="csl-incident-error"><AlertTriangle size={16}/>{incidentsError}<button type="button" onClick={()=>setIncidentsRefresh(value=>value+1)}>Reintentar</button></div>}
@@ -305,7 +309,10 @@ export default function ConsolaMonitor(){
   return <div className="csl-page nov-page">
     <div className="csl-topbar nov-topbar">
       <div><div className="page-backline">Operaciones / Consola</div><h2>Consola</h2><p>Workspace operativo para Monitores: consignas, novedades, reasignaciones y alarmas electrónicas.</p></div>
-      <div className="csl-scope nov-scope"><Monitor size={16}/>{scope.label}</div>
+      <div style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
+        <div className="csl-scope nov-scope"><Monitor size={16}/>{scope.label}</div>
+        <ObsintButton onClick={()=>setObsintOpen(true)}/>
+      </div>
     </div>
     {incidentsError&&<div className="csl-incident-error"><AlertTriangle size={16}/>{incidentsError}<button type="button" onClick={()=>setIncidentsRefresh(value=>value+1)}>Reintentar</button></div>}
 
