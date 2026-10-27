@@ -6,6 +6,7 @@ import {
   BarChart3,
   Building2,
   Camera,
+  Cctv,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -23,18 +24,19 @@ import {
   MapPin,
   Monitor,
   Minus,
+  Package,
   Plus,
+  RadioTower,
   RefreshCcw,
-  Radio,
   Save,
   Search,
   Settings2,
   ShieldCheck,
+  SlidersVertical,
   Sparkles,
   Trash2,
   Upload,
   Users,
-  Warehouse,
   Navigation,
   Wrench,
   X,
@@ -255,16 +257,31 @@ function snapshotFor(point:PointRow):Snapshot{
   if(rrmmStatus==='warning')nextActions.push('Revisar los activos observados o no confirmados en el punto.');
   return {version:`REGESEP v1.${Math.max(1,totalPosts)}`,progress,blockers,warnings,updatedAt:'09-sept, 18:40',modules,nextActions:nextActions.slice(0,4)};
 }
+// Bootstrap Icons (MIT): https://github.com/twbs/icons
+function BsFilesIcon(){
+  return <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" focusable="false"><path d="M13 0H6a2 2 0 0 0-2 2 2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h7a2 2 0 0 0 2-2 2 2 0 0 0 2-2V2a2 2 0 0 0-2-2m0 13V4a2 2 0 0 0-2-2H5a1 1 0 0 1 1-1h7a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1M3 4a1 1 0 0 1 1-1h7a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/></svg>;
+}
+function BsDoorOpenIcon(){
+  return <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" focusable="false"><path d="M8.5 10c-.276 0-.5-.448-.5-1s.224-1 .5-1 .5.448.5 1-.224 1-.5 1"/><path d="M10.828.122A.5.5 0 0 1 11 .5V1h.5A1.5 1.5 0 0 1 13 2.5V15h1.5a.5.5 0 0 1 0 1h-13a.5.5 0 0 1 0-1H3V1.5a.5.5 0 0 1 .43-.495l7-1a.5.5 0 0 1 .398.117M11.5 2H11v13h1V2.5a.5.5 0 0 0-.5-.5M4 1.934V15h6V1.077z"/></svg>;
+}
+// Exact React Icons shapes: RiMotorbikeLine and TfiVideoCamera.
+function RiMotorbikeLine(){
+  return <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true" focusable="false"><path d="M4 13.2561V12H2V10H8.36547L11.2 8H14.6915L13.5996 5H11V3H15L16.0919 6H20V9H17.1838L18.6405 13.0022C21.0608 13.0764 23 15.0617 23 17.5C23 19.9853 20.9853 22 18.5 22C16.0147 22 14 19.9853 14 17.5C14 15.6722 15.0897 14.0989 16.6549 13.3944L15.4194 10H14.4718L12.89 15.87L12.8876 15.8689L12.8897 15.8745L9.96536 16.9389C9.98822 17.1227 10 17.31 10 17.5C10 19.9853 7.98528 22 5.5 22C3.01472 22 1 19.9853 1 17.5C1 15.5407 2.25221 13.8738 4 13.2561ZM6 13.0275C7.37617 13.1796 8.56531 13.9523 9.28138 15.0595L11.2383 14.3472L12.4032 10H11.8563L9 12H6V13.0275ZM5.5 20C6.88071 20 8 18.8807 8 17.5C8 16.1193 6.88071 15 5.5 15C4.11929 15 3 16.1193 3 17.5C3 18.8807 4.11929 20 5.5 20ZM18.5 20C19.8807 20 21 18.8807 21 17.5C21 16.1193 19.8807 15 18.5 15C17.1193 15 16 16.1193 16 17.5C16 18.8807 17.1193 20 18.5 20Z"/></svg>;
+}
+function TfiVideoCamera(){
+  return <svg viewBox="0 0 17 17" width="18" height="18" fill="currentColor" aria-hidden="true" focusable="false"><path d="M12.991 6.75V4.5c0-.827-.678-1.5-1.512-1.5H4v-.5c0-.276.225-.5.5-.5h5.541V1H4.5C3.673 1 3 1.673 3 2.5V3H1.512C.678 3 0 3.673 0 4.5v2.001c0 .827.678 1.5 1.512 1.5h.504V13.5c0 .827.673 1.5 1.5 1.5h7.964c.834 0 1.512-.673 1.512-1.5v-2.251L17 14.032V3.967L12.991 6.75ZM16 12.121l-4.009-2.783V13.5c0 .276-.229.5-.512.5H3.516c-.275 0-.5-.224-.5-.5V7.001H1.512C1.229 7.001 1 6.777 1 6.501V4.5c0-.276.229-.5.512-.5h9.968c.282 0 .512.224.512.5v4.163L16 5.879v6.242Z"/></svg>;
+}
+
 function moduleIcon(icon:ModuleCard['icon']){
   switch(icon){
-    case 'ats': return <MapIcon size={18}/>;
-    case 'posts': return <MapPin size={18}/>;
-    case 'bitacora': return <FileText size={18}/>;
-    case 'patrullas': return <ShieldCheck size={18}/>;
+    case 'ats': return <SlidersVertical size={18}/>;
+    case 'posts': return <BsFilesIcon/>;
+    case 'bitacora': return <BsDoorOpenIcon/>;
+    case 'patrullas': return <RiMotorbikeLine/>;
     case 'consignas': return <ClipboardList size={18}/>;
     case 'nexus': return <Network size={18}/>;
     case 'rrhh': return <Users size={18}/>;
-    case 'rrmm': return <Warehouse size={18}/>;
+    case 'rrmm': return <Package size={18}/>;
     default: return <History size={18}/>;
   }
 }
@@ -888,8 +905,8 @@ function ConfigurationLanding({point,onBack,onOpenModule}:{point:PointRow;onBack
     {key:'consignas',title:'Consignas'},
   ] as const;
   const electronicModules=[
-    {key:'components',title:'Componentes de Seguridad',icon:<Layers3 size={18}/>,status:'unavailable'},
-    {key:'obsint',title:'OBSINT',icon:<Network size={18}/>,status:'unavailable'},
+    {key:'components',title:'Componentes de Seguridad',icon:<Cctv size={18}/>,status:'unavailable'},
+    {key:'obsint',title:'OBSINT',icon:<RadioTower size={18}/>,status:'unavailable'},
   ] as const;
   const physicalStatus=groupChecklistStatus(physicalModules.map(module=>modulesByKey.get(module.key)?.status??'unavailable'));
   const electronicStatus=groupChecklistStatus(electronicModules.map(module=>module.status));
@@ -904,9 +921,9 @@ function ConfigurationLanding({point,onBack,onOpenModule}:{point:PointRow;onBack
       <span className={statusPillClass(module.status)}>{statusLabel(module.status)}</span>
     </button>;
   };
-  const unavailableModule=(key:string,title:string,icon:ReactNode)=>
+  const unavailableModule=(key:string,title:string,icon:ReactNode,showChevron=false)=>
     <div key={key} className="ser-check-row unavailable" aria-label={`${title}: sin datos de configuración`}>
-      <span className="ser-check-main"><span className="ser-check-chevron"/><span className="ser-check-icon">{icon}</span><b>{title}</b></span>
+      <span className="ser-check-main">{showChevron?<ChevronRight className="ser-check-chevron" size={15}/>:<span className="ser-check-chevron"/>}<span className="ser-check-icon">{icon}</span><b>{title}</b></span>
       <span className="ser-check-meta">Sin datos de configuración</span>
       <span className="ser-status-tag unavailable">S/D</span>
     </div>;
@@ -960,13 +977,13 @@ function ConfigurationLanding({point,onBack,onOpenModule}:{point:PointRow;onBack
           {checklistGroup('physical','Seguridad Física',<ShieldCheck size={18}/>,'Configuración de puestos y protocolos',physicalStatus,<>
             {physicalModules.map(module=>checklistModule(module.key,module.title))}
           </>)}
-          {checklistGroup('electronic','Seguridad Electrónica',<Radio size={18}/>,'Sin fuente de configuración integrada',electronicStatus,<>
+          {checklistGroup('electronic','Seguridad Electrónica',<TfiVideoCamera/>,'Sin fuente de configuración integrada',electronicStatus,<>
             {electronicModules.map(module=>unavailableModule(module.key,module.title,module.icon))}
           </>)}
           {checklistModule('nexus')}
           {checklistModule('rrhh')}
           {checklistModule('rrmm')}
-          {unavailableModule('technology','Recursos Tecnológicos',<Monitor size={18}/>)}
+          {unavailableModule('technology','Recursos Tecnológicos',<Monitor size={18}/>,true)}
           {checklistModule('historial')}
         </div>
       </section>
