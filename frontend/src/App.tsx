@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import Sidebar, { SIMULATOR_MENU } from './components/Sidebar';
 import { api } from './api';
+import { installBackGuard } from './security/identAuth';
 
 import Header from './components/Header';
 import Dashboard from './pages/Dashboard';
@@ -20,6 +21,8 @@ import AgentSimulator from './pages/AgentSimulator';
 
 export default function App() {
   const [active, setActive] = useState('Dashboard');
+  // "Atras" del navegador con la sesion abierta: se queda en SGI y vuelve al Dashboard.
+  useEffect(() => { installBackGuard(() => setActive('Dashboard')); }, []);
   const [userRevision, setUserRevision] = useState(0);
   const [uatTools, setUatTools] = useState(false);
   useEffect(() => { api.features().then(f => setUatTools(f.uatTools)).catch(() => setUatTools(false)); }, [userRevision]);

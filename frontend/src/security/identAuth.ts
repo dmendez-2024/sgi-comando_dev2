@@ -41,7 +41,8 @@ export async function startLogin() {
   sessionStorage.setItem('sgi_return_to', window.location.pathname + window.location.search);
   const q = new URLSearchParams({ client_id: CLIENT_ID, redirect_uri: REDIRECT_URI, response_type: 'code', state,
     code_challenge: await sha256(verifier), code_challenge_method: 'S256' });
-  window.location.assign(`${IDENT_URL}/oauth2/authorize?${q}`);
+  // replace (no assign): la pagina en blanco que va a IDENT no queda en el historial; "atras" vuelve a la pagina anterior real.
+  window.location.replace(`${IDENT_URL}/oauth2/authorize?${q}`);
 }
 
 async function finishLogin() {
@@ -119,19 +120,84 @@ export async function identPlatforms(): Promise<{ count: number; portalUrl: stri
 /** Volver al portal de Plataformas de IDENT. */
 export function identPortal() { accessToken = null; window.location.assign(`${IDENT_URL}/sistemas`); }
 
-/** Cerrar sesion: la cierra IDENT (pagina /salir) para todos los Sistemas. */
-export function identSignOut() { accessToken = null; window.location.assign(`${IDENT_URL}/salir`); }
+const SIGNED_OUT = 'sgi_signed_out';
+
+/**
+ * Cerrar sesion: la cierra IDENT (pagina /salir) para todos los Sistemas. replace: SGI no queda en el historial, y la
+ * marca hace que un "atras" posterior lleve al login de IDENT en lugar de volver a entrar a SGI.
+ */
+export function identSignOut() {
+  accessToken = null;
+  sessionStorage.setItem(SIGNED_OUT, '1');
+  window.location.replace(`${IDENT_URL}/salir`);
+}
+
+let backGuardInstalled = false;
+/**
+ * Boton "atras" del navegador en SGI (una sola direccion para todas las pantallas): con la sesion abierta SIEMPRE se
+ * queda en SGI y regresa al Dashboard (onStay). Al portal de Plataformas solo se va con el boton "Plataformas".
+ */
+export function installBackGuard(onStay: () => void) {
+  if (backGuardInstalled || !identEnabled()) return;
+  backGuardInstalled = true;
+  window.history.replaceState({ ...(window.history.state || {}), sgiEntry: true }, '');
+  window.history.pushState({ sgiGuard: true }, '');
+  window.addEventListener('popstate', ev => {
+    if (ev.state?.sgiGuard) return;
+    window.history.pushState({ sgiGuard: true }, '');
+    onStay();
+  });
+}
 
 /** Antes de mostrar SGI: lee la configuracion y termina o inicia el login. true = se puede mostrar SGI. */
 export async function ensureIdentLogin(): Promise<boolean> {
   // Dentro del iframe de renovacion: el callback lo procesa la pagina principal (no gastar el code ni mostrar SGI).
   if (window.self !== window.top && window.location.pathname === `${BASE}/oauth/callback`) return false;
+  // "Atras"/"adelante": si el navegador restaura de su memoria (bfcache) una pagina que estaba saliendo a IDENT o sin
+  // token, se recarga para que el login se ejecute de nuevo en lugar de quedar en blanco.
+  window.addEventListener('pageshow', ev => {
+    if (!ev.persisted) return;
+    if (sessionStorage.getItem(SIGNED_OUT) && IDENT_URL) { window.location.replace(`${IDENT_URL}/ingresar`); return; }
+    if (!identClaims()) window.location.reload();
+  });
   const r = await fetch(`${API}/api/v1/auth/ident-config`);
   if (!r.ok) throw new Error(`SGI: Comando no pudo obtener la configuración de ingreso (HTTP ${r.status}).`);
   const c = await r.json() as { enabled: boolean; identUrl?: string; clientId?: string };
   if (!c.enabled || !c.identUrl || !c.clientId) return true;
   IDENT_URL = c.identUrl.replace(/\/+$/, ''); CLIENT_ID = c.clientId;
-  if (window.location.pathname === `${BASE}/oauth/callback`) await finishLogin();
+  if (window.location.pathname === `${BASE}/oauth/callback`) { sessionStorage.removeItem(SIGNED_OUT); await finishLogin(); }
+  else if (sessionStorage.getItem(SIGNED_OUT)) {
+    // Despues de "Cerrar sesion", llegar aqui con "atras"/"adelante" lleva al login de IDENT (no se vuelve a entrar).
+    // Si la persona abre SGI de nuevo (desde el portal o la barra de direcciones), sigue el ingreso normal.
+    const nav = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined;
+    if (nav?.type === 'back_forward') { window.location.replace(`${IDENT_URL}/ingresar`); return false; }
+    sessionStorage.removeItem(SIGNED_OUT);
+  }
   if (!identClaims()) { await startLogin(); return false; }
+  document.addEventListener('visibilitychange', () => {        // al volver a la pestana o despertar el equipo
+    if (document.visibilityState === 'visible' && !identClaims()) void renewIdentToken();
+  });
   return true;
+}
+
+let sessionNoticeShown = false;
+/** Sesion de IDENT terminada: aviso SIN recargar; lo que esta en pantalla se conserva hasta que la persona decida. */
+export function notifySessionEnded() {
+  if (sessionNoticeShown) return;
+  sessionNoticeShown = true;
+  const box = document.createElement('div');
+  box.setAttribute('role', 'alertdialog');
+  box.style.cssText = 'position:fixed;top:16px;left:50%;transform:translateX(-50%);z-index:99999;max-width:520px;background:#fff;'
+    + 'border:1px solid #e5a000;border-radius:8px;box-shadow:0 6px 24px rgba(0,0,0,.18);padding:14px 16px;font:14px/1.4 inherit;color:#1f2937';
+  box.innerHTML = '<strong>Su sesión terminó</strong><div style="margin:6px 0 10px">Lo que está en pantalla no se ha perdido, '
+    + 'pero no se puede guardar hasta volver a ingresar. Si necesita, copie la información antes de continuar.</div>';
+  const actions = document.createElement('div');
+  actions.style.cssText = 'display:flex;gap:8px;justify-content:flex-end';
+  const stay = document.createElement('button'); stay.textContent = 'Seguir en la pantalla';
+  const login = document.createElement('button'); login.textContent = 'Volver a ingresar';
+  for (const b of [stay, login]) b.style.cssText = 'padding:6px 12px;border-radius:6px;border:1px solid #cbd5e1;background:#f8fafc;cursor:pointer';
+  login.style.background = '#1d4ed8'; login.style.color = '#fff'; login.style.borderColor = '#1d4ed8';
+  stay.onclick = () => { box.remove(); sessionNoticeShown = false; };
+  login.onclick = () => { void startLogin(); };
+  actions.append(stay, login); box.append(actions); document.body.appendChild(box);
 }

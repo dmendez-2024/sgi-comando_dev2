@@ -1,4 +1,4 @@
-import {identEnabled,identRoles,identToken,renewIdentToken,startLogin} from './security/identAuth';
+import {identClaims,identEnabled,identRoles,identToken,notifySessionEnded,renewIdentToken} from './security/identAuth';
 const API = import.meta.env.VITE_API_URL || '/dev.comando';
 // const API=import.meta.env.VITE_API_URL ?? 'http://localhost:8080';
 export type UatUser='presidente'|'ggeneral'|'dlatam'|'don'|'dnacional'|'dzonal'|'jregional'|'coord'|'asistente'|'supervisor'|'agente'|'cliente';
@@ -25,6 +25,7 @@ async function binaryRequest(path:string,init?:RequestInit,user?:UatUser):Promis
 /** fetch con el token actual; ante 401 con IDENT renueva el token sin recargar y reintenta una vez. */
 async function fetchWithRenew(path:string,init:RequestInit|undefined,user:UatUser|undefined,json:boolean):Promise<Response>{
  const send=()=>{const headers=new Headers(init?.headers);if(json)headers.set('Content-Type','application/json');headers.set('Authorization',authHeader(user));return fetch(`${API}${path}`,{...init,headers})};
+ if(canRenew(user)&&!identClaims())await renewIdentToken();   // vencido o por vencer: renovar antes de llamar
  const res=await send(); return res.status===401&&canRenew(user)&&await renewIdentToken()?send():res;
 }
 async function atsCurrentOrNull(pointId:string):Promise<any|null>{
@@ -33,8 +34,9 @@ async function atsCurrentOrNull(pointId:string):Promise<any|null>{
 /** Con IDENT: token de la persona. Sin IDENT, o para el Simulador de Agente (usuario UAT explicito): usuario y contrasena UAT. */
 const authHeader=(user?:UatUser)=>identEnabled()&&!user?`Bearer ${identToken()}`:"Basic "+btoa(`${user??currentUser}:${PASSWORD}`);
 const canRenew=(user?:UatUser)=>identEnabled()&&!user;
-/** Token de IDENT vencido y sin renovacion posible: login de IDENT (con sesion abierta vuelve sin contrasena). */
-const reloginIfExpired=(status:number,user?:UatUser)=>{if(status===401&&canRenew(user))void startLogin()};
+/** Token de IDENT vencido y sin renovacion posible (sesion de IDENT terminada): avisar SIN recargar, para no perder lo que
+ *  esta en pantalla; la persona decide cuando volver a ingresar. */
+const reloginIfExpired=(status:number,user?:UatUser)=>{if(status===401&&canRenew(user))notifySessionEnded()};
 // TEMPORAL (demo UAT): el Simulador de Agente llama a la API del operador como el usuario UAT "agente",
 // sin cambiar el usuario del resto de la app. Quitar junto con el simulador.
 const SIMULATOR_USER:UatUser='agente';

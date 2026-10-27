@@ -1,5 +1,18 @@
 # SGI: Comando — Changelog
 
+## SGI_COM — Sesión IDENT sin perder formularios — 2026-10-23
+Responsable: Maria Burgos.
+- PERMITIDO (bug UX, SITC-NOM-001 §6.1). La renovación silenciosa ya existía (3e056e1); se completa:
+- `frontend/src/api.ts`: si el token venció o está por vencer, se renueva antes de llamar. Con la sesión de IDENT terminada ya no se recarga la página (`startLogin()`): se avisa sin recargar ("Volver a ingresar" / "Seguir en la pantalla").
+- `frontend/src/security/identAuth.ts`: `notifySessionEnded()` y renovación al volver a la pestaña o despertar el equipo.
+- Sin cambios en IDENT, backend, roles ni duración del token. Sin cambios de interconexiones/SITC. Rollback: versión anterior de ambos archivos.
+
+## SGI_COM — Botón "atrás" sin pantalla en blanco — 2026-10-23
+Responsable: Maria Burgos.
+- PERMITIDO (bug de navegación, SITC-NOM-001 §6.1): al entrar desde IDENT Plataformas, "atrás" mostraba una pantalla en blanco (quedaba en el historial la página que salía a IDENT y el navegador la restauraba vacía desde su caché).
+- `frontend/src/security/identAuth.ts`: `startLogin()` usa `location.replace` (la página de salida no queda en el historial); si el navegador restaura una página sin token (`pageshow` persistido), se recarga.
+- Sin cambios de seguridad, roles, backend ni interconexiones/SITC. Rollback: versión anterior de `identAuth.ts`.
+
 ## SGI_COM — CSL IMG RC1 — 2026-10-19
 
 Corrección de alcance: retirados los cuatro scripts auxiliares de imágenes/fixtures de scripts/uat. La aceptación se realiza desde Consola con sesión y catálogos existentes, sin insertar usuarios, instancias ni UUID fijos. Los resultados técnicos previos se mantienen como historial, no como validación visual de la pantalla.
