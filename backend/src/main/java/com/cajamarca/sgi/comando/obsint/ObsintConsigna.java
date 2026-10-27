@@ -19,8 +19,10 @@ public class ObsintConsigna extends BaseEntity {
     @Column(name = "point_id", nullable = false) public UUID pointId;
     @Column(nullable = false, length = 40) public String code;
     @Column(nullable = false, length = 160) public String title;
+    @Column(nullable = false, length = 1000) public String description = "";
     @Column(nullable = false, length = 1000) public String instruction;
     @Column(nullable = false, length = 24) public String category;
+    @Column(nullable = false, length = 24) public String frequency = "EVERY_SHIFT";
     @Column(name = "time_limit_seconds", nullable = false) public int timeLimitSeconds;
     @Column(nullable = false) public int position;
     @Column(nullable = false) public boolean active = true;

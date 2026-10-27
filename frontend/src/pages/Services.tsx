@@ -45,6 +45,10 @@ import PatrolConfig from './PatrolConfig';
 import ConsignasConfig from './ConsignasConfig';
 import NexusConfig from './NexusConfig';
 import OperationPage from './OperationPage';
+import SecurityComponents from '../secelec/SecurityComponents';
+import {secelecApi} from '../secelec/secelecApi';
+import ObsintConfig from '../obsint/config/ObsintConfig';
+import {obsintConfigApi} from '../obsint/obsintApi';
 import MatchThresholdField from '../components/MatchThresholdField';
 import RadiusField from '../components/RadiusField';
 
@@ -73,6 +77,7 @@ type ModuleCard={
   title:string;summary:string;meta:string;status:ModuleStatus;blocking:boolean;
   icon:'ats'|'posts'|'bitacora'|'patrullas'|'consignas'|'nexus'|'rrhh'|'rrmm'|'historial';
 };
+type ConfigModuleKey=ModuleCard['key']|'components'|'obsint';
 type Snapshot={version:string;progress:number;blockers:number;warnings:number;updatedAt:string;modules:ModuleCard[];nextActions:string[]};
 type AtsLinkedPost={location:string;code:string;status:'VINCULADO'|'PENDIENTE'};
 type AtsLinkedPatrol={route:string;patrol:string;status:'VINCULADA'|'PENDIENTE'};
@@ -106,7 +111,7 @@ type CommercialWeek={posts:CommercialPost[];shifts:CommercialShift[]};
 type SkillKey=keyof PostSkillSet;
 type AssignmentDestination={companyId:string;code:string;name:string;zoneId?:string|null;regionIds:string[]};
 type ClientOption={id:string;code:string;name:string};
-type View='list'|'config-landing'|'config-ats'|'config-posts'|'config-bitacora'|'config-patrols'|'config-consignas'|'config-nexus'|'operation';
+type View='list'|'config-landing'|'config-ats'|'config-posts'|'config-bitacora'|'config-patrols'|'config-consignas'|'config-nexus'|'config-components'|'config-obsint'|'operation';
 
 const PAGE_SIZE=10;
 const TIER_MIN:Record<string,number>={I:6.5,II:7.5,III:8.5,IV:9.5};
@@ -877,9 +882,23 @@ function PostsPage({point,onBack}:{point:PointRow;onBack:()=>void}){
   </div>
 }
 
-function ConfigurationLanding({point,onBack,onOpenModule}:{point:PointRow;onBack:()=>void;onOpenModule:(module:ModuleCard['key'])=>void}){
+function ConfigurationLanding({point,onBack,onOpenModule}:{point:PointRow;onBack:()=>void;onOpenModule:(module:ConfigModuleKey)=>void}){
   const snapshot=useMemo(()=>snapshotFor(point),[point]);
   const [expandedGroups,setExpandedGroups]=useState<Set<string>>(()=>new Set(['physical','electronic']));
+  const [electronic,setElectronic]=useState<{
+    components:{status:ChecklistStatus;meta:string};obsint:{status:ChecklistStatus;meta:string}
+  }>({components:{status:'unavailable',meta:'Cargando…'},obsint:{status:'unavailable',meta:'Cargando…'}});
+  useEffect(()=>{
+    let active=true;
+    void Promise.allSettled([secelecApi.summary(point.pointId),obsintConfigApi.summary(point.pointId)]).then(([components,obsint])=>{
+      if(!active)return;
+      setElectronic({
+        components:components.status==='fulfilled'?{status:components.value.status,meta:components.value.meta}:{status:'unavailable',meta:'No se pudo consultar'},
+        obsint:obsint.status==='fulfilled'?{status:obsint.value.status,meta:obsint.value.meta}:{status:'unavailable',meta:'No se pudo consultar'},
+      });
+    });
+    return()=>{active=false};
+  },[point.pointId]);
   const modulesByKey=new Map(snapshot.modules.map(module=>[module.key,module]));
   const physicalModules=[
     {key:'puestos',title:'Puestos Operativos'},
@@ -888,11 +907,21 @@ function ConfigurationLanding({point,onBack,onOpenModule}:{point:PointRow;onBack
     {key:'consignas',title:'Consignas'},
   ] as const;
   const electronicModules=[
-    {key:'components',title:'Componentes de Seguridad',icon:<Layers3 size={18}/>,status:'unavailable'},
-    {key:'obsint',title:'OBSINT',icon:<Network size={18}/>,status:'unavailable'},
+    {key:'components',title:'Componentes de Seguridad',icon:<Layers3 size={18}/>,...electronic.components},
+    {key:'obsint',title:'OBSINT',icon:<Network size={18}/>,...electronic.obsint},
   ] as const;
   const physicalStatus=groupChecklistStatus(physicalModules.map(module=>modulesByKey.get(module.key)?.status??'unavailable'));
   const electronicStatus=groupChecklistStatus(electronicModules.map(module=>module.status));
+  const moduleCount=snapshot.modules.length+electronicModules.length;
+  const configProgress=Math.round((snapshot.modules.filter(module=>module.status==='complete').length+electronicModules.filter(module=>module.status==='complete').length)/moduleCount*100);
+  const blockerCount=snapshot.blockers+electronicModules.filter(module=>module.status==='blocked').length;
+  const warningCount=snapshot.warnings+electronicModules.filter(module=>module.status==='warning').length;
+  const electronicRow=(module:typeof electronicModules[number])=>
+    <button type="button" key={module.key} className={`ser-check-row ${module.status}`} onClick={()=>onOpenModule(module.key as ConfigModuleKey)}>
+      <span className="ser-check-main"><ChevronRight className="ser-check-chevron" size={15}/><span className="ser-check-icon">{module.icon}</span><b>{module.title}</b></span>
+      <span className="ser-check-meta">{module.meta}</span>
+      <span className={`ser-status-tag ${module.status}`}>{module.status==='unavailable'?'S/D':statusLabel(module.status)}</span>
+    </button>;
   const toggleGroup=(key:string)=>setExpandedGroups(current=>{const next=new Set(current);if(next.has(key))next.delete(key);else next.add(key);return next});
   const checklistModule=(key:ModuleCard['key'],title?:string)=>{
     const module=modulesByKey.get(key);
@@ -946,10 +975,10 @@ function ConfigurationLanding({point,onBack,onOpenModule}:{point:PointRow;onBack
     </div>
 
     <div className="ser-kpis ser-config-kpis">
-      <article><span className="ser-kpi-icon green"><Settings2/></span><div><small>Configuración</small><strong>{snapshot.progress}%</strong><em>avance total</em></div></article>
-      <article><span className="ser-kpi-icon red"><AlertTriangle/></span><div><small>Bloqueantes</small><strong>{snapshot.blockers}</strong><em>impiden activar completamente</em></div></article>
-      <article><span className="ser-kpi-icon amber"><Wrench/></span><div><small>Observaciones</small><strong>{snapshot.warnings}</strong><em>requieren revisión</em></div></article>
-      <article><span className="ser-kpi-icon blue"><BarChart3/></span><div><small>Módulos</small><strong>{snapshot.modules.length}</strong><em>configurables desde esta landing</em></div></article>
+      <article><span className="ser-kpi-icon green"><Settings2/></span><div><small>Configuración</small><strong>{configProgress}%</strong><em>avance total</em></div></article>
+      <article><span className="ser-kpi-icon red"><AlertTriangle/></span><div><small>Bloqueantes</small><strong>{blockerCount}</strong><em>impiden activar completamente</em></div></article>
+      <article><span className="ser-kpi-icon amber"><Wrench/></span><div><small>Observaciones</small><strong>{warningCount}</strong><em>requieren revisión</em></div></article>
+      <article><span className="ser-kpi-icon blue"><BarChart3/></span><div><small>Módulos</small><strong>{moduleCount}</strong><em>configurables desde esta landing</em></div></article>
     </div>
 
     <div className="ser-config-layout">
@@ -960,8 +989,8 @@ function ConfigurationLanding({point,onBack,onOpenModule}:{point:PointRow;onBack
           {checklistGroup('physical','Seguridad Física',<ShieldCheck size={18}/>,'Configuración de puestos y protocolos',physicalStatus,<>
             {physicalModules.map(module=>checklistModule(module.key,module.title))}
           </>)}
-          {checklistGroup('electronic','Seguridad Electrónica',<Radio size={18}/>,'Sin fuente de configuración integrada',electronicStatus,<>
-            {electronicModules.map(module=>unavailableModule(module.key,module.title,module.icon))}
+          {checklistGroup('electronic','Seguridad Electrónica',<Radio size={18}/>,'Componentes y consignas OBSINT',electronicStatus,<>
+            {electronicModules.map(electronicRow)}
           </>)}
           {checklistModule('nexus')}
           {checklistModule('rrhh')}
@@ -1091,6 +1120,12 @@ export default function Services(){
   if(selectedPoint&&view==='config-consignas'){
     return <ConsignasConfig point={selectedPoint} onBack={()=>setView('config-landing')}/>;
   }
+  if(selectedPoint&&view==='config-components'){
+    return <SecurityComponents point={selectedPoint} onBack={()=>setView('config-landing')}/>;
+  }
+  if(selectedPoint&&view==='config-obsint'){
+    return <ObsintConfig point={selectedPoint} onBack={()=>setView('config-landing')}/>;
+  }
   if(selectedPoint&&view==='config-nexus'){
     return <NexusConfig point={selectedPoint} onBack={()=>setView('config-landing')}/>;
   }
@@ -1098,7 +1133,7 @@ export default function Services(){
     return <OperationPage point={selectedPoint} onBack={backToList}/>;
   }
   if(selectedPoint&&view==='config-landing'){
-    return <ConfigurationLanding point={selectedPoint} onBack={backToList} onOpenModule={(module:ModuleCard['key'])=>{if(module==='ats')setView('config-ats');if(module==='puestos')setView('config-posts');if(module==='bitacora')setView('config-bitacora');if(module==='patrullas')setView('config-patrols');if(module==='consignas')setView('config-consignas');if(module==='nexus')setView('config-nexus')}}/>;
+    return <ConfigurationLanding point={selectedPoint} onBack={backToList} onOpenModule={(module:ConfigModuleKey)=>{if(module==='ats')setView('config-ats');if(module==='puestos')setView('config-posts');if(module==='bitacora')setView('config-bitacora');if(module==='patrullas')setView('config-patrols');if(module==='consignas')setView('config-consignas');if(module==='nexus')setView('config-nexus');if(module==='components')setView('config-components');if(module==='obsint')setView('config-obsint')}}/>;
   }
 
   return <div className="services-v01 services-v02">

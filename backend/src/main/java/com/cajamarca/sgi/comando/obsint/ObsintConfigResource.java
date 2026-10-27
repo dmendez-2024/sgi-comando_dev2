@@ -24,6 +24,7 @@ import org.jboss.resteasy.reactive.server.ServerExceptionMapper;
 @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION","SUPERVISOR_SEGURIDAD"})
 public class ObsintConfigResource {
     static final Set<String> CATEGORIES = Set.of("SSO", "PRODUCTION", "LOGISTICS", "CLEANING", "MOBILITY", "CUSTOMER_SERVICE");
+    static final Set<String> FREQUENCIES = Set.of("EVERY_SHIFT", "EVERY_2_HOURS", "EVERY_4_HOURS", "DAILY");
     static final int MAX_CAMERAS = 4;
     static final int MAX_CONSIGNAS = 50;
 
@@ -31,10 +32,10 @@ public class ObsintConfigResource {
     @Inject EntityManager em;
 
     public record SlotView(int dayOfWeek, String start, String end) {}
-    public record ConsignaView(UUID id, String code, String title, String instruction, String category, int timeLimitSeconds, int position,
+    public record ConsignaView(UUID id, String code, String title, String description, String instruction, String category, String frequency, int timeLimitSeconds, int position,
                                boolean active, List<UUID> cameraIds, List<SlotView> schedule) {
         static ConsignaView of(ObsintConsigna c) {
-            return new ConsignaView(c.id, c.code, c.title, c.instruction, c.category, c.timeLimitSeconds, c.position, c.active,
+            return new ConsignaView(c.id, c.code, c.title, c.description, c.instruction, c.category, c.frequency, c.timeLimitSeconds, c.position, c.active,
                 c.cameras.stream().map(cam -> cam.id).toList(),
                 c.schedule.stream().sorted(Comparator.comparingInt(s -> s.dayOfWeek)).map(s -> new SlotView(s.dayOfWeek, s.startTime.toString(), s.endTime.toString())).toList());
         }
@@ -42,7 +43,7 @@ public class ObsintConfigResource {
     public record ProtocolView(UUID id, UUID pointId, String code, int versionNo, String status, Instant publishedAt, Instant activatedAt,
                                String updatedBy, Instant updatedAt, List<ConsignaView> consignas) {}
     public record CameraOption(UUID id, String code, String name, String location, String status) {}
-    public record SaveConsigna(String title, String instruction, String category, Integer timeLimitSeconds, Boolean active,
+    public record SaveConsigna(String title, String description, String instruction, String category, String frequency, Integer timeLimitSeconds, Boolean active,
                                List<UUID> cameraIds, List<SlotView> schedule) {}
     public record Summary(String status, String meta, Integer activeVersion, int activeConsignas, boolean hasDraft, List<String> warnings) {}
 
@@ -79,10 +80,11 @@ public class ObsintConfigResource {
             p.code = nextProtocolCode();
             p.persist();
         } else {
-            ObsintProtocol source = all.get(0);
+            ObsintProtocol source = all.stream().filter(item -> "ACTIVO".equals(item.status)).findFirst().orElse(all.get(0));
             p.seriesId = source.seriesId;
             p.basedOnProtocolId = source.id;
-            p.versionNo = source.versionNo + 1;
+            p.versionNo = all.stream().filter(item -> source.seriesId.equals(item.seriesId))
+                .mapToInt(item -> item.versionNo).max().orElse(source.versionNo) + 1;
             p.code = source.code;
             p.persist();
             for (ObsintConsigna old : consignas(source.id)) copy(old, p.id);
@@ -200,9 +202,13 @@ public class ObsintConfigResource {
     private void apply(ObsintConsigna c, SaveConsigna body) {
         if (body == null) throw new BadRequestException("Solicitud obligatoria.");
         c.title = text(body.title(), "El nombre de la consigna es obligatorio.", 160);
+        c.description = text(body.description(), "La descripción de la consigna es obligatoria.", 1000);
         c.instruction = text(body.instruction(), "La descripción de la consigna es obligatoria.", 1000);
         if (body.category() == null || !CATEGORIES.contains(body.category())) throw new BadRequestException("Categoría inválida.");
         c.category = body.category();
+        String frequency = body.frequency() == null ? "EVERY_SHIFT" : body.frequency();
+        if (!FREQUENCIES.contains(frequency)) throw new BadRequestException("Frecuencia inválida.");
+        c.frequency = frequency;
         if (body.timeLimitSeconds() == null || body.timeLimitSeconds() < 10 || body.timeLimitSeconds() > 3600) throw new BadRequestException("El tiempo máximo debe estar entre 10 segundos y 60 minutos.");
         c.timeLimitSeconds = body.timeLimitSeconds();
         c.active = body.active() == null || body.active();
@@ -239,8 +245,10 @@ public class ObsintConfigResource {
         c.pointId = old.pointId;
         c.code = old.code;
         c.title = old.title;
+        c.description = old.description;
         c.instruction = old.instruction;
         c.category = old.category;
+        c.frequency = old.frequency;
         c.timeLimitSeconds = old.timeLimitSeconds;
         c.position = old.position;
         c.active = old.active;
