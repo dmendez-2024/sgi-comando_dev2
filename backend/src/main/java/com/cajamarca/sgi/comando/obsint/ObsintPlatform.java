@@ -1,6 +1,7 @@
 package com.cajamarca.sgi.comando.obsint;
 
 import com.cajamarca.sgi.comando.common.TenantContext;
+import com.cajamarca.sgi.comando.consignments.Consignment;
 import com.cajamarca.sgi.comando.operations.PointEntity;
 import com.cajamarca.sgi.comando.security.IdentIdentity;
 import com.cajamarca.sgi.comando.storage.Digests;
@@ -16,8 +17,11 @@ import jakarta.ws.rs.NotFoundException;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -48,6 +52,35 @@ public class ObsintPlatform {
         PointEntity point = PointEntity.find("id=?1 and instanceCountryId=?2", pointId, tenant.instanceCountryId()).firstResult();
         if (point == null) throw new NotFoundException("Punto no encontrado");
         scope.requireCompanyForCompanyRoles(point.companyId);
+    }
+
+    /** Consigna de Consignas marcada con el "puesto" OBSINT, tal como está vigente hoy en el Punto. */
+    public record LinkedConsignment(UUID pointId, String code, String title, String instruction, boolean temporary, Instant validFrom, Instant validUntil) {
+        /** Dentro de su vigencia (las permanentes siempre). */
+        public boolean validAt(Instant now) {
+            return !temporary || (validFrom == null || !now.isBefore(validFrom)) && (validUntil == null || now.isBefore(validUntil));
+        }
+    }
+
+    /**
+     * Por Punto y por código, las consignas marcadas OBSINT del protocolo de Consignas ACTIVO (estado VIGENTE).
+     * Es lo que se puede vincular en la configuración OBSINT y lo que la consola acepta.
+     */
+    public Map<UUID, Map<String, LinkedConsignment>> obsintConsignments(Collection<UUID> pointIds) {
+        Map<UUID, Map<String, LinkedConsignment>> out = new HashMap<>();
+        if (pointIds.isEmpty()) return out;
+        List<Consignment> rows = Consignment.list(
+            "instanceCountryId=?1 and pointId in ?2 and obsint=true and status='VIGENTE' and protocolId in "
+                + "(select p.id from ConsignmentProtocol p where p.instanceCountryId=?1 and p.status='ACTIVO') order by code",
+            tenant.instanceCountryId(), pointIds);
+        for (Consignment c : rows)
+            out.computeIfAbsent(c.pointId, k -> new LinkedHashMap<>()).put(c.code, new LinkedConsignment(c.pointId, c.code, c.title, c.instruction,
+                "TEMPORARY".equals(c.validityType), c.validityFrom, c.validityUntil));
+        return out;
+    }
+
+    public Map<String, LinkedConsignment> obsintConsignments(UUID pointId) {
+        return obsintConsignments(List.of(pointId)).getOrDefault(pointId, Map.of());
     }
 
     /**

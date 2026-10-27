@@ -32,10 +32,10 @@ public class ObsintConfigResource {
     @Inject EntityManager em;
 
     public record SlotView(int dayOfWeek, String start, String end) {}
-    public record ConsignaView(UUID id, String code, String title, String description, String instruction, String category, String frequency, int timeLimitSeconds, int position,
+    public record ConsignaView(UUID id, String code, String consignmentCode, String title, String description, String instruction, String category, String frequency, int timeLimitSeconds, int position,
                                boolean active, List<UUID> cameraIds, List<SlotView> schedule) {
         static ConsignaView of(ObsintConsigna c) {
-            return new ConsignaView(c.id, c.code, c.title, c.description, c.instruction, c.category, c.frequency, c.timeLimitSeconds, c.position, c.active,
+            return new ConsignaView(c.id, c.code, c.consignmentCode, c.title, c.description, c.instruction, c.category, c.frequency, c.timeLimitSeconds, c.position, c.active,
                 c.cameras.stream().map(cam -> cam.id).toList(),
                 c.schedule.stream().sorted(Comparator.comparingInt(s -> s.dayOfWeek)).map(s -> new SlotView(s.dayOfWeek, s.startTime.toString(), s.endTime.toString())).toList());
         }
@@ -43,7 +43,9 @@ public class ObsintConfigResource {
     public record ProtocolView(UUID id, UUID pointId, String code, int versionNo, String status, Instant publishedAt, Instant activatedAt,
                                String updatedBy, Instant updatedAt, List<ConsignaView> consignas) {}
     public record CameraOption(UUID id, String code, String name, String location, String status) {}
-    public record SaveConsigna(String title, String description, String instruction, String category, String frequency, Integer timeLimitSeconds, Boolean active,
+    /** Consigna de Consignas marcada OBSINT que se puede vincular a una tarea. */
+    public record ConsignmentOption(String code, String title, String instruction) {}
+    public record SaveConsigna(String consignmentCode, String title, String description, String instruction, String category, String frequency, Integer timeLimitSeconds, Boolean active,
                                List<UUID> cameraIds, List<SlotView> schedule) {}
     public record Summary(String status, String meta, Integer activeVersion, int activeConsignas, boolean hasDraft, List<String> warnings) {}
 
@@ -59,6 +61,13 @@ public class ObsintConfigResource {
     public List<CameraOption> cameras(@PathParam("pointId") UUID pointId) {
         platform.requirePoint(pointId);
         return pointCameras(pointId).stream().map(c -> new CameraOption(c.id, c.code, c.name, c.location, c.status.name())).toList();
+    }
+
+    /** Consignas del protocolo de Consignas activo del Punto marcadas con el "puesto" OBSINT: las que se pueden vincular. */
+    @GET @Path("/points/{pointId}/consignments") @Transactional
+    public List<ConsignmentOption> consignments(@PathParam("pointId") UUID pointId) {
+        platform.requirePoint(pointId);
+        return platform.obsintConsignments(pointId).values().stream().map(c -> new ConsignmentOption(c.code(), c.title(), c.instruction())).toList();
     }
 
     /** Borrador para editar: el existente, una nueva versión del último publicado o la versión 1. */
@@ -108,6 +117,7 @@ public class ObsintConfigResource {
         requireDraft(p);
         List<ObsintConsigna> items = consignas(p.id);
         if (items.stream().noneMatch(c -> c.active)) throw new ObsintRuleException("El protocolo debe tener al menos una consigna activa.");
+        // Una tarea cuya consigna dejó de estar marcada OBSINT no bloquea: la Consola la salta y el resumen lo advierte.
         for (ObsintConsigna c : items) {
             if (!c.active) continue;
             if (c.cameras.isEmpty()) throw new ObsintRuleException(c.code + ": asocie al menos una cámara.");
@@ -187,6 +197,10 @@ public class ObsintConfigResource {
         if (active.isEmpty()) return new Summary("blocked", hasDraft ? "Borrador sin publicar · sin protocolo activo" : "Sin protocolo OBSINT activo", null, 0, hasDraft, List.of());
         List<ObsintConsigna> items = consignas(active.get().id).stream().filter(c -> c.active).toList();
         List<String> warnings = new ArrayList<>();
+        Map<String, ObsintPlatform.LinkedConsignment> linkable = platform.obsintConsignments(pointId);
+        for (ObsintConsigna c : items)
+            if (c.consignmentCode != null && !linkable.containsKey(c.consignmentCode))
+                warnings.add(c.code + ": la consigna " + c.consignmentCode + " ya no está vigente con OBSINT en Consignas; la Consola no la mostrará");
         for (ObsintConsigna c : items)
             c.cameras.stream().filter(cam -> cam.status != SecElecComponent.Status.ACTIVE)
                 .forEach(cam -> warnings.add(c.code + ": la cámara " + cam.code + (cam.status == SecElecComponent.Status.INACTIVE ? " está inactiva" : " tiene observaciones")));
@@ -201,9 +215,24 @@ public class ObsintConfigResource {
 
     private void apply(ObsintConsigna c, SaveConsigna body) {
         if (body == null) throw new BadRequestException("Solicitud obligatoria.");
-        c.title = text(body.title(), "El nombre de la consigna es obligatorio.", 160);
-        c.description = text(body.description(), "La descripción de la consigna es obligatoria.", 1000);
-        c.instruction = text(body.instruction(), "La descripción de la consigna es obligatoria.", 1000);
+        if (body.consignmentCode() != null && !body.consignmentCode().isBlank()) {
+            // Vinculada: nombre e instrucción salen de Consignas; aquí solo se agregan cámaras, horario, tiempo y categoría.
+            String code = body.consignmentCode().trim();
+            ObsintPlatform.LinkedConsignment source = platform.obsintConsignments(c.pointId).get(code);
+            if (source == null) throw new BadRequestException("La consigna " + code + " no está vigente con OBSINT en el protocolo de Consignas activo del Punto.");
+            if (ObsintConsigna.count("protocolId=?1 and consignmentCode=?2 and id<>?3", c.protocolId, code, c.id == null ? new UUID(0, 0) : c.id) > 0)
+                throw new BadRequestException("La consigna " + code + " ya está vinculada a otra tarea de este protocolo.");
+            c.consignmentCode = code;
+            c.title = source.title().length() > 160 ? source.title().substring(0, 160) : source.title();
+            c.instruction = source.instruction().length() > 1000 ? source.instruction().substring(0, 1000) : source.instruction();
+            c.description = body.description() == null || body.description().isBlank() ? c.instruction : text(body.description(), "", 1000);
+        } else {
+            c.consignmentCode = null;
+            c.title = text(body.title(), "El nombre de la consigna es obligatorio.", 160);
+            c.instruction = text(body.instruction(), "La descripción de la consigna es obligatoria.", 1000);
+            // Sin descripción se usa la instrucción, igual que V95 con las consignas anteriores.
+            c.description = body.description() == null || body.description().isBlank() ? c.instruction : text(body.description(), "", 1000);
+        }
         if (body.category() == null || !CATEGORIES.contains(body.category())) throw new BadRequestException("Categoría inválida.");
         c.category = body.category();
         String frequency = body.frequency() == null ? "EVERY_SHIFT" : body.frequency();
@@ -244,6 +273,7 @@ public class ObsintConfigResource {
         c.protocolId = protocolId;
         c.pointId = old.pointId;
         c.code = old.code;
+        c.consignmentCode = old.consignmentCode;
         c.title = old.title;
         c.description = old.description;
         c.instruction = old.instruction;

@@ -18,6 +18,8 @@ public class ObsintConsigna extends BaseEntity {
     @Column(name = "protocol_id", nullable = false) public UUID protocolId;
     @Column(name = "point_id", nullable = false) public UUID pointId;
     @Column(nullable = false, length = 40) public String code;
+    /** Código de la consigna de Consignas (marcada OBSINT) de la que sale esta tarea; null en tareas anteriores al vínculo. */
+    @Column(name = "consignment_code", length = 32) public String consignmentCode;
     @Column(nullable = false, length = 160) public String title;
     @Column(nullable = false, length = 1000) public String description = "";
     @Column(nullable = false, length = 1000) public String instruction;

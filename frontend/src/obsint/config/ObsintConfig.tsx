@@ -1,6 +1,6 @@
 import {useEffect, useMemo, useState, type FormEvent, type ReactNode} from 'react';
 import {AlertTriangle, ArrowLeft, BrushCleaning, CarFront, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ClipboardList, Factory, Package, Pencil, Plus, Power, Save, Search, Send, ShieldCheck, Trash2, UserRound, UsersRound, X} from 'lucide-react';
-import {errorText, obsintConfigApi, type ObsintCameraOption, type ObsintCategory, type ObsintConsignaConfig, type ObsintConsignaSave, type ObsintFrequency, type ObsintProtocol, type ObsintSlot} from '../obsintApi';
+import {errorText, obsintConfigApi, type ObsintCameraOption, type ObsintCategory, type ObsintConsignaConfig, type ObsintConsignaSave, type ObsintConsignmentOption, type ObsintFrequency, type ObsintProtocol, type ObsintSlot} from '../obsintApi';
 import {CATEGORIES, categoryLabel, DAYS, protocolStatusLabel} from '../obsint';
 import '../obsint.css';
 import './obsint-config.css';
@@ -30,6 +30,7 @@ const PAGE_SIZES=[10,20,50];
 export default function ObsintConfig({point,onBack}:{point:ObsintPointContext;onBack:()=>void}){
   const [protocols,setProtocols]=useState<ObsintProtocol[]>([]);
   const [cameras,setCameras]=useState<ObsintCameraOption[]>([]);
+  const [linkable,setLinkable]=useState<ObsintConsignmentOption[]>([]);
   const [versionId,setVersionId]=useState('');
   const [category,setCategory]=useState<ObsintCategory|'ALL'>('ALL');
   const [query,setQuery]=useState('');
@@ -44,8 +45,8 @@ export default function ObsintConfig({point,onBack}:{point:ObsintPointContext;on
 
   async function load(preferId?:string){
     try{
-      const [list,cams]=await Promise.all([obsintConfigApi.protocols(point.pointId),obsintConfigApi.cameras(point.pointId)]);
-      setProtocols(list);setCameras(cams);setError('');
+      const [list,cams,options]=await Promise.all([obsintConfigApi.protocols(point.pointId),obsintConfigApi.cameras(point.pointId),obsintConfigApi.consignments(point.pointId)]);
+      setProtocols(list);setCameras(cams);setLinkable(options);setError('');
       const keep=preferId??versionId;
       const current=list.find(p=>p.id===keep)??list.find(p=>p.status==='ACTIVO')??list.find(p=>p.status==='BORRADOR')??list[0];
       setVersionId(current?.id??'');
@@ -177,6 +178,7 @@ export default function ObsintConfig({point,onBack}:{point:ObsintPointContext;on
       <section className="obs-card obs-cfg-detail">
         {editing
           ?<ConsignaForm key={editing==='new'?'new':editing.id} protocolId={protocol.id} initial={editing==='new'?null:editing} cameras={cameras}
+              linkable={linkable.filter(o=>!consignas.some(c=>c.consignmentCode===o.code&&(editing==='new'||c.id!==editing.id)))}
               defaultCategory={category==='ALL'?'SSO':category} onSaved={saved} onCancel={()=>setEditing(null)}/>
           :selected?<ConsignaDetail c={selected} cameras={cameras} onEdit={()=>void openEditor(selected)}/>
           :<div className="obs-cfg-empty-detail"><ClipboardList size={30}/>Seleccione una tarea para ver su detalle{editable?' o cree una nueva':''}.</div>}
@@ -193,6 +195,7 @@ function ConsignaDetail({c,cameras,onEdit}:{c:ObsintConsignaConfig;cameras:Obsin
     <div className="obs-cfg-detail-grid">
       <div className="obs-cfg-detail-fields">
         <div className="obs-cfg-read-field"><span>Código</span><div>{c.code}</div></div>
+        <div className="obs-cfg-read-field"><span>Consigna</span><div>{c.consignmentCode??'Sin vincular (creada antes del vínculo con Consignas)'}</div></div>
         <div className="obs-cfg-read-field"><span>Nombre de la tarea</span><div>{c.title}</div></div>
         <div className="obs-cfg-read-field"><span>Categoría</span><div><CategoryIcon category={c.category} size={15}/>{categoryLabel(c.category)}</div></div>
         <div className="obs-cfg-read-field obs-cfg-description"><span>Descripción</span><div>{c.description||c.instruction}</div></div>
@@ -211,9 +214,9 @@ function ConsignaDetail({c,cameras,onEdit}:{c:ObsintConsignaConfig;cameras:Obsin
   </>;
 }
 
-function ConsignaForm({protocolId,initial,cameras,defaultCategory,onSaved,onCancel}:{protocolId:string;initial:ObsintConsignaConfig|null;cameras:ObsintCameraOption[];
-  defaultCategory:ObsintCategory;onSaved:(c:ObsintConsignaConfig)=>void;onCancel:()=>void}){
-  const [form,setForm]=useState<ObsintConsignaSave>(()=>({title:initial?.title??'',description:initial?.description??'',instruction:initial?.instruction??'',category:initial?.category??defaultCategory,frequency:initial?.frequency??'EVERY_SHIFT',
+function ConsignaForm({protocolId,initial,cameras,linkable,defaultCategory,onSaved,onCancel}:{protocolId:string;initial:ObsintConsignaConfig|null;cameras:ObsintCameraOption[];
+  linkable:ObsintConsignmentOption[];defaultCategory:ObsintCategory;onSaved:(c:ObsintConsignaConfig)=>void;onCancel:()=>void}){
+  const [form,setForm]=useState<ObsintConsignaSave>(()=>({consignmentCode:initial?.consignmentCode??null,title:initial?.title??'',description:initial?.description??'',instruction:initial?.instruction??'',category:initial?.category??defaultCategory,frequency:initial?.frequency??'EVERY_SHIFT',
     timeLimitSeconds:initial?.timeLimitSeconds??120,active:initial?.active??true,cameraIds:initial?.cameraIds??[],schedule:initial?.schedule??[]}));
   const [times,setTimes]=useState<Record<number,{start:string;end:string}>>(()=>Object.fromEntries(DAYS.map((_,i)=>{
     const saved=initial?.schedule.find(slot=>slot.dayOfWeek===i+1);
@@ -224,6 +227,13 @@ function ConsignaForm({protocolId,initial,cameras,defaultCategory,onSaved,onCanc
   const set=<K extends keyof ObsintConsignaSave>(key:K,value:ObsintConsignaSave[K])=>setForm(prev=>({...prev,[key]:value}));
   const setTime=(day:number,key:'start'|'end',value:string)=>setTimes(prev=>({...prev,[day]:{...prev[day],[key]:value}}));
   const toggleCamera=(id:string)=>set('cameraIds',form.cameraIds.includes(id)?form.cameraIds.filter(x=>x!==id):[...form.cameraIds,id]);
+  /** Las tareas nuevas (y las ya vinculadas) salen de una consigna marcada OBSINT en Consignas; las anteriores pueden quedar sin vincular. */
+  const linkRequired=!initial||Boolean(initial.consignmentCode);
+  const linked=Boolean(form.consignmentCode);
+  const options=initial?.consignmentCode&&!linkable.some(o=>o.code===initial.consignmentCode)
+    ?[{code:initial.consignmentCode,title:`${initial.title} (ya no está vigente con OBSINT)`,instruction:initial.instruction},...linkable]:linkable;
+  const chooseConsignment=(code:string)=>{const option=options.find(o=>o.code===code);
+    setForm(prev=>option?{...prev,consignmentCode:option.code,title:option.title,instruction:option.instruction,description:prev.description||option.instruction}:{...prev,consignmentCode:null})};
   const timeLimits=TIME_LIMITS.includes(form.timeLimitSeconds)?TIME_LIMITS:[...TIME_LIMITS,form.timeLimitSeconds].sort((a,b)=>a-b);
 
   async function submit(e:FormEvent){
@@ -235,6 +245,7 @@ function ConsignaForm({protocolId,initial,cameras,defaultCategory,onSaved,onCanc
       if(start&&end){if(end<=start){setError(`El horario de fin del ${DAYS[i]} debe ser posterior al inicio.`);return}slots.push({dayOfWeek:day,start,end})}
     }
     if(!slots.length){setError('Ingrese un horario de inicio y fin en al menos un día.');return}
+    if(linkRequired&&!form.consignmentCode){setError('Seleccione la consigna de Consignas que verificará el monitorista.');return}
     setSaving(true);setError('');
     const body={...form,schedule:slots};
     try{onSaved(initial?await obsintConfigApi.updateConsigna(initial.id,body):await obsintConfigApi.createConsigna(protocolId,body))}
@@ -247,7 +258,11 @@ function ConsignaForm({protocolId,initial,cameras,defaultCategory,onSaved,onCanc
     <div className="obs-cfg-detail-head"><span className="obs-cfg-task-icon"><UserRound size={16}/></span><b>{form.title||'Nueva tarea'}</b><label className="obs-cfg-status-toggle"><input type="checkbox" checked={form.active} onChange={e=>set('active',e.target.checked)}/>{form.active?'Activa':'Inactiva'}</label></div>
     <div className="obs-cfg-form-main"><div className="obs-cfg-form-fields">
       <Field label="Código"><input value={initial?.code??'Se asigna al guardar'} disabled/></Field>
-      <Field label="Nombre de la tarea" required><input value={form.title} onChange={e=>set('title',e.target.value)} required maxLength={160} placeholder="Verificación de uso de EPP"/></Field>
+      <Field label="Consigna" required={linkRequired}><select value={form.consignmentCode??''} onChange={e=>chooseConsignment(e.target.value)} required={linkRequired}>
+        <option value="">{linkRequired?'Seleccione una consigna marcada OBSINT':'Sin vincular'}</option>
+        {options.map(o=><option key={o.code} value={o.code}>{o.code} · {o.title}</option>)}
+      </select>{!options.length&&<small className="obs-cfg-hint"><AlertTriangle size={13}/>No hay consignas con OBSINT. Márquelas en Servicios → Consignas → Alcance y active el protocolo.</small>}</Field>
+      <Field label="Nombre de la tarea" required><input value={form.title} onChange={e=>set('title',e.target.value)} required maxLength={160} readOnly={linked} title={linked?'Sale de la consigna; se edita en Consignas.':undefined} placeholder="Verificación de uso de EPP"/></Field>
       <Field label="Categoría" required><span className="obs-cfg-category-select"><CategoryIcon category={form.category} size={16}/><span>{categoryLabel(form.category)}</span><ChevronDown size={13}/><select value={form.category} onChange={e=>set('category',e.target.value as ObsintCategory)}>{CATEGORIES.map(c=><option key={c.value} value={c.value}>{c.label}</option>)}</select></span></Field>
       <Field label="Descripción" required><textarea className="obs-cfg-description-input" value={form.description} onChange={e=>set('description',e.target.value)} required maxLength={1000} rows={4} placeholder="Describa lo que se debe observar en el punto."/></Field>
       <Field label="Frecuencia" required><select value={form.frequency} onChange={e=>set('frequency',e.target.value as ObsintFrequency)} required>{FREQUENCIES.map(option=><option key={option.value} value={option.value}>{option.label}</option>)}</select></Field>
@@ -272,7 +287,7 @@ function ConsignaForm({protocolId,initial,cameras,defaultCategory,onSaved,onCanc
       :<p className="obs-cfg-hint"><AlertTriangle size={15}/>Este punto no tiene cámaras. Agréguelas en Componentes de Seguridad → Videovigilancia.</p>}
     </fieldset>
     </div>
-    <Field label="Instrucciones operativas" required><textarea value={form.instruction} onChange={e=>set('instruction',e.target.value)} required maxLength={1000} rows={4}
+    <Field label="Instrucciones operativas" required><textarea value={form.instruction} onChange={e=>set('instruction',e.target.value)} required maxLength={1000} rows={4} readOnly={linked} title={linked?'Sale de la consigna; se edita en Consignas.':undefined}
       placeholder="Indique al monitorista qué debe observar, registrar y reportar."/></Field>
 
     {error&&<div className="obs-error">{error}</div>}

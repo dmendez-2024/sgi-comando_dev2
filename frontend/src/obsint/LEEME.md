@@ -6,6 +6,7 @@ Fuentes:
 - Mockup `OBSINT_mockup_real_v4.html`: la pantalla de evaluación del monitorista.
 - Presentación "OBSINT Estructura" (17 diapositivas):
   - 7, 8, 16 y 17: Componentes de Seguridad.
+  - 9: OBSINT como un "puesto" más en Servicios / Consignas (nota del orador).
   - 10 y 14: Consignas OBSINT ("Vincular Consignas – Cámara – Horario").
   - 11: Consola / OBSINT.
 - Captura de la Consola actual con el botón OBSINT marcado junto al alcance.
@@ -86,6 +87,7 @@ Pantalla de la diapositiva 10. Se abre desde Configuración del Punto.
 - **Izquierda:** categorías de tareas con contador. "Todas las tareas" y las 6 categorías: SSO, Producción industrial, Logística y almacenamiento, Orden y limpieza, Movilidad y tránsito interno, Atención al cliente.
 - **Centro:** tabla de tareas (código OBS‑NNN, nombre, categoría, tiempo, cantidad de cámaras, estado), búsqueda y "Nueva tarea". Solo se puede editar en el borrador.
 - **Derecha:** detalle de la tarea, o su formulario:
+  - **Consigna:** la consigna de Servicios / Consignas, marcada OBSINT, de la que sale la tarea (ver §3, "OBSINT como puesto"). Obligatoria en tareas nuevas; nombre e instrucción vienen de ahí y se ven en solo lectura.
   - Nombre, categoría y tiempo máximo de ejecución (30 s, 1, 2, 3, 5 o 10 min).
   - Descripción, que es lo que ve el monitorista en la consola.
   - Tarea activa o inactiva.
@@ -126,6 +128,18 @@ Pantalla de la diapositiva 10. Se abre desde Configuración del Punto.
   - Cada consigna activa con al menos una cámara, ninguna inactiva.
   - Cada consigna activa con horario en al menos un día.
 - Editar o borrar consignas de una versión publicada → 409 "Cree una nueva versión".
+
+### OBSINT como "puesto" en Consignas (diapositiva 9)
+
+- En **Servicios / Consignas**, pestaña **Alcance**, cada consigna tiene la casilla **OBSINT**: "el Monitorista OBSINT verifica esta Consigna por cámara". En "Cobertura por Puesto" aparece la tarjeta **OBSINT** junto a los puestos.
+- Se guarda en `consignment.obsint` (V97). Es independiente del alcance de guardias:
+  - "Todo el Punto" + OBSINT → la reciben los guardias y el monitorista.
+  - "Puestos específicos" sin ningún puesto + OBSINT → **solo el monitorista**. Sin OBSINT sigue exigiendo al menos un puesto.
+  - Las consultas de SGI Operador no cambian: una consigna solo OBSINT no le llega a ningún guardia.
+- En **Seguridad Electrónica / OBSINT**, "Nueva tarea" elige una de esas consignas (las del protocolo de Consignas **ACTIVO**, estado VIGENTE). El vínculo es por **código** (`obsint_consigna.consignment_code`), que se mantiene entre versiones de Consignas. Una consigna se vincula a una sola tarea por protocolo OBSINT.
+- **Consola:** una tarea vinculada entra al caso solo si su consigna sigue VIGENTE, marcada OBSINT y dentro de su vigencia (las temporales). Lleva la **instrucción actual** de Consignas.
+- Si en Consignas se quita la marca, la tarea no bloquea publicar OBSINT: la Consola la salta y la fila OBSINT de Configuración del Punto muestra el aviso.
+- Las tareas creadas antes del vínculo (`consignment_code` vacío) siguen funcionando como antes.
 
 ### Consigna
 
@@ -257,6 +271,8 @@ const obs = await obsintConfigApi.summary(pointId);  // {status, meta:'Protocolo
 - `V92__obsint_config_and_security_components.sql`: transforma V91 al modelo actual (ver §7).
 - `V93__secelec_camera_channel_geo_streaming.sql`: canal, coordenadas y streaming de las cámaras (ver §7).
 - `V94__obsint_agent_message_test_status.sql`: estado `TEST` (modo prueba) para los mensajes al agente (ver §3).
+- `V95__obsint_consigna_description.sql` y `V96__obsint_consigna_frequency.sql`: descripción y frecuencia de cada consigna OBSINT (pantalla de crear tarea).
+- `V97__obsint_consignment_link.sql`: casilla OBSINT en `consignment` y vínculo `obsint_consigna.consignment_code` (ver §3, "OBSINT como puesto").
 
 **Pruebas**
 
@@ -354,6 +370,7 @@ Esquema resultante (todas las tablas llevan `instance_country_id`, `created_at` 
 |---|---|---|
 | GET | `/points/{pointId}/protocols` | Versiones del protocolo, con sus consignas |
 | GET | `/points/{pointId}/cameras` | Cámaras que se pueden asociar |
+| GET | `/points/{pointId}/consignments` | Consignas marcadas OBSINT del protocolo de Consignas activo (`code`, `title`, `instruction`): las que se pueden vincular con `consignmentCode` al crear o editar una tarea |
 | POST | `/points/{pointId}/protocols/draft` | Abre el borrador (existente, nueva versión o v1) |
 | DELETE | `/protocols/{id}` | Descarta el borrador |
 | POST | `/protocols/{id}/publish` | Publica (BORRADOR → INACTIVO) |

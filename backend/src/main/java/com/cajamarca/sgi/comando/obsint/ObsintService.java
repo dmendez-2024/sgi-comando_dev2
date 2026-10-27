@@ -10,6 +10,7 @@ import java.time.Instant;
 import java.time.ZonedDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -38,7 +39,8 @@ public class ObsintService {
 
     /**
      * Abre un caso con las consignas activas de los protocolos OBSINT ACTIVOS cuyo horario cubre este momento,
-     * solo de los Puntos de las Compañías del alcance del monitorista.
+     * solo de los Puntos de las Compañías del alcance del monitorista. Las tareas vinculadas a Consignas entran solo si esa
+     * consigna sigue vigente y marcada OBSINT, y llevan su instrucción actual.
      * Si ya hay uno en curso se devuelve ese: un monitorista trabaja un caso a la vez.
      */
     @Transactional
@@ -51,10 +53,17 @@ public class ObsintService {
                 "instanceCountryId=?1 and active=true and protocolId in (select p.id from ObsintProtocol p where p.status='ACTIVO' and p.instanceCountryId=?1) order by pointId, position, code", tenantId)
             .stream().filter(c -> c.scheduledAt(local.getDayOfWeek().getValue(), local.toLocalTime())).toList();
         Set<UUID> visible = platform.visiblePoints(scheduled.stream().map(c -> c.pointId).collect(Collectors.toSet()));
-        List<ObsintConsigna> consignas = scheduled.stream().filter(c -> visible.contains(c.pointId)).toList();
+        Map<UUID, Map<String, ObsintPlatform.LinkedConsignment>> linked = platform.obsintConsignments(visible);
+        Instant at = now();
+        List<ObsintConsigna> consignas = scheduled.stream().filter(c -> visible.contains(c.pointId))
+            .filter(c -> c.consignmentCode == null || Optional.ofNullable(linked.getOrDefault(c.pointId, Map.of()).get(c.consignmentCode))
+                .filter(source -> source.validAt(at)).isPresent())
+            .toList();
         if (consignas.isEmpty()) throw new ObsintRuleException("No hay consignas OBSINT activas en este horario en las Compañías de su alcance.");
         long number = ((Number) em.createNativeQuery("select nextval('obsint_case_code_seq')").getSingleResult()).longValue();
         ObsintCase c = ObsintCase.open(tenantId, "CAJ-OBS-%03d".formatted(number), platform.username(), consignas, now());
+        for (ObsintCaseTask t : c.tasks)
+            if (t.consigna.consignmentCode != null) t.instruction = trim(linked.get(t.consigna.pointId).get(t.consigna.consignmentCode).instruction(), 1000);
         c.persist();
         LOG.infof("obsint_case_opened case=%s actor=%s tasks=%d", c.code, c.operator, c.tasks.size());
         return c;
@@ -165,4 +174,6 @@ public class ObsintService {
             .firstResultOptional().orElseThrow(() -> new NotFoundException("Tarea no encontrada"));
         return t.obsintCase;
     }
+
+    private static String trim(String value, int max) { return value.length() > max ? value.substring(0, max) : value; }
 }
