@@ -250,9 +250,30 @@ const obs = await obsintConfigApi.summary(pointId);  // {status, meta:'Protocolo
 | `src/obsint/config/ObsintConfig.tsx` | Pantalla de Consignas OBSINT |
 | `src/obsint/config/obsint-config.css` | Estilos de la configuración |
 | `src/obsint/ObsintConsole.tsx` y componentes | Consola: `ObsintCameraGrid`, `ObsintTaskPanel`, `ObsintCommPanel` |
-| `src/obsint/obsintApi.ts` | `obsintApi` (consola), `obsintConfigApi` (configuración) y `errorText` |
-| `src/obsint/obsint.ts` | Tipos, categorías, días, cuenta regresiva, borrador y captura de fotograma |
+| `src/obsint/obsintApi.ts` | **Contrato con el backend:** tipos (espejo de los records Java), `obsintApi` (consola), `obsintConfigApi` (configuración) y `errorText` |
+| `src/obsint/obsint.ts` | Utilidades de pantalla: textos de categorías, días y estados, cuenta regresiva, reloj, borrador y captura de fotograma |
 | `src/obsint/obsint.css` | Estilos de la consola |
+
+### Responsables (división del trabajo)
+
+**Persona A — solo frontend**
+- Consola: `src/obsint/ObsintConsole.tsx`, `ObsintCameraGrid.tsx`, `ObsintTaskPanel.tsx`, `ObsintCommPanel.tsx`, `obsint.css` y `obsint.ts`.
+- Consignas OBSINT: `src/obsint/config/ObsintConfig.tsx` y `obsint-config.css`.
+- Integración con Comando: el botón OBSINT en `src/pages/ConsolaMonitor.tsx`, los `export` de `src/api.ts` y la coordinación con quien hace el menú de Servicios.
+
+**Persona B — backend y algo de frontend**
+- Backend completo: `secelec/*` y `obsint/*`, migraciones (V91 publicada y no se toca; V92 y siguientes), `sgi.secelec.secret-key` y todas las pruebas.
+- Frontend de Componentes de Seguridad: `src/secelec/SecurityComponents.tsx` y `secelec.css`.
+- Contrato de la API: `src/secelec/secelecApi.ts` y `src/obsint/obsintApi.ts` (tipos y llamadas).
+
+**Reglas**
+- **Contrato:** si B cambia un endpoint o un campo, actualiza `obsintApi.ts` o `secelecApi.ts` en el mismo cambio. Agrega campos sin quitar los existentes y avisa a A antes de integrar.
+- **Errores:** el backend siempre responde `{"message": "…"}` y el frontend lo muestra con `errorText`.
+- **Migraciones nuevas:** solo B.
+- **Este LEEME:**
+  - A edita §2.2 y §2.3 (pantallas de consignas y consola) y §4 (enganche con Servicios).
+  - B edita §2.1 (componentes), §3 (lógica), §7 (base de datos) y §8 (API).
+  - Quien integre último actualiza §9 y §10.
 
 ---
 

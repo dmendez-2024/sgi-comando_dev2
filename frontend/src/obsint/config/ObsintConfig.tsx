@@ -1,7 +1,7 @@
 import {useEffect, useMemo, useState, type FormEvent, type ReactNode} from 'react';
 import {AlertTriangle, ArrowLeft, CheckCircle2, ClipboardList, Edit3, History, Plus, Power, Search, Send, Trash2, X} from 'lucide-react';
-import {errorText, obsintConfigApi} from '../obsintApi';
-import {CATEGORIES, categoryLabel, DAYS, protocolStatusLabel, type ObsintCameraOption, type ObsintCategory, type ObsintConsignaConfig, type ObsintConsignaSave, type ObsintProtocol, type ObsintSlot} from '../obsint';
+import {errorText, obsintConfigApi, type ObsintCameraOption, type ObsintCategory, type ObsintConsignaConfig, type ObsintConsignaSave, type ObsintProtocol, type ObsintSlot} from '../obsintApi';
+import {CATEGORIES, categoryLabel, DAYS, protocolStatusLabel} from '../obsint';
 import '../obsint.css';
 import './obsint-config.css';
 

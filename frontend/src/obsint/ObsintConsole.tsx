@@ -1,10 +1,10 @@
 import {useCallback, useEffect, useRef, useState, type ReactNode} from 'react';
 import {ArrowLeft, CalendarDays, CircleCheck, Clock3, FolderOpen, ListChecks, Play, RefreshCw, UserRound, Users, Video} from 'lucide-react';
-import {errorText, obsintApi} from './obsintApi';
+import {errorText, obsintApi, type ObsintCase, type ObsintTask} from './obsintApi';
 import {ObsintCameraGrid} from './ObsintCameraGrid';
 import {ObsintCommPanel} from './ObsintCommPanel';
 import {Dots, ObsintTaskPanel, type CapturedFrame} from './ObsintTaskPanel';
-import {captureFrame, decisionLabel, formatDateTime, formatSeconds, useCountdown, useNow, type ObsintCase, type ObsintTask} from './obsint';
+import {captureFrame, decisionLabel, formatDateTime, formatSeconds, useCountdown, useNow} from './obsint';
 import './obsint.css';
 
 /** Botón de entrada a la Consola OBSINT; se muestra en la cabecera de Consola. */

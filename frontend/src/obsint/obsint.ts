@@ -1,28 +1,10 @@
 import {useEffect, useMemo, useState} from 'react';
+import type {ObsintCategory, ObsintDecision, ObsintProtocolStatus} from './obsintApi';
 
-// Espejo de los records de ObsintResource.java y ObsintConfigResource.java. Mantener sincronizado.
-export type ObsintDecision='YES'|'NO'|'UNCERTAIN';
-export type ObsintTaskStatus='PENDING'|'IN_PROGRESS'|'ANSWERED';
-/** streamUrl null: la cámara aún no tiene video (no existe el servidor de video); se muestra "Sin señal". */
-export type ObsintCamera={id:string;code:string;name:string;location:string|null;streamUrl:string|null;live:boolean};
-export type ObsintTaskSummary={id:string;position:number;status:ObsintTaskStatus;decision:ObsintDecision|null;timedOut:boolean|null};
-export type ObsintCase={id:string;code:string;operator:string;status:'IN_PROGRESS'|'COMPLETED';startedAt:string;completedAt:string|null;currentTaskId:string|null;tasks:ObsintTaskSummary[]};
-export type ObsintTask={id:string;caseId:string;caseCode:string;operator:string;position:number;totalTasks:number;consignaCode:string;instruction:string;
-  timeLimitSeconds:number;status:ObsintTaskStatus;startedAt:string|null;deadline:string|null;serverNow:string;
-  decision:ObsintDecision|null;justification:string|null;timedOut:boolean|null;cameras:ObsintCamera[]};
-export type ObsintEvidence={id:string;cameraId:string;videoTimeSeconds:number;capturedAt:string;contentType:string;sizeBytes:number};
-export type ObsintMessage={id:string;operator:string;text:string;sentAt:string;deliveryStatus:'SENT'|'FAILED'};
-
-// Configuración del Punto (protocolo versionado y consignas).
-export type ObsintProtocolStatus='BORRADOR'|'INACTIVO'|'ACTIVO';
-export type ObsintCategory='SSO'|'PRODUCTION'|'LOGISTICS'|'CLEANING'|'MOBILITY'|'CUSTOMER_SERVICE';
-export type ObsintSlot={dayOfWeek:number;start:string;end:string};
-export type ObsintConsignaConfig={id:string;code:string;title:string;instruction:string;category:ObsintCategory;timeLimitSeconds:number;position:number;active:boolean;cameraIds:string[];schedule:ObsintSlot[]};
-export type ObsintConsignaSave=Omit<ObsintConsignaConfig,'id'|'code'|'position'>;
-export type ObsintProtocol={id:string;pointId:string;code:string;versionNo:number;status:ObsintProtocolStatus;publishedAt:string|null;activatedAt:string|null;updatedBy:string;updatedAt:string;consignas:ObsintConsignaConfig[]};
-export type ObsintCameraOption={id:string;code:string;name:string;location:string|null;status:'ACTIVE'|'OBSERVED'};
-export type ObsintSummary={status:'complete'|'warning'|'blocked';meta:string;activeVersion:number|null;activeConsignas:number;hasDraft:boolean;warnings:string[]};
-
+/*
+ * Utilidades de pantalla de OBSINT (consola y configuración): textos, cuenta regresiva, reloj, borrador y captura.
+ * Los tipos y las llamadas a la API viven en obsintApi.ts (contrato con el backend).
+ */
 export const CATEGORIES:{value:ObsintCategory;label:string}[]=[
   {value:'SSO',label:'Seguridad y salud ocupacional (SSO)'},
   {value:'PRODUCTION',label:'Producción industrial'},
@@ -35,7 +17,6 @@ export const categoryLabel=(value:ObsintCategory)=>CATEGORIES.find(c=>c.value===
 export const DAYS=['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domingo'];
 export const protocolStatusLabel=(s:ObsintProtocolStatus)=>({BORRADOR:'Borrador',INACTIVO:'Publicado · inactivo',ACTIVO:'Activo'}[s]);
 
-export const OBSINT_JUSTIFICATION_MAX=500;
 export const decisionLabel=(d:ObsintDecision)=>({YES:'Sí',NO:'No',UNCERTAIN:'Incierto'}[d]);
 
 /** Las URL relativas (videos demo en public/obsint/videos) se resuelven contra la base de la web: mismo origen para poder capturar. */

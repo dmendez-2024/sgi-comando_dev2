@@ -1,7 +1,7 @@
 import {useEffect, useState} from 'react';
 import {ArrowRight, Ban, Camera as CameraIcon, Check, CircleCheck, CircleHelp, FileText, ImagePlus, MessageCircle, Paperclip, X} from 'lucide-react';
-import {errorText, obsintApi} from './obsintApi';
-import {clearDraft, formatClock, OBSINT_JUSTIFICATION_MAX, readDraft, writeDraft, type AnswerDraft, type ObsintCase, type ObsintDecision, type ObsintEvidence, type ObsintTask} from './obsint';
+import {errorText, obsintApi, OBSINT_JUSTIFICATION_MAX, type ObsintCase, type ObsintDecision, type ObsintEvidence, type ObsintTask} from './obsintApi';
+import {clearDraft, formatClock, readDraft, writeDraft, type AnswerDraft} from './obsint';
 
 /** Lo que la pantalla entrega al capturar: de qué cámara, en qué segundo del video y la imagen. */
 export type CapturedFrame={cameraId:string;videoTimeSeconds:number;image:Blob};

@@ -1,6 +1,7 @@
 import {useEffect, useRef, useState, type MouseEvent} from 'react';
 import {Crosshair, Maximize2, Pause, Play, Video, VideoOff} from 'lucide-react';
-import {formatDateTime, streamSrc, type ObsintCamera} from './obsint';
+import {formatDateTime, streamSrc} from './obsint';
+import type {ObsintCamera} from './obsintApi';
 
 type Props={
   cameras:ObsintCamera[];

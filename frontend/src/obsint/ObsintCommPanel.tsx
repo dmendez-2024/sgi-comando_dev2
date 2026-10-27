@@ -1,7 +1,7 @@
 import {useEffect, useState, type FormEvent} from 'react';
 import {CheckCheck, CircleAlert, Info, MessageSquare, Send} from 'lucide-react';
-import {errorText, obsintApi} from './obsintApi';
-import {formatClock, type ObsintMessage} from './obsint';
+import {errorText, obsintApi, type ObsintMessage} from './obsintApi';
+import {formatClock} from './obsint';
 
 /** Canal unidireccional monitorista → agente en sitio. */
 export function ObsintCommPanel({taskId,disabled,onNotice}:{taskId:string;disabled:boolean;onNotice:(text:string)=>void}){

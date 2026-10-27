@@ -1,5 +1,34 @@
 import {ApiError, binaryRequest, multipartRequest, request} from '../api';
-import type {ObsintCameraOption, ObsintCase, ObsintConsignaConfig, ObsintConsignaSave, ObsintDecision, ObsintEvidence, ObsintMessage, ObsintProtocol, ObsintSummary, ObsintTask} from './obsint';
+
+/*
+ * Contrato con el backend de OBSINT: tipos (espejo de los records de ObsintResource.java y ObsintConfigResource.java)
+ * y llamadas a la API. Si cambia un endpoint o un campo en el backend, se actualiza aquí.
+ */
+
+// Consola
+export type ObsintDecision='YES'|'NO'|'UNCERTAIN';
+export type ObsintTaskStatus='PENDING'|'IN_PROGRESS'|'ANSWERED';
+/** streamUrl null: la cámara aún no tiene video (no existe el servidor de video); se muestra "Sin señal". */
+export type ObsintCamera={id:string;code:string;name:string;location:string|null;streamUrl:string|null;live:boolean};
+export type ObsintTaskSummary={id:string;position:number;status:ObsintTaskStatus;decision:ObsintDecision|null;timedOut:boolean|null};
+export type ObsintCase={id:string;code:string;operator:string;status:'IN_PROGRESS'|'COMPLETED';startedAt:string;completedAt:string|null;currentTaskId:string|null;tasks:ObsintTaskSummary[]};
+export type ObsintTask={id:string;caseId:string;caseCode:string;operator:string;position:number;totalTasks:number;consignaCode:string;instruction:string;
+  timeLimitSeconds:number;status:ObsintTaskStatus;startedAt:string|null;deadline:string|null;serverNow:string;
+  decision:ObsintDecision|null;justification:string|null;timedOut:boolean|null;cameras:ObsintCamera[]};
+export type ObsintEvidence={id:string;cameraId:string;videoTimeSeconds:number;capturedAt:string;contentType:string;sizeBytes:number};
+export type ObsintMessage={id:string;operator:string;text:string;sentAt:string;deliveryStatus:'SENT'|'FAILED'};
+/** Máximo de caracteres de la justificación (ObsintCaseTask.JUSTIFICATION_MAX). */
+export const OBSINT_JUSTIFICATION_MAX=500;
+
+// Configuración del Punto (protocolo versionado y consignas)
+export type ObsintProtocolStatus='BORRADOR'|'INACTIVO'|'ACTIVO';
+export type ObsintCategory='SSO'|'PRODUCTION'|'LOGISTICS'|'CLEANING'|'MOBILITY'|'CUSTOMER_SERVICE';
+export type ObsintSlot={dayOfWeek:number;start:string;end:string};
+export type ObsintConsignaConfig={id:string;code:string;title:string;instruction:string;category:ObsintCategory;timeLimitSeconds:number;position:number;active:boolean;cameraIds:string[];schedule:ObsintSlot[]};
+export type ObsintConsignaSave=Omit<ObsintConsignaConfig,'id'|'code'|'position'>;
+export type ObsintProtocol={id:string;pointId:string;code:string;versionNo:number;status:ObsintProtocolStatus;publishedAt:string|null;activatedAt:string|null;updatedBy:string;updatedAt:string;consignas:ObsintConsignaConfig[]};
+export type ObsintCameraOption={id:string;code:string;name:string;location:string|null;status:'ACTIVE'|'OBSERVED'};
+export type ObsintSummary={status:'complete'|'warning'|'blocked';meta:string;activeVersion:number|null;activeConsignas:number;hasDraft:boolean;warnings:string[]};
 
 /**
  * API de la Consola OBSINT (/api/obsint). Del cliente común de SGI solo usa el transporte (token, renovación y errores),
