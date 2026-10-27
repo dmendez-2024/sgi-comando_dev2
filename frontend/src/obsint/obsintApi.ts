@@ -16,7 +16,8 @@ export type ObsintTask={id:string;caseId:string;caseCode:string;operator:string;
   timeLimitSeconds:number;status:ObsintTaskStatus;startedAt:string|null;deadline:string|null;serverNow:string;
   decision:ObsintDecision|null;justification:string|null;timedOut:boolean|null;cameras:ObsintCamera[]};
 export type ObsintEvidence={id:string;cameraId:string;videoTimeSeconds:number;capturedAt:string;contentType:string;sizeBytes:number};
-export type ObsintMessage={id:string;operator:string;text:string;sentAt:string;deliveryStatus:'SENT'|'FAILED'};
+/** deliveryStatus: hoy siempre 'TEST' (modo prueba: registrado, NO enviado al agente). 'SENT'/'FAILED' quedan para cuando exista el envío real. */
+export type ObsintMessage={id:string;operator:string;text:string;sentAt:string;deliveryStatus:'TEST'|'SENT'|'FAILED'};
 /** Máximo de caracteres de la justificación (ObsintCaseTask.JUSTIFICATION_MAX). */
 export const OBSINT_JUSTIFICATION_MAX=500;
 

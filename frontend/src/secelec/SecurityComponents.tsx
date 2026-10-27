@@ -1,6 +1,7 @@
 import {useEffect, useMemo, useState, type FormEvent, type ReactNode} from 'react';
-import {AlertTriangle, ArrowLeft, Bell, Camera, ChevronRight, Edit3, Flame, Fingerprint, Lightbulb, Plus, ShieldCheck, ShieldHalf, Trash2, X} from 'lucide-react';
-import {errorText, FAMILIES, familyLabel, secelecApi, statusLabel, type ComponentSave, type Family, type PointContext, type SecurityComponent} from './secelecApi';
+import {AlertTriangle, ArrowLeft, Bell, Camera, CheckCircle2, ChevronRight, Edit3, Eye, EyeOff, Flame, Fingerprint, Lightbulb, PlugZap, Plus, ShieldCheck, ShieldHalf, Trash2, X} from 'lucide-react';
+import {errorText, FAMILIES, familyLabel, secelecApi, statusLabel, streamingModeLabel, type ComponentSave, type Family, type PointContext, type SecurityComponent,
+  type CameraTestResult, type StreamingMode} from './secelecApi';
 import './secelec.css';
 
 const FAMILY_ICON:Record<Family,ReactNode>={PERIMETER:<ShieldHalf size={20}/>,ACCESS_CONTROL:<Fingerprint size={20}/>,VIDEO:<Camera size={20}/>,
@@ -110,7 +111,11 @@ function Kpi({icon,tone,label,value,hint}:{icon:ReactNode;tone:'blue'|'green'|'o
 function Detail({c,onEdit,onDelete}:{c:SecurityComponent;onEdit:()=>void;onDelete:()=>void}){
   const rows:[string,string|null][]=[['Código',c.code],['Nombre',c.name],['Familia',familyLabel(c.family)],['Tipo',c.componentType],['Ubicación',c.location],
     ['Marca / Modelo',c.brandModel],['Cobertura',c.coverage]];
-  if(c.family==='VIDEO')rows.push(['Dirección IP',c.ip],['Puerto',c.port==null?null:String(c.port)],['Usuario',c.username],['Contraseña',c.hasPassword?'Guardada (cifrada)':'—'],['Video de pruebas',c.streamUrl]);
+  if(c.family==='VIDEO')rows.push(['Dirección IP',c.ip],['Puerto',c.port==null?null:String(c.port)],['Canal',c.channel==null?null:String(c.channel)],
+    ['Usuario',c.username],['Contraseña',c.hasPassword?'Guardada (cifrada)':'—'],
+    ['Coordenadas',c.latitude==null||c.longitude==null?null:`${c.latitude}, ${c.longitude}`],
+    ['Streaming',c.streamingEnabled==null?null:c.streamingEnabled?`Activo · ${streamingModeLabel(c.streamingMode??'COPY')}`:'Desactivado'],
+    ['Video de pruebas',c.streamUrl]);
   return <>
     <header><h3>Detalle del componente</h3></header>
     <div className="sec-detail-head"><span className="sec-family-icon">{FAMILY_ICON[c.family]}</span><div><b>{c.code}</b><small>{c.name}</small></div>
@@ -125,11 +130,24 @@ function ComponentForm({pointId,family,initial,onSaved,onCancel}:{pointId:string
   const types=FAMILIES.find(f=>f.value===family)?.types??[];
   const [form,setForm]=useState<ComponentSave>(()=>({family,componentType:initial?.componentType??types[0]??'',name:initial?.name??'',location:initial?.location??'',
     coverage:initial?.coverage??'',brandModel:initial?.brandModel??'',status:initial?.status??'ACTIVE',observations:initial?.observations??'',
-    ip:initial?.ip??'',port:initial?.port??(family==='VIDEO'?554:null),username:initial?.username??'',password:'',streamUrl:initial?.streamUrl??''}));
+    ip:initial?.ip??'',port:initial?.port??(family==='VIDEO'?554:null),channel:initial?.channel??(family==='VIDEO'?1:null),
+    latitude:initial?.latitude??null,longitude:initial?.longitude??null,streamingEnabled:initial?.streamingEnabled??true,streamingMode:initial?.streamingMode??'COPY',
+    username:initial?.username??'',password:'',streamUrl:initial?.streamUrl??''}));
+  const [showPassword,setShowPassword]=useState(false);
+  const [testing,setTesting]=useState(false);
+  const [test,setTest]=useState<CameraTestResult|null>(null);
   const [saving,setSaving]=useState(false);
   const [error,setError]=useState('');
   const video=family==='VIDEO';
   const set=<K extends keyof ComponentSave>(key:K,value:ComponentSave[K])=>setForm(prev=>({...prev,[key]:value}));
+  const num=(value:string)=>value.trim()===''?null:Number(value);
+
+  async function testConnection(){
+    setTesting(true);setTest(null);setError('');
+    try{setTest(await secelecApi.testCamera(pointId,{componentId:initial?.id,ip:form.ip,port:form.port,channel:form.channel,username:form.username,password:form.password}))}
+    catch(err){setError(errorText(err))}
+    finally{setTesting(false)}
+  }
 
   async function submit(e:FormEvent){
     e.preventDefault();
@@ -147,14 +165,34 @@ function ComponentForm({pointId,family,initial,onSaved,onCancel}:{pointId:string
     <Field label="Nombre del componente *"><input value={form.name} onChange={e=>set('name',e.target.value)} required maxLength={160} placeholder="Cámara Bala Acceso Norte"/></Field>
     <Field label="Ubicación"><input value={form.location} onChange={e=>set('location',e.target.value)} maxLength={200} placeholder="Acceso Norte"/></Field>
     {video&&<>
-      <div className="sec-form-row">
+      <div className="sec-form-row three">
         <Field label="Dirección IP *"><input value={form.ip} onChange={e=>set('ip',e.target.value)} required maxLength={255} placeholder="192.168.1.10"/></Field>
-        <Field label="Puerto *"><input type="number" min={1} max={65535} value={form.port??''} onChange={e=>set('port',e.target.value?Number(e.target.value):null)} required/></Field>
+        <Field label="Puerto *"><input type="number" min={1} max={65535} value={form.port??''} onChange={e=>set('port',num(e.target.value))} required/></Field>
+        <Field label="Canal *"><input type="number" min={1} max={256} value={form.channel??''} onChange={e=>set('channel',num(e.target.value))} required/></Field>
       </div>
       <div className="sec-form-row">
         <Field label="Usuario *"><input value={form.username} onChange={e=>set('username',e.target.value)} required maxLength={120} autoComplete="off"/></Field>
-        <Field label={initial?.hasPassword?'Contraseña':'Contraseña *'}><input type="password" value={form.password} onChange={e=>set('password',e.target.value)}
-          required={!initial?.hasPassword} autoComplete="new-password" placeholder={initial?.hasPassword?'Sin cambios':''}/></Field>
+        <Field label={initial?.hasPassword?'Contraseña':'Contraseña *'}><span className="sec-password">
+          <input type={showPassword?'text':'password'} value={form.password} onChange={e=>set('password',e.target.value)}
+            required={!initial?.hasPassword} autoComplete="new-password" placeholder={initial?.hasPassword?'Sin cambios':''}/>
+          <button type="button" aria-label={showPassword?'Ocultar contraseña':'Mostrar contraseña'} title={showPassword?'Ocultar':'Mostrar'}
+            onClick={()=>setShowPassword(v=>!v)}>{showPassword?<EyeOff size={16}/>:<Eye size={16}/>}</button>
+        </span></Field>
+      </div>
+      <div className="sec-form-row">
+        <Field label="Latitud"><input type="number" step="any" min={-90} max={90} value={form.latitude??''} onChange={e=>set('latitude',num(e.target.value))}
+          required={form.longitude!=null} placeholder="-0.113972"/></Field>
+        <Field label="Longitud"><input type="number" step="any" min={-180} max={180} value={form.longitude??''} onChange={e=>set('longitude',num(e.target.value))}
+          required={form.latitude!=null} placeholder="-78.472500"/></Field>
+      </div>
+      <div className="sec-form-row">
+        <Field label="Streaming"><span className="sec-switch-row">
+          <button type="button" role="switch" aria-checked={form.streamingEnabled} aria-label="Streaming" className={`sec-switch${form.streamingEnabled?' on':''}`}
+            onClick={()=>set('streamingEnabled',!form.streamingEnabled)}><i/></button>
+          {form.streamingEnabled?'Activo':'Desactivado'}
+        </span></Field>
+        <Field label="Modo de streaming"><select value={form.streamingMode} onChange={e=>set('streamingMode',e.target.value as StreamingMode)} disabled={!form.streamingEnabled}>
+          <option value="COPY">{streamingModeLabel('COPY')}</option><option value="TRANSCODE">{streamingModeLabel('TRANSCODE')}</option></select></Field>
       </div>
       <Field label="URL de video (pruebas, opcional)"><input value={form.streamUrl} onChange={e=>set('streamUrl',e.target.value)} maxLength={500} placeholder="obsint/videos/1-1.mp4"/></Field>
     </>}
@@ -163,8 +201,15 @@ function ComponentForm({pointId,family,initial,onSaved,onCancel}:{pointId:string
     <Field label="Estado"><select value={form.status} onChange={e=>set('status',e.target.value as ComponentSave['status'])}>
       <option value="ACTIVE">Activo</option><option value="OBSERVED">Con observación</option><option value="INACTIVE">Inactivo</option></select></Field>
     <Field label="Observaciones"><textarea value={form.observations} onChange={e=>set('observations',e.target.value)} maxLength={1000} rows={3}/></Field>
+    {test&&<div className={`sec-test ${test.ok?'ok':'fail'}`} role="status">
+      {test.ok?<CheckCircle2 size={16}/>:<AlertTriangle size={16}/>}
+      <div><b>{test.message}</b><small>Canal {form.channel??1} · {test.streamPath} · {test.elapsedMs} ms</small>
+        {test.codec==='H.265'&&form.streamingEnabled&&form.streamingMode==='COPY'&&<small>El navegador no reproduce H.265: use el modo Transcodificar o cambie la cámara a H.264.</small>}</div>
+    </div>}
     {error&&<div className="sec-error"><AlertTriangle size={16}/>{error}</div>}
-    <div className="sec-form-actions"><button type="submit" className="sec-primary" disabled={saving}>{saving?'Guardando…':'Guardar componente'}</button><button type="button" onClick={onCancel}>Cancelar</button></div>
+    <div className="sec-form-actions"><button type="submit" className="sec-primary" disabled={saving}>{saving?'Guardando…':'Guardar componente'}</button>
+      {video&&<button type="button" onClick={()=>void testConnection()} disabled={testing||saving}><PlugZap size={15}/>{testing?'Probando…':'Probar conexión'}</button>}
+      <button type="button" onClick={onCancel}>Cancelar</button></div>
   </form>;
 }
 

@@ -16,7 +16,8 @@ import javax.crypto.spec.SecretKeySpec;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 
 /**
- * Cifra las contraseñas de las cámaras con AES-256-GCM. La llave sale de sgi.secelec.secret-key (SGI_SECELEC_SECRET_KEY).
+ * Cifra las contraseñas de las cámaras con AES-256-GCM. La llave sale de sgi.secelec.secret-key (SGI_SECELEC_SECRET_KEY);
+ * si viene vacía o no está, de la llave fija sgi.secelec.default-secret-key.
  * Formato guardado: "v1:" + base64(iv(12) || texto cifrado+tag). Si se adopta OpenBao, solo cambia esta clase.
  */
 @ApplicationScoped
@@ -25,6 +26,8 @@ public class CameraSecretCipher {
     private static final SecureRandom RANDOM = new SecureRandom();
 
     @ConfigProperty(name = "sgi.secelec.secret-key") Optional<String> secretKey;
+    /** Llave fija del repositorio: se usa cuando el despliegue no define SGI_SECELEC_SECRET_KEY (o la pasa vacía). */
+    @ConfigProperty(name = "sgi.secelec.default-secret-key") Optional<String> defaultSecretKey;
 
     public String encrypt(String plain) {
         try {
@@ -39,7 +42,7 @@ public class CameraSecretCipher {
         }
     }
 
-    /** Para el futuro servidor de video; hoy nadie la usa fuera de las pruebas. */
+    /** "Probar conexión" con la contraseña guardada y, más adelante, el servidor de video. */
     public String decrypt(String stored) {
         if (stored == null || !stored.startsWith(PREFIX)) throw new IllegalArgumentException("Credencial con formato desconocido");
         try {
@@ -53,7 +56,8 @@ public class CameraSecretCipher {
     }
 
     private SecretKeySpec key() throws GeneralSecurityException {
-        String value = secretKey.map(String::trim).filter(s -> !s.isEmpty()).orElseThrow(() -> new WebApplicationException(
+        String value = secretKey.map(String::trim).filter(s -> !s.isEmpty())
+            .or(() -> defaultSecretKey.map(String::trim).filter(s -> !s.isEmpty())).orElseThrow(() -> new WebApplicationException(
             "Falta configurar SGI_SECELEC_SECRET_KEY para guardar credenciales de cámaras.", Response.Status.SERVICE_UNAVAILABLE));
         return new SecretKeySpec(MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8)), "AES");
     }

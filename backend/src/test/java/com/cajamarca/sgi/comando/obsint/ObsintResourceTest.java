@@ -101,7 +101,7 @@ class ObsintResourceTest {
                 as("dnacional").contentType(ContentType.MULTIPART).multiPart("file", NOT_IMAGE.toFile(), "image/jpeg").multiPart("cameraId", cameraId)
                     .post("/api/obsint/tasks/" + id + "/evidence").then().statusCode(400);
                 as("dnacional").contentType(ContentType.JSON).body(Map.of("text", "Revise la garita norte"))
-                    .post("/api/obsint/tasks/" + id + "/messages").then().statusCode(200).body("deliveryStatus", is("SENT"));
+                    .post("/api/obsint/tasks/" + id + "/messages").then().statusCode(200).body("deliveryStatus", is("TEST"));
                 as("dnacional").contentType(ContentType.JSON).body(Map.of("decision", "NO", "justification", " "))
                     .put("/api/obsint/tasks/" + id + "/answer").then().statusCode(409).body("message", containsString("justificación"));
             }
@@ -115,10 +115,38 @@ class ObsintResourceTest {
 
     @Test void anotherUserCannotSeeTheCase() {
         activeProtocolWithConsigna();
-        String caseId = as("dzonal").post("/api/obsint/cases").then().statusCode(200).extract().path("id");
-        String taskId = as("dzonal").get("/api/obsint/cases/" + caseId).then().extract().path("tasks[0].id");
+        String caseId = as("presidente").post("/api/obsint/cases").then().statusCode(200).extract().path("id");
+        String taskId = as("presidente").get("/api/obsint/cases/" + caseId).then().extract().path("tasks[0].id");
         as("jregional").get("/api/obsint/cases/" + caseId).then().statusCode(404);
         as("jregional").post("/api/obsint/tasks/" + taskId + "/start").then().statusCode(404);
+    }
+
+    /** Termina el caso en curso del usuario (de otra prueba o de la base), porque "Iniciar caso" devuelve el que está en curso. */
+    static void finishRunningCase(String user) {
+        var current = as(user).get("/api/obsint/cases/current").then().extract();
+        if (current.statusCode() != 200) return;
+        List<String> ids = current.path("tasks.id");
+        List<String> statuses = current.path("tasks.status");
+        for (int i = 0; i < ids.size(); i++) {
+            if ("ANSWERED".equals(statuses.get(i))) continue;
+            as(user).post("/api/obsint/tasks/" + ids.get(i) + "/start").then().statusCode(200);
+            as(user).contentType(ContentType.JSON).body(Map.of("decision", "YES", "justification", "Cierre de prueba"))
+                .put("/api/obsint/tasks/" + ids.get(i) + "/answer").then().statusCode(200);
+        }
+    }
+
+    /** El monitorista solo recibe consignas de los Puntos de las Compañías de su alcance. */
+    @Test void caseOnlyIncludesPointsOfUserCompanies() {
+        String code = activeProtocolWithConsigna();
+        finishRunningCase("coord");
+        // coord tiene asignada la Compañía del Punto: el caso incluye la consigna.
+        String caseId = as("coord").post("/api/obsint/cases").then().statusCode(200).extract().path("id");
+        List<String> taskIds = as("coord").get("/api/obsint/cases/" + caseId).then().statusCode(200).extract().path("tasks.id");
+        List<String> codes = taskIds.stream().map(id -> as("coord").get("/api/obsint/tasks/" + id).then().statusCode(200)
+            .extract().<String>path("consignaCode")).toList();
+        assertTrue(codes.contains(code), "la consigna del Punto de su Compañía");
+        // asistente es rol de Compañía sin Compañías asignadas: no ve ningún Punto.
+        as("asistente").post("/api/obsint/cases").then().statusCode(409).body("message", containsString("alcance"));
     }
 
     @Test void clientHasNoAccess() {

@@ -42,10 +42,22 @@ Pantalla de las diapositivas 7 y 8. Se abre desde Configuración del Punto.
 - **Centro:** tabla de componentes de la familia elegida (código, nombre, tipo, estado), con "Agregar componente" y botones para editar y eliminar.
 - **Derecha:** detalle del componente elegido, o su formulario.
   - Campos comunes: tipo (con sugerencias por familia), nombre, ubicación, marca/modelo, cobertura, estado (Activo / Con observación / Inactivo) y observaciones.
-  - **Solo Videovigilancia:** dirección IP, puerto, usuario, **contraseña** y "URL de video (pruebas)".
+  - **Solo Videovigilancia** (como el formulario "Configuraciones · IP" de referencia):
+    - Dirección IP, puerto y **canal** (1 a 256; 1 por defecto). En un NVR, cada canal es una cámara.
+    - Usuario y **contraseña**, con un botón para ver lo que se está escribiendo. La contraseña guardada nunca se muestra.
+    - **Latitud y longitud**, opcionales pero juntas, con 6 decimales.
+    - **Streaming** activo o desactivado (activo por defecto) y su modo: **Copy** (el servidor de video reenvía el flujo tal cual, por defecto) o **Transcodificar** (lo recodifica, por ejemplo de H.265 a H.264). Se guarda ya, pero solo tendrá efecto cuando exista el servidor de video.
+    - "URL de video (pruebas)".
+    - **Probar conexión** (el botón "Test" de la referencia): prueba los datos escritos sin guardarlos.
+      - Pide `DESCRIBE` del flujo RTSP del canal (`rtsp://IP:puerto/Streaming/Channels/{canal}01`), con autenticación Digest o Basic. Así valida red, usuario y contraseña, y que el canal exista, en una sola llamada.
+      - Muestra el resultado: conexión correcta con el códec (H.264 / H.265), credenciales incorrectas, canal inexistente, sin conexión o sin respuesta, y el tiempo en ms.
+      - Si la cámara entrega H.265 y el modo es Copy, avisa que el navegador no lo reproduce y sugiere Transcodificar.
+      - Al editar, si no se escribe una contraseña nueva, usa la guardada (se descifra solo en el servidor).
+      - Se usa RTSP y no ISAPI porque el puerto del formulario es el de RTSP (554). ISAPI va por HTTP (80) y queda para la vista previa.
 - **Código automático por familia:** CCTV‑01, PER‑01, ACC‑01, INT‑01, ILU‑01, INC‑01…
 - **Contraseña de la cámara:**
-  - Se guarda **cifrada** con AES‑256‑GCM, con la llave `SGI_SECELEC_SECRET_KEY` y un IV aleatorio por cifrado.
+  - Se guarda **cifrada** con AES‑256‑GCM y un IV aleatorio por cifrado.
+  - **Llave:** `SGI_SECELEC_SECRET_KEY` si el despliegue la define con un valor. Si no está o viene vacía, se usa la llave fija `sgi.secelec.default-secret-key` de `application.properties`, para que funcione en cualquier ambiente sin configurar nada. Como esa llave está en el repositorio, quien tenga acceso al código puede descifrar las contraseñas guardadas con ella; para más protección, definir `SGI_SECELEC_SECRET_KEY` en el servidor **antes** de registrar cámaras. **No cambiar la llave en uso:** las contraseñas guardadas solo se descifran con la misma.
   - **Nunca vuelve al navegador.** La API solo informa `hasPassword`.
   - Al editar, el campo aparece vacío con "Sin cambios"; dejarlo vacío conserva la contraseña actual.
 - **La familia no se puede cambiar** después de crear el componente.
@@ -122,6 +134,13 @@ Pantalla de la diapositiva 10. Se abre desde Configuración del Punto.
 
 ### Caso y tareas (Consola)
 
+- **Alcance del monitorista:** el caso solo toma consignas de los Puntos cuya **Compañía** está en el alcance del usuario. Es la misma regla que la configuración (`requirePoint`):
+  - Roles de país (Presidente, Gerencia General, directores nacionales y LATAM): todas las Compañías.
+  - Roles de Compañía (Coordinador, Asistente): solo las Compañías que tienen asignadas directamente.
+  - Los demás: las Compañías de su zona, región o asignación directa (`user_operational_scope`).
+  - **MONITOR:** además, las Compañías de los puestos de Monitoreo (Coordinación, `MON-xxx`) donde la persona tiene **turno en curso**. Se lee de Asignaciones con el mismo criterio que SGI Operador: asignación no eliminada, plan de la semana publicado o cerrado, cuenta quien cubrió el turno (`actual_employee_id`), y la persona se identifica por el `persona_id` de su token de IDENT. Fuera de su turno, o con el plan en borrador, no ve consignas.
+  - Un Punto sin Compañía no entra en ningún caso. Si no queda ninguna consigna, responde 409: "No hay consignas OBSINT activas en este horario en las Compañías de su alcance".
+  - No separa por cliente: dos clientes atendidos por la misma Compañía se ven juntos.
 - Un usuario tiene un solo caso en curso. Las tareas se resuelven **en orden**.
 - Cada tarea copia de la consigna el código, la descripción y el tiempo máximo, así que editar la configuración no altera casos ya creados.
 - **Tiempo:**
@@ -132,13 +151,14 @@ Pantalla de la diapositiva 10. Se abre desde Configuración del Punto.
   - Fotograma JPEG del video elegido.
   - Máximo 6 por tarea, de hasta 5 MiB, solo JPEG, PNG o WebP (detectados por sus bytes).
   - Se guarda en MinIO, en el bucket de evidencias de Comando, con SHA‑256.
-- **Mensajes al agente:** solo se registran (`SENT`). El envío real a SGI Operador está pendiente.
+- **Mensajes al agente (modo prueba):** solo se registran, con `deliveryStatus = TEST`: **no se envían al agente** y no deben salir a producción como reales. V94 agregó `TEST` y pasó a `TEST` los mensajes ya guardados como `SENT`, porque ninguno se envió. `SENT` y `FAILED` quedan para cuando exista el envío real a SGI Operador (SITC).
 - Cada usuario ve solo sus propios casos.
 
 ### Seguridad
 
 - **Roles:** los mismos de Notificación de Incidentes, en las tres APIs. Agente y cliente no tienen acceso.
   - PRESIDENTE, GERENCIA_GENERAL, DIRECTOR_OPERACIONES_LATAM, DIRECTOR_OPERACIONES_NACIONAL, DIRECTOR_NACIONAL, DIRECTOR_ZONAL, JEFE_REGIONAL, COORDINADOR_COMPANIA, ASISTENTE_COORDINACION y SUPERVISOR_SEGURIDAD.
+  - **MONITOR** (`ObsintPlatform.MONITOR_ROLE`): solo la **consola** (`/api/obsint`), no la configuración ni Componentes de Seguridad. IDENT debe enviarlo para los cargos "Monitor" y "Agente de Consola de Monitoreo Senior" del programa SGI_COM (hoy no está en `cargo-defaults.json`).
 - **Acceso al punto:** la configuración aplica la **misma regla que Consignas**. El punto debe existir en el tenant y el usuario debe poder gestionar su compañía (`requireCompanyForCompanyRoles`).
 - **Errores:** cada rechazo responde `{"message": "…"}` con el código HTTP (400, 403, 404, 409, 503), y la pantalla muestra el mensaje tal cual.
 
@@ -209,6 +229,7 @@ const obs = await obsintConfigApi.summary(pointId);  // {status, meta:'Protocolo
 | `SecElecResource.java` | API de componentes y resumen |
 | `SecElecComponent.java` | Entidad (familia, estado, conexión) |
 | `CameraSecretCipher.java` | Cifrado AES‑GCM de contraseñas. Si se adopta OpenBao, solo cambia esta clase |
+| `RtspProbe.java` | "Probar conexión": `DESCRIBE` RTSP con Digest/Basic, sin dependencias. Conexión 3 s, lectura 5 s, respuestas de hasta 64 KB |
 | `SecElecPlatform.java` | Adaptador hacia Comando |
 
 **Backend `obsint`** (`backend/src/main/java/com/cajamarca/sgi/comando/obsint/`)
@@ -230,6 +251,8 @@ const obs = await obsintConfigApi.summary(pointId);  // {status, meta:'Protocolo
 **Base de datos:**
 - `V91__obsint_console.sql`: la primera versión de la consola, que ya está en el repo. **No se modifica.**
 - `V92__obsint_config_and_security_components.sql`: transforma V91 al modelo actual (ver §7).
+- `V93__secelec_camera_channel_geo_streaming.sql`: canal, coordenadas y streaming de las cámaras (ver §7).
+- `V94__obsint_agent_message_test_status.sql`: estado `TEST` (modo prueba) para los mensajes al agente (ver §3).
 
 **Pruebas**
 
@@ -239,6 +262,7 @@ const obs = await obsintConfigApi.summary(pointId);  // {status, meta:'Protocolo
 | `obsint/ObsintResourceTest` | Configuración y consola de punta a punta (`@QuarkusTest`) |
 | `secelec/SecElecResourceTest` | API de componentes (`@QuarkusTest`) |
 | `secelec/CameraSecretCipherTest` | Cifrado (unitaria) |
+| `secelec/RtspProbeTest` | Probar conexión contra una cámara RTSP simulada (`FakeRtspCamera`): OK con códec, contraseña incorrecta, canal inexistente, puerto cerrado y sin respuesta (unitaria) |
 
 **Frontend**
 
@@ -277,7 +301,7 @@ const obs = await obsintConfigApi.summary(pointId);  // {status, meta:'Protocolo
 
 ---
 
-## 7. Base de datos (V91 + V92)
+## 7. Base de datos (V91 + V92 + V93)
 
 V91 (ya publicada) creó la consola con un catálogo DEMO global. **V92 la transforma**:
 - **Borra los datos DEMO de V91** (casos, tareas, evidencias, mensajes y consignas). Las fotos de evidencia de esos casos quedan en MinIO, en `evidence/{tenant}/obsint/…`, y pueden borrarse a mano.
@@ -288,11 +312,13 @@ V91 (ya publicada) creó la consola con un catálogo DEMO global. **V92 la trans
 
 Probado sobre PostgreSQL 17 de dos formas: aplicando V91 y V92 sobre una base vacía, y aplicando V92 sobre una base que ya tenía datos DEMO de V91.
 
+**V93** agrega a `secelec_component` las columnas `channel`, `latitude`, `longitude` (`numeric(9,6)`), `streaming_enabled` y `streaming_mode` (COPY / TRANSCODE), con sus CHECK de rango. Las cámaras existentes quedan con canal 1 y streaming activo en modo COPY. En las demás familias las cinco columnas quedan en null.
+
 Esquema resultante (todas las tablas llevan `instance_country_id`, `created_at` y `updated_at`):
 
 | Tabla | Contenido |
 |---|---|
-| `secelec_component` | `point_id`, `family`, `component_type`, `code` (único por punto), `name`, `location`, `coverage`, `brand_model`, `status`, `observations`, `ip`, `port`, `username`, `password_cipher`, `stream_url`, `updated_by` |
+| `secelec_component` | `point_id`, `family`, `component_type`, `code` (único por punto), `name`, `location`, `coverage`, `brand_model`, `status`, `observations`, `ip`, `port`, `channel`, `latitude`, `longitude`, `streaming_enabled`, `streaming_mode`, `username`, `password_cipher`, `stream_url`, `updated_by` |
 | `obsint_protocol` | `series_id`, `based_on_protocol_id`, `point_id`, `code`, `version_no`, `status` (BORRADOR / INACTIVO / ACTIVO), `published_at`, `activated_at`, `updated_by`. Índices únicos: un ACTIVO y un BORRADOR por punto |
 | `obsint_consigna` | `protocol_id`, `point_id`, `code`, `title`, `instruction`, `category`, `time_limit_seconds`, `position`, `active` |
 | `obsint_consigna_camera` | Consigna → `secelec_component`, con orden. La llave impide borrar una cámara en uso |
@@ -311,9 +337,10 @@ Esquema resultante (todas las tablas llevan `instance_country_id`, `created_at` 
 | Método | Ruta | Uso |
 |---|---|---|
 | GET | `/points/{pointId}/components` | Componentes del punto |
-| POST | `/points/{pointId}/components` | Crear: `family`, `componentType`, `name`, …; en VIDEO también `ip`, `port`, `username`, `password` y `streamUrl` |
+| POST | `/points/{pointId}/components` | Crear: `family`, `componentType`, `name`, …; en VIDEO también `ip`, `port`, `channel`, `latitude`, `longitude`, `streamingEnabled`, `streamingMode`, `username`, `password` y `streamUrl` |
 | PUT | `/components/{id}` | Editar (`password` vacía conserva la actual) |
 | DELETE | `/components/{id}` | Eliminar (409 si está en uso) |
+| POST | `/points/{pointId}/cameras/test` | Probar conexión con `ip`, `port`, `channel`, `username`, `password` (o `componentId` y contraseña vacía para usar la guardada). Responde 200 con `ok`, `outcome` (OK, AUTH_FAILED, NOT_FOUND, UNREACHABLE, TIMEOUT, PROTOCOL_ERROR), `message`, `codec`, `streamPath` y `elapsedMs` |
 | GET | `/points/{pointId}/summary` | Estado para la fila del menú |
 
 **Configuración OBSINT** (`/api/obsint/config`)
@@ -367,11 +394,12 @@ Cuerpo de una consigna:
 
 **Técnico**
 - **Video en vivo real:** un servidor que convierta RTSP a HLS/WebRTC (por ejemplo MediaMTX o go2rtc), más acceso de red a los sitios del cliente (VPN o equipo local). Con cámaras Hikvision la ruta es `rtsp://IP:554/Streaming/Channels/101` (102 es el substream), y el substream debe estar en H.264.
-- **Hikvision ISAPI:** "Probar conexión" (`/ISAPI/System/deviceInfo`) y foto de vista previa (`/ISAPI/Streaming/channels/101/picture`). Las credenciales ya se guardan; `CameraSecretCipher.decrypt` queda lista para usarlas.
+- **Hikvision ISAPI:** foto de vista previa (`/ISAPI/Streaming/channels/{canal}01/picture`) y datos del equipo (`/ISAPI/System/deviceInfo`). Necesitan el puerto HTTP (80), que hoy no está en el formulario. "Probar conexión" ya existe, por RTSP.
 - **Frecuencia de las consignas** (cada turno, cada 2 o 4 horas) e instrucciones operativas.
-- **Alcance del monitorista:** hoy el caso toma las consignas de **todos** los puntos con protocolo activo en el tenant. Falta limitarlo por Kaibil o por el puesto de monitoreo.
-- **Envío real de mensajes** al agente en SGI Operador (requiere SITC).
-- **Rol "Monitorista OBSINT"** en IDENT.
+- **Alcance del monitorista más fino:** hoy el caso se limita a los Puntos de las Compañías del usuario (§3). Si más adelante se requiere separar por cliente o por puesto de monitoreo (Kaibil), hace falta una asignación nueva; solo cambiaría `ObsintPlatform.visiblePoints`.
+- **Envío real de mensajes** al agente en SGI Operador (requiere SITC). Mientras tanto se guardan como `TEST`.
+- **Panel de mensajes en modo prueba (frontend):** con `deliveryStatus = TEST`, el panel debe decir que los mensajes no se envían (por ejemplo, "Modo prueba · los mensajes no se envían al agente") en lugar de "Agente en sitio · Conectado", y marcar cada mensaje como "No enviado (prueba)" en lugar del doble check.
+- **Rol `MONITOR` en IDENT:** el backend ya lo acepta en la consola (§3). Falta que IDENT lo asigne a los cargos de monitoreo en SGI_COM, que el menú de Comando le muestre la Consola y el botón OBSINT (frontend), y que cada Compañía tenga su puesto de Monitoreo en Coordinación con los monitores asignados y el plan publicado.
 - Cambios visuales de la consola: una cámara grande con miniaturas, Cliente · Punto en la cabecera.
 
 **Preguntas abiertas para el negocio**
@@ -389,13 +417,11 @@ Cuerpo de una consigna:
 
 ### Levantar en local
 
-1. Define la llave de cifrado en `.env`:
+1. Llave de cifrado: **no hace falta configurar nada**. Sin `SGI_SECELEC_SECRET_KEY` se usa la llave fija de `application.properties` (en el perfil `dev`, `dev-only-secelec-key`). Para usar una propia, defínela en `.env` antes de registrar cámaras:
 
    ```bash
    SGI_SECELEC_SECRET_KEY=una-llave-larga-y-secreta
    ```
-
-   En el perfil `dev` hay una por defecto. **En producción es obligatoria**: sin ella, guardar una cámara responde 503.
 2. (Opcional) Copia los videos de prueba a `frontend/public/obsint/videos/` (`1-1.mp4` … `3-4.mp4`; no se versionan, ~300 MB). En cada cámara, pon "URL de video (pruebas)" = `obsint/videos/1-1.mp4`.
 3. Mientras no exista el menú, abre las pantallas montándolas a mano según §4.
 4. **Flujo:**

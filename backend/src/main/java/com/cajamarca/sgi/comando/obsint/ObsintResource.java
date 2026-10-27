@@ -16,10 +16,13 @@ import org.jboss.resteasy.reactive.RestForm;
 import org.jboss.resteasy.reactive.multipart.FileUpload;
 import org.jboss.resteasy.reactive.server.ServerExceptionMapper;
 
-/** Consola OBSINT: caso del monitorista, tareas en orden con tiempo máximo, evidencia por cámara y mensajes al agente. */
+/**
+ * Consola OBSINT: caso del monitorista, tareas en orden con tiempo máximo, evidencia por cámara y mensajes al agente.
+ * MONITOR (cargos Monitor y Agente de Consola de Monitoreo Senior en IDENT) entra solo aquí, no a la configuración.
+ */
 @Path("/api/obsint")
 @Produces(MediaType.APPLICATION_JSON)
-@RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION","SUPERVISOR_SEGURIDAD"})
+@RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION","SUPERVISOR_SEGURIDAD",ObsintPlatform.MONITOR_ROLE})
 public class ObsintResource {
     @Inject ObsintService service;
     @Inject ObsintPlatform platform;
