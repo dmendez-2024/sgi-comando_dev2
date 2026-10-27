@@ -10,6 +10,8 @@ import java.util.UUID;
 public class SecElecComponent extends BaseEntity {
     public enum Family { PERIMETER, ACCESS_CONTROL, VIDEO, INTRUSION, LIGHTING, FIRE }
     public enum Status { ACTIVE, OBSERVED, INACTIVE }
+    /** COPY: el servidor de video reenvía el flujo tal cual. TRANSCODE: lo recodifica (p. ej. H.265 → H.264 para el navegador). */
+    public enum StreamingMode { COPY, TRANSCODE }
 
     @Column(name = "point_id", nullable = false) public UUID pointId;
     @Enumerated(EnumType.STRING) @Column(nullable = false, length = 24) public Family family;
@@ -23,6 +25,12 @@ public class SecElecComponent extends BaseEntity {
     @Column(length = 1000) public String observations;
     @Column(length = 255) public String ip;
     public Integer port;
+    /** Canal del equipo (1 para una cámara sola; en un NVR, cada canal es una cámara). */
+    public Integer channel;
+    @Column(precision = 9, scale = 6) public java.math.BigDecimal latitude;
+    @Column(precision = 9, scale = 6) public java.math.BigDecimal longitude;
+    @Column(name = "streaming_enabled") public Boolean streamingEnabled;
+    @Enumerated(EnumType.STRING) @Column(name = "streaming_mode", length = 20) public StreamingMode streamingMode;
     @Column(length = 120) public String username;
     /** Contraseña cifrada con {@link CameraSecretCipher}; nunca sale por la API. */
     @Column(name = "password_cipher", length = 600) public String passwordCipher;

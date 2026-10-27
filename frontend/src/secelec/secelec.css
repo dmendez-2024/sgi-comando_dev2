@@ -73,9 +73,27 @@
 .sec-form>header{margin-bottom:0}
 .sec-form-family{display:flex;align-items:center;gap:8px;margin:0;padding:8px 10px;border-radius:9px;background:#edf5ff;color:#2d67d8;font-weight:800;font-size:13px}
 .sec-form-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.sec-form-row.three{grid-template-columns:2fr 1fr 1fr}
+.sec-form-row>.sec-field{min-width:0}
+.sec-form-row input{width:100%;min-width:0;box-sizing:border-box}
+.sec-password{display:flex}
+.sec-password input{flex:1;min-width:0;border-top-right-radius:0;border-bottom-right-radius:0}
+.sec-password button{width:40px;flex:none;display:inline-flex;align-items:center;justify-content:center;border:1px solid #d6dde7;border-left:0;border-radius:0 8px 8px 0;background:#f7f9fc;color:#45556f;cursor:pointer}
+.sec-switch-row{display:flex;align-items:center;gap:10px;height:38px;font-size:13px;font-weight:400;color:#1b2430}
+.sec-switch{position:relative;width:42px;height:24px;flex:none;border:0;border-radius:999px;background:#c5cedb;cursor:pointer;transition:background .15s}
+.sec-switch i{position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.25);transition:left .15s}
+.sec-switch.on{background:#2d67d8}
+.sec-test{display:flex;gap:9px;align-items:flex-start;margin-top:12px;padding:10px 12px;border-radius:9px;font-size:13px}
+.sec-test>svg{flex:none;margin-top:1px}
+.sec-test div{display:flex;flex-direction:column;gap:3px}
+.sec-test small{font-size:12px;opacity:.85}
+.sec-test.ok{background:#e9f8ef;border:1px solid #b5e5c6;color:#17643a}
+.sec-test.fail{background:#fff1f1;border:1px solid #f6c4c4;color:#a32020}
+.sec-switch.on i{left:21px}
 .sec-field{display:flex;flex-direction:column;gap:5px;font-size:12px;font-weight:700;color:#45556f}
 .sec-field input,.sec-field select,.sec-field textarea{height:38px;padding:0 10px;border:1px solid #d6dde7;border-radius:8px;font:inherit;font-size:13px;font-weight:400;color:#1b2430;background:#fff}
 .sec-field textarea{height:auto;padding:8px 10px;resize:vertical}
 .sec-form-actions .sec-primary{flex:1;justify-content:center}
+.sec-form-actions{flex-wrap:wrap}
 @media (max-width:1400px){.sec-layout{grid-template-columns:260px minmax(0,1fr)}.sec-detail{grid-column:1/-1}}
-@media (max-width:900px){.sec-layout,.sec-kpis{grid-template-columns:1fr}.sec-form-row{grid-template-columns:1fr}}
+@media (max-width:900px){.sec-layout,.sec-kpis{grid-template-columns:1fr}.sec-form-row,.sec-form-row.three{grid-template-columns:1fr}}

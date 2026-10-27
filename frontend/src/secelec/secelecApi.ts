@@ -3,12 +3,22 @@ import {ApiError, request} from '../api';
 // Espejo de los records de SecElecResource.java. Mantener sincronizado.
 export type Family='PERIMETER'|'ACCESS_CONTROL'|'VIDEO'|'INTRUSION'|'LIGHTING'|'FIRE';
 export type ComponentStatus='ACTIVE'|'OBSERVED'|'INACTIVE';
+/** COPY: el servidor de video reenvía el flujo tal cual. TRANSCODE: lo recodifica (p. ej. H.265 → H.264). */
+export type StreamingMode='COPY'|'TRANSCODE';
+/** channel, latitude, longitude y streaming* solo vienen en cámaras (VIDEO); en otras familias son null. */
 export type SecurityComponent={id:string;pointId:string;family:Family;componentType:string;code:string;name:string;location:string|null;coverage:string|null;
-  brandModel:string|null;status:ComponentStatus;observations:string|null;ip:string|null;port:number|null;username:string|null;hasPassword:boolean;
+  brandModel:string|null;status:ComponentStatus;observations:string|null;ip:string|null;port:number|null;channel:number|null;latitude:number|null;
+  longitude:number|null;streamingEnabled:boolean|null;streamingMode:StreamingMode|null;username:string|null;hasPassword:boolean;
   streamUrl:string|null;updatedBy:string;updatedAt:string};
-/** password: obligatoria al crear una cámara; al editar, vacía conserva la actual. */
+/** password: obligatoria al crear una cámara; al editar, vacía conserva la actual. latitude y longitude van juntas o ambas null. */
 export type ComponentSave={family:Family;componentType:string;name:string;location:string;coverage:string;brandModel:string;status:ComponentStatus;
-  observations:string;ip:string;port:number|null;username:string;password:string;streamUrl:string};
+  observations:string;ip:string;port:number|null;channel:number|null;latitude:number|null;longitude:number|null;streamingEnabled:boolean;
+  streamingMode:StreamingMode;username:string;password:string;streamUrl:string};
+/** "Probar conexión": datos del formulario. password vacía + componentId usa la contraseña guardada de esa cámara. */
+export type CameraTestRequest={componentId?:string;ip:string;port:number|null;channel:number|null;username:string;password:string};
+export type CameraTestOutcome='OK'|'AUTH_FAILED'|'NOT_FOUND'|'UNREACHABLE'|'TIMEOUT'|'PROTOCOL_ERROR';
+/** Siempre llega con 200: ok=false trae el motivo en message. codec: 'H.264', 'H.265'… o null. */
+export type CameraTestResult={ok:boolean;outcome:CameraTestOutcome;message:string;codec:string|null;streamPath:string;elapsedMs:number};
 export type SecElecSummary={total:number;active:number;observed:number;cameras:number;status:'complete'|'warning'|'blocked';meta:string};
 /** Lo que entrega Servicios al abrir el módulo. */
 export type PointContext={pointId:string;pointName:string;clientName?:string;serviceName?:string;companyName?:string};
@@ -19,6 +29,8 @@ export const secelecApi={
   create:(pointId:string,body:ComponentSave)=>request<SecurityComponent>(`${base}/points/${encodeURIComponent(pointId)}/components`,{method:'POST',body:JSON.stringify(body)}),
   update:(id:string,body:ComponentSave)=>request<SecurityComponent>(`${base}/components/${encodeURIComponent(id)}`,{method:'PUT',body:JSON.stringify(body)}),
   remove:(id:string)=>request<void>(`${base}/components/${encodeURIComponent(id)}`,{method:'DELETE'}),
+  /** Prueba la conexión RTSP de una cámara con los datos del formulario, sin guardarlos. */
+  testCamera:(pointId:string,body:CameraTestRequest)=>request<CameraTestResult>(`${base}/points/${encodeURIComponent(pointId)}/cameras/test`,{method:'POST',body:JSON.stringify(body)}),
   /** Para la fila "Componentes de Seguridad" de Configuración del Punto. */
   summary:(pointId:string)=>request<SecElecSummary>(`${base}/points/${encodeURIComponent(pointId)}/summary`),
 };
@@ -41,3 +53,4 @@ export const FAMILIES:{value:Family;label:string;hint:string;types:string[]}[]=[
 ];
 export const familyLabel=(f:Family)=>FAMILIES.find(x=>x.value===f)?.label??f;
 export const statusLabel=(s:ComponentStatus)=>({ACTIVE:'Activo',OBSERVED:'Con observación',INACTIVE:'Inactivo'}[s]);
+export const streamingModeLabel=(m:StreamingMode)=>({COPY:'Copy (sin recodificar)',TRANSCODE:'Transcodificar'}[m]);

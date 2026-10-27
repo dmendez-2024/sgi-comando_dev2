@@ -2,6 +2,7 @@ package com.cajamarca.sgi.comando.secelec;
 
 import com.cajamarca.sgi.comando.secelec.SecElecComponent.Family;
 import com.cajamarca.sgi.comando.secelec.SecElecComponent.Status;
+import com.cajamarca.sgi.comando.secelec.SecElecComponent.StreamingMode;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
 import jakarta.persistence.EntityManager;
@@ -10,6 +11,8 @@ import jakarta.transaction.Transactional;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.*;
 import java.util.regex.Pattern;
 import org.jboss.resteasy.reactive.server.ServerExceptionMapper;
@@ -33,16 +36,28 @@ public class SecElecResource {
 
     public record ComponentView(UUID id, UUID pointId, Family family, String componentType, String code, String name, String location,
                                 String coverage, String brandModel, Status status, String observations, String ip, Integer port,
+                                Integer channel, BigDecimal latitude, BigDecimal longitude, Boolean streamingEnabled, StreamingMode streamingMode,
                                 String username, boolean hasPassword, String streamUrl, String updatedBy, java.time.Instant updatedAt) {
         static ComponentView of(SecElecComponent c) {
             return new ComponentView(c.id, c.pointId, c.family, c.componentType, c.code, c.name, c.location, c.coverage, c.brandModel, c.status,
-                c.observations, c.ip, c.port, c.username, c.passwordCipher != null, c.streamUrl, c.updatedBy, c.updatedAt);
+                c.observations, c.ip, c.port, c.channel, c.latitude, c.longitude, c.streamingEnabled, c.streamingMode,
+                c.username, c.passwordCipher != null, c.streamUrl, c.updatedBy, c.updatedAt);
         }
     }
-    /** password: obligatoria al crear una cámara; al editar, vacía o null conserva la actual. */
+    /**
+     * password: obligatoria al crear una cámara; al editar, vacía o null conserva la actual.
+     * channel (1 por defecto), streamingEnabled (sí por defecto) y streamingMode (COPY por defecto) solo aplican a cámaras.
+     * latitude y longitude son opcionales, pero van juntas.
+     */
     public record SaveRequest(Family family, String componentType, String name, String location, String coverage, String brandModel,
-                              Status status, String observations, String ip, Integer port, String username, String password, String streamUrl) {}
+                              Status status, String observations, String ip, Integer port, Integer channel, BigDecimal latitude, BigDecimal longitude,
+                              Boolean streamingEnabled, StreamingMode streamingMode, String username, String password, String streamUrl) {}
     public record Summary(int total, int active, int observed, int cameras, String status, String meta) {}
+    /** Datos del formulario para "Probar conexión". password vacía + componentId usa la contraseña guardada de esa cámara. */
+    public record CameraTestRequest(UUID componentId, String ip, Integer port, Integer channel, String username, String password) {}
+    public record CameraTestResult(boolean ok, RtspProbe.Outcome outcome, String message, String codec, String streamPath, long elapsedMs) {}
+
+    private static final RtspProbe PROBE = new RtspProbe(3000, 5000);
 
     @GET @Path("/points/{pointId}/components") @Transactional
     public List<ComponentView> list(@PathParam("pointId") UUID pointId) {
@@ -86,6 +101,36 @@ public class SecElecResource {
         }
     }
 
+    /**
+     * Botón "Test" del formulario de cámara: prueba la conexión RTSP con los datos escritos, sin guardarlos.
+     * Siempre responde 200 con el resultado (ok, motivo y códec); los 4xx quedan para datos inválidos o falta de acceso.
+     */
+    @POST @Path("/points/{pointId}/cameras/test")
+    public CameraTestResult testCamera(@PathParam("pointId") UUID pointId, CameraTestRequest body) {
+        String password = cameraTestPassword(pointId, body);
+        String ip = required(body.ip(), "La dirección IP es obligatoria.", 255);
+        if (!HOST.matcher(ip).matches()) throw new BadRequestException("Dirección IP o nombre de equipo inválido.");
+        if (body.port() == null || body.port() < 1 || body.port() > 65535) throw new BadRequestException("El puerto debe estar entre 1 y 65535.");
+        int channel = body.channel() == null ? 1 : body.channel();
+        if (channel < 1 || channel > 256) throw new BadRequestException("El canal debe estar entre 1 y 256.");
+        String username = required(body.username(), "El usuario de la cámara es obligatorio.", 120);
+        RtspProbe.Result r = PROBE.describe(ip, body.port(), channel, username, password);
+        return new CameraTestResult(r.ok(), r.outcome(), r.message(), r.codec(), RtspProbe.streamPath(channel), r.elapsedMs());
+    }
+
+    /** Valida el acceso al punto en una transacción corta, para no mantenerla abierta mientras se espera a la cámara. */
+    @Transactional
+    String cameraTestPassword(UUID pointId, CameraTestRequest body) {
+        platform.requirePoint(pointId);
+        if (body == null) throw new BadRequestException("Solicitud obligatoria.");
+        if (body.password() != null && !body.password().isBlank()) return body.password();
+        if (body.componentId() == null) throw new BadRequestException("Escriba la contraseña de la cámara para probar la conexión.");
+        SecElecComponent c = component(body.componentId());
+        if (!c.pointId.equals(pointId) || c.family != Family.VIDEO || c.passwordCipher == null)
+            throw new BadRequestException("Escriba la contraseña de la cámara para probar la conexión.");
+        return cipher.decrypt(c.passwordCipher);
+    }
+
     /** Igual que el resto de Comando: el motivo del rechazo viaja como {"message": …} para que la pantalla lo muestre. */
     @ServerExceptionMapper
     public Response error(WebApplicationException e) {
@@ -116,8 +161,15 @@ public class SecElecResource {
             String ip = required(body.ip(), "La dirección IP es obligatoria.", 255);
             if (!HOST.matcher(ip).matches()) throw new BadRequestException("Dirección IP o nombre de equipo inválido.");
             if (body.port() == null || body.port() < 1 || body.port() > 65535) throw new BadRequestException("El puerto debe estar entre 1 y 65535.");
+            if (body.channel() != null && (body.channel() < 1 || body.channel() > 256)) throw new BadRequestException("El canal debe estar entre 1 y 256.");
+            if ((body.latitude() == null) != (body.longitude() == null)) throw new BadRequestException("Ingrese latitud y longitud, o deje ambas vacías.");
             c.ip = ip;
             c.port = body.port();
+            c.channel = body.channel() == null ? 1 : body.channel();
+            c.latitude = coordinate(body.latitude(), 90, "La latitud debe estar entre -90 y 90.");
+            c.longitude = coordinate(body.longitude(), 180, "La longitud debe estar entre -180 y 180.");
+            c.streamingEnabled = body.streamingEnabled() == null || body.streamingEnabled();
+            c.streamingMode = body.streamingMode() == null ? StreamingMode.COPY : body.streamingMode();
             c.username = required(body.username(), "El usuario de la cámara es obligatorio.", 120);
             String password = body.password() == null ? "" : body.password();
             if (!password.isBlank()) c.passwordCipher = cipher.encrypt(password);
@@ -125,6 +177,7 @@ public class SecElecResource {
             c.streamUrl = streamUrl(body.streamUrl());
         } else {
             c.ip = null; c.port = null; c.username = null; c.passwordCipher = null; c.streamUrl = null;
+            c.channel = null; c.latitude = null; c.longitude = null; c.streamingEnabled = null; c.streamingMode = null;
         }
         c.updatedBy = platform.username();
     }
@@ -144,6 +197,13 @@ public class SecElecResource {
         if (url == null) return null;
         if (url.contains(":") && !url.startsWith("http://") && !url.startsWith("https://")) throw new BadRequestException("La URL de video debe ser http(s) o una ruta relativa.");
         return url;
+    }
+
+    /** Grados decimales con 6 decimales (≈ 10 cm), que es lo que guarda la columna. */
+    private static BigDecimal coordinate(BigDecimal value, int limit, String message) {
+        if (value == null) return null;
+        if (value.abs().compareTo(BigDecimal.valueOf(limit)) > 0) throw new BadRequestException(message);
+        return value.setScale(6, RoundingMode.HALF_UP);
     }
 
     private SecElecComponent component(UUID id) {

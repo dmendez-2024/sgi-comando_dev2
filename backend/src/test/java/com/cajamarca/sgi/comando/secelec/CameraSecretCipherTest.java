@@ -7,9 +7,20 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class CameraSecretCipherTest {
     static CameraSecretCipher cipher(String key) {
+        return cipher(key, null);
+    }
+
+    static CameraSecretCipher cipher(String key, String defaultKey) {
         CameraSecretCipher c = new CameraSecretCipher();
         c.secretKey = Optional.ofNullable(key);
+        c.defaultSecretKey = Optional.ofNullable(defaultKey);
         return c;
+    }
+
+    @Test void blankKeyFallsBackToDefault() {
+        String stored = cipher(" ", "llave-fija").encrypt("secreta");
+        assertEquals("secreta", cipher(null, "llave-fija").decrypt(stored));
+        assertEquals("secreta", cipher("llave-fija", "otra").decrypt(stored), "la variable definida tiene prioridad");
     }
 
     @Test void roundTripWithRandomIv() {
@@ -26,7 +37,7 @@ class CameraSecretCipherTest {
         assertThrows(IllegalStateException.class, () -> cipher("llave-b").decrypt(stored));
     }
 
-    @Test void withoutKeyRefusesToStore() {
+    @Test void withoutAnyKeyRefusesToStore() {
         WebApplicationException e = assertThrows(WebApplicationException.class, () -> cipher(" ").encrypt("secreta"));
         assertEquals(503, e.getResponse().getStatus());
     }

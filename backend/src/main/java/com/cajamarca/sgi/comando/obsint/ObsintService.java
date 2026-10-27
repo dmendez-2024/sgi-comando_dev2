@@ -11,7 +11,9 @@ import java.time.ZonedDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.jboss.logging.Logger;
 
 /** Casos de uso de la Consola OBSINT. Cada monitorista solo ve y modifica sus propios casos. */
@@ -35,7 +37,8 @@ public class ObsintService {
     }
 
     /**
-     * Abre un caso con las consignas activas de los protocolos OBSINT ACTIVOS cuyo horario cubre este momento.
+     * Abre un caso con las consignas activas de los protocolos OBSINT ACTIVOS cuyo horario cubre este momento,
+     * solo de los Puntos de las Compañías del alcance del monitorista.
      * Si ya hay uno en curso se devuelve ese: un monitorista trabaja un caso a la vez.
      */
     @Transactional
@@ -44,10 +47,12 @@ public class ObsintService {
         if (running.isPresent()) return running.get();
         UUID tenantId = platform.instanceCountryId();
         ZonedDateTime local = now().atZone(ObsintPlatform.ZONE);
-        List<ObsintConsigna> consignas = ObsintConsigna.<ObsintConsigna>list(
+        List<ObsintConsigna> scheduled = ObsintConsigna.<ObsintConsigna>list(
                 "instanceCountryId=?1 and active=true and protocolId in (select p.id from ObsintProtocol p where p.status='ACTIVO' and p.instanceCountryId=?1) order by pointId, position, code", tenantId)
             .stream().filter(c -> c.scheduledAt(local.getDayOfWeek().getValue(), local.toLocalTime())).toList();
-        if (consignas.isEmpty()) throw new ObsintRuleException("No hay consignas OBSINT activas en este horario.");
+        Set<UUID> visible = platform.visiblePoints(scheduled.stream().map(c -> c.pointId).collect(Collectors.toSet()));
+        List<ObsintConsigna> consignas = scheduled.stream().filter(c -> visible.contains(c.pointId)).toList();
+        if (consignas.isEmpty()) throw new ObsintRuleException("No hay consignas OBSINT activas en este horario en las Compañías de su alcance.");
         long number = ((Number) em.createNativeQuery("select nextval('obsint_case_code_seq')").getSingleResult()).longValue();
         ObsintCase c = ObsintCase.open(tenantId, "CAJ-OBS-%03d".formatted(number), platform.username(), consignas, now());
         c.persist();
@@ -132,7 +137,10 @@ public class ObsintService {
         return ObsintAgentMessage.list("taskId=?1 order by sentAt", taskId);
     }
 
-    /** Hoy el mensaje solo se registra: el envío al agente en sitio (SGI Operador) aún no tiene interconexión aprobada. */
+    /**
+     * Hoy el mensaje solo se registra, en modo prueba (TEST): el envío al agente en sitio (SGI Operador) aún no tiene
+     * interconexión aprobada y no debe parecer entregado.
+     */
     @Transactional
     public ObsintAgentMessage send(UUID taskId, String text) {
         ObsintCaseTask task = task(taskId);
@@ -146,7 +154,7 @@ public class ObsintService {
         m.operator = platform.username();
         m.text = value;
         m.sentAt = now();
-        m.deliveryStatus = "SENT";
+        m.deliveryStatus = ObsintAgentMessage.STATUS_TEST;
         m.persist();
         LOG.infof("obsint_agent_message case=%s task=%s actor=%s", task.obsintCase.code, taskId, m.operator);
         return m;
