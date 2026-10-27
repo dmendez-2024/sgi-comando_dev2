@@ -696,8 +696,8 @@
 .ser-check-main{grid-area:main;display:flex;align-items:center;gap:8px;color:#20334c;min-width:0}
 .ser-check-main svg{color:#436487}
 .ser-check-chevron{flex:0 0 16px;color:#6b829f!important}
-.ser-check-icon{width:28px;height:28px;border-radius:7px;background:#edf4fd;display:grid;place-items:center;flex:0 0 28px;color:#315b9a}
-.ser-check-icon svg{width:17px;height:17px}
+.ser-check-icon{width:18px;height:18px;display:grid;place-items:center;flex:0 0 18px;color:#436487}
+.ser-check-icon svg{width:18px;height:18px;stroke-width:2.2}
 .ser-check-main b{font-size:11px}
 .ser-check-meta{grid-area:meta;font-size:10px;color:#6d7a8b;min-width:0}
 .ser-checklist .ser-status-tag{grid-area:status}
@@ -720,6 +720,7 @@
 .ser-module-card{background:#fff;border:1px solid #e1e7ee;border-radius:14px;padding:14px;box-shadow:0 2px 12px rgba(20,28,40,.035);display:flex;flex-direction:column;gap:14px}
 .ser-module-top{display:flex;gap:10px;align-items:flex-start}.ser-module-top h4{margin:0;font-size:14px;color:#1b2a3f}.ser-module-top p{margin:3px 0 0;font-size:10px;line-height:1.45;color:#6f7c8d}
 .ser-module-icon{width:38px;height:38px;border-radius:11px;display:grid;place-items:center;flex:0 0 38px}.ser-module-icon.complete{background:#eaf8ef;color:#159457}.ser-module-icon.warning{background:#fff5df;color:#df8d08}.ser-module-icon.blocked{background:#fff0f2;color:#d83b48}
+.ser-module-icon svg{width:20px;height:20px}
 .ser-module-bottom{display:flex;flex-direction:column;gap:10px;margin-top:auto}.ser-module-bottom strong{font-size:10px;color:#304259;line-height:1.4;min-height:28px}.ser-module-bottom>div{display:flex;align-items:center;justify-content:space-between;gap:10px}.ser-module-bottom button{height:31px;border-radius:8px;border:1px solid #dce2e8;background:#fff;padding:0 11px;font-size:10px;font-weight:800;color:#355c84;cursor:pointer}
 .ser-module-card.complete{border-top:3px solid #15a05a}.ser-module-card.warning{border-top:3px solid #e2a01b}.ser-module-card.blocked{border-top:3px solid #d8404d}
 
