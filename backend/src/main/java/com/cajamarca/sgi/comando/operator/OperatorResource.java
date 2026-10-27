@@ -57,6 +57,7 @@ public class OperatorResource {
         boolean coordination(){ return coordinationPost!=null; }
         UUID targetId(){ return coordination()?coordinationPost.id:post.id; }
         String targetName(){ return coordination()?coordinationPost.name:post.name; }
+        String targetCode(){ return coordination()?coordinationPost.code:post.code; }
     }
     private record NextAction(String type,UUID targetId,String title,Instant scheduledAt,Instant endsAt) {}
 
@@ -385,7 +386,7 @@ public class OperatorResource {
         } else inventoryContext=inventory.runtime(c.post.id,c.post.code);
         CoreInstanceCountrySnapshot country=CoreInstanceCountrySnapshot.find("instanceCountryId=?1",tenant.instanceCountryId()).firstResult();
         n.put("assignmentId",c.assignment.id.toString()).put("shiftOccurrenceId",c.shift.id.toString()).put("postId",c.targetId().toString())
-            .put("postName",c.targetName()).put("assignmentTargetType",c.coordination()?"COORDINATION_POST":"OPERATIONAL_POST")
+            .put("postName",c.targetName()).put("postCode",c.targetCode()).put("assignmentTargetType",c.coordination()?"COORDINATION_POST":"OPERATIONAL_POST")
             .put("incomingEmployeeId",c.assignment.effectiveEmployeeId().toString()).put("plannedAt",c.shift.startsAt.toString())
             .put("shiftStartsAt",c.shift.startsAt.toString()).put("shiftEndsAt",c.shift.endsAt.toString())
             .put("inventoryStatus",inventoryContext.path("status").asText("PENDING_SOURCE")).put("noveltiesStatus","PENDING_SOURCE").put("validationStatus","PENDING_REVIEW")
@@ -917,7 +918,7 @@ public class OperatorResource {
         List<OperatorAssignmentWindow.Candidate<AssignmentContext>> candidates=contexts.stream()
             .map(c->new OperatorAssignmentWindow.Candidate<>(c,c.shift.startsAt,c.shift.endsAt)).toList();
         for(var c:OperatorAssignmentWindow.select(candidates,now)) choices.addObject()
-            .put("assignmentId",c.assignment.id.toString()).put("postName",c.targetName())
+            .put("assignmentId",c.assignment.id.toString()).put("postName",c.targetName()).put("postCode",c.targetCode())
             .put("assignmentTargetType",c.coordination()?"COORDINATION_POST":"OPERATIONAL_POST")
             .put("startsAt",c.shift.startsAt.toString()).put("endsAt",c.shift.endsAt.toString())
             .put("accessMode",now.isBefore(c.shift.startsAt)?"EARLY_ENTRY":"CURRENT_SHIFT");
