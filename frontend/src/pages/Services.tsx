@@ -1,11 +1,12 @@
 import {useEffect,useMemo,useRef,useState} from 'react';
-import type {CSSProperties,MouseEvent as ReactMouseEvent} from 'react';
+import type {CSSProperties,MouseEvent as ReactMouseEvent,ReactNode} from 'react';
 import {
   AlertTriangle,
   ArrowLeft,
   BarChart3,
   Building2,
   Camera,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   ClipboardList,
@@ -20,9 +21,11 @@ import {
   Layers3,
   Map as MapIcon,
   MapPin,
+  Monitor,
   Minus,
   Plus,
   RefreshCcw,
+  Radio,
   Save,
   Search,
   Settings2,
@@ -64,6 +67,7 @@ type PointRow={
   idAverage:number|null;icAverage:number|null;pendingNews:number;state:State;assignmentStatus:'PENDING'|'ASSIGNED';canAssign:boolean;canReturn:boolean;returnedToCoordination:boolean;atsLoaded:boolean;posts:Row[];
 };
 type ModuleStatus='complete'|'warning'|'blocked';
+type ChecklistStatus=ModuleStatus|'unavailable';
 type ModuleCard={
   key:'ats'|'puestos'|'bitacora'|'patrullas'|'consignas'|'nexus'|'rrhh'|'rrmm'|'historial';
   title:string;summary:string;meta:string;status:ModuleStatus;blocking:boolean;
@@ -125,6 +129,12 @@ const POST_TEMPLATES:Record<'CAA'|'PAT'|'VIG'|'MIX',PostSkillSet>={
 
 function stateLabel(s:State){return s==='ACTIVE'?'Activo':s==='INACTIVE'?'Inactivo':s==='PENDING_ASSIGNMENT'?'Pendiente de asignación':'Por Configurar'}
 function statusLabel(s:ModuleStatus){return s==='complete'?'Completo':s==='warning'?'Observación':'Bloqueante'}
+function groupChecklistStatus(statuses:ChecklistStatus[]):ChecklistStatus{
+  if(statuses.includes('blocked'))return 'blocked';
+  if(statuses.includes('warning'))return 'warning';
+  if(statuses.length>0&&statuses.every(status=>status==='complete'))return 'complete';
+  return 'unavailable';
+}
 function metric(value:number|null,suffix=''){return value==null?'—':`${value.toFixed(1)}${suffix}`}
 function errorMessage(e:unknown){
   const raw=e instanceof ApiError?e.body:e instanceof Error?e.message:String(e);
@@ -869,6 +879,48 @@ function PostsPage({point,onBack}:{point:PointRow;onBack:()=>void}){
 
 function ConfigurationLanding({point,onBack,onOpenModule}:{point:PointRow;onBack:()=>void;onOpenModule:(module:ModuleCard['key'])=>void}){
   const snapshot=useMemo(()=>snapshotFor(point),[point]);
+  const [expandedGroups,setExpandedGroups]=useState<Set<string>>(()=>new Set(['physical','electronic']));
+  const modulesByKey=new Map(snapshot.modules.map(module=>[module.key,module]));
+  const physicalModules=[
+    {key:'puestos',title:'Puestos Operativos'},
+    {key:'bitacora',title:'Control de Accesos'},
+    {key:'patrullas',title:'Patrullas Operativas'},
+    {key:'consignas',title:'Consignas'},
+  ] as const;
+  const electronicModules=[
+    {key:'components',title:'Componentes de Seguridad',icon:<Layers3 size={18}/>,status:'unavailable'},
+    {key:'obsint',title:'OBSINT',icon:<Network size={18}/>,status:'unavailable'},
+  ] as const;
+  const physicalStatus=groupChecklistStatus(physicalModules.map(module=>modulesByKey.get(module.key)?.status??'unavailable'));
+  const electronicStatus=groupChecklistStatus(electronicModules.map(module=>module.status));
+  const toggleGroup=(key:string)=>setExpandedGroups(current=>{const next=new Set(current);if(next.has(key))next.delete(key);else next.add(key);return next});
+  const checklistModule=(key:ModuleCard['key'],title?:string)=>{
+    const module=modulesByKey.get(key);
+    if(!module)return null;
+    const openable=key==='ats'||key==='puestos'||key==='bitacora'||key==='patrullas'||key==='consignas'||key==='nexus';
+    return <button type="button" key={key} className={`ser-check-row ${module.status} ${openable?'':'disabled'}`} onClick={()=>onOpenModule(key)} disabled={!openable}>
+      <span className="ser-check-main"><ChevronRight className="ser-check-chevron" size={15}/><span className="ser-check-icon">{moduleIcon(module.icon)}</span><b>{title??module.title}</b></span>
+      <span className="ser-check-meta">{module.meta}</span>
+      <span className={statusPillClass(module.status)}>{statusLabel(module.status)}</span>
+    </button>;
+  };
+  const unavailableModule=(key:string,title:string,icon:ReactNode)=>
+    <div key={key} className="ser-check-row unavailable" aria-label={`${title}: sin datos de configuración`}>
+      <span className="ser-check-main"><span className="ser-check-chevron"/><span className="ser-check-icon">{icon}</span><b>{title}</b></span>
+      <span className="ser-check-meta">Sin datos de configuración</span>
+      <span className="ser-status-tag unavailable">S/D</span>
+    </div>;
+  const checklistGroup=(key:string,title:string,icon:ReactNode,meta:string,status:ChecklistStatus,children:ReactNode)=>{
+    const expanded=expandedGroups.has(key);
+    return <div className={`ser-check-group ${status}`} key={key}>
+      <button type="button" className="ser-check-group-head" aria-expanded={expanded} onClick={()=>toggleGroup(key)}>
+        <span className="ser-check-main">{expanded?<ChevronDown className="ser-check-chevron" size={16}/>:<ChevronRight className="ser-check-chevron" size={16}/>}<span className="ser-check-icon">{icon}</span><b>{title}</b></span>
+        <span className="ser-check-meta">{meta}</span>
+        <span className={`ser-status-tag ${status}`}>{status==='unavailable'?'S/D':status==='warning'?'En progreso':statusLabel(status)}</span>
+      </button>
+      {expanded&&<div className="ser-check-children">{children}</div>}
+    </div>;
+  };
   const stateClass=point.state.toLowerCase();
   return <div className="services-v01 services-v02 ser-config-landing">
     <div className="ser-breadcrumbs"><button onClick={onBack}><ArrowLeft size={15}/>Volver a Servicios</button><span>/</span><small>Configuración del Punto</small></div>
@@ -902,16 +954,20 @@ function ConfigurationLanding({point,onBack,onOpenModule}:{point:PointRow;onBack
 
     <div className="ser-config-layout">
       <section className="ser-table-card ser-checklist-card">
-        <header><div><h3>Checklist de configuración</h3><span>Solo configuración · no muestra actividad operativa</span></div></header>
+        <header><div><h3>Checklist de configuración</h3><span>Configure todos los módulos y actividades requeridas para la operación del punto.</span></div></header>
         <div className="ser-checklist">
-          {snapshot.modules.map((module:ModuleCard)=>{
-            const openable=module.key==='ats'||module.key==='puestos'||module.key==='bitacora'||module.key==='patrullas'||module.key==='consignas'||module.key==='nexus';
-            return <button key={module.key} className={`ser-check-row ${module.status} ${openable?'':'disabled'}`} onClick={()=>openable&&onOpenModule(module.key)}>
-              <span className="ser-check-main">{moduleIcon(module.icon)}<b>{module.title}</b></span>
-              <span className="ser-check-meta">{module.meta}</span>
-              <span className={statusPillClass(module.status)}>{statusLabel(module.status)}</span>
-            </button>;
-          })}
+          {checklistModule('ats')}
+          {checklistGroup('physical','Seguridad Física',<ShieldCheck size={18}/>,'Configuración de puestos y protocolos',physicalStatus,<>
+            {physicalModules.map(module=>checklistModule(module.key,module.title))}
+          </>)}
+          {checklistGroup('electronic','Seguridad Electrónica',<Radio size={18}/>,'Sin fuente de configuración integrada',electronicStatus,<>
+            {electronicModules.map(module=>unavailableModule(module.key,module.title,module.icon))}
+          </>)}
+          {checklistModule('nexus')}
+          {checklistModule('rrhh')}
+          {checklistModule('rrmm')}
+          {unavailableModule('technology','Recursos Tecnológicos',<Monitor size={18}/>)}
+          {checklistModule('historial')}
         </div>
       </section>
 
