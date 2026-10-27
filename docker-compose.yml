@@ -74,6 +74,8 @@ services:
       SGI_VISINT_INTERCONNECTION_CODE: ${SGI_VISINT_INTERCONNECTION_CODE:-SGI_COM_VISINT_0001_v002}
       SGI_VISINT_TOKEN: ${SGI_VISINT_TOKEN:-}
       SGI_UAT_FEATURES_ENABLED: ${SGI_UAT_FEATURES_ENABLED:-false}
+      # Llave para cifrar las contraseñas de cámaras (Seguridad Electrónica). Definirla en .env.
+      SGI_SECELEC_SECRET_KEY: ${SGI_SECELEC_SECRET_KEY:-}
     ports:
       - "8080:8080"
     depends_on:

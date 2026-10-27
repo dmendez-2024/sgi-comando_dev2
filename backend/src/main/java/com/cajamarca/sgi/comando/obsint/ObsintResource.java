@@ -14,18 +14,24 @@ import java.util.List;
 import java.util.UUID;
 import org.jboss.resteasy.reactive.RestForm;
 import org.jboss.resteasy.reactive.multipart.FileUpload;
+import org.jboss.resteasy.reactive.server.ServerExceptionMapper;
 
 /** Consola OBSINT: caso del monitorista, tareas en orden con tiempo máximo, evidencia por cámara y mensajes al agente. */
 @Path("/api/obsint")
 @Produces(MediaType.APPLICATION_JSON)
-@Consumes(MediaType.APPLICATION_JSON)
 @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION","SUPERVISOR_SEGURIDAD"})
 public class ObsintResource {
     @Inject ObsintService service;
     @Inject ObsintPlatform platform;
 
+    /** Igual que el resto de Comando: el motivo del rechazo viaja como {"message": …} para que la pantalla lo muestre. */
+    @ServerExceptionMapper
+    public Response error(WebApplicationException e) {
+        return Response.status(e.getResponse().getStatus()).entity(java.util.Map.of("message", e.getMessage())).type(MediaType.APPLICATION_JSON).build();
+    }
+
     public record CameraView(UUID id, String code, String name, String location, String streamUrl, boolean live) {
-        static CameraView of(ObsintCamera c) { return new CameraView(c.id, c.code, c.name, c.location, c.streamUrl, c.live); }
+        static CameraView of(com.cajamarca.sgi.comando.secelec.SecElecComponent c) { return new CameraView(c.id, c.code, c.name, c.location, c.streamUrl, false); }
     }
     public record TaskSummary(UUID id, int position, ObsintCaseTask.Status status, ObsintCaseTask.Decision decision, Boolean timedOut) {
         static TaskSummary of(ObsintCaseTask t) { return new TaskSummary(t.id, t.position, t.status, t.decision, t.timedOut); }
@@ -77,7 +83,7 @@ public class ObsintResource {
     public TaskView start(@PathParam("taskId") UUID taskId) { return TaskView.of(service.start(taskId), service.now()); }
 
     /** Registra la respuesta y devuelve el caso con la siguiente tarea actual (o COMPLETED). */
-    @PUT @Path("/tasks/{taskId}/answer") @Transactional
+    @PUT @Path("/tasks/{taskId}/answer") @Transactional @Consumes(MediaType.APPLICATION_JSON)
     public CaseView answer(@PathParam("taskId") UUID taskId, AnswerRequest body) {
         if (body == null) throw new BadRequestException("Respuesta vacía.");
         return CaseView.of(service.answer(taskId, body.decision(), body.justification()));
@@ -113,7 +119,7 @@ public class ObsintResource {
         return service.messages(taskId).stream().map(MessageView::of).toList();
     }
 
-    @POST @Path("/tasks/{taskId}/messages")
+    @POST @Path("/tasks/{taskId}/messages") @Consumes(MediaType.APPLICATION_JSON)
     public MessageView send(@PathParam("taskId") UUID taskId, MessageRequest body) {
         return MessageView.of(service.send(taskId, body == null ? null : body.text()));
     }

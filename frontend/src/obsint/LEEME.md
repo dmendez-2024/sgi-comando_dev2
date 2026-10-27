@@ -1,10 +1,13 @@
-# OBSINT · Consola / OBSINT — v0.1
+# OBSINT y Componentes de Seguridad — v0.2
 
-Estado: **UAT, no congelada**. Este archivo es la única documentación del módulo. Cubre lo construido, cómo funciona, cómo probarlo y lo que falta.
+Estado: **UAT, no congelada**. Este archivo es la única documentación de los módulos **OBSINT** y **Seguridad Electrónica (Componentes de Seguridad)**. Cubre lo construido, cómo funciona, cómo engancharlo desde Servicios, cómo probarlo y lo que falta.
 
 Fuentes:
 - Mockup `OBSINT_mockup_real_v4.html`: la pantalla de evaluación del monitorista.
-- Presentación "OBSINT Estructura" (17 diapositivas), en especial la diapositiva 11, *SGI: COMANDO → Consola / OBSINT*.
+- Presentación "OBSINT Estructura" (17 diapositivas):
+  - 7, 8, 16 y 17: Componentes de Seguridad.
+  - 10 y 14: Consignas OBSINT ("Vincular Consignas – Cámara – Horario").
+  - 11: Consola / OBSINT.
 - Captura de la Consola actual con el botón OBSINT marcado junto al alcance.
 
 ---
@@ -17,284 +20,392 @@ OBSINT (Observational Intelligence) es un **servicio comercial de auditoría por
    - Puesto de monitoreo con horario por día.
    - Cantidad de minutos por día.
    - Producto "Servicio de Auditoría OBSINT".
-2. **Servicios.** La orden aparece en el listado. Los servicios OBSINT **se quedan en Kaibil**, la compañía de coordinación, y no se asignan a una compañía operadora.
-3. **Configuración del punto (nueva).** El checklist se agrupa en Seguridad Física y **Seguridad Electrónica**. Esta última se divide en **Componentes de Seguridad** y **OBSINT**.
-4. **Componentes de seguridad.** Hay familias: Perimetral, Control de Accesos, **Videovigilancia**, Intrusiones, Iluminación e Incendios. Una cámara tiene nombre, tipo, IP, puerto, credenciales y vista previa.
-5. **Consignas OBSINT.** Cada consigna tiene código, categoría, descripción, frecuencia, horario por día, **tiempo máximo de ejecución**, instrucciones y **cámaras asociadas**.
-   - La nota del orador dice que OBSINT es "un puesto más". Sus consignas le aparecen al **Monitorista OBSINT** en Consola / OBSINT.
-6. **Consola / OBSINT.** Es la pantalla del mockup y **lo único implementado en esta versión**.
-7. **Reportes OBSINT y "Informe Diario de Consignas" en PDF.** Solo pueden verlos **Presidente** y **Director Nacional**.
+2. **Servicios.** Los servicios OBSINT **se quedan en Kaibil**.
+3. **Configuración del punto.** Grupo **Seguridad Electrónica**, con dos módulos:
+   - **Componentes de Seguridad:** cámaras con IP, puerto y credenciales, más las otras familias.
+   - **OBSINT:** consignas con cámaras, horario y tiempo máximo.
+4. **Consola / OBSINT.** El monitorista evalúa las consignas mirando las cámaras.
+5. **Reportes OBSINT e Informe Diario en PDF.** Solo Presidente y Director Nacional.
+
+**Esta versión cubre la parte interna de los pasos 3 y 4.** El menú de Configuración del Punto (las filas y su navegación) lo hace otra persona; ver §4.
 
 ---
 
-## 2. Qué se implementó (v0.1)
+## 2. Qué se implementó
 
-### Funcional
+### 2.1 Componentes de Seguridad (`frontend/src/secelec/`, paquete `secelec`)
 
-- **Botón OBSINT** en la cabecera de **Consola**, a la derecha del chip "Alcance". Abre la Consola OBSINT. "← Volver a Consola" regresa.
-- **Inicio:** si el usuario no tiene un caso en curso, ve "No tienes un caso OBSINT en curso" con el botón **Iniciar caso**.
-- **Caso** (`CAJ-OBS-001`, `CAJ-OBS-002`, …): una pasada por **todas las consignas OBSINT activas**, una tarea por consigna y en orden.
-- **Cabecera de 6 tarjetas:**
+Pantalla de las diapositivas 7 y 8. Se abre desde Configuración del Punto.
+
+- **Cabecera:** ruta de navegación "← Volver a Configuración / Componentes de Seguridad", contexto del punto (compañía, servicio, cliente y punto) e indicadores (total, activos, con observaciones).
+- **Izquierda, las 6 familias:** Seguridad Perimetral, Control de Accesos, Videovigilancia, Detección de Intrusiones, Iluminación de Seguridad y Protección Contra Incendios. Cada una con su contador y un punto de estado (verde si todo está activo, naranja si algo está observado o inactivo).
+- **Centro:** tabla de componentes de la familia elegida (código, nombre, tipo, estado), con "Agregar componente" y botones para editar y eliminar.
+- **Derecha:** detalle del componente elegido, o su formulario.
+  - Campos comunes: tipo (con sugerencias por familia), nombre, ubicación, marca/modelo, cobertura, estado (Activo / Con observación / Inactivo) y observaciones.
+  - **Solo Videovigilancia:** dirección IP, puerto, usuario, **contraseña** y "URL de video (pruebas)".
+- **Código automático por familia:** CCTV‑01, PER‑01, ACC‑01, INT‑01, ILU‑01, INC‑01…
+- **Contraseña de la cámara:**
+  - Se guarda **cifrada** con AES‑256‑GCM, con la llave `SGI_SECELEC_SECRET_KEY` y un IV aleatorio por cifrado.
+  - **Nunca vuelve al navegador.** La API solo informa `hasPassword`.
+  - Al editar, el campo aparece vacío con "Sin cambios"; dejarlo vacío conserva la contraseña actual.
+- **La familia no se puede cambiar** después de crear el componente.
+- **Eliminar** un componente que usa una consigna OBSINT responde 409, y la pantalla sugiere cambiarlo a Inactivo.
+- **"URL de video (pruebas)"** existe solo porque todavía no hay servidor de video. Acepta una ruta relativa a la web (por ejemplo `obsint/videos/1-1.mp4`) o una URL http(s); cualquier otro esquema se rechaza.
+
+### 2.2 Consignas OBSINT (`frontend/src/obsint/config/`)
+
+Pantalla de la diapositiva 10. Se abre desde Configuración del Punto.
+
+- **Cabecera:** contexto del punto y versión del protocolo (`PRO-OBS-0001 v2`, fecha de actualización).
+- **Barra del protocolo:**
+  - Selector de versión (historial) y estado: **Borrador**, **Publicado · inactivo** o **Activo**.
+  - Acciones según el estado:
+
+    | Estado | Acciones |
+    |---|---|
+    | Borrador | Publicar versión, Descartar |
+    | Publicado · inactivo | Activar, Nueva versión |
+    | Activo | Inactivar, Nueva versión |
+
+- **Izquierda:** categorías de tareas con contador. "Todas las tareas" y las 6 categorías: SSO, Producción industrial, Logística y almacenamiento, Orden y limpieza, Movilidad y tránsito interno, Atención al cliente.
+- **Centro:** tabla de tareas (código OBS‑NNN, nombre, categoría, tiempo, cantidad de cámaras, estado), búsqueda y "Nueva tarea". Solo se puede editar en el borrador.
+- **Derecha:** detalle de la tarea, o su formulario:
+  - Nombre, categoría y tiempo máximo de ejecución (30 s, 1, 2, 3, 5 o 10 min).
+  - Descripción, que es lo que ve el monitorista en la consola.
+  - Tarea activa o inactiva.
+  - **Horario de ejecución:** de lunes a domingo, cada día con casilla, hora de inicio y hora de fin.
+  - **Cámaras asociadas:** casillas con las cámaras de Videovigilancia del punto que no están inactivas, máximo 4. Si el punto no tiene cámaras, la pantalla indica que se agreguen en Componentes de Seguridad.
+
+### 2.3 Consola OBSINT (`frontend/src/obsint/`)
+
+- Botón **OBSINT** en la cabecera de **Consola**, a la derecha del alcance. Es el único cambio en `ConsolaMonitor.tsx`.
+- Inicio: "Iniciar caso". **El caso toma las consignas activas de los protocolos ACTIVOS cuyo horario cubre el momento actual** (zona America/Guayaquil). Si no hay ninguna, muestra "No hay consignas OBSINT activas en este horario".
+- **Cabecera:**
 
   | Tarjeta | Contenido |
   |---|---|
   | Caso | Código del caso |
   | Grupo | Grupo N · K cámaras |
-  | Tarea | N de M, con puntos de avance |
+  | Tarea | N de M |
   | Tiempo restante | Cuenta regresiva |
   | Fecha y hora | Reloj en vivo |
   | Operador | Usuario con sesión iniciada |
 
-- **Video:** grilla de 1 a 4 cámaras (con 3, la tercera ocupa todo el ancho). Cada cámara muestra:
-  - Nombre y grupo.
-  - La marca EN VIVO o GRABACIÓN.
-  - Fecha y hora sobre el video.
-  - Botones: usar para evidencia, pausar/reproducir y pantalla completa.
-  - Con un clic, la cámara queda elegida para capturar (borde azul). Si un video no carga, la cámara muestra **Sin señal** y la consola sigue funcionando.
-- **Consigna:** texto y código (OBS-001…).
-- **¿Se cumple la consigna?:** **Sí / No / Incierto**.
-- **Justificación:** obligatoria, máximo 500 caracteres, con contador.
-- **Evidencia:** "Capturar evidencia" toma el fotograma actual de la cámara elegida y lo sube.
-  - Cada miniatura indica la cámara y la hora.
-  - Se puede quitar mientras la tarea está en curso.
-- **Comunicación:** "Agente en sitio · Conectado · Canal unidireccional", lista de mensajes enviados y campo con el botón **Enviar**.
-- **CONTINUAR →** guarda la respuesta y pasa a la siguiente tarea. En la última dice **FINALIZAR**.
-- **Resumen final:** "Caso … completado", con la decisión de cada tarea, la marca "Fuera de tiempo" si corresponde y el botón **Iniciar nuevo caso**.
-- **Avisos:** notificación abajo al centro, por ejemplo "Tiempo agotado…", "Respuesta registrada" o "Evidencia capturada desde Cámara 01".
-
-### Diferencias con la diapositiva 11
-
-- La diapositiva muestra 1 cámara. Aquí se muestran de 1 a 4 por consigna, como en el mockup.
-- El botón "Reportes" de la diapositiva **no** está implementado (ver §8).
-- Con los videos de prueba la marca dice **GRABACIÓN**. EN VIVO aparece cuando la cámara tiene `live=true`.
+- **Video:** de 1 a 4 cámaras, con clic para elegir la de evidencia, pausa y pantalla completa. Una cámara sin video configurado muestra **Sin señal · Video en vivo pendiente de conexión**.
+- **Respuesta:** consigna, **Sí / No / Incierto**, justificación obligatoria (máximo 500 caracteres) y evidencia capturada de la cámara elegida.
+- **Comunicación:** mensajes al agente en sitio.
+- **Botones:** CONTINUAR, y FINALIZAR en la última tarea, que lleva al resumen del caso.
 
 ---
 
-## 3. Lógica y reglas de negocio
+## 3. Lógica y reglas
 
-### Caso y tareas
+### Protocolo OBSINT (versiones, como el módulo Consignas)
 
-- Un usuario tiene **un solo caso en curso a la vez**. `POST /cases` devuelve el caso abierto si ya existe uno.
-- Al abrir el caso, cada tarea **copia** de su consigna el código, la instrucción y el tiempo máximo. Si después se edita la consigna, los casos ya creados no cambian. Las cámaras sí se leen de la consigna.
-- **Orden obligatorio:** solo se puede iniciar o responder la tarea actual, que es la primera sin responder. Fuera de orden → 409 "Las tareas se resuelven en orden…".
-- Estados de una tarea: `PENDING → IN_PROGRESS → ANSWERED`. El caso pasa de `IN_PROGRESS` a `COMPLETED` al responder la última tarea.
+- **Un protocolo por punto.** Se edita en **BORRADOR** → al publicarlo pasa a **INACTIVO** y queda inmutable → al activarlo pasa a **ACTIVO**.
+- La base de datos garantiza como máximo **un ACTIVO y un BORRADOR por punto** (índices únicos parciales). Al activar una versión, la que estaba activa pasa a INACTIVO.
+- **Nueva versión:** crea un borrador con número de versión +1, copiando las consignas (con cámaras y horario) de la última versión. Si ya existe un borrador, se abre ese.
+- **Publicar exige:**
+  - Al menos una consigna activa.
+  - Cada consigna activa con al menos una cámara, ninguna inactiva.
+  - Cada consigna activa con horario en al menos un día.
+- Editar o borrar consignas de una versión publicada → 409 "Cree una nueva versión".
 
-### Tiempo máximo
+### Consigna
 
-- El tiempo **no arranca al abrir la tarea**, sino cuando todas sus cámaras cargaron o fallaron, con un máximo de 5 s de espera. Así el monitorista no pierde tiempo mientras cargan los videos.
-- `POST /start` es **idempotente**: si la tarea ya está en curso, devuelve el mismo `deadline`. Al recargar la página el tiempo sigue donde iba y no se reinicia.
-- La web calcula el tiempo restante con `deadline` y `serverNow`, que vienen del servidor. Así corrige la diferencia entre el reloj del equipo y el del servidor.
-- Los instantes se truncan a **microsegundos**, que es la precisión de Postgres. Sin eso, el `deadline` cambiaba al releerlo de la base.
-- Colores del contador según la fracción del tiempo máximo (los mismos cortes del mockup, 30/20/10 s sobre 60 s):
+- Código automático `OBS-NNN` por protocolo, que se conserva entre versiones.
+- Nombre y descripción obligatorios.
+- Categoría de la lista fija.
+- Tiempo máximo entre 10 s y 60 min.
+- Hasta 4 cámaras, todas de Videovigilancia, **del mismo punto** y no inactivas.
+- Horario: un tramo por día, la hora de fin mayor que la de inicio. El inicio está incluido y el fin excluido.
 
-  | Tiempo restante | Color |
-  |---|---|
-  | Más de 1/2 | Verde |
-  | Hasta 1/2 | Amarillo |
-  | Hasta 1/3 | Naranja |
-  | Hasta 1/6 | Rojo parpadeante |
+### Caso y tareas (Consola)
 
-- **Al vencer el tiempo:** aparece un único aviso y **se puede seguir respondiendo**. La tarea guarda `timed_out=true` y `seconds_used`. La presentación no define qué pasa con una tarea vencida, por eso no se bloquea.
-
-### Respuesta
-
-- La decisión es obligatoria.
-- La justificación es obligatoria. Se le quitan los espacios de los extremos y admite hasta 500 caracteres.
-- Mientras se responde, el borrador (decisión y justificación) se guarda en `sessionStorage` por tarea. Recargar la página no pierde lo escrito, y el borrador se borra al guardar.
-
-### Evidencia
-
-- Se captura en el navegador. Se dibuja el fotograma del `<video>` en un canvas y se obtiene un JPEG con calidad 0,85.
-- El video **debe ser del mismo origen** que la web, o tener CORS. Si no, el navegador no permite leer el fotograma.
-- Validaciones del servidor:
-  - La tarea debe estar en curso.
-  - La cámara debe pertenecer a la consigna.
-  - Máximo **6** evidencias por tarea, de 1 byte a 5 MiB.
-  - Solo JPEG, PNG o WebP, detectados por sus bytes y no por la extensión.
-- Se guarda en MinIO, en el bucket de evidencias de Comando: `evidence/{instanceCountryId}/obsint/{taskId}/{evidenceId}.{ext}`.
-- Se registran el SHA-256, el tamaño, el tipo, la cámara, el segundo del video y la hora de captura. Primero se sube el archivo y después se guarda la fila, para no dejar filas que apunten a nada.
-- La imagen se sirve con `Cache-Control: private, no-store` y `nosniff`.
-
-### Mensajes al agente
-
-- El mensaje es obligatorio (máximo 500 caracteres) y solo se puede enviar con la tarea en curso.
-- **Hoy solo se registra** (`delivery_status=SENT`) y se escribe en el log. Todavía no llega a ninguna app, porque no existe una interconexión aprobada con SGI Operador.
+- Un usuario tiene un solo caso en curso. Las tareas se resuelven **en orden**.
+- Cada tarea copia de la consigna el código, la descripción y el tiempo máximo, así que editar la configuración no altera casos ya creados.
+- **Tiempo:**
+  - Arranca cuando cargan las cámaras, o al instante si ninguna tiene video.
+  - `start` es idempotente; la web corrige su reloj con `serverNow`.
+  - Se puede responder fuera de tiempo, pero la tarea queda con `timed_out=true`.
+- **Evidencia:**
+  - Fotograma JPEG del video elegido.
+  - Máximo 6 por tarea, de hasta 5 MiB, solo JPEG, PNG o WebP (detectados por sus bytes).
+  - Se guarda en MinIO, en el bucket de evidencias de Comando, con SHA‑256.
+- **Mensajes al agente:** solo se registran (`SENT`). El envío real a SGI Operador está pendiente.
+- Cada usuario ve solo sus propios casos.
 
 ### Seguridad
 
-- Roles con acceso: los mismos de Notificación de Incidentes.
+- **Roles:** los mismos de Notificación de Incidentes, en las tres APIs. Agente y cliente no tienen acceso.
   - PRESIDENTE, GERENCIA_GENERAL, DIRECTOR_OPERACIONES_LATAM, DIRECTOR_OPERACIONES_NACIONAL, DIRECTOR_NACIONAL, DIRECTOR_ZONAL, JEFE_REGIONAL, COORDINADOR_COMPANIA, ASISTENTE_COORDINACION y SUPERVISOR_SEGURIDAD.
-  - Agente y cliente no tienen acceso.
-- Cada usuario **solo ve y modifica sus propios casos**. Todo se filtra por `instance_country_id` y por el usuario. Un caso o una tarea de otro usuario responde 404.
-- Una regla incumplida responde **409** con el mensaje en texto plano, y la web lo muestra tal cual.
-
-### Catálogo DEMO
-
-- Si `SGI_UAT_FEATURES_ENABLED=true`, al abrir el primer caso de un tenant sin consignas se crean **3 consignas de 60 s con 4 cámaras cada una**, las mismas del mockup:
-
-  | Consigna | Texto |
-  |---|---|
-  | OBS-001 | "El usuario no puede ingresar con ninguna maleta, mochila, bolso, chompa, abrigo." |
-  | OBS-002 | "Revisar cualquier movimiento sospechoso." |
-  | OBS-003 | "No debe existir vehículo estacionado en ninguna de estas escenas." |
-
-- Se crea al usarse y no en la migración, porque el `instanceCountryId` llega de CORE y no se conoce al migrar.
-- Sin esa bandera no se crea nada. Al iniciar un caso, la consola muestra "No hay consignas OBSINT activas para evaluar".
-- **Videos DEMO:** las cámaras apuntan a `obsint/videos/{grupo}-{cámara}.mp4` (de `1-1` a `3-4`). La ruta es relativa a la base de la web, así que funciona en `/` y en `/dev.comando/`.
-  - Los archivos van en `frontend/public/obsint/videos/` y **no se versionan** (~300 MB, en `.gitignore`). Hay que copiarlos a mano antes de compilar la web.
-  - Si faltan, cada cámara muestra "Sin señal".
+- **Acceso al punto:** la configuración aplica la **misma regla que Consignas**. El punto debe existir en el tenant y el usuario debe poder gestionar su compañía (`requireCompanyForCompanyRoles`).
+- **Errores:** cada rechazo responde `{"message": "…"}` con el código HTTP (400, 403, 404, 409, 503), y la pantalla muestra el mensaje tal cual.
 
 ---
 
-## 4. Aislamiento del módulo
+## 4. Cómo engancharlo desde Servicios (para quien hace el menú)
 
-OBSINT está hecho para no romperse cuando cambia el resto de Comando, y para no romperlo a él.
+Esta parte no está hecha a propósito: el menú de Configuración del Punto lo hace otra persona.
 
-**Backend:** paquete `com.cajamarca.sgi.comando.obsint`, endpoints `/api/obsint/**` y tablas `obsint_*`.
-- No tiene llaves foráneas hacia tablas de otros módulos.
-- **`ObsintPlatform` es la única clase que usa Comando:** `TenantContext`, `OperationalScopeService`, `StorageService`, `ImageSniffer`, `Digests` y la bandera `sgi.uat.features-enabled`. Si alguno de esos cambia, se ajusta solo ese archivo.
-- Comparte con todos los módulos la clase base de entidades (`BaseEntity`) y los nombres de roles en `@RolesAllowed`.
+```tsx
+import SecurityComponents from '../secelec/SecurityComponents';
+import {secelecApi} from '../secelec/secelecApi';
+import ObsintConfig from '../obsint/config/ObsintConfig';
+import {obsintConfigApi} from '../obsint/obsintApi';
 
-**Frontend:** todo vive en `frontend/src/obsint/`.
-- Tiene su propia API (`obsintApi.ts`). De `api.ts` solo usa el transporte (`request`, `binaryRequest`, `multipartRequest` y `ApiError`): token, renovación de IDENT y errores.
-- Tiene su propio CSS (`obsint.css`). Todas las clases llevan el prefijo `obs-` y no usa clases de otras pantallas. Cambiar `styles.css` no altera la consola, y al revés tampoco.
+// Pantallas (mismo patrón que BitacoraConfig / ConsignasConfig):
+<SecurityComponents point={{pointId, pointName, clientName, serviceName, companyName}} onBack={()=>setView('config-landing')}/>
+<ObsintConfig       point={{pointId, pointName, clientName, serviceName, companyName}} onBack={()=>setView('config-landing')}/>
 
-**Cambios en archivos compartidos (12 líneas en total):**
+// Estado real de cada fila del checklist:
+const sec = await secelecApi.summary(pointId);       // {status:'complete'|'warning'|'blocked', meta:'5 componentes · 4 activos', ...}
+const obs = await obsintConfigApi.summary(pointId);  // {status, meta:'Protocolo v2 activo · 3 consignas', warnings:[...], ...}
+```
+
+- `status` corresponde a los estados de la lista de Configuración: `complete` = Completo, `warning` = Observación, `blocked` = Bloqueante.
+- **Componentes de Seguridad:**
+  - Bloqueante: no hay componentes activos ni con observación.
+  - Observación: hay componentes con observación.
+  - Completo: en otro caso.
+- **OBSINT:**
+  - Bloqueante: sin protocolo ACTIVO.
+  - Observación: una consigna activa usa una cámara con observación o inactiva (los avisos van en `warnings`).
+  - Completo: en otro caso.
+- Ambas pantallas traen su propio CSS y no usan clases de `styles.css`.
+
+---
+
+## 5. Aislamiento
+
+**Backend**
+- Paquetes `obsint` y `secelec`, rutas `/api/obsint/**` y `/api/secelec/**`, tablas `obsint_*` y `secelec_*`.
+- `point_id` no tiene llave foránea hacia `point`; el acceso se valida en la API.
+- **`ObsintPlatform` y `SecElecPlatform` son las únicas clases que usan Comando:** tenant, usuario, acceso al punto (`PointEntity` + `OperationalScopeService`), MinIO y validación de imágenes.
+- OBSINT solo depende de `secelec` a través de la entidad `SecElecComponent`, porque las cámaras de las consignas son componentes.
+
+**Frontend**
+- Carpetas `src/obsint/` y `src/secelec/`, cada una con su API y su CSS (prefijos `obs-`, `obs-cfg-` y `sec-`).
+- De `api.ts` solo usan el transporte: `request`, `binaryRequest`, `multipartRequest` y `ApiError`.
+
+**Cambios fuera de los módulos**
 
 | Archivo | Cambio |
 |---|---|
-| `frontend/src/pages/ConsolaMonitor.tsx` | 1 import, 1 estado, 1 `return` que abre la consola y el botón `ObsintButton` junto al alcance |
+| `frontend/src/pages/ConsolaMonitor.tsx` | Botón OBSINT y apertura de la consola |
 | `frontend/src/api.ts` | `export` en `request` y `binaryRequest` |
-| `.gitignore` | Excluye `frontend/public/obsint/videos/` |
+| `backend/src/main/resources/application.properties` | `sgi.secelec.secret-key` (con valores para dev y test) |
+| `docker-compose.yml` | Variable `SGI_SECELEC_SECRET_KEY` del backend |
+| `.gitignore` | Excluye los videos de prueba |
 
 ---
 
-## 5. Archivos
+## 6. Archivos
 
-**Backend** (`backend/src/main/java/com/cajamarca/sgi/comando/obsint/`):
+**Backend `secelec`** (`backend/src/main/java/com/cajamarca/sgi/comando/secelec/`)
 
 | Archivo | Rol |
 |---|---|
-| `ObsintResource.java` | API REST y contratos JSON (records) |
-| `ObsintService.java` | Casos de uso: abrir caso, iniciar, responder, evidencia, mensajes y control de pertenencia |
-| `ObsintCase.java` | Caso: hace cumplir el orden de las tareas y cierra el caso |
-| `ObsintCaseTask.java` | Tarea: tiempo máximo, validación de la respuesta y fuera de tiempo |
-| `ObsintConsigna.java` | Consigna OBSINT y sus cámaras, en orden |
-| `ObsintCamera.java` | Cámara (URL del video, en vivo o grabación) |
-| `ObsintEvidence.java` | Metadatos de la evidencia; el archivo está en MinIO |
+| `SecElecResource.java` | API de componentes y resumen |
+| `SecElecComponent.java` | Entidad (familia, estado, conexión) |
+| `CameraSecretCipher.java` | Cifrado AES‑GCM de contraseñas. Si se adopta OpenBao, solo cambia esta clase |
+| `SecElecPlatform.java` | Adaptador hacia Comando |
+
+**Backend `obsint`** (`backend/src/main/java/com/cajamarca/sgi/comando/obsint/`)
+
+| Archivo | Rol |
+|---|---|
+| `ObsintConfigResource.java` | API de configuración: protocolo, versiones, consignas, cámaras disponibles y resumen |
+| `ObsintResource.java` | API de la consola |
+| `ObsintService.java` | Casos de uso de la consola: abrir caso por horario, responder, evidencia, mensajes |
+| `ObsintProtocol.java` | Protocolo versionado |
+| `ObsintConsigna.java` | Consigna, sus cámaras y su horario (`Slot`, `scheduledAt`) |
+| `ObsintCase.java` | Caso: orden de las tareas y cierre |
+| `ObsintCaseTask.java` | Tarea: tiempo máximo y validación de la respuesta |
+| `ObsintEvidence.java` | Metadatos de la evidencia |
 | `ObsintAgentMessage.java` | Mensaje al agente |
-| `ObsintDemoCatalog.java` | Catálogo DEMO (solo UAT) |
-| `ObsintPlatform.java` | Adaptador hacia los servicios de Comando |
-| `ObsintRuleException.java` | Regla incumplida (409, texto plano) |
+| `ObsintPlatform.java` | Adaptador hacia Comando |
+| `ObsintRuleException.java` | Regla incumplida (409) |
 
-Base de datos: `backend/src/main/resources/db/migration/V91__obsint_console.sql`.
+**Base de datos:**
+- `V91__obsint_console.sql`: la primera versión de la consola, que ya está en el repo. **No se modifica.**
+- `V92__obsint_config_and_security_components.sql`: transforma V91 al modelo actual (ver §7).
 
-Pruebas: `backend/src/test/java/com/cajamarca/sgi/comando/obsint/` (`ObsintCaseTest`, `ObsintResourceTest`).
+**Pruebas**
 
-**Frontend** (`frontend/src/obsint/`):
+| Prueba | Qué cubre |
+|---|---|
+| `obsint/ObsintCaseTest` | Reglas del caso y horario (unitaria) |
+| `obsint/ObsintResourceTest` | Configuración y consola de punta a punta (`@QuarkusTest`) |
+| `secelec/SecElecResourceTest` | API de componentes (`@QuarkusTest`) |
+| `secelec/CameraSecretCipherTest` | Cifrado (unitaria) |
+
+**Frontend**
 
 | Archivo | Rol |
 |---|---|
-| `ObsintConsole.tsx` | Pantalla: carga del caso, cabecera, layout, inicio del tiempo, captura y resumen. Exporta `ObsintButton` |
-| `ObsintCameraGrid.tsx` | Grilla de cámaras: selección, pausa, pantalla completa y aviso de "cámaras listas" |
-| `ObsintTaskPanel.tsx` | Consigna, decisión, justificación, evidencia y continuar |
-| `ObsintCommPanel.tsx` | Mensajes al agente |
-| `obsintApi.ts` | Llamadas a `/api/obsint` y texto de errores |
-| `obsint.ts` | Tipos (espejo de los records del backend), cuenta regresiva, reloj, borrador, captura de fotograma y formatos |
-| `obsint.css` | Estilos del módulo |
+| `src/secelec/SecurityComponents.tsx` | Pantalla de componentes |
+| `src/secelec/secelecApi.ts` | API, tipos y catálogo de familias |
+| `src/secelec/secelec.css` | Estilos del módulo |
+| `src/obsint/config/ObsintConfig.tsx` | Pantalla de Consignas OBSINT |
+| `src/obsint/config/obsint-config.css` | Estilos de la configuración |
+| `src/obsint/ObsintConsole.tsx` y componentes | Consola: `ObsintCameraGrid`, `ObsintTaskPanel`, `ObsintCommPanel` |
+| `src/obsint/obsintApi.ts` | `obsintApi` (consola), `obsintConfigApi` (configuración) y `errorText` |
+| `src/obsint/obsint.ts` | Tipos, categorías, días, cuenta regresiva, borrador y captura de fotograma |
+| `src/obsint/obsint.css` | Estilos de la consola |
 
 ---
 
-## 6. Base de datos (V91)
+## 7. Base de datos (V91 + V92)
 
-Solo agrega tablas nuevas. Todas llevan `instance_country_id`, `created_at` y `updated_at`.
+V91 (ya publicada) creó la consola con un catálogo DEMO global. **V92 la transforma**:
+- **Borra los datos DEMO de V91** (casos, tareas, evidencias, mensajes y consignas). Las fotos de evidencia de esos casos quedan en MinIO, en `evidence/{tenant}/obsint/…`, y pueden borrarse a mano.
+- Crea `secelec_component`, `obsint_protocol` y `obsint_consigna_schedule`.
+- Agrega a `obsint_consigna` las columnas `protocol_id`, `point_id` y `category`. El código pasa a ser único por protocolo.
+- Rehace `obsint_consigna_camera` para que apunte a `secelec_component`, y cambia la llave de `obsint_evidence.camera_id` a `secelec_component`.
+- Elimina `obsint_camera`.
+
+Probado sobre PostgreSQL 17 de dos formas: aplicando V91 y V92 sobre una base vacía, y aplicando V92 sobre una base que ya tenía datos DEMO de V91.
+
+Esquema resultante (todas las tablas llevan `instance_country_id`, `created_at` y `updated_at`):
 
 | Tabla | Contenido |
 |---|---|
-| `obsint_camera` | `code` (único por tenant), `name`, `location`, `stream_url`, `live`, `active` |
-| `obsint_consigna` | `code` (único por tenant), `title`, `instruction`, `time_limit_seconds` (10–3600), `position`, `active` |
-| `obsint_consigna_camera` | Cámaras de cada consigna, en orden (`position`) |
-| `obsint_case` | `code` (`CAJ-OBS-NNN`, secuencia `obsint_case_code_seq`), `operator`, `status`, `started_at`, `completed_at` |
-| `obsint_case_task` | Copia de la consigna (`consigna_code`, `instruction`, `time_limit_seconds`), `status`, `started_at`, `answered_at`, `decision`, `justification`, `seconds_used`, `timed_out` |
-| `obsint_evidence` | `task_id`, `camera_id`, `video_time_seconds`, `captured_at`, `bucket`, `object_key`, `content_type`, `size_bytes`, `sha256` |
-| `obsint_agent_message` | `task_id`, `operator`, `text`, `sent_at`, `delivery_status` |
-
-Con estas tablas ya se puede calcular buena parte del reporte diario de la diapositiva 13: ejecutadas, cumplidas e incumplidas, tiempo de revisión e incumplimientos con foto, cámara y observación. Falta enlazar las tablas con Cliente, Punto y Servicio (ver §8).
+| `secelec_component` | `point_id`, `family`, `component_type`, `code` (único por punto), `name`, `location`, `coverage`, `brand_model`, `status`, `observations`, `ip`, `port`, `username`, `password_cipher`, `stream_url`, `updated_by` |
+| `obsint_protocol` | `series_id`, `based_on_protocol_id`, `point_id`, `code`, `version_no`, `status` (BORRADOR / INACTIVO / ACTIVO), `published_at`, `activated_at`, `updated_by`. Índices únicos: un ACTIVO y un BORRADOR por punto |
+| `obsint_consigna` | `protocol_id`, `point_id`, `code`, `title`, `instruction`, `category`, `time_limit_seconds`, `position`, `active` |
+| `obsint_consigna_camera` | Consigna → `secelec_component`, con orden. La llave impide borrar una cámara en uso |
+| `obsint_consigna_schedule` | `day_of_week` (1–7), `start_time`, `end_time` |
+| `obsint_case` | Casos de la consola |
+| `obsint_case_task` | Tareas de cada caso |
+| `obsint_evidence` | Evidencias; `camera_id` apunta a `secelec_component` |
+| `obsint_agent_message` | Mensajes al agente |
 
 ---
 
-## 7. API
+## 8. API
+
+**Componentes de Seguridad** (`/api/secelec`)
 
 | Método | Ruta | Uso |
 |---|---|---|
-| GET | `/api/obsint/cases/current` | Caso en curso del usuario (204 si no hay) |
-| POST | `/api/obsint/cases` | Abre un caso con las consignas activas (o devuelve el que está en curso) |
-| GET | `/api/obsint/cases/{id}` | Caso con el estado de sus tareas y `currentTaskId` |
-| GET | `/api/obsint/tasks/{id}` | Tarea: consigna, cámaras, `deadline`, `serverNow`, respuesta |
-| POST | `/api/obsint/tasks/{id}/start` | Inicia el tiempo (idempotente) |
-| PUT | `/api/obsint/tasks/{id}/answer` | `{ "decision": "YES"\|"NO"\|"UNCERTAIN", "justification": "…" }`; devuelve el caso |
-| GET | `/api/obsint/tasks/{id}/evidence` | Lista de evidencias |
-| POST | `/api/obsint/tasks/{id}/evidence` | Multipart: `file`, `cameraId`, `videoTimeSeconds` |
-| DELETE | `/api/obsint/tasks/{id}/evidence/{evidenceId}` | Quita evidencia (solo con la tarea en curso) |
-| GET | `/api/obsint/tasks/{id}/evidence/{evidenceId}/content` | Imagen |
-| GET | `/api/obsint/tasks/{id}/messages` | Mensajes al agente |
-| POST | `/api/obsint/tasks/{id}/messages` | `{ "text": "…" }` |
+| GET | `/points/{pointId}/components` | Componentes del punto |
+| POST | `/points/{pointId}/components` | Crear: `family`, `componentType`, `name`, …; en VIDEO también `ip`, `port`, `username`, `password` y `streamUrl` |
+| PUT | `/components/{id}` | Editar (`password` vacía conserva la actual) |
+| DELETE | `/components/{id}` | Eliminar (409 si está en uso) |
+| GET | `/points/{pointId}/summary` | Estado para la fila del menú |
+
+**Configuración OBSINT** (`/api/obsint/config`)
+
+| Método | Ruta | Uso |
+|---|---|---|
+| GET | `/points/{pointId}/protocols` | Versiones del protocolo, con sus consignas |
+| GET | `/points/{pointId}/cameras` | Cámaras que se pueden asociar |
+| POST | `/points/{pointId}/protocols/draft` | Abre el borrador (existente, nueva versión o v1) |
+| DELETE | `/protocols/{id}` | Descarta el borrador |
+| POST | `/protocols/{id}/publish` | Publica (BORRADOR → INACTIVO) |
+| POST | `/protocols/{id}/activate` | Activa (INACTIVO → ACTIVO) |
+| POST | `/protocols/{id}/deactivate` | Inactiva (ACTIVO → INACTIVO) |
+| POST | `/protocols/{id}/consignas` | Crea una consigna (solo en el borrador) |
+| PUT | `/consignas/{id}` | Edita una consigna (solo en el borrador) |
+| DELETE | `/consignas/{id}` | Borra una consigna (solo en el borrador) |
+| GET | `/points/{pointId}/summary` | Estado para la fila del menú |
+
+Cuerpo de una consigna:
+
+```json
+{"title":"…","instruction":"…","category":"SSO","timeLimitSeconds":120,"active":true,
+ "cameraIds":["…"],"schedule":[{"dayOfWeek":1,"start":"08:00","end":"18:00"}]}
+```
+
+**Consola** (`/api/obsint`)
+
+| Método | Ruta | Uso |
+|---|---|---|
+| GET | `/cases/current` | Caso en curso (204 si no hay) |
+| POST | `/cases` | Abre un caso, o devuelve el que está en curso |
+| GET | `/cases/{id}` | Caso con sus tareas |
+| GET | `/tasks/{id}` | Tarea con consigna, cámaras y tiempo |
+| POST | `/tasks/{id}/start` | Inicia el tiempo |
+| PUT | `/tasks/{id}/answer` | Registra la respuesta |
+| GET/POST | `/tasks/{id}/evidence` | Lista o sube evidencia |
+| DELETE | `/tasks/{id}/evidence/{eid}` | Quita evidencia |
+| GET | `/tasks/{id}/evidence/{eid}/content` | Imagen |
+| GET/POST | `/tasks/{id}/messages` | Mensajes al agente |
 
 ---
 
-## 8. Lo que falta
+## 9. Lo que falta
 
-### De la presentación, fuera de esta versión
+**De la presentación**
+- **Menú de Servicios:** la fila Seguridad Electrónica con sus dos módulos y la navegación hacia ellos. Lo hace otra persona; ver §4.
+- **Orden de servicio desde SIC: COM:** minutos por día y tipo de producto OBSINT.
+- **Servicios OBSINT en Kaibil:** que muestren Configuración en lugar de Asignación.
+- **Alta "¿vincular a un punto existente?"** (diapositivas 14 y 15).
+- **Reportes OBSINT e Informe Diario en PDF** (diapositivas 12 y 13), solo para Presidente y Director Nacional.
 
-1. **Orden de servicio desde SIC: COM** (diapositiva 2). El evento ya trae puestos y turnos, pero **no trae "minutos por día" ni el tipo de producto OBSINT**. Hay que ampliar el contrato con SIC: COM.
-2. **Servicios OBSINT en Kaibil** (diapositiva 4). Deben saltarse la asignación a compañías y no mostrar "Retirar a Kaibil".
-3. **Configuración del punto reorganizada** (diapositiva 6): Seguridad Física, Seguridad Electrónica (Componentes y OBSINT) y Recursos Tecnológicos.
-4. **Componentes de seguridad y cámaras** (diapositivas 7, 8, 16 y 17): ABM por familia; cámaras con IP, puerto y **credenciales cifradas**; vista previa.
-5. **Consignas OBSINT por servicio** (diapositiva 10): ABM con categoría, frecuencia, horario por día, tiempo máximo, instrucciones y cámaras. Hoy reemplaza al catálogo DEMO.
-6. **Alta "¿vincular a un punto existente?"** (diapositivas 14 y 15). Con "Sí" se configura solo Seguridad Electrónica y OBSINT; con "No" se configuran además ATS y Consignas.
-7. **Reportes OBSINT** (diapositivas 11 y 12): botón "Reportes" en la consola, listado filtrable por cliente, punto y fechas, y descarga en PDF. **Solo Presidente y Director Nacional**.
-8. **Informe Diario de Consignas en PDF** (diapositiva 13), generado a las 23:59: resumen, desempeño por consigna, incumplimientos con foto, cámara y observación, y observaciones generales.
+**Técnico**
+- **Video en vivo real:** un servidor que convierta RTSP a HLS/WebRTC (por ejemplo MediaMTX o go2rtc), más acceso de red a los sitios del cliente (VPN o equipo local). Con cámaras Hikvision la ruta es `rtsp://IP:554/Streaming/Channels/101` (102 es el substream), y el substream debe estar en H.264.
+- **Hikvision ISAPI:** "Probar conexión" (`/ISAPI/System/deviceInfo`) y foto de vista previa (`/ISAPI/Streaming/channels/101/picture`). Las credenciales ya se guardan; `CameraSecretCipher.decrypt` queda lista para usarlas.
+- **Frecuencia de las consignas** (cada turno, cada 2 o 4 horas) e instrucciones operativas.
+- **Alcance del monitorista:** hoy el caso toma las consignas de **todos** los puntos con protocolo activo en el tenant. Falta limitarlo por Kaibil o por el puesto de monitoreo.
+- **Envío real de mensajes** al agente en SGI Operador (requiere SITC).
+- **Rol "Monitorista OBSINT"** en IDENT.
+- Cambios visuales de la consola: una cámara grande con miniaturas, Cliente · Punto en la cabecera.
 
-### Técnico, para pasar a producción
-
-- **Video en vivo real:** el navegador no reproduce RTSP. Hace falta un servidor que convierta el video a HLS o WebRTC, y que lo sirva en el mismo origen o con CORS para poder capturar evidencia.
-- **Generar las tareas por horario y frecuencia** de cada consigna. Hoy un caso toma todas las consignas activas de una vez.
-- **Enlazar las tablas con Punto, Puesto y Servicio** (nueva migración), y filtrar por el alcance del monitorista (Kaibil).
-- **Envío real de mensajes** al agente en sitio, con una interconexión a SGI Operador (requiere SITC).
-- **Rol "Monitorista OBSINT"** en IDENT, en lugar de reutilizar los roles de incidentes.
-- Correr `ObsintResourceTest` en el entorno de pruebas de Comando y verificar la consola en el navegador (ver §9).
-
-### Preguntas abiertas para el negocio
-
-1. ¿Cómo cuenta **"Incierto"** en el reporte? El PDF solo distingue cumplidas e incumplidas.
-2. ¿Qué pasa cuando **vence el tiempo máximo** sin respuesta? ¿Es un incumplimiento, una consigna no ejecutada o se reasigna?
-3. ¿Qué pasa al agotar los **minutos por día**? ¿Se bloquea, solo avisa o se factura el exceso?
-4. Con varios monitoristas, ¿hay una **cola común** de tareas o se asignan?
-5. ¿A qué app llegan los **mensajes al agente en sitio**?
-6. ¿Una o varias cámaras por consigna en la vista? La diapositiva 11 muestra 1 y el mockup hasta 4.
+**Preguntas abiertas para el negocio**
+1. ¿Cómo cuenta "Incierto" en el reporte?
+2. ¿Qué pasa con una tarea vencida sin respuesta?
+3. ¿Qué pasa al superar los minutos por día?
+4. ¿Hay una cola común entre monitoristas?
+5. ¿A qué app llegan los mensajes al agente?
+6. ¿Las cámaras se conectan directo o a través de un NVR?
+7. ¿Qué vía de red se usa para llegar a los sitios?
 
 ---
 
-## 9. Cómo probarlo y qué está verificado
+## 10. Cómo probarlo y qué está verificado
 
 ### Levantar en local
 
-1. Copia los 12 videos a `frontend/public/obsint/videos/` (`1-1.mp4` … `3-4.mp4`).
-2. Levanta el stack con la bandera UAT:
+1. Define la llave de cifrado en `.env`:
 
    ```bash
-   SGI_UAT_FEATURES_ENABLED=true docker compose up -d --build backend frontend
+   SGI_SECELEC_SECRET_KEY=una-llave-larga-y-secreta
    ```
 
-3. Entra a **Consola → OBSINT → Iniciar caso** con un usuario de los roles de §3.
+   En el perfil `dev` hay una por defecto. **En producción es obligatoria**: sin ella, guardar una cámara responde 503.
+2. (Opcional) Copia los videos de prueba a `frontend/public/obsint/videos/` (`1-1.mp4` … `3-4.mp4`; no se versionan, ~300 MB). En cada cámara, pon "URL de video (pruebas)" = `obsint/videos/1-1.mp4`.
+3. Mientras no exista el menú, abre las pantallas montándolas a mano según §4.
+4. **Flujo:**
+   - Componentes de Seguridad → Videovigilancia → agregar cámaras.
+   - Consignas OBSINT → Crear protocolo → Nueva tarea (cámaras y horario) → Publicar → Activar.
+   - Consola → OBSINT → Iniciar caso.
 
-### Verificado
+### Verificado (2026-10-26)
 
-- `ObsintCaseTest`: **6/6 pruebas pasan** (orden, idempotencia del inicio, validaciones, fuera de tiempo y cierre del caso).
-- El backend y las pruebas compilan (`mvn test-compile`).
-- El frontend compila: `tsc -b` y `vite build` de producción sin errores.
+- **18/18 pruebas pasan:**
+
+  | Prueba | Tipo | Resultado |
+  |---|---|---|
+  | `ObsintCaseTest` | Unitaria | 7 |
+  | `CameraSecretCipherTest` | Unitaria | 3 |
+  | `ObsintResourceTest` | `@QuarkusTest` | 4 |
+  | `SecElecResourceTest` | `@QuarkusTest` | 4 |
+
+  Las `@QuarkusTest` corrieron contra un PostgreSQL 17 y un MinIO temporales, con todas las migraciones V1–V92 aplicadas.
+  - Las migraciones **no crean** los datos UAT que usan las pruebas de Comando (usuarios `coord`, `dnacional`…, compañía y Punto `40000000-…0001`). Para correrlas en una base vacía se sembraron a mano: cliente, compañía, servicio, Punto, usuarios con la contraseña UAT de V6, y alcances.
+  - En una base local ya poblada no hace falta sembrar nada.
+- **Pantallas revisadas en el navegador** con el backend real, usando una página de vista previa provisional que ya se eliminó:
+  - **Componentes de Seguridad:** listado por familia y detalle. Se creó la cámara CCTV‑09 desde el formulario, y la contraseña aparece solo como "Guardada (cifrada)".
+  - **Consignas OBSINT:**
+    - Se creó una nueva versión en borrador, que copió las consignas.
+    - Se creó la tarea OBS‑004 con horario, cámara y categoría.
+    - Se publicó y se activó.
+  - **Consola:** el caso tomó solo las consignas vigentes a esa hora (2 de 4), y el video salió de la URL de pruebas de la cámara.
+- El frontend compila (`tsc -b`) y el build de producción de Vite pasa.
 
 ### Pendiente de verificar
 
-- **`ObsintResourceTest`** (flujo completo por API, aislamiento entre usuarios y 403 al cliente) **no se ha ejecutado**. Usa la base de `application.properties`, no una temporal.
-- **La pantalla todavía no se ha revisado en el navegador.**
+- Probar con el menú real de Servicios cuando esté hecho.
+- Probar con IDENT encendido. La verificación se hizo con usuarios UAT y autenticación Basic.

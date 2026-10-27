@@ -44,9 +44,11 @@ export function ObsintCameraGrid({cameras,selectedId,onSelect,now,registerVideo,
 function Feed({camera,index,now,selected,onSelect,registerVideo,onSettled}:{camera:ObsintCamera;index:number;now:Date;selected:boolean;onSelect:()=>void;
   registerVideo:(cameraId:string,el:HTMLVideoElement|null)=>void;onSettled:(cameraId:string)=>void}){
   const [paused,setPaused]=useState(false);
-  const [failed,setFailed]=useState(false);
+  const [failed,setFailed]=useState(!camera.streamUrl);
   const boxRef=useRef<HTMLDivElement|null>(null);
   const videoRef=useRef<HTMLVideoElement|null>(null);
+  // Sin video configurado no hay nada que esperar para arrancar el tiempo.
+  useEffect(()=>{if(!camera.streamUrl)onSettled(camera.id)},[camera.id,camera.streamUrl]);
 
   function togglePlay(e:MouseEvent){
     e.stopPropagation();
@@ -56,8 +58,8 @@ function Feed({camera,index,now,selected,onSelect,registerVideo,onSettled}:{came
   function fullscreen(e:MouseEvent){e.stopPropagation();void boxRef.current?.requestFullscreen?.();}
 
   return <div ref={boxRef} className={`obs-feed${selected?' selected':''}`} onClick={onSelect}>
-    {failed
-      ?<div className="obs-no-signal"><VideoOff size={34}/><span>Sin señal</span><small>{camera.streamUrl}</small></div>
+    {failed||!camera.streamUrl
+      ?<div className="obs-no-signal"><VideoOff size={34}/><span>Sin señal</span><small>{camera.streamUrl??'Video en vivo pendiente de conexión'}</small></div>
       :<video ref={el=>{videoRef.current=el;registerVideo(camera.id,el)}} src={streamSrc(camera.streamUrl)} autoPlay muted playsInline preload="auto"
           loop={!camera.live} onLoadedData={()=>onSettled(camera.id)} onError={()=>{setFailed(true);onSettled(camera.id)}}/>}
     <div className="obs-feed-title"><Video size={16}/><div><b>{camera.name||`Cámara ${String(index+1).padStart(2,'0')}`}</b><span>{camera.location??camera.code}</span></div></div>

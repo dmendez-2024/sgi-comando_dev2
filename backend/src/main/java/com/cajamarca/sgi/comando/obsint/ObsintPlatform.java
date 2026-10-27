@@ -1,30 +1,41 @@
 package com.cajamarca.sgi.comando.obsint;
 
 import com.cajamarca.sgi.comando.common.TenantContext;
+import com.cajamarca.sgi.comando.operations.PointEntity;
 import com.cajamarca.sgi.comando.storage.Digests;
 import com.cajamarca.sgi.comando.storage.ImageSniffer;
 import com.cajamarca.sgi.comando.storage.StorageService;
 import com.cajamarca.sgi.comando.territory.OperationalScopeService;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
+import jakarta.ws.rs.BadRequestException;
+import jakarta.ws.rs.NotFoundException;
+import java.time.ZoneId;
 import java.util.UUID;
-import org.eclipse.microprofile.config.inject.ConfigProperty;
 
 /**
- * Único punto de contacto de OBSINT con el resto de SGI: Comando (tenant, usuario, MinIO, validación de imágenes, banderas UAT).
+ * Único punto de contacto de OBSINT con el resto de SGI: Comando (tenant, usuario, acceso al Punto, MinIO, validación de imágenes).
  * El módulo no usa esas clases en ningún otro lugar; si Comando las cambia, solo se ajusta este archivo.
  */
 @ApplicationScoped
 public class ObsintPlatform {
+    /** Zona horaria de los horarios de las consignas (la misma que usa Comando para códigos y fechas operativas). */
+    public static final ZoneId ZONE = ZoneId.of("America/Guayaquil");
+
     @Inject TenantContext tenant;
     @Inject OperationalScopeService scope;
     @Inject StorageService storage;
-    @ConfigProperty(name = "sgi.uat.features-enabled") boolean uatEnabled;
 
     public UUID instanceCountryId() { return tenant.instanceCountryId(); }
     public String username() { return scope.username(); }
-    /** El catálogo demo solo existe con las herramientas UAT habilitadas. */
-    public boolean demoEnabled() { return uatEnabled; }
+
+    /** El Punto existe en el tenant y el usuario puede gestionar su Compañía (misma regla que Consignas). */
+    public void requirePoint(UUID pointId) {
+        if (pointId == null) throw new BadRequestException("pointId obligatorio");
+        PointEntity point = PointEntity.find("id=?1 and instanceCountryId=?2", pointId, tenant.instanceCountryId()).firstResult();
+        if (point == null) throw new NotFoundException("Punto no encontrado");
+        scope.requireCompanyForCompanyRoles(point.companyId);
+    }
 
     /** image/jpeg, image/png o image/webp según los bytes; null si no es una imagen aceptada. */
     public String imageContentType(byte[] bytes) { return ImageSniffer.detect(bytes); }

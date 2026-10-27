@@ -30,6 +30,15 @@ class ObsintCaseTest {
         assertSame(c.tasks.get(0), c.currentTask().orElseThrow());
     }
 
+    @Test void scheduleCoversDayAndTimeRange() {
+        ObsintConsigna c = new ObsintConsigna();
+        c.schedule.add(new ObsintConsigna.Slot(1, java.time.LocalTime.of(8, 0), java.time.LocalTime.of(18, 0)));
+        assertTrue(c.scheduledAt(1, java.time.LocalTime.of(8, 0)), "el inicio está incluido");
+        assertTrue(c.scheduledAt(1, java.time.LocalTime.of(17, 59)));
+        assertFalse(c.scheduledAt(1, java.time.LocalTime.of(18, 0)), "el fin está excluido");
+        assertFalse(c.scheduledAt(2, java.time.LocalTime.of(10, 0)), "otro día");
+    }
+
     @Test void withoutConsignasCannotOpen() {
         assertThrows(ObsintRuleException.class, () -> ObsintCase.open(UUID.randomUUID(), "X", "coord", List.of(), T0));
     }

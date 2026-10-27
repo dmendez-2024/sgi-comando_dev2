@@ -7,6 +7,7 @@ import jakarta.transaction.Transactional;
 import jakarta.ws.rs.BadRequestException;
 import jakarta.ws.rs.NotFoundException;
 import java.time.Instant;
+import java.time.ZonedDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Optional;
@@ -21,7 +22,6 @@ public class ObsintService {
     static final long MAX_EVIDENCE_BYTES = 5L * 1024 * 1024;
 
     @Inject ObsintPlatform platform;
-    @Inject ObsintDemoCatalog demo;
     @Inject EntityManager em;
 
     /** Postgres guarda microsegundos: truncar evita que el deadline cambie al releerlo. */
@@ -34,14 +34,20 @@ public class ObsintService {
             platform.instanceCountryId(), platform.username(), ObsintCase.Status.IN_PROGRESS).firstResultOptional();
     }
 
-    /** Abre un caso con las consignas activas. Si ya hay uno en curso se devuelve ese: un monitorista trabaja un caso a la vez. */
+    /**
+     * Abre un caso con las consignas activas de los protocolos OBSINT ACTIVOS cuyo horario cubre este momento.
+     * Si ya hay uno en curso se devuelve ese: un monitorista trabaja un caso a la vez.
+     */
     @Transactional
     public ObsintCase open() {
         Optional<ObsintCase> running = current();
         if (running.isPresent()) return running.get();
         UUID tenantId = platform.instanceCountryId();
-        demo.ensure(tenantId);
-        List<ObsintConsigna> consignas = ObsintConsigna.list("instanceCountryId=?1 and active=true order by position, code", tenantId);
+        ZonedDateTime local = now().atZone(ObsintPlatform.ZONE);
+        List<ObsintConsigna> consignas = ObsintConsigna.<ObsintConsigna>list(
+                "instanceCountryId=?1 and active=true and protocolId in (select p.id from ObsintProtocol p where p.status='ACTIVO' and p.instanceCountryId=?1) order by pointId, position, code", tenantId)
+            .stream().filter(c -> c.scheduledAt(local.getDayOfWeek().getValue(), local.toLocalTime())).toList();
+        if (consignas.isEmpty()) throw new ObsintRuleException("No hay consignas OBSINT activas en este horario.");
         long number = ((Number) em.createNativeQuery("select nextval('obsint_case_code_seq')").getSingleResult()).longValue();
         ObsintCase c = ObsintCase.open(tenantId, "CAJ-OBS-%03d".formatted(number), platform.username(), consignas, now());
         c.persist();
