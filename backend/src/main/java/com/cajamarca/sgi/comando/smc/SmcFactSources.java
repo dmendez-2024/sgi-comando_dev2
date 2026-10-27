@@ -21,7 +21,7 @@ public class SmcFactSources {
         List<SmcFact> facts = new ArrayList<>();
         List<?> patrols = em.createNativeQuery("""
             select pe.id, pe.employee_id, pe.finished_at, pd.point_id,
-                   coalesce(oa.post_id, pp.post_id), oa.shift_occurrence_id,
+                   coalesce(so.post_id, pp.post_id), oa.shift_occurrence_id,
                    (select count(*) from patrol_checkpoint k
                     where k.patrol_definition_id=pd.id and k.instance_country_id=pe.instance_country_id),
                    (select count(distinct x.checkpoint_id) from patrol_checkpoint_execution x
@@ -33,6 +33,7 @@ public class SmcFactSources {
             join patrol_definition pd on pd.id=coalesce(pe.patrol_definition_id, pp.patrol_definition_id)
                 and pd.instance_country_id=pe.instance_country_id
             left join operational_assignment oa on oa.id=pe.assignment_id and oa.instance_country_id=pe.instance_country_id
+            left join shift_occurrence so on so.id=oa.shift_occurrence_id and so.instance_country_id=oa.instance_country_id
             left join employee_operational_snapshot employee on employee.employee_id=pe.employee_id
                 and employee.instance_country_id=pe.instance_country_id
             where pe.instance_country_id=:tenant and pe.finished_at>=:since and pe.finished_at<=current_timestamp
@@ -54,10 +55,11 @@ public class SmcFactSources {
         }
         List<?> consignments = em.createNativeQuery("""
             select cc.id, cc.employee_id, cc.confirmed_at, c.point_id,
-                   coalesce(oa.post_id,c.post_id), oa.shift_occurrence_id, cc.consignment_id, employee.persona_id
+                   coalesce(so.post_id,c.post_id), oa.shift_occurrence_id, cc.consignment_id, employee.persona_id
             from consignment_compliance cc
             join consignment c on c.id=cc.consignment_id and c.instance_country_id=cc.instance_country_id
             left join operational_assignment oa on oa.id=cc.assignment_id and oa.instance_country_id=cc.instance_country_id
+            left join shift_occurrence so on so.id=oa.shift_occurrence_id and so.instance_country_id=oa.instance_country_id
             left join employee_operational_snapshot employee on employee.employee_id=cc.employee_id
                 and employee.instance_country_id=cc.instance_country_id
             where cc.instance_country_id=:tenant and cc.confirmed_at>=:since and cc.confirmed_at<=current_timestamp

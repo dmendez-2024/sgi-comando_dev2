@@ -25,6 +25,7 @@ public class SmcAdapter implements ExternalPorts.SmcPort {
         String eventId = Objects.toString(payload.get("eventId"), "");
         if (eventId.isBlank()) throw new IllegalArgumentException("eventId es obligatorio");
         IntegrationRequest request = new IntegrationRequest();
+        request.requireOpenBaoCredentials = true;
         request.body = payload;
         request.idempotencyKey = eventId;
         request.correlationId = eventId;

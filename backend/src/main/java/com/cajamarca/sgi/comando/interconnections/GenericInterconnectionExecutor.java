@@ -42,6 +42,13 @@ public class GenericInterconnectionExecutor {
         circuits.assertAvailable(interconnectionId);
 
         ResolvedInterconnection cfg = cache.resolve(interconnectionId, interfaceId, tenant.instanceCountryId(), coreResolver);
+        if (input.requireOpenBaoCredentials) {
+            String auth = cfg.authType == null ? "NONE" : cfg.authType.toUpperCase(java.util.Locale.ROOT);
+            if (!java.util.Set.of("BEARER","BEARER_TOKEN","JWT","SERVICE_TOKEN","OAUTH2","OAUTH2_CLIENT_CREDENTIALS").contains(auth)
+                || cfg.credentialRef == null || !cfg.credentialRef.startsWith("vault:") || cfg.credentialRef.length() <= 6)
+                throw new InterconnectionException("OPENBAO_CREDENTIAL_REQUIRED",
+                    "La integración requiere autenticación Bearer o M2M con credentialRef vault: de OpenBao en CORE");
+        }
         validateProtocol(cfg);
         String uri = buildUri(cfg, input.pathParams, input.queryParams);
         int maxAttempts = Math.max(1, 1 + cfg.effectiveMaxRetries());
