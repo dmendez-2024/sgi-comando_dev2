@@ -49,6 +49,7 @@ public class OperatorResource {
     @Inject OperatorTasks tasks;
     @Inject ReliefStationReviews stationReviews;
     @Inject InventoryService inventory;
+    @Inject com.cajamarca.sgi.comando.integration.ExternalPorts.SicRrmmPort rrmm;
     @Inject com.cajamarca.sgi.comando.impulses.ImpulseLedger impulses;
 
     @org.jboss.resteasy.reactive.server.ServerExceptionMapper
@@ -57,6 +58,7 @@ public class OperatorResource {
         boolean coordination(){ return coordinationPost!=null; }
         UUID targetId(){ return coordination()?coordinationPost.id:post.id; }
         String targetName(){ return coordination()?coordinationPost.name:post.name; }
+        String targetCode(){ return coordination()?coordinationPost.code:post.code; }
     }
     private record NextAction(String type,UUID targetId,String title,Instant scheduledAt,Instant endsAt) {}
 
@@ -385,7 +387,7 @@ public class OperatorResource {
         } else inventoryContext=inventory.runtime(c.post.id,c.post.code);
         CoreInstanceCountrySnapshot country=CoreInstanceCountrySnapshot.find("instanceCountryId=?1",tenant.instanceCountryId()).firstResult();
         n.put("assignmentId",c.assignment.id.toString()).put("shiftOccurrenceId",c.shift.id.toString()).put("postId",c.targetId().toString())
-            .put("postName",c.targetName()).put("assignmentTargetType",c.coordination()?"COORDINATION_POST":"OPERATIONAL_POST")
+            .put("postName",c.targetName()).put("postCode",c.targetCode()).put("assignmentTargetType",c.coordination()?"COORDINATION_POST":"OPERATIONAL_POST")
             .put("incomingEmployeeId",c.assignment.effectiveEmployeeId().toString()).put("plannedAt",c.shift.startsAt.toString())
             .put("shiftStartsAt",c.shift.startsAt.toString()).put("shiftEndsAt",c.shift.endsAt.toString())
             .put("inventoryStatus",inventoryContext.path("status").asText("PENDING_SOURCE")).put("noveltiesStatus","PENDING_SOURCE").put("validationStatus","PENDING_REVIEW")
@@ -917,7 +919,7 @@ public class OperatorResource {
         List<OperatorAssignmentWindow.Candidate<AssignmentContext>> candidates=contexts.stream()
             .map(c->new OperatorAssignmentWindow.Candidate<>(c,c.shift.startsAt,c.shift.endsAt)).toList();
         for(var c:OperatorAssignmentWindow.select(candidates,now)) choices.addObject()
-            .put("assignmentId",c.assignment.id.toString()).put("postName",c.targetName())
+            .put("assignmentId",c.assignment.id.toString()).put("postName",c.targetName()).put("postCode",c.targetCode())
             .put("assignmentTargetType",c.coordination()?"COORDINATION_POST":"OPERATIONAL_POST")
             .put("startsAt",c.shift.startsAt.toString()).put("endsAt",c.shift.endsAt.toString())
             .put("accessMode",now.isBefore(c.shift.startsAt)?"EARLY_ENTRY":"CURRENT_SHIFT");
@@ -1198,5 +1200,27 @@ public class OperatorResource {
             try { n.set("event",mapper.readTree(row[5].toString())); } catch(Exception e) { throw new InternalServerErrorException(); }
             if(result.size()>=Math.max(1,Math.min(limit,100))) break;
         } return result;
+    }
+
+    /**
+     * Puente app movil -> SIC:RRMM: activos asignados a un Puesto (el operador indica el codigo del Puesto). La app llama
+     * con su token del login movil (aud SGI_OPR); SGI consulta RRMM con SU token de servicio por la interconexion de CORE
+     * SGI_COM_SIC_RRMM_0001 (GET /operations/movements/holdings?holderType=POSITION&holderReference=). El token del
+     * operador nunca se reenvia a RRMM (SITC-NOM-001 §11).
+     */
+    @GET @Path("/posts/{postReference}/holdings")
+    public ObjectNode postHoldings(@PathParam("postReference") String postReference) {
+        UUID employee=employee();
+        String reference=postReference==null?"":postReference.trim();
+        if(reference.isEmpty()||reference.length()>120) throw new BadRequestException("Indique el código del Puesto");
+        List<Map<String,Object>> items;
+        try { items=rrmm.expectedAssets(tenant.instanceCountryId(),reference); }
+        catch(com.cajamarca.sgi.comando.interconnections.InterconnectionException e) {
+            org.jboss.logging.Logger.getLogger(OperatorResource.class).warnf("RRMM holdings no disponible: puesto=%s empleado=%s codigo=%s",reference,employee,e.code());
+            throw new WebApplicationException("SIC:RRMM no disponible para consultar los activos del Puesto ("+e.code()+")",Response.Status.BAD_GATEWAY);
+        }
+        ObjectNode response=mapper.createObjectNode().put("postReference",reference).put("count",items.size());
+        response.set("items",mapper.valueToTree(items));
+        return response;
     }
 }

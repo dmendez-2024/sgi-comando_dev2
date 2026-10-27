@@ -230,7 +230,7 @@ public class ObsintConfigResource {
             c.consignmentCode = null;
             c.title = text(body.title(), "El nombre de la consigna es obligatorio.", 160);
             c.instruction = text(body.instruction(), "La descripción de la consigna es obligatoria.", 1000);
-            // Sin descripción se usa la instrucción, igual que V95 con las consignas anteriores.
+            // Sin descripción se usa la instrucción, igual que V96 con las consignas anteriores.
             c.description = body.description() == null || body.description().isBlank() ? c.instruction : text(body.description(), "", 1000);
         }
         if (body.category() == null || !CATEGORIES.contains(body.category())) throw new BadRequestException("Categoría inválida.");
