@@ -62,7 +62,11 @@ Pantalla de las diapositivas 7 y 8. Se abre desde Configuración del Punto.
   - Al editar, el campo aparece vacío con "Sin cambios"; dejarlo vacío conserva la contraseña actual.
 - **La familia no se puede cambiar** después de crear el componente.
 - **Eliminar** un componente que usa una consigna OBSINT responde 409, y la pantalla sugiere cambiarlo a Inactivo.
-- **"URL de video (pruebas)"** existe solo porque todavía no hay servidor de video. Acepta una ruta relativa a la web (por ejemplo `obsint/videos/1-1.mp4`) o una URL http(s); cualquier otro esquema se rechaza.
+- **"URL de video (pruebas)"** existe porque todavía no hay integración automática con el servidor de video. Acepta una ruta relativa a la web (por ejemplo `obsint/videos/1-1.mp4`) o una URL http(s); cualquier otro esquema se rechaza. El reproductor de la consola (`liveStream.ts`) decide el formato por la URL:
+  - termina en **`.m3u8`** → **HLS** en vivo, con hls.js (Safari en iPhone usa su HLS nativo). Ej.: `http://servidor:8888/live/ch1/index.m3u8`.
+  - termina en **`/whep`** → **WebRTC** en vivo (WHEP, casi tiempo real). Requiere H.264 **sin B-frames**, lo normal en cámaras IP. Ej.: `http://servidor:8889/live/ch1/whep`.
+  - cualquier otra → **archivo** (MP4 de pruebas), que se repite y se muestra como "GRABACIÓN".
+  - HLS y WebRTC se muestran como "EN VIVO" y admiten captura de evidencia igual que el MP4. El servidor de video debe permitir CORS desde la web de Comando.
 
 ### 2.2 Consignas OBSINT (`frontend/src/obsint/config/`)
 
@@ -274,6 +278,7 @@ const obs = await obsintConfigApi.summary(pointId);  // {status, meta:'Protocolo
 | `src/obsint/config/ObsintConfig.tsx` | Pantalla de Consignas OBSINT |
 | `src/obsint/config/obsint-config.css` | Estilos de la configuración |
 | `src/obsint/ObsintConsole.tsx` y componentes | Consola: `ObsintCameraGrid`, `ObsintTaskPanel`, `ObsintCommPanel` |
+| `src/obsint/liveStream.ts` | Conecta el video de cada cámara al `<video>` según su URL: archivo (MP4), HLS (hls.js) o WebRTC (WHEP). Dependencia `hls.js`, que se carga solo cuando hay una cámara HLS |
 | `src/obsint/obsintApi.ts` | **Contrato con el backend:** tipos (espejo de los records Java), `obsintApi` (consola), `obsintConfigApi` (configuración) y `errorText` |
 | `src/obsint/obsint.ts` | Utilidades de pantalla: textos de categorías, días y estados, cuenta regresiva, reloj, borrador y captura de fotograma |
 | `src/obsint/obsint.css` | Estilos de la consola |
@@ -393,7 +398,7 @@ Cuerpo de una consigna:
 - **Reportes OBSINT e Informe Diario en PDF** (diapositivas 12 y 13), solo para Presidente y Director Nacional.
 
 **Técnico**
-- **Video en vivo real:** un servidor que convierta RTSP a HLS/WebRTC (por ejemplo MediaMTX o go2rtc), más acceso de red a los sitios del cliente (VPN o equipo local). Con cámaras Hikvision la ruta es `rtsp://IP:554/Streaming/Channels/101` (102 es el substream), y el substream debe estar en H.264.
+- **Video en vivo real:** la consola ya reproduce HLS y WebRTC (ver §2.1); falta de dónde sacar la URL de cada cámara. Opciones: la OpenAPI de **HikCentral** (vista en vivo por cámara) o un servidor propio que convierta RTSP a HLS/WebRTC (por ejemplo MediaMTX o go2rtc), más acceso de red a los sitios del cliente (VPN o equipo local). Con cámaras Hikvision la ruta es `rtsp://IP:554/Streaming/Channels/101` (102 es el substream), y el substream debe estar en H.264.
 - **Hikvision ISAPI:** foto de vista previa (`/ISAPI/Streaming/channels/{canal}01/picture`) y datos del equipo (`/ISAPI/System/deviceInfo`). Necesitan el puerto HTTP (80), que hoy no está en el formulario. "Probar conexión" ya existe, por RTSP.
 - **Frecuencia de las consignas** (cada turno, cada 2 o 4 horas) e instrucciones operativas.
 - **Alcance del monitorista más fino:** hoy el caso se limita a los Puntos de las Compañías del usuario (§3). Si más adelante se requiere separar por cliente o por puesto de monitoreo (Kaibil), hace falta una asignación nueva; solo cambiaría `ObsintPlatform.visiblePoints`.

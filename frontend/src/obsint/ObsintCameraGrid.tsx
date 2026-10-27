@@ -1,7 +1,8 @@
 import {useEffect, useRef, useState, type MouseEvent} from 'react';
 import {Crosshair, Maximize2, Pause, Play, Video, VideoOff} from 'lucide-react';
-import {formatDateTime, streamSrc} from './obsint';
+import {formatDateTime} from './obsint';
 import type {ObsintCamera} from './obsintApi';
+import {attachStream, streamKind} from './liveStream';
 
 type Props={
   cameras:ObsintCamera[];
@@ -48,8 +49,16 @@ function Feed({camera,index,now,selected,onSelect,registerVideo,onSettled}:{came
   const [failed,setFailed]=useState(!camera.streamUrl);
   const boxRef=useRef<HTMLDivElement|null>(null);
   const videoRef=useRef<HTMLVideoElement|null>(null);
+  // HLS y WebRTC son video en vivo; un archivo (MP4 de pruebas) se repite como grabación.
+  const live=camera.live||(!!camera.streamUrl&&streamKind(camera.streamUrl)!=='file');
   // Sin video configurado no hay nada que esperar para arrancar el tiempo.
   useEffect(()=>{if(!camera.streamUrl)onSettled(camera.id)},[camera.id,camera.streamUrl]);
+  // Conecta el video según su formato (MP4, HLS o WebRTC); al cambiar de cámara o desmontar, lo desconecta.
+  useEffect(()=>{
+    const video=videoRef.current;
+    if(!video||!camera.streamUrl)return;
+    return attachStream(video,camera.streamUrl,()=>{setFailed(true);onSettled(camera.id)});
+  },[camera.id,camera.streamUrl,failed]);
 
   function togglePlay(e:MouseEvent){
     e.stopPropagation();
@@ -61,10 +70,10 @@ function Feed({camera,index,now,selected,onSelect,registerVideo,onSettled}:{came
   return <div ref={boxRef} className={`obs-feed${selected?' selected':''}`} onClick={onSelect}>
     {failed||!camera.streamUrl
       ?<div className="obs-no-signal"><VideoOff size={34}/><span>Sin señal</span><small>{camera.streamUrl??'Video en vivo pendiente de conexión'}</small></div>
-      :<video ref={el=>{videoRef.current=el;registerVideo(camera.id,el)}} src={streamSrc(camera.streamUrl)} autoPlay muted playsInline preload="auto"
-          loop={!camera.live} onLoadedData={()=>onSettled(camera.id)} onError={()=>{setFailed(true);onSettled(camera.id)}}/>}
+      :<video ref={el=>{videoRef.current=el;registerVideo(camera.id,el)}} autoPlay muted playsInline preload="auto"
+          loop={!live} onLoadedData={()=>onSettled(camera.id)} onError={()=>{setFailed(true);onSettled(camera.id)}}/>}
     <div className="obs-feed-title"><Video size={16}/><div><b>{camera.name||`Cámara ${String(index+1).padStart(2,'0')}`}</b><span>{camera.location??camera.code}</span></div></div>
-    <div className={`obs-feed-badge ${camera.live?'live':''}`}><i/>{camera.live?'EN VIVO':'GRABACIÓN'}</div>
+    <div className={`obs-feed-badge ${live?'live':''}`}><i/>{live?'EN VIVO':'GRABACIÓN'}</div>
     <div className="obs-feed-time">{formatDateTime(now)}</div>
     {!failed&&<div className="obs-feed-controls">
       <button type="button" title="Usar para evidencia" aria-label="Usar para evidencia" onClick={e=>{e.stopPropagation();onSelect()}}><Crosshair size={15}/></button>
