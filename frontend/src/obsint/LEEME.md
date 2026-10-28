@@ -1,4 +1,4 @@
-# OBSINT y Componentes de Seguridad — v0.2
+# OBSINT y Componentes de Seguridad — v0.3
 
 Estado: **UAT, no congelada**. Este archivo es la única documentación de los módulos **OBSINT** y **Seguridad Electrónica (Componentes de Seguridad)**. Cubre lo construido, cómo funciona, cómo engancharlo desde Servicios, cómo probarlo y lo que falta.
 
@@ -28,7 +28,7 @@ OBSINT (Observational Intelligence) es un **servicio comercial de auditoría por
 4. **Consola / OBSINT.** El monitorista evalúa las consignas mirando las cámaras.
 5. **Reportes OBSINT e Informe Diario en PDF.** Solo Presidente y Director Nacional.
 
-**Esta versión cubre la parte interna de los pasos 3 y 4.** El menú de Configuración del Punto (las filas y su navegación) lo hace otra persona; ver §4.
+**Esta versión cubre los pasos 3, 4 y 5.** El menú de Configuración del Punto ya abre Componentes de Seguridad y OBSINT (ver §4). Falta el paso 1 (orden de servicio desde SIC: COM) y el 2 (servicios OBSINT en Kaibil).
 
 ---
 
@@ -85,11 +85,11 @@ Pantalla de la diapositiva 10. Se abre desde Configuración del Punto.
     | Activo | Inactivar, Nueva versión |
 
 - **Izquierda:** categorías de tareas con contador. "Todas las tareas" y las 6 categorías: SSO, Producción industrial, Logística y almacenamiento, Orden y limpieza, Movilidad y tránsito interno, Atención al cliente.
-- **Centro:** tabla de tareas (código OBS‑NNN, nombre, categoría, tiempo, cantidad de cámaras, estado), búsqueda y "Nueva tarea". Solo se puede editar en el borrador.
+- **Centro:** tabla de tareas (código OBS‑NNN, nombre, categoría, frecuencia, estado), búsqueda, paginación y "Nueva tarea". Solo se puede editar en el borrador.
 - **Derecha:** detalle de la tarea, o su formulario:
   - **Consigna:** la consigna de Servicios / Consignas, marcada OBSINT, de la que sale la tarea (ver §3, "OBSINT como puesto"). Obligatoria en tareas nuevas; nombre e instrucción vienen de ahí y se ven en solo lectura.
-  - Nombre, categoría y tiempo máximo de ejecución (30 s, 1, 2, 3, 5 o 10 min).
-  - Descripción, que es lo que ve el monitorista en la consola.
+  - Nombre, categoría, **frecuencia** (cada turno, cada 2 h, cada 4 h, una vez al día) y tiempo máximo de ejecución (30 s, 1, 2, 3, 5 o 10 min).
+  - Descripción (opcional; vacía usa la instrucción). En la consola el monitorista ve la **instrucción**, que en tareas vinculadas es la vigente en Consignas.
   - Tarea activa o inactiva.
   - **Horario de ejecución:** de lunes a domingo, cada día con casilla, hora de inicio y hora de fin.
   - **Cámaras asociadas:** casillas con las cámaras de Videovigilancia del punto que no están inactivas, máximo 4. Si el punto no tiene cámaras, la pantalla indica que se agreguen en Componentes de Seguridad.
@@ -145,7 +145,8 @@ Pantalla de la diapositiva 10. Se abre desde Configuración del Punto.
 ### Consigna
 
 - Código automático `OBS-NNN` por protocolo, que se conserva entre versiones.
-- Nombre y descripción obligatorios.
+- Tareas nuevas: vinculadas a una consigna de Consignas marcada OBSINT (`consignmentCode`); nombre e instrucción salen de ahí. Tareas anteriores sin vínculo: nombre e instrucción obligatorios.
+- Frecuencia de la lista fija; por defecto "cada turno".
 - Categoría de la lista fija.
 - Tiempo máximo entre 10 s y 60 min.
 - Hasta 4 cámaras, todas de Videovigilancia, **del mismo punto** y no inactivas.
@@ -185,7 +186,7 @@ Pantalla de la diapositiva 10. Se abre desde Configuración del Punto.
 
 ## 4. Cómo engancharlo desde Servicios (para quien hace el menú)
 
-Esta parte no está hecha a propósito: el menú de Configuración del Punto lo hace otra persona.
+**Ya está hecho** en `Services.tsx`: las filas Componentes de Seguridad y OBSINT del checklist abren estas pantallas y muestran su estado. Se deja la referencia de cómo se enganchan:
 
 ```tsx
 import SecurityComponents from '../secelec/SecurityComponents';
@@ -264,8 +265,11 @@ const obs = await obsintConfigApi.summary(pointId);  // {status, meta:'Protocolo
 | `ObsintCaseTask.java` | Tarea: tiempo máximo y validación de la respuesta |
 | `ObsintEvidence.java` | Metadatos de la evidencia |
 | `ObsintAgentMessage.java` | Mensaje al agente |
-| `ObsintPlatform.java` | Adaptador hacia Comando |
+| `ObsintPlatform.java` | Adaptador hacia Comando (incluye las consignas marcadas OBSINT de Consignas) |
 | `ObsintRuleException.java` | Regla incumplida (409) |
+| `ObsintReportResource.java` | API de Reportes: lista diaria y PDF (solo Presidente y Director Nacional) |
+| `ObsintDailyReport.java` | Cálculo del Informe Diario por Punto y día: resumen, cumplimiento, verificabilidad, desempeño por consigna, incumplimientos con foto |
+| `ObsintReportPdf.java` | Dibuja el PDF con Apache PDFBox (dependencia `org.apache.pdfbox:pdfbox:3.0.3`); logo en `resources/obsint/sgi-comando-logo.png` |
 
 **Base de datos:**
 - `V92__obsint_console.sql`: la primera versión de la consola. **No se modifica.** Era V91: todas las de OBSINT se corrieron +1 porque SMC tomó V91 en `sgiComandoDev`.
@@ -274,6 +278,7 @@ const obs = await obsintConfigApi.summary(pointId);  // {status, meta:'Protocolo
 - `V95__obsint_agent_message_test_status.sql`: estado `TEST` (modo prueba) para los mensajes al agente (ver §3).
 - `V96__obsint_consigna_description.sql` y `V97__obsint_consigna_frequency.sql`: descripción y frecuencia de cada consigna OBSINT (pantalla de crear tarea).
 - `V98__obsint_consignment_link.sql`: casilla OBSINT en `consignment` y vínculo `obsint_consigna.consignment_code` (ver §3, "OBSINT como puesto").
+- **Migraciones nuevas: desde V99.** SMC usa V91; revisar el último número en `sgiComandoDev` antes de crear una.
 
 **Pruebas**
 
@@ -281,6 +286,9 @@ const obs = await obsintConfigApi.summary(pointId);  // {status, meta:'Protocolo
 |---|---|
 | `obsint/ObsintCaseTest` | Reglas del caso y horario (unitaria) |
 | `obsint/ObsintResourceTest` | Configuración y consola de punta a punta (`@QuarkusTest`) |
+| `obsint/ObsintMonitorScopeTest` | Alcance del rol MONITOR por turno en curso (`@QuarkusTest`) |
+| `obsint/ObsintConsignmentLinkTest` | OBSINT como puesto en Consignas: vínculo, consola y consigna desmarcada (`@QuarkusTest`) |
+| `obsint/ObsintReportResourceTest` | Frecuencia, cumplimiento y verificabilidad, acceso por rol y contenido del PDF (`@QuarkusTest`) |
 | `secelec/SecElecResourceTest` | API de componentes (`@QuarkusTest`) |
 | `secelec/CameraSecretCipherTest` | Cifrado (unitaria) |
 | `secelec/RtspProbeTest` | Probar conexión contra una cámara RTSP simulada (`FakeRtspCamera`): OK con códec, contraseña incorrecta, canal inexistente, puerto cerrado y sin respuesta (unitaria) |
@@ -295,6 +303,8 @@ const obs = await obsintConfigApi.summary(pointId);  // {status, meta:'Protocolo
 | `src/obsint/config/ObsintConfig.tsx` | Pantalla de Consignas OBSINT |
 | `src/obsint/config/obsint-config.css` | Estilos de la configuración |
 | `src/obsint/ObsintConsole.tsx` y componentes | Consola: `ObsintCameraGrid`, `ObsintTaskPanel`, `ObsintCommPanel` |
+| `src/obsint/ObsintReports.tsx` y `obsint-reports.css` | Pantalla de Reportes (lista diaria, filtros, descarga del PDF) |
+| `src/pages/ConsignasConfig.tsx` (módulo Consignas) | Casilla y tarjeta **OBSINT** en Alcance y Cobertura por Puesto |
 | `src/obsint/liveStream.ts` | Conecta el video de cada cámara al `<video>` según su URL: archivo (MP4), HLS (hls.js) o WebRTC (WHEP). Dependencia `hls.js`, que se carga solo cuando hay una cámara HLS |
 | `src/obsint/obsintApi.ts` | **Contrato con el backend:** tipos (espejo de los records Java), `obsintApi` (consola), `obsintConfigApi` (configuración) y `errorText` |
 | `src/obsint/obsint.ts` | Utilidades de pantalla: textos de categorías, días y estados, cuenta regresiva, reloj, borrador y captura de fotograma |
@@ -305,6 +315,7 @@ const obs = await obsintConfigApi.summary(pointId);  // {status, meta:'Protocolo
 **Persona A — solo frontend**
 - Consola: `src/obsint/ObsintConsole.tsx`, `ObsintCameraGrid.tsx`, `ObsintTaskPanel.tsx`, `ObsintCommPanel.tsx`, `obsint.css` y `obsint.ts`.
 - Consignas OBSINT: `src/obsint/config/ObsintConfig.tsx` y `obsint-config.css`.
+- Reportes: `src/obsint/ObsintReports.tsx` y `obsint-reports.css`.
 - Integración con Comando: el botón OBSINT en `src/pages/ConsolaMonitor.tsx`, los `export` de `src/api.ts` y la coordinación con quien hace el menú de Servicios.
 
 **Persona B — backend y algo de frontend**
@@ -323,7 +334,7 @@ const obs = await obsintConfigApi.summary(pointId);  // {status, meta:'Protocolo
 
 ---
 
-## 7. Base de datos (V92 + V93 + V94)
+## 7. Base de datos (V92 a V98)
 
 V92 creó la consola con un catálogo DEMO global. **V93 la transforma**:
 - **Borra los datos DEMO de V92** (casos, tareas, evidencias, mensajes y consignas). Las fotos de evidencia de esos casos quedan en MinIO, en `evidence/{tenant}/obsint/…`, y pueden borrarse a mano.
@@ -336,13 +347,15 @@ Probado sobre PostgreSQL 17 de dos formas: aplicando V92 y V93 sobre una base va
 
 **V94** agrega a `secelec_component` las columnas `channel`, `latitude`, `longitude` (`numeric(9,6)`), `streaming_enabled` y `streaming_mode` (COPY / TRANSCODE), con sus CHECK de rango. Las cámaras existentes quedan con canal 1 y streaming activo en modo COPY. En las demás familias las cinco columnas quedan en null.
 
+**V95** agrega el estado `TEST` a los mensajes al agente. **V96** y **V97** agregan `description` y `frequency` (EVERY_SHIFT, EVERY_2_HOURS, EVERY_4_HOURS, DAILY) a `obsint_consigna`. **V98** agrega `consignment.obsint` (la casilla de Consignas) y `obsint_consigna.consignment_code` (vínculo por código).
+
 Esquema resultante (todas las tablas llevan `instance_country_id`, `created_at` y `updated_at`):
 
 | Tabla | Contenido |
 |---|---|
 | `secelec_component` | `point_id`, `family`, `component_type`, `code` (único por punto), `name`, `location`, `coverage`, `brand_model`, `status`, `observations`, `ip`, `port`, `channel`, `latitude`, `longitude`, `streaming_enabled`, `streaming_mode`, `username`, `password_cipher`, `stream_url`, `updated_by` |
 | `obsint_protocol` | `series_id`, `based_on_protocol_id`, `point_id`, `code`, `version_no`, `status` (BORRADOR / INACTIVO / ACTIVO), `published_at`, `activated_at`, `updated_by`. Índices únicos: un ACTIVO y un BORRADOR por punto |
-| `obsint_consigna` | `protocol_id`, `point_id`, `code`, `title`, `instruction`, `category`, `time_limit_seconds`, `position`, `active` |
+| `obsint_consigna` | `protocol_id`, `point_id`, `code`, `consignment_code`, `title`, `description`, `instruction`, `category`, `frequency`, `time_limit_seconds`, `position`, `active` |
 | `obsint_consigna_camera` | Consigna → `secelec_component`, con orden. La llave impide borrar una cámara en uso |
 | `obsint_consigna_schedule` | `day_of_week` (1–7), `start_time`, `end_time` |
 | `obsint_case` | Casos de la consola |
@@ -385,9 +398,11 @@ Esquema resultante (todas las tablas llevan `instance_country_id`, `created_at` 
 Cuerpo de una consigna:
 
 ```json
-{"title":"…","instruction":"…","category":"SSO","timeLimitSeconds":120,"active":true,
+{"consignmentCode":"CON-000003","description":"…","category":"SSO","frequency":"EVERY_2_HOURS","timeLimitSeconds":120,"active":true,
  "cameraIds":["…"],"schedule":[{"dayOfWeek":1,"start":"08:00","end":"18:00"}]}
 ```
+
+Con `consignmentCode`, `title` e `instruction` salen de Consignas. Sin él (tareas anteriores al vínculo) se envían `title` e `instruction`. `description` vacía usa la instrucción.
 
 **Consola** (`/api/obsint`)
 
@@ -404,21 +419,28 @@ Cuerpo de una consigna:
 | GET | `/tasks/{id}/evidence/{eid}/content` | Imagen |
 | GET/POST | `/tasks/{id}/messages` | Mensajes al agente |
 
+**Reportes** (`/api/obsint/reports`, solo `PRESIDENTE`, `DIRECTOR_OPERACIONES_NACIONAL` y `DIRECTOR_NACIONAL`)
+
+| Método | Ruta | Uso |
+|---|---|---|
+| GET | `?from=aaaa-mm-dd&to=aaaa-mm-dd` | Un informe por Punto y día (`pointId`, `date`, `client`, `point`, `executed`, `compliance`). Por defecto los últimos 30 días; máximo 366 |
+| GET | `/points/{pointId}/days/{fecha}/pdf` | Informe Diario en PDF (404 si ese día no hubo respuestas) |
+
 ---
 
 ## 9. Lo que falta
 
 **De la presentación**
-- **Menú de Servicios:** la fila Seguridad Electrónica con sus dos módulos y la navegación hacia ellos. Lo hace otra persona; ver §4.
 - **Orden de servicio desde SIC: COM:** minutos por día y tipo de producto OBSINT.
 - **Servicios OBSINT en Kaibil:** que muestren Configuración en lugar de Asignación.
 - **Alta "¿vincular a un punto existente?"** (diapositivas 14 y 15).
-- **Reportes OBSINT e Informe Diario en PDF** (diapositivas 12 y 13), solo para Presidente y Director Nacional.
+- **Informe Diario, detalles:** verificabilidad por fila de la tabla (hoy solo en el resumen); observaciones generales escritas por una persona (hoy automáticas); "consignas configuradas" toma lo configurado hoy, no lo del día del informe.
 
 **Técnico**
 - **Video en vivo real:** la consola ya reproduce HLS y WebRTC (ver §2.1); falta de dónde sacar la URL de cada cámara. Opciones: la OpenAPI de **HikCentral** (vista en vivo por cámara) o un servidor propio que convierta RTSP a HLS/WebRTC (por ejemplo MediaMTX o go2rtc), más acceso de red a los sitios del cliente (VPN o equipo local). Con cámaras Hikvision la ruta es `rtsp://IP:554/Streaming/Channels/101` (102 es el substream), y el substream debe estar en H.264.
 - **Hikvision ISAPI:** foto de vista previa (`/ISAPI/Streaming/channels/{canal}01/picture`) y datos del equipo (`/ISAPI/System/deviceInfo`). Necesitan el puerto HTTP (80), que hoy no está en el formulario. "Probar conexión" ya existe, por RTSP.
-- **Frecuencia de las consignas** (cada turno, cada 2 o 4 horas) e instrucciones operativas.
+- **Frecuencia:** "cada turno" se toma como 12 h; usar el turno real del puesto de Monitoreo cuando se defina.
+- **HikCentral (bodycam DS-MCW409):** probado solo con un simulador local de la OpenAPI, en la rama local `prueba-hikcentral` (no subida). Falta que el administrador active la OpenAPI de `hikcentral.cajamarca.ec` (hoy `/artemis` responde 502) y validarlo con el manual de su versión.
 - **Alcance del monitorista más fino:** hoy el caso se limita a los Puntos de las Compañías del usuario (§3). Si más adelante se requiere separar por cliente o por puesto de monitoreo (Kaibil), hace falta una asignación nueva; solo cambiaría `ObsintPlatform.visiblePoints`.
 - **Envío real de mensajes** al agente en SGI Operador (requiere SITC). Mientras tanto se guardan como `TEST`.
 - **Panel de mensajes en modo prueba (frontend):** con `deliveryStatus = TEST`, el panel debe decir que los mensajes no se envían (por ejemplo, "Modo prueba · los mensajes no se envían al agente") en lugar de "Agente en sitio · Conectado", y marcar cada mensaje como "No enviado (prueba)" en lugar del doble check.
@@ -426,13 +448,14 @@ Cuerpo de una consigna:
 - Cambios visuales de la consola: una cámara grande con miniaturas, Cliente · Punto en la cabecera.
 
 **Preguntas abiertas para el negocio**
-1. ¿Cómo cuenta "Incierto" en el reporte?
+1. ¿Están de acuerdo con cómo cuenta "Incierto"? Propuesta aplicada: fuera del cumplimiento, medido aparte como verificabilidad, con alerta bajo el 90 %.
 2. ¿Qué pasa con una tarea vencida sin respuesta?
 3. ¿Qué pasa al superar los minutos por día?
 4. ¿Hay una cola común entre monitoristas?
 5. ¿A qué app llegan los mensajes al agente?
 6. ¿Las cámaras se conectan directo o a través de un NVR?
 7. ¿Qué vía de red se usa para llegar a los sitios?
+8. ¿Los turnos de monitoreo son de 12 h ("cada turno")?
 
 ---
 
@@ -446,11 +469,12 @@ Cuerpo de una consigna:
    SGI_SECELEC_SECRET_KEY=una-llave-larga-y-secreta
    ```
 2. (Opcional) Copia los videos de prueba a `frontend/public/obsint/videos/` (`1-1.mp4` … `3-4.mp4`; no se versionan, ~300 MB). En cada cámara, pon "URL de video (pruebas)" = `obsint/videos/1-1.mp4`.
-3. Mientras no exista el menú, abre las pantallas montándolas a mano según §4.
-4. **Flujo:**
+3. **Flujo** (Servicios → Punto → Configuración):
    - Componentes de Seguridad → Videovigilancia → agregar cámaras.
-   - Consignas OBSINT → Crear protocolo → Nueva tarea (cámaras y horario) → Publicar → Activar.
-   - Consola → OBSINT → Iniciar caso.
+   - Consignas → Alcance → marcar **OBSINT** → Publicar → Activar el protocolo de Consignas.
+   - Seguridad Electrónica → OBSINT → Nueva tarea (elegir la consigna, cámaras y horario) → Publicar → Activar.
+   - Consola → OBSINT → Iniciar caso. Como Presidente o Director Nacional: Consola → OBSINT → Reportes.
+4. Para demos locales sin esperar la frecuencia: `SGI_OBSINT_APPLY_FREQUENCY=false` en `docker-compose.override.yml`.
 
 ### Verificado (2026-10-26)
 
@@ -475,7 +499,15 @@ Cuerpo de una consigna:
   - **Consola:** el caso tomó solo las consignas vigentes a esa hora (2 de 4), y el video salió de la URL de pruebas de la cámara.
 - El frontend compila (`tsc -b`) y el build de producción de Vite pasa.
 
+### Verificado (2026-10-28)
+
+- **41 pruebas pasan** (OBSINT, Componentes de Seguridad y Consignas), contra una copia de la base local.
+- **En la app:** marcar OBSINT en Consignas, vincular la tarea, verla en la Consola; pantalla de Reportes como Presidente y descarga del PDF.
+- **PDF revisado a simple vista** (convertido a imagen) contra la diapositiva 13.
+- Las pruebas de Operador (`ConsignmentRequestPhotoTest`, `OperatorIdentAccessTest`, `ReliefModeTest`) fallan igual sin estos cambios: dependen de datos de la base local.
+
 ### Pendiente de verificar
 
 - Probar con el menú real de Servicios cuando esté hecho.
 - Probar con IDENT encendido. La verificación se hizo con usuarios UAT y autenticación Basic.
+- Abrir el PDF en un visor real (la revisión fue en un contenedor sin la fuente Helvetica).
