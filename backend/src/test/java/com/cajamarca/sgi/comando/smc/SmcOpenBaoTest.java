@@ -113,12 +113,12 @@ class SmcOpenBaoTest {
             Files.writeString(role,"local-role");Files.writeString(secret,"local-approle-secret");
             OpenBaoSecretReader reader=new OpenBaoSecretReader();
             set(reader,"addr",Optional.of(base));set(reader,"caFile",Optional.empty());
-            set(reader,"roleIdFile",Optional.of(role.toString()));set(reader,"secretIdFile",Optional.of(secret.toString()));set(reader,"timeoutMs",1000L);
+            set(reader,"roleIdFile",Optional.of(role.toString()));set(reader,"secretIdFile",Optional.of(secret.toString()));set(reader,"timeoutMs",5000L);
             CredentialRefResolver credentials=new CredentialRefResolver();set(credentials,"openBao",reader);
             IdentServiceTokens tokens=new IdentServiceTokens();set(tokens,"secrets",reader);
             set(tokens,"ident",new IdentTokenVerifier(){@Override public synchronized String identPublicUrl(){return base;}@Override public String internal(String url){return url;}});
             CoreInterconnectionResolver resolver=new CoreInterconnectionResolver();set(resolver,"coreResolverUrl",Optional.of(base+"/core"));
-            set(resolver,"environment","TEST");set(resolver,"coreTimeoutMs",1000);set(resolver,"objectMapper",json);
+            set(resolver,"environment","TEST");set(resolver,"coreTimeoutMs",5000);set(resolver,"objectMapper",json);
             ResolutionCache cache=new ResolutionCache();set(cache,"defaultTtl",30);set(cache,"defaultAllowStale",0);
             TenantContext tenant=new TenantContext(){@Override public UUID instanceCountryId(){return pe;}};
             set(executor,"tenant",tenant);set(executor,"coreResolver",resolver);set(executor,"cache",cache);

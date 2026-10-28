@@ -16,7 +16,7 @@ Patrullas lee el cierre de `/api/v1/operator/patrol-executions` y sus resultados
 
 El equipo confirmó el binding de CORE `SGI_COM_SMC__0001_v001` (dos guiones bajos antes de 0001). Se usa como valor predeterminado en configuración, no como constante Java. Configurar la interfaz registrada en CORE, método POST y ruta `/api/v1/operational-facts`, destino SMC y referencia de credencial de servicio. El catálogo local conserva su identificador canónico; la resolución de esta integración usa el ID configurado para el ambiente.
 
-Aplicar Flyway V91 en una base UAT antes de activar:
+Aplicar Flyway hasta V93 en una base UAT antes de activar. V91 crea las entregas y V93 los cursores e índices de descubrimiento incremental:
 
 ```dotenv
 SGI_SMC_ENABLED=false
@@ -24,13 +24,26 @@ SGI_SMC_INTERCONNECTION_ID=SGI_COM_SMC__0001_v001
 SGI_SMC_INTERFACE_ID=SGI_COM_SMC_0001_IF01
 SGI_SMC_PUBLISH_EVERY_SECONDS=30
 SGI_SMC_BATCH_SIZE=100
-# Acordar el corte con SMC. Ejemplo ilustrativo, no activar sin validarlo:
-SGI_SMC_FACTS_SINCE=2026-10-27T00:00:00-05:00
+# No hace falta SGI_SMC_FACTS_SINCE para la operación normal.
 ```
 
-`facts-since` es obligatorio para publicar con la bandera activa. Se compara con `finished_at` en patrullas y `confirmed_at` en consignas; una fecha anterior habilita carga histórica. No hay backfill implícito. La ausencia/fecha inválida produce 503 en publicación manual y no encola ni envía. Con la bandera apagada la publicación es una operación sin efectos.
+Sin `SGI_SMC_FACTS_SINCE`, el primer ciclo activo inicializa automáticamente `smc_source_cursor` para cada instancia y fuente. No importa todo el historial anterior. Los siguientes ciclos continúan desde el cursor guardado, incluso después de reiniciar. No hace falta mantener una fecha fija ni cambiarla cada día/año. Con la bandera apagada no se inicializan cursores ni se encolan hechos.
 
-Una vez acordado el corte, identidad de los agentes y periodo abierto en SMC, activar `SGI_SMC_ENABLED=true` y recrear el backend con las variables. No hay URL/token propio de SMC en Comando: se usa `GenericInterconnectionExecutor` con CORE y su resolución de credenciales.
+`SGI_SMC_FACTS_SINCE` queda como opción para una carga histórica **al crear por primera vez el cursor**. Si se configura, debe ser ISO-8601 con zona; un formato inválido devuelve 503 con código `SMC_INVALID_FACTS_SINCE` y mensaje explícito. Una vez creado el cursor, cambiar esa variable no reinicia ni rebobina el progreso. Para solicitar otra carga histórica se necesita un procedimiento deliberado de reproceso, no cambiar silenciosamente el inicio en cada llamada.
+
+Una vez confirmados la identidad de los agentes y el periodo abierto en SMC, activar `SGI_SMC_ENABLED=true` y recrear el backend con las variables. No hay URL/token propio de SMC en Comando: se usa `GenericInterconnectionExecutor` con CORE y su resolución de credenciales.
+
+### Descubrimiento incremental
+
+- Patrullas: se recorren rangos de `patrol_execution.updated_at` e ID. Así una patrulla iniciada antes de activar se descubre cuando se finaliza y actualiza.
+- Consignas: se recorren rangos de `consignment_compliance.created_at` e ID. Son registros de confirmación insertados por Comando, no un reloj del teléfono.
+- El cursor por fuente guarda fecha de cambio y último ID; el desempate por ID evita omitir filas cuando un lote tiene muchas con la misma fecha. La extracción tiene límite por lote y usa índices de rango de V93.
+- Encolado y avance del cursor se confirman en la misma transacción. Si falla uno, ambos retroceden. El estado SENT/PENDING/REJECTED y los reintentos de red son independientes del cursor de descubrimiento.
+- La fecha operacional `occurredAt` no cambia: sigue siendo `finished_at` o `confirmed_at`, vinculada al agente y su turno. Los registros recibidos tarde se detectan por su recepción/actualización local, aunque occurredAt sea antiguo.
+- Se cierra cada rango antes de la transacción más antigua aún abierta de la misma cuenta PostgreSQL en esa base (`pg_stat_activity`). Evita avanzar por delante de escrituras que podrían confirmar después con timestamp de servidor anterior. No se bloquean filas operativas; una transacción muy larga puede demorar el descubrimiento, pero las entregas ya encoladas siguen reintentándose.
+- La garantía anterior corresponde al ingreso normal de Comando, con timestamps de servidor y la misma cuenta DB. Importaciones administrativas que fuerzan `created_at`/`updated_at` hacia el pasado requieren reproceso acordado.
+
+Una patrulla histórica del 21 de octubre no se publica automáticamente si la primera activación ocurre después. Para incluirla se acuerda la carga inicial explícita antes de crear el cursor. Las entregas ya encoladas antes de V93 no se eliminan y continúan su procesamiento.
 
 `SGI_SMC_INTERFACE_ID` debe coincidir con la interfaz efectiva del binding; su valor predeterminado es `SGI_COM_SMC_0001_IF01` hasta que CORE confirme otro. Ambos identificadores se pueden cambiar por ambiente sin recompilar; requieren recrear/reiniciar el proceso con la nueva configuración. El ejecutor usa el ID configurado tanto en la consulta a CORE como en X-Interconnection-Id.
 
@@ -52,7 +65,7 @@ Ejemplo de configuración del binding (el marcador de ruta debe reemplazarse por
 
 Se reutilizan `SGI_VAULT_ADDR`, `SGI_VAULT_ROLE_ID_FILE`, `SGI_VAULT_SECRET_ID_FILE` y `SGI_VAULT_CA_CERT_FILE` y el montaje de archivos del AppRole de SGI_COM que ya está en Compose. La política de ese AppRole debe permitir lectura de la ruta real. No copiar secretos a `.env.openbaoSGI` ni al repositorio. El nombre de ese archivo no implica que sus variables se lean automáticamente desde OpenBao: contiene configuración no secreta del contenedor.
 
-La bandera `SGI_SMC_ENABLED` y el corte `SGI_SMC_FACTS_SINCE` siguen siendo configuración independiente. Con `enabled=false` el publicador no resuelve el binding SMC ni lee su credencial de OpenBao; otras operaciones de Comando pueden seguir consultando CORE. Si OpenBao no está disponible o rechaza el acceso, la entrega queda PENDING para reintento. La configuración real en CORE/OpenBao debe comprobarse en DEV; no se modifica desde estas pruebas.
+La bandera `SGI_SMC_ENABLED` y la carga histórica inicial opcional siguen siendo configuración independiente. Con `enabled=false` el publicador no resuelve el binding SMC ni lee su credencial de OpenBao; otras operaciones de Comando pueden seguir consultando CORE. Si OpenBao no está disponible o rechaza el acceso, la entrega queda PENDING para reintento. La configuración real en CORE/OpenBao debe comprobarse en DEV; no se modifica desde estas pruebas.
 
 `SmcOpenBaoTest` comprueba sobre HTTP local el resolver CORE, login AppRole, lectura KV v2 y llamada a SMC usando los componentes productivos, en ambos modos. También comprueba referencias no vault, autenticación anónima y denegación de OpenBao, sin usar secretos reales.
 
@@ -125,13 +138,19 @@ Publicación responde `{enabled,busy,enqueued,attempted,requeued}`. No debe inte
 
 ## Validación reproducible
 
-`SmcContractTest`: porcentajes, identidad estable, validación de recibos, clasificación de errores, backoff y bandera apagada/corte obligatorio.
+`SmcIncrementalDiscoveryTest`: PostgreSQL real, tablas de origen clonadas del esquema migrado, inicio automático sin carga histórica, continuidad con otra instancia del publicador, sincronización tardía, lotes con timestamps iguales, rollback de entregas y cursor, transacción escritora que confirma tarde, fecha opcional y bandera apagada. Usa esquemas aislados que elimina al terminar; ejecutar sobre una base de pruebas.
 
-`SmcHttpTest`: adaptador y ejecutor/resolver productivos sobre HTTP real local; dobles de CORE/SMC, encabezados, credencial de prueba, duplicado, 404, 503 y servidor desconectado. No llama a SMC real.
+`SmcOpenBaoTest`: resolver/ejecutor productivos sobre HTTP local con dobles CORE/OpenBao/IDENT/SMC; AppRole, KV v2, Bearer y M2M, credencial no vault y denegación de OpenBao. No llama a servicios reales.
 
-`SmcDatabaseTest`: Quarkus/PostgreSQL, fuentes y bandeja temporal con estructura de V91, exclusiones, aislamiento por instancia, deduplicación, payload inmutable, estados, fallo de transporte y reproceso. Cada prueba usa tablas temporales eliminadas al cerrar la transacción; se debe ejecutar sobre una base de pruebas.
+`IdentServiceTokensTest`: extracción del destino, incluido el alias SMC con doble guion bajo, y falta de configuración del cliente M2M.
 
 No se cambian bases operativas ni se despliega/activa automáticamente esta entrega.
+
+### Evidencia incremental del 2026-10-28
+
+`mvn -B -ntp -Dtest=SmcIncrementalDiscoveryTest,SmcOpenBaoTest,IdentServiceTokensTest test`: **13 pruebas, 0 fallos, 0 errores** sobre PostgreSQL temporal y servicios HTTP locales. Flyway aplicó V93. Se validaron arranque sin fecha, continuidad con una instancia nueva del publicador, recepción tardía, desempate de lotes, rollback atómico y confirmación tardía de una transacción concurrente. Los esquemas de fixtures se clonan de las tablas migradas y se eliminan al terminar. No se desplegó ni se aplicó V93 en DEV.
+
+Para el despliegue normal, quitar o dejar vacía `SGI_SMC_FACTS_SINCE` **antes** de la primera ejecución con V93 y recrear el backend con las variables del ambiente. El primer ciclo crea los cursores y puede responder `enqueued: 0`; las ejecuciones siguientes recogen novedades. Mantener el valor histórico anterior inicia un backfill deliberado al crear el cursor.
 
 ### Evidencia local del 2026-10-27
 

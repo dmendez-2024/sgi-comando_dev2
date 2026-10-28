@@ -37,12 +37,13 @@ public class SmcFactPublisher {
     void tick() {
         if (!enabled) return;
         try { publish(false); }
+        catch (ServiceUnavailableException e) { LOG.warn("Configuración SMC inválida: SGI_SMC_FACTS_SINCE debe omitirse o contener fecha ISO-8601 con zona."); }
         catch (RuntimeException e) { LOG.warn("Publicación SMC pendiente: " + e.getClass().getSimpleName()); }
     }
 
     public Publication publish(boolean retryRejected) {
         if (!enabled) return new Publication(false, false, 0, 0, 0);
-        Instant since = configuredSince();
+        Optional<Instant> since = configuredSince();
         if (!running.compareAndSet(false, true)) return new Publication(true, true, 0, 0, 0);
         try {
             UUID pe = tenant.instanceCountryId();
@@ -55,17 +56,47 @@ public class SmcFactPublisher {
         } finally { running.set(false); }
     }
 
-    Instant configuredSince() {
+    Optional<Instant> configuredSince() {
+        Optional<String> value = factsSince.filter(s -> !s.isBlank());
+        if (value.isEmpty()) return Optional.empty();
         try {
-            return Instant.parse(factsSince.filter(s -> !s.isBlank()).orElseThrow());
+            return Optional.of(Instant.parse(value.get().trim()));
         } catch (RuntimeException e) {
-            throw new ServiceUnavailableException("Configure SGI_SMC_FACTS_SINCE con fecha ISO-8601 y zona antes de activar SMC.");
+            throw new ServiceUnavailableException(jakarta.ws.rs.core.Response.status(503)
+                .type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON)
+                .entity(Map.of("code","SMC_INVALID_FACTS_SINCE","message",
+                    "SGI_SMC_FACTS_SINCE es opcional; omítala o use una fecha ISO-8601 con zona para la carga inicial."))
+                .build());
         }
     }
 
-    int enqueue(UUID pe, Instant since, int limit) {
+    int enqueue(UUID pe, Optional<Instant> initialSince, int limit) {
+        // Solo avanzar sobre rangos cerrados: una transacción de la misma cuenta que
+        // aún escribe puede confirmar después con updated_at anterior a este ciclo.
+        Instant until = SmcFactSources.instant(em.createNativeQuery("""
+            select least(transaction_timestamp(),coalesce(min(xact_start),transaction_timestamp()))
+            from pg_stat_activity where datname=current_database() and usename=current_user
+                and xact_start is not null
+            """).getSingleResult());
         int inserted = 0;
-        for (SmcFact fact : sources.candidates(pe, since, limit)) {
+        for (String type : SmcFactSources.TYPES) {
+            int initialized = em.createNativeQuery("""
+                insert into smc_source_cursor(instance_country_id,source_type,changed_at)
+                values(:tenant,:type,:start) on conflict do nothing
+                """).setParameter("tenant",pe).setParameter("type",type)
+                .setParameter("start",initialSince.orElse(until)).executeUpdate();
+            if (initialized > 0) LOG.infof("smc_cursor_initialized source=%s since=%s mode=%s",
+                type,initialSince.orElse(until),initialSince.isPresent()?"EXPLICIT_INITIAL_HISTORY":"AUTOMATIC");
+            Object[] state = (Object[]) em.createNativeQuery("""
+                select changed_at,last_source_id from smc_source_cursor
+                where instance_country_id=:tenant and source_type=:type for update
+                """).setParameter("tenant",pe).setParameter("type",type).getSingleResult();
+            Instant since = SmcFactSources.instant(state[0]);
+            UUID after = SmcFactSources.uuid(state[1]);
+            if (!since.isBefore(until)) continue;
+            List<SmcFactSources.Candidate> page = sources.candidates(pe,type,since,after,until,limit);
+            for (SmcFactSources.Candidate candidate : page) {
+            SmcFact fact = candidate.fact();
             String payload;
             try { payload = mapper.writeValueAsString(fact.payload()); }
             catch (Exception e) { throw new IllegalStateException("No se pudo serializar el hecho SMC", e); }
@@ -77,6 +108,20 @@ public class SmcFactPublisher {
                 .setParameter("sourceType", fact.sourceType()).setParameter("sourceId", fact.sourceId())
                 .setParameter("event", fact.eventId()).setParameter("factType", fact.factType())
                 .setParameter("payload", payload).executeUpdate();
+            }
+            // Un lote lleno puede tener más filas en la misma fecha: desempate por UUID.
+            // Un lote incompleto cierra el rango completo hasta el horizonte seguro.
+            Instant next = until;
+            UUID lastId = null;
+            if (page.size() == limit) {
+                SmcFactSources.Candidate last = page.getLast();
+                next = last.changedAt(); lastId = last.fact().sourceId();
+            }
+            em.createNativeQuery("""
+                update smc_source_cursor set changed_at=:next,last_source_id=:id,updated_at=current_timestamp
+                where instance_country_id=:tenant and source_type=:type
+                """).setParameter("next",next).setParameter("id",lastId)
+                .setParameter("tenant",pe).setParameter("type",type).executeUpdate();
         }
         return inserted;
     }

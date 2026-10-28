@@ -1912,27 +1912,30 @@
 @media(max-width:680px){.csl-incident-categories{grid-template-columns:1fr}.csl-severity-grid{grid-template-columns:repeat(2,1fr)}.csl-incident-grid.two{grid-template-columns:1fr}.csl-head-actions{width:100%}.csl-notify-incident{width:100%;justify-content:center}.csl-incident-footer{flex-direction:column}}
 
 /* Dashboard Nacional v6 — integrated into the existing SGI application shell */
-.dash-v6{display:flex;flex-direction:column;gap:12px;min-width:0;color:#0b1d4d}
+.dash-v6{display:flex;flex-direction:column;gap:12px;min-width:0;color:#0b1d4d;container:dashboard / inline-size}
 .dash-v6-error{display:flex;align-items:center;gap:8px;padding:10px 12px;border:1px solid #f1c5c8;border-radius:9px;background:#fff1f2;color:#a12a35;font-size:11px}
-.dash-v6-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:18px}
-.dash-v6-heading h2{margin:2px 0 7px;font-size:25px;line-height:1.15;letter-spacing:-.5px;color:#122849}
-.dash-v6-heading p{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin:0;color:#58739a;font-size:11px;text-transform:capitalize}
+.dash-v6-heading{display:grid;grid-template-columns:minmax(0,1fr);align-items:start;gap:14px 16px;min-width:0}
+.dash-v6-heading>div:first-child{min-width:0}
+.dash-v6-heading h2{margin:0 0 7px;font-size:24px;line-height:1.2;letter-spacing:-.5px;color:#122849;overflow-wrap:anywhere}
+.dash-v6-heading p{display:flex;align-items:center;gap:7px;flex-wrap:wrap;min-width:0;margin:0;color:#58739a;font-size:11px;text-transform:capitalize;overflow-wrap:anywhere}
 .dash-v6-heading p svg{color:#1680ff}
-.dash-v6-scope{border:1px solid #cde5ff;border-radius:999px;background:#e8f3ff;padding:3px 9px;color:#0567d2;font-weight:800;text-transform:none}
-.dash-v6-filters{display:flex;align-items:center;justify-content:flex-end;gap:7px;flex-wrap:wrap}
-.dash-v6-client-filter,.dash-v6-select{height:37px;position:relative;display:flex;align-items:center;gap:7px;padding:0 9px;border:1px solid #cfdceb;border-radius:7px;background:#fff;box-shadow:0 1px 3px rgba(19,53,88,.05);color:#56708e}
-.dash-v6-client-filter{width:185px}
-.dash-v6-client-filter input,.dash-v6-select select{height:100%;width:100%;min-width:0;border:0;outline:0;background:transparent;color:#263f60;font:600 10px/1.2 inherit}
+.dash-v6-scope{max-width:100%;border:1px solid #cde5ff;border-radius:999px;background:#e8f3ff;padding:3px 9px;color:#0567d2;font-weight:800;text-transform:none}
+.dash-v6-filters{display:grid;grid-template-columns:minmax(0,1fr) minmax(176px,1.1fr) minmax(0,1fr) minmax(0,1fr);align-items:stretch;gap:8px;min-width:0}
+.dash-v6-client-filter,.dash-v6-select{min-width:0;min-height:42px;margin:0;position:relative;display:flex;align-items:center;gap:5px;padding:8px;border:1px solid #cfdceb;border-radius:7px;background:#fff;box-shadow:0 1px 3px rgba(19,53,88,.05);color:#56708e}
+.dash-v6-client-filter input,.dash-v6-select select,.dash-v6-select-value{width:100%;min-width:0;padding:0;border:0;outline:0;background:transparent;color:#263f60;font-family:inherit;font-size:12px;font-weight:600;line-height:1.3}
+.dash-v6-client-filter input{flex:1 1 0;min-height:24px}
+.dash-v6-select-value{flex:1 1 0;overflow-wrap:anywhere}
+.dash-v6-company .dash-v6-select-value{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;overflow-wrap:normal}
+.dash-v6-client-filter>svg,.dash-v6-select>svg{flex:0 0 auto;width:14px;height:14px}
+.dash-v6-client-filter:focus-within,.dash-v6-select:focus-within{border-color:#2388ff;box-shadow:0 0 0 2px rgba(35,136,255,.12)}
 .dash-v6-client-filter input::placeholder{color:#71839b}
-.dash-v6-client-filter>button{border:0;background:transparent;color:#77869b;font-size:18px;cursor:pointer}
-.dash-v6-client-menu{position:absolute;z-index:50;top:41px;left:0;width:100%;max-height:260px;overflow:auto;border:1px solid #d8e4ef;border-radius:8px;background:#fff;box-shadow:0 14px 30px rgba(15,38,67,.16)}
+.dash-v6-client-filter>button{flex:0 0 auto;padding:0;border:0;background:transparent;color:#77869b;font-size:18px;cursor:pointer}
+.dash-v6-client-menu{position:absolute;z-index:50;top:calc(100% + 4px);left:0;width:100%;max-height:260px;overflow:auto;border:1px solid #d8e4ef;border-radius:8px;background:#fff;box-shadow:0 14px 30px rgba(15,38,67,.16)}
 .dash-v6-client-menu button,.dash-v6-client-menu span{display:block;width:100%;padding:9px 10px;border:0;border-bottom:1px solid #eef3f8;background:#fff;color:#263f60;text-align:left;font-size:10px;cursor:pointer}
 .dash-v6-client-menu button:hover,.dash-v6-client-menu button[aria-selected="true"]{background:#eff7ff;color:#0567d2}
 .dash-v6-client-menu span{color:#7a90ac;cursor:default}
-.dash-v6-select{min-width:142px;max-width:220px}
-.dash-v6-select select{appearance:none;cursor:pointer}
+.dash-v6-select select{position:absolute;inset:0;z-index:1;width:100%;height:100%;opacity:0;appearance:none;cursor:pointer}
 .dash-v6-select>svg:last-child{pointer-events:none;flex:0 0 auto;color:#365779}
-.dash-v6-period{min-width:148px}
 .dash-v6-kpis{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px;min-width:0}
 .dash-v6-kpi{min-width:0;min-height:100px;display:grid;grid-template-columns:32px minmax(0,1fr);align-content:start;gap:7px;padding:9px;border:1px solid #dfe8f1;border-radius:8px;background:#fff;box-shadow:0 2px 10px rgba(31,68,104,.025);color:#122849;text-align:left;cursor:pointer;transition:border-color .16s,box-shadow .16s,transform .16s}
 .dash-v6-kpi:hover{transform:translateY(-1px);border-color:#a8caef;box-shadow:0 6px 16px rgba(31,68,104,.08)}
@@ -2025,12 +2028,14 @@
 .dash-v6-map-legend strong{margin-left:auto;color:#40597e;font-size:9px;white-space:nowrap}
 .dash-v6-footnote{display:flex;align-items:flex-start;gap:7px;color:#718096;font-size:9px;line-height:1.45}
 .dash-v6-footnote svg{flex:0 0 auto;color:#7794b2}
-@media(max-width:1450px){.dash-v6-heading{align-items:center;flex-wrap:nowrap;gap:8px}.dash-v6-heading h2{font-size:18px;white-space:nowrap}.dash-v6-filters{margin-left:auto;justify-content:flex-end;flex-wrap:nowrap;gap:4px}.dash-v6-client-filter,.dash-v6-select{height:32px;gap:4px;padding:0 6px}.dash-v6-client-filter{width:120px}.dash-v6-select{min-width:0;width:100px}.dash-v6-select>svg:first-child{display:none}.dash-v6-period{width:120px}.dash-v6-lower{grid-template-columns:minmax(0,1fr) minmax(290px,.85fr)}}
+@container dashboard (min-width:1160px){.dash-v6-heading{grid-template-columns:minmax(0,1fr) minmax(0,1.5fr)}}
+@container dashboard (max-width:739px){.dash-v6-filters{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@container dashboard (max-width:459px){.dash-v6-filters{grid-template-columns:minmax(0,1fr)}}
+@media(max-width:1450px){.dash-v6-lower{grid-template-columns:minmax(0,1fr) minmax(290px,.85fr)}}
 @media(max-width:1450px){.dash-v6 .dash-v6-kpis{grid-template-columns:repeat(6,minmax(0,1fr))}}
 @media(max-width:1050px){.dash-v6-lower{grid-template-columns:1fr}.dash-v6-side-stack{grid-template-columns:1fr 1fr;grid-template-rows:auto}.dash-v6-attention .dash-v6-table-wrap{max-height:370px}}
-@media(max-width:850px){.dash-v6-heading{flex-wrap:wrap}.dash-v6-filters{width:100%;flex-wrap:wrap}}
-@media(max-width:700px){.dash-v6-heading h2{font-size:20px}.dash-v6-filters{width:100%}.dash-v6-client-filter{width:100%}.dash-v6-select{flex:1;max-width:none}.dash-v6-side-stack{grid-template-columns:1fr}.dash-v6-panel-title{padding-left:9px;padding-right:9px}}
-@media(max-width:430px){.dash-v6-kpi{min-height:108px}.dash-v6-period{min-width:100%}}
+@media(max-width:700px){.dash-v6-side-stack{grid-template-columns:1fr}.dash-v6-panel-title{padding-left:9px;padding-right:9px}}
+@media(max-width:430px){.dash-v6-kpi{min-height:108px}}
 
 /* NEX v0.1 — Nexus / Motor de Eventos y Reglas Operativas */
 .nexus-page{padding:18px 22px 34px;background:#f5f7fb;min-height:calc(100vh - 72px);color:#24324b}.nexus-breadcrumbs{display:flex;align-items:center;gap:8px;margin-bottom:12px;color:#7b8798}.nexus-breadcrumbs button{border:0;background:transparent;color:#49617e;font-weight:800;display:inline-flex;align-items:center;gap:6px;cursor:pointer;padding:0}.nexus-breadcrumbs small{font-weight:700}
