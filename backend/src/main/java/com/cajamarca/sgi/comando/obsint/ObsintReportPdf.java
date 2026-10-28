@@ -98,10 +98,10 @@ final class ObsintReportPdf {
 
     private void summary() throws IOException {
         ObsintDailyReport.Summary s = r.summary();
-        float boxH = 112;
+        float boxH = 128;
         roundRect(M, y - boxH, CW, boxH, 8, SOFT);
         text("Resumen General", bold, 15, M + 12, y - 22, TEXT);
-        float tw = (CW - 24 - 4 * 8) / 5, ty = y - 102, th = 66;
+        float tw = (CW - 24 - 5 * 8) / 6, ty = y - 118, th = 82;
         String avg = s.averageSeconds() == null ? "—" : "%d:%02d".formatted(s.averageSeconds() / 60, s.averageSeconds() % 60);
         int decided = s.yes() + s.no();
         tile(M + 12, ty, tw, th, "CONSIGNAS\nCONFIGURADAS", String.valueOf(s.configured()), null, MUTED, 'c');
@@ -109,14 +109,16 @@ final class ObsintReportPdf {
             s.uncertain() > 0 ? s.uncertain() + " incierta" + (s.uncertain() == 1 ? "" : "s") : null, MUTED, 'c');
         tile(M + 12 + 2 * (tw + 8), ty, tw, th, "CUMPLIDAS", String.valueOf(s.yes()), decided == 0 ? "—" : pct((double) s.yes() / decided), GREEN, 'v');
         tile(M + 12 + 3 * (tw + 8), ty, tw, th, "INCUMPLIDAS", String.valueOf(s.no()), decided == 0 ? "—" : pct((double) s.no() / decided), RED, '!');
-        tile(M + 12 + 4 * (tw + 8), ty, tw, th, "TIEMPO PROMEDIO\nDE REVISIÓN", avg, "min", MUTED, 't');
+        boolean low = s.verifiability() != null && s.verifiability() < ObsintDailyReport.LOW_VERIFIABILITY;
+        tile(M + 12 + 4 * (tw + 8), ty, tw, th, "VERIFICABILIDAD", s.verifiability() == null ? "—" : pct(s.verifiability()), null, low ? AMBER : MUTED, 'e');
+        tile(M + 12 + 5 * (tw + 8), ty, tw, th, "TIEMPO PROMEDIO\nDE REVISIÓN", avg, "min", MUTED, 't');
         y -= boxH + 22;
     }
 
     private void consignas() throws IOException {
         heading("Desempeño por Consigna", null);
-        String[] heads = {"#", "CÓDIGO", "CONSIGNA", "CATEGORÍA", "FRECUENCIA\nPROGRAMADA", "VECES\nEJECUTADA", "CUMPLIDAS", "INCUMPLIDAS", "% CUMPLIMIENTO"};
-        float[] cols = {18, 46, 112, 86, 58, 44, 46, 50, 79};
+        String[] heads = {"#", "CÓDIGO", "CONSIGNA", "CATEGORÍA", "FRECUENCIA\nPROGRAMADA", "VECES\nEJECUTADA", "CUMPLIDAS", "INCUMPLIDAS", "INCIERTAS", "% CUMPLIMIENTO"};
+        float[] cols = {18, 46, 92, 72, 54, 44, 46, 50, 46, 71};
         tableHeader(heads, cols);
         int i = 0;
         for (ObsintDailyReport.ConsignaLine l : r.consignas()) {
@@ -134,12 +136,15 @@ final class ObsintReportPdf {
             text(String.valueOf(l.executed()), regular, 8.5f, x + 4, base, TEXT); x += cols[5];
             text(String.valueOf(l.yes()), bold, 8.5f, x + 4, base, GREEN); x += cols[6];
             text(String.valueOf(l.no()), bold, 8.5f, x + 4, base, l.no() > 0 ? RED : TEXT); x += cols[7];
-            bar(x + 4, base - 3, cols[8] - 10, 10, l.compliance());
+            text(String.valueOf(l.uncertain()), regular, 8.5f, x + 4, base, l.uncertain() > 0 ? AMBER : TEXT); x += cols[8];
+            bar(x + 4, base - 3, cols[9] - 10, 10, l.compliance());
             y -= rowH;
             line(M, y, M + CW, y, LINE);
         }
-        if (r.summary().uncertain() > 0)
-            { y -= 12; text("Incierto: no se pudo confirmar por cámara; se cuenta en \"veces ejecutada\" pero no en el % de cumplimiento.", regular, 7.5f, M, y, MUTED); }
+        y -= 12;
+        text("Cumplimiento = cumplidas / (cumplidas + incumplidas). Verificabilidad = (cumplidas + incumplidas) / ejecutadas.", regular, 7.5f, M, y, MUTED);
+        y -= 10;
+        text("Incierta: no se pudo confirmar por cámara; cuenta como ejecutada y baja la verificabilidad, no el cumplimiento.", regular, 7.5f, M, y, MUTED);
         y -= 22;
     }
 
@@ -247,20 +252,24 @@ final class ObsintReportPdf {
 
     private void tile(float x, float yb, float w, float h, String label, String value, String sub, Color tone, char icon) throws IOException {
         roundRect(x, yb, w, h, 6, WHITE);
-        float ix = x + 8, iy = yb + h - 34;
+        float ix = x + 8, iy = yb + h - 32;
         roundRect(ix, iy, 24, 24, 5, icon == 'v' ? new Color(0xE3F5EA) : icon == '!' ? new Color(0xFDE5E5) : new Color(0xEEF1F5));
         switch (icon) {
             case 'v' -> { cs.setStrokingColor(GREEN); cs.setLineWidth(2.4f); cs.moveTo(ix + 6, iy + 12); cs.lineTo(ix + 10.5f, iy + 7.5f); cs.lineTo(ix + 18, iy + 16); cs.stroke(); }
             case '!' -> { cs.setNonStrokingColor(RED); cs.moveTo(ix + 12, iy + 19); cs.lineTo(ix + 20, iy + 5); cs.lineTo(ix + 4, iy + 5); cs.closePath(); cs.fill();
                 text("!", bold, 10, ix + 10.6f, iy + 7, WHITE); }
+            case 'e' -> { Color c = tone == AMBER ? AMBER : MUTED; cs.setStrokingColor(c); cs.setLineWidth(1.4f);
+                cs.addRect(ix + 4, iy + 7, 12, 10); cs.stroke();
+                cs.setNonStrokingColor(c); cs.moveTo(ix + 16, iy + 12); cs.lineTo(ix + 21, iy + 16); cs.lineTo(ix + 21, iy + 8); cs.closePath(); cs.fill(); }
             case 't' -> { cs.setStrokingColor(MUTED); cs.setLineWidth(1.4f); circleStroke(ix + 12, iy + 12, 7); cs.moveTo(ix + 12, iy + 12); cs.lineTo(ix + 12, iy + 16.5f);
                 cs.moveTo(ix + 12, iy + 12); cs.lineTo(ix + 15, iy + 10); cs.stroke(); }
             default -> docIcon(ix + 6, iy + 4);
         }
-        String[] parts = label.split("\n");
-        for (int i = 0; i < parts.length; i++) text(parts[i], regular, 6.6f, ix + 30, iy + 18 - i * 8, MUTED);
-        text(value, bold, 20, x + 10, yb + 12, TEXT);
-        if (sub != null) text(sub, regular, 8, x + 14 + width(value, bold, 20), yb + 13, tone == MUTED ? MUTED : tone);
+        // Con seis tarjetas no cabe junto al ícono: la etiqueta va debajo, a todo el ancho y en hasta dos líneas.
+        List<String> parts = first(wrap(label.replace('\n', ' '), regular, 6.4f, w - 14), 2);
+        for (int i = 0; i < parts.size(); i++) text(parts.get(i), regular, 6.4f, x + 8, iy - 10 - i * 7.6f, MUTED);
+        text(value, bold, 18, x + 8, yb + 9, icon == 'e' && tone == AMBER ? AMBER : TEXT);
+        if (sub != null) text(sub, regular, 7.5f, x + 11 + width(value, bold, 18), yb + 10, tone == MUTED ? MUTED : tone);
     }
 
     private void docIcon(float x, float yb) throws IOException {

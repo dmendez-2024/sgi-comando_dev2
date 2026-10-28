@@ -39,10 +39,11 @@ class ObsintReportResourceTest {
     }
 
     @Test void complianceLeavesUncertainOutAndTheTextUsesTheWinAnsiFont() {
-        var summary = new ObsintDailyReport.Summary(3, 6, 3, 1, 2, 0.75, 52);
+        var summary = new ObsintDailyReport.Summary(3, 6, 3, 1, 2, 0.75, 4 / 6.0, 52);
         var lines = List.of(new ObsintDailyReport.ConsignaLine("OBS-001", "Uso de casco", "SSO", "Cada turno", 6, 3, 1, 2, 0.75));
         String text = ObsintDailyReport.observations(summary, lines);
-        assertTrue(text.contains("75.0 %") && text.contains("Uso de casco (1)") && text.contains("2 verificaciones quedaron como Incierto"), text);
+        assertTrue(text.contains("75.0 %") && text.contains("Uso de casco (1)") && text.contains("2 verificaciones quedaron como Incierto")
+            && text.contains("verificabilidad de 66.7 %") && text.contains("por debajo del 90 %"), text);
         PDType1Font helvetica = new PDType1Font(Standard14Fonts.FontName.HELVETICA);
         assertEquals("Sí Compañía ?", ObsintReportPdf.safe("Sí Compañía ✓", helvetica));
     }
@@ -91,7 +92,7 @@ class ObsintReportResourceTest {
         try (PDDocument doc = Loader.loadPDF(pdf)) {
             String text = new PDFTextStripper().getText(doc).replaceAll("\\s+", " ");
             for (String expected : List.of("Informe Diario de Consignas", "Resumen General", "Desempeño por Consigna", "Incumplimientos (",
-                    "Observaciones Generales", code, "Se observa un veh"))
+                    "Observaciones Generales", "VERIFICABILIDAD", "INCIERTAS", code, "Se observa un veh"))
                 assertTrue(text.contains(expected), "falta en el PDF: " + expected);
             long images = 0;
             for (var page : doc.getPages())

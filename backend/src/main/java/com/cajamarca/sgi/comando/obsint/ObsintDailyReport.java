@@ -13,7 +13,8 @@ import org.jboss.logging.Logger;
 
 /**
  * "Informe Diario de Consignas" (diapositiva 13): todo lo que el monitorista respondió en un Punto durante un día (00:00–24:00,
- * America/Guayaquil), sin importar en cuántos casos. Incierto va aparte y no entra en el % de cumplimiento.
+ * America/Guayaquil), sin importar en cuántos casos. Dos indicadores: cumplimiento = Sí / (Sí + No), sobre lo que se pudo verificar,
+ * y verificabilidad = (Sí + No) / ejecutadas, cuánto se pudo verificar por cámara (Incierto la baja).
  */
 @ApplicationScoped
 public class ObsintDailyReport {
@@ -28,7 +29,7 @@ public class ObsintDailyReport {
 
     /** Fila de la lista de Reportes: un Punto en un día. compliance null = solo hubo respuestas Incierto. */
     public record Row(UUID pointId, LocalDate date, String client, String point, int executed, Double compliance) {}
-    public record Summary(int configured, int executed, int yes, int no, int uncertain, Double compliance, Integer averageSeconds) {}
+    public record Summary(int configured, int executed, int yes, int no, int uncertain, Double compliance, Double verifiability, Integer averageSeconds) {}
     public record ConsignaLine(String code, String title, String category, String frequency, int executed, int yes, int no, int uncertain, Double compliance) {}
     /** photo/photoType null = el monitorista no capturó evidencia. */
     public record Failure(String code, String title, Instant answeredAt, String location, String observation, byte[] photo, String photoType) {}
@@ -63,7 +64,7 @@ public class ObsintDailyReport {
         int yes = count(tasks, ObsintCaseTask.Decision.YES), no = count(tasks, ObsintCaseTask.Decision.NO);
         OptionalDouble avg = tasks.stream().filter(t -> t.secondsUsed != null).mapToInt(t -> t.secondsUsed).average();
         Summary summary = new Summary(configured(pointId), tasks.size(), yes, no, count(tasks, ObsintCaseTask.Decision.UNCERTAIN),
-            compliance(tasks), avg.isPresent() ? (int) Math.round(avg.getAsDouble()) : null);
+            compliance(tasks), verifiability(tasks), avg.isPresent() ? (int) Math.round(avg.getAsDouble()) : null);
 
         Map<String, List<ObsintCaseTask>> byCode = tasks.stream().collect(Collectors.groupingBy(t -> t.consignaCode, TreeMap::new, Collectors.toList()));
         List<ConsignaLine> lines = byCode.values().stream().map(list -> {
@@ -102,8 +103,17 @@ public class ObsintDailyReport {
         if (!failed.isEmpty()) out.append(" Los incumplimientos se concentran en: ")
             .append(failed.stream().limit(3).map(l -> l.title() + " (" + l.no() + ")").collect(Collectors.joining(", "))).append('.');
         if (s.uncertain() > 0) out.append(s.uncertain() == 1 ? " 1 verificación quedó como Incierto" : " %d verificaciones quedaron como Incierto".formatted(s.uncertain()))
-            .append(" (no se pudo confirmar por cámara); conviene revisar la visibilidad de esas cámaras.");
+            .append(" (no se pudo confirmar por cámara): verificabilidad de %s %%".formatted(percent(s.verifiability())))
+            .append(s.verifiability() < LOW_VERIFIABILITY ? "; está por debajo del %d %%, revise la visibilidad de las cámaras.".formatted(Math.round(LOW_VERIFIABILITY * 100)) : ".");
         return out.toString();
+    }
+
+    /** Por debajo de esto la verificabilidad se marca como alerta (problemas de cámara). */
+    static final double LOW_VERIFIABILITY = 0.9;
+
+    /** (Sí + No) / ejecutadas; null si no hubo respuestas. */
+    static Double verifiability(List<ObsintCaseTask> tasks) {
+        return tasks.isEmpty() ? null : (double) (count(tasks, ObsintCaseTask.Decision.YES) + count(tasks, ObsintCaseTask.Decision.NO)) / tasks.size();
     }
 
     static String percent(double value) { return String.format(Locale.ROOT, "%.1f", value * 100); }
