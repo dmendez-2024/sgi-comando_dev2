@@ -17,7 +17,8 @@ export function ObsintButton({onClick}:{onClick:()=>void}){
  * Consola OBSINT (Consola / OBSINT): el monitorista recorre las consignas en orden, mira sus cámaras,
  * responde Sí / No / Incierto con justificación, captura evidencia y puede escribir al agente en sitio.
  */
-export default function ObsintConsole({onBack}:{onBack:()=>void}){
+/** onBack: vuelve a la Consola general; sin él (monitorista) no hay a dónde volver y no se muestra. */
+export default function ObsintConsole({onBack}:{onBack?:()=>void}){
   const [obsCase,setObsCase]=useState<ObsintCase|null>(null);
   const [task,setTask]=useState<ObsintTask|null>(null);
   const [loading,setLoading]=useState(true);
@@ -86,7 +87,7 @@ export default function ObsintConsole({onBack}:{onBack:()=>void}){
   if(reportsOpen)return <ObsintReports onBack={()=>setReportsOpen(false)}/>;
 
   return <div className="obs-page">
-    <nav className="obs-breadcrumbs"><button type="button" onClick={onBack}><ArrowLeft size={15}/>Volver a Consola</button><span>/</span><small>OBSINT</small></nav>
+    {onBack&&<nav className="obs-breadcrumbs"><button type="button" onClick={onBack}><ArrowLeft size={15}/>Volver a Consola</button><span>/</span><small>OBSINT</small></nav>}
     <div className="obs-console-titlebar"><div className="obs-hero"><h2>Consola OBSINT</h2><p>Consola operativa para monitoristas de Observational Intelligence.</p></div>
       {canViewObsintReports()&&<button type="button" className="obs-reports-entry" onClick={()=>setReportsOpen(true)}><FileText size={16}/>Reportes</button>}
     </div>

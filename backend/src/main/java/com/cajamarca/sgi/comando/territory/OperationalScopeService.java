@@ -15,6 +15,7 @@ public class OperationalScopeService {
     private static final Set<String> COMPANY_ROLES = Set.of("COORDINADOR_COMPANIA","ASISTENTE_COORDINACION");
     @Inject TenantContext tenant;
     @Inject SecurityIdentity identity;
+    @Inject MonitorShiftScope monitorShift;
 
     public boolean countryWide(){ return identity.getRoles().stream().anyMatch(COUNTRY_ROLES::contains); }
     public String username(){ return identity.getPrincipal().getName(); }
@@ -47,13 +48,16 @@ public class OperationalScopeService {
         Set<UUID> out=new HashSet<>(); Set<UUID> regions=visibleRegionIds();
         if(!regions.isEmpty()){List<Company> companies=Company.list("instanceCountryId=?1 and regionId in ?2",tenant.instanceCountryId(),regions);companies.forEach(c->out.add(c.id));}
         for(UserOperationalScope s:scopes()) if("COMPANY".equals(s.scopeType)&&s.scopeId!=null) out.add(s.scopeId);
+        out.addAll(monitorShift.companiesNow());  // MONITOR: Compañías de su turno en curso (Asignaciones)
         return out;
     }
 
     /** In operational inboxes, company roles see only companies explicitly assigned to their identity. */
     public Set<UUID> allowedCompanyIdsForCompanyRoles(){
-        return identity.getRoles().stream().anyMatch(COMPANY_ROLES::contains)
-            ? directCompanyIds(scopes()) : allowedCompanyIds();
+        if(!identity.getRoles().stream().anyMatch(COMPANY_ROLES::contains)) return allowedCompanyIds();
+        Set<UUID> out=new HashSet<>(directCompanyIds(scopes()));
+        out.addAll(monitorShift.companiesNow());  // MONITOR: Compañías de su turno en curso (Asignaciones)
+        return out;
     }
 
     static Set<UUID> directCompanyIds(List<UserOperationalScope> scopes){

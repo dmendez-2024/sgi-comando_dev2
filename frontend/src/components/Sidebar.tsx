@@ -46,9 +46,14 @@ function Group({group,active,onChange}:{group:NavGroup;active:string;onChange:(v
 
 export const SIMULATOR_MENU='Simulador Agente (UAT)';
 
-export default function Sidebar({active,onChange,uatTools}:{active:string;onChange:(v:string)=>void;uatTools:boolean}){
+export default function Sidebar({active,onChange,uatTools,monitorOnly=false}:{active:string;onChange:(v:string)=>void;uatTools:boolean;monitorOnly?:boolean}){
   // Herramientas UAT (Simulador de Agente) solo visibles con la bandera UAT del backend.
   const ops={...operations,children:operations.children.filter(c=>uatTools||c.name!==SIMULATOR_MENU)};
+  // Monitorista (rol MONITOR): su lugar de trabajo es la Consola (incluye el botón OBSINT).
+  if(monitorOnly)return <aside className="sidebar">
+    <div className="brand"><img className="brand-logo" src={`${import.meta.env.BASE_URL}sgi-comando-logo-sidebar.png`} alt="SGI Comando"/></div>
+    <nav><button onClick={()=>onChange('Consola')} className={active==='Consola'?'active':''}><Bell size={18}/><span>Consola</span></button></nav>
+  </aside>;
   return <aside className="sidebar">
     <div className="brand"><img className="brand-logo" src={`${import.meta.env.BASE_URL}sgi-comando-logo-sidebar.png`} alt="SGI Comando"/></div>
     <nav>

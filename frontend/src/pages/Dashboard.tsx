@@ -113,7 +113,7 @@ const provinceAliases:Record<string,string>={
 const dashboardTitleByUser:Record<UatUser,string>={
   presidente:'Dashboard Nacional',ggeneral:'Dashboard Nacional',dlatam:'Dashboard LATAM',don:'Dashboard Nacional',dnacional:'Dashboard Nacional',
   dzonal:'Dashboard Zonal',jregional:'Dashboard Regional',coord:'Dashboard de Compañía',asistente:'Dashboard de Compañía',
-  supervisor:'Dashboard de Supervisión',agente:'Dashboard de Puesto',cliente:'Dashboard Cliente',
+  supervisor:'Dashboard de Supervisión',agente:'Dashboard de Puesto',cliente:'Dashboard Cliente',monitor:'Consola',
 };
 
 export default function Dashboard(){

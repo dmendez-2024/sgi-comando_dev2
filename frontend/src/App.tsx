@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import Sidebar, { SIMULATOR_MENU } from './components/Sidebar';
-import { api } from './api';
+import { api, isMonitor } from './api';
 import { installBackGuard } from './security/identAuth';
 
 import Header from './components/Header';
@@ -20,9 +20,11 @@ import Placeholder from './pages/Placeholder';
 import AgentSimulator from './pages/AgentSimulator';
 
 export default function App() {
-  const [active, setActive] = useState('Dashboard');
-  // "Atras" del navegador con la sesion abierta: se queda en SGI y vuelve al Dashboard.
-  useEffect(() => { installBackGuard(() => setActive('Dashboard')); }, []);
+  // El monitorista (rol MONITOR) entra directo a la Consola; el resto, al Dashboard.
+  const home = () => isMonitor() ? 'Consola' : 'Dashboard';
+  const [active, setActive] = useState(home);
+  // "Atras" del navegador con la sesion abierta: se queda en SGI y vuelve al inicio.
+  useEffect(() => { installBackGuard(() => setActive(home())); }, []);
   const [userRevision, setUserRevision] = useState(0);
   const [uatTools, setUatTools] = useState(false);
   useEffect(() => { api.features().then(f => setUatTools(f.uatTools)).catch(() => setUatTools(false)); }, [userRevision]);
@@ -44,7 +46,10 @@ export default function App() {
     return () => { current = false; };
   }, [userRevision,contextReload]);
 
-  const page = active === 'Dashboard'
+  const monitor = isMonitor();
+  const page = monitor
+    ? <ConsolaMonitor />
+    : active === 'Dashboard'
     ? <Dashboard />
     : active === 'Territorio'
       ? <Territory coreContext={coreContext} />
@@ -72,13 +77,13 @@ export default function App() {
         ? (uatTools ? <AgentSimulator /> : <Placeholder name="Herramienta UAT deshabilitada" />)
         : <Placeholder name={active} />;
 
-  const title = active === 'Dashboard' ? 'Comando Operacional' : active;
+  const title = monitor ? 'Consola' : active === 'Dashboard' ? 'Comando Operacional' : active;
 
   return (
     <div className="app">
-      <Sidebar active={active} onChange={setActive} uatTools={uatTools} />
+      <Sidebar active={monitor ? 'Consola' : active} onChange={setActive} uatTools={uatTools} monitorOnly={monitor} />
       <main>
-        <Header title={title} coreContext={coreContext} onUserChange={() => {setCoreLoaded(false);setUserRevision((x) => x + 1)}} />
+        <Header title={title} coreContext={coreContext} onUserChange={() => {setCoreLoaded(false);setActive(home());setUserRevision((x) => x + 1)}} />
         {coreError&&<div className="core-bootstrap-message"><span>{coreError}</span><button onClick={()=>{setCoreLoaded(false);setContextReload(value=>value+1)}}>Reintentar conexión</button></div>}
         {coreContext?.coreSyncStatus==='STALE'&&<div className="core-bootstrap-message stale">Mostrando el último catálogo CORE sincronizado ({coreContext.territorialDatasetVersion}). {coreContext.coreSyncMessage||''}</div>}
         <section key={`${active}-${userRevision}-${coreContext?.coreCatalogSyncedAt||coreError}`}>{coreLoaded?page:<div className="core-bootstrap-message">Cargando contexto del país y catálogos de CORE…</div>}</section>

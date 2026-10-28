@@ -161,6 +161,7 @@ const scopeByUser:Record<UatUser,Scope>={
   supervisor:{label:'Alcance: 1 compañía / Galvarino',companies:['GAL']},
   agente:{label:'Alcance: 1 compañía / Galvarino',companies:['GAL']},
   cliente:{label:'Alcance restringido',companies:['GAL']},
+  monitor:{label:'Monitorista',companies:null},
 };
 
 const latestDate=new Date();
@@ -378,7 +379,7 @@ export default function NovedadesExecution(){
   </div>
 }
 
-function userLabel(user:UatUser){return ({presidente:'Presidencia UAT',ggeneral:'Gerente General Ecuador UAT',dlatam:'Director Operaciones LATAM UAT',don:'Director Nacional de Operaciones UAT',dnacional:'Director Nacional de Operaciones UAT',dzonal:'Director Zonal de Operaciones UAT',jregional:'Jefe Regional de Operaciones UAT',coord:'Coordinador de Compañía UAT',asistente:'Asistente de Operaciones UAT',supervisor:'Supervisor UAT',agente:'Agente UAT',cliente:'Cliente UAT'}[user])}
+function userLabel(user:UatUser){return ({presidente:'Presidencia UAT',ggeneral:'Gerente General Ecuador UAT',dlatam:'Director Operaciones LATAM UAT',don:'Director Nacional de Operaciones UAT',dnacional:'Director Nacional de Operaciones UAT',dzonal:'Director Zonal de Operaciones UAT',jregional:'Jefe Regional de Operaciones UAT',coord:'Coordinador de Compañía UAT',asistente:'Asistente de Operaciones UAT',supervisor:'Supervisor UAT',agente:'Agente UAT',cliente:'Cliente UAT',monitor:'Monitor OBSINT UAT'}[user])}
 function Metric({icon,label,detail,value,tone}:{icon:ReactNode;label:string;detail:string;value:number;tone:'blue'|'teal'|'amber'|'red'|'green'}){return <article><span className={tone}>{icon}</span><div><small>{label}</small><strong>{value}</strong><em>{detail}</em></div></article>}
 function Field({label,children}:{label:string;children:ReactNode}){return <label className="nov-field"><span>{label}</span>{children}</label>}
 function ModalField({label,children}:{label:string;children:ReactNode}){return <label className="nov-modal-field"><span>{label}</span>{children}</label>}

@@ -1,7 +1,7 @@
 import {identClaims,identEnabled,identRoles,identToken,notifySessionEnded,renewIdentToken} from './security/identAuth';
 const API = import.meta.env.VITE_API_URL || '/dev.comando';
 // const API=import.meta.env.VITE_API_URL ?? 'http://localhost:8080';
-export type UatUser='presidente'|'ggeneral'|'dlatam'|'don'|'dnacional'|'dzonal'|'jregional'|'coord'|'asistente'|'supervisor'|'agente'|'cliente';
+export type UatUser='presidente'|'ggeneral'|'dlatam'|'don'|'dnacional'|'dzonal'|'jregional'|'coord'|'asistente'|'supervisor'|'agente'|'cliente'|'monitor';
 let currentUser:UatUser=(localStorage.getItem('sgi-uat-user') as UatUser)||'coord';
 const PASSWORD='CajamarcaUAT!2026';
 const contextCache=new Map<UatUser,Promise<any>>();
@@ -9,7 +9,9 @@ export const setUser=(u:UatUser)=>{currentUser=u;contextCache.clear();localStora
 /** Perfil de pantalla segun el Rol que entrega IDENT (Cargo); sin IDENT, el usuario UAT elegido en el selector. */
 const PROFILE_BY_ROLE:[string,UatUser][]=[['GERENCIA_GENERAL','ggeneral'],['PRESIDENTE','presidente'],['DIRECTOR_OPERACIONES_LATAM','dlatam'],['DIRECTOR_OPERACIONES_NACIONAL','don'],
  ['DIRECTOR_NACIONAL','dnacional'],['DIRECTOR_ZONAL','dzonal'],['JEFE_REGIONAL','jregional'],['COORDINADOR_COMPANIA','coord'],
- ['ASISTENTE_COORDINACION','asistente'],['SUPERVISOR_SEGURIDAD','supervisor'],['AGENTE_SEGURIDAD','agente'],['CLIENTE','cliente']];
+ ['ASISTENTE_COORDINACION','asistente'],['SUPERVISOR_SEGURIDAD','supervisor'],['AGENTE_SEGURIDAD','agente'],['MONITOR','monitor'],['CLIENTE','cliente']];
+/** Monitorista (rol MONITOR): solo trabaja en la Consola (con OBSINT, sin sus Reportes). */
+export const isMonitor=()=>getUser()==='monitor';
 export const getUser=():UatUser=>{
  if(!identEnabled())return currentUser;
  const roles=identRoles(); return PROFILE_BY_ROLE.find(([r])=>roles.includes(r))?.[1]??'cliente';

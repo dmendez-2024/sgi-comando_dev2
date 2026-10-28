@@ -73,6 +73,7 @@ public class ServiceOverviewResource {
 
     @GET
     @Transactional
+    @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION","SUPERVISOR_SEGURIDAD","AGENTE_SEGURIDAD","CLIENTE","MONITOR"})
     public OverviewResponse overview() {
         boolean companyScoped = identity.getRoles().stream().anyMatch(COMPANY_ROLES::contains);
         Set<UUID> allowed = companyScoped

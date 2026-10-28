@@ -159,7 +159,7 @@ Pantalla de la diapositiva 10. Se abre desde Configuración del Punto.
   - Roles de país (Presidente, Gerencia General, directores nacionales y LATAM): todas las Compañías.
   - Roles de Compañía (Coordinador, Asistente): solo las Compañías que tienen asignadas directamente.
   - Los demás: las Compañías de su zona, región o asignación directa (`user_operational_scope`).
-  - **MONITOR:** además, las Compañías de los puestos de Monitoreo (Coordinación, `MON-xxx`) donde la persona tiene **turno en curso**. Se lee de Asignaciones con el mismo criterio que SGI Operador: asignación no eliminada, plan de la semana publicado o cerrado, cuenta quien cubrió el turno (`actual_employee_id`), y la persona se identifica por el `persona_id` de su token de IDENT. Fuera de su turno, o con el plan en borrador, no ve consignas.
+  - **MONITOR:** además, las Compañías de los puestos de Monitoreo (Coordinación, `MON-xxx`) donde la persona tiene **turno en curso**. Se lee de Asignaciones con el mismo criterio que SGI Operador: asignación no eliminada, plan de la semana publicado o cerrado, cuenta quien cubrió el turno (`actual_employee_id`), y la persona se identifica por el `persona_id` de su token de IDENT. Fuera de su turno, o con el plan en borrador, no ve consignas. Vive en `territory/MonitorShiftScope` y lo suma `OperationalScopeService`, así que vale para toda la Consola, no solo OBSINT.
   - Un Punto sin Compañía no entra en ningún caso. Si no queda ninguna consigna, responde 409: "No hay consignas OBSINT pendientes en este horario en las Compañías de su alcance…".
   - No separa por cliente: dos clientes atendidos por la misma Compañía se ven juntos.
 - Un usuario tiene un solo caso en curso. Las tareas se resuelven **en orden**.
@@ -179,7 +179,10 @@ Pantalla de la diapositiva 10. Se abre desde Configuración del Punto.
 
 - **Roles:** los mismos de Notificación de Incidentes, en las tres APIs. Agente y cliente no tienen acceso.
   - PRESIDENTE, GERENCIA_GENERAL, DIRECTOR_OPERACIONES_LATAM, DIRECTOR_OPERACIONES_NACIONAL, DIRECTOR_NACIONAL, DIRECTOR_ZONAL, JEFE_REGIONAL, COORDINADOR_COMPANIA, ASISTENTE_COORDINACION y SUPERVISOR_SEGURIDAD.
-  - **MONITOR** (`ObsintPlatform.MONITOR_ROLE`): solo la **consola** (`/api/obsint`), no la configuración ni Componentes de Seguridad. IDENT debe enviarlo para los cargos "Monitor" y "Agente de Consola de Monitoreo Senior" del programa SGI_COM (hoy no está en `cargo-defaults.json`).
+  - **MONITOR** (`ObsintPlatform.MONITOR_ROLE`): solo la **consola** (`/api/obsint`) y el contexto del país (`/api/context`); no la configuración, Reportes ni Componentes de Seguridad. IDENT debe enviarlo para los cargos "Monitor" y "Agente de Consola de Monitoreo Senior" del programa SGI_COM.
+  - **Persona del monitor:** la del token de IDENT; con usuario UAT (sin IDENT), la del empleado vinculado en `operator_employee_binding`, igual que SGI Operador.
+  - **Pantalla del monitor:** perfil "Monitor" (`api.ts`, `isMonitor()`); entra directo a la **Consola** y el menú solo muestra "Consola". Dentro tiene el botón OBSINT; el botón "Reportes" de OBSINT no le aparece (solo Presidente y Director Nacional, nota de las diapositivas 11 y 12). La Consola general (incidentes, clientes, resumen de servicios, reportes de agentes) usa el mismo alcance: muestra los casos de las Compañías de su turno en curso (`OperationalScopeService` suma `MonitorShiftScope`; solo afecta a usuarios con rol MONITOR).
+  - **Probar en local (sin IDENT):** hace falta un usuario UAT con rol `MONITOR` (`app_user`), vinculado en `operator_employee_binding` a un empleado con cargo de monitor que tenga turno en curso en un puesto de Monitoreo de su Compañía, con el plan de la semana publicado.
 - **Acceso al punto:** la configuración aplica la **misma regla que Consignas**. El punto debe existir en el tenant y el usuario debe poder gestionar su compañía (`requireCompanyForCompanyRoles`).
 - **Errores:** cada rechazo responde `{"message": "…"}` con el código HTTP (400, 403, 404, 409, 503), y la pantalla muestra el mensaje tal cual.
 
@@ -444,7 +447,7 @@ Con `consignmentCode`, `title` e `instruction` salen de Consignas. Sin él (tare
 - **HikCentral (bodycam DS-MCW409):** probado solo con un simulador local de la OpenAPI, en la rama local `prueba-hikcentral` (no subida). Falta que el administrador active la OpenAPI de `hikcentral.cajamarca.ec` (hoy `/artemis` responde 502) y validarlo con el manual de su versión.
 - **Alcance del monitorista más fino:** hoy el caso se limita a los Puntos de las Compañías del usuario (§3). Si más adelante se requiere separar por cliente o por puesto de monitoreo (Kaibil), hace falta una asignación nueva; solo cambiaría `ObsintPlatform.visiblePoints`.
 - **Envío real de mensajes** al agente en SGI Operador (requiere SITC). Mientras tanto se guardan como `TEST`.
-- **Rol `MONITOR` en IDENT:** el backend y la visibilidad del botón OBSINT ya admiten este rol; el menú Consola ya existe. Falta que IDENT lo asigne a los cargos de monitoreo en SGI_COM y que cada Compañía tenga su puesto de Monitoreo en Coordinación con los monitores asignados y el plan publicado. La sesión real de IDENT requiere validación con una cuenta de monitorista.
+- **Rol `MONITOR` en IDENT:** backend y pantalla listos (§3). Falta que IDENT lo asigne a los cargos de monitoreo en SGI_COM y que cada Compañía tenga su puesto de Monitoreo en Coordinación con los monitores asignados y el plan publicado.
 
 **Preguntas abiertas para el negocio**
 1. ¿Están de acuerdo con cómo cuenta "Incierto"? Propuesta aplicada: fuera del cumplimiento, medido aparte como verificabilidad, con alerta bajo el 90 %.

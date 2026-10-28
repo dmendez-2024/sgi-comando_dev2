@@ -90,6 +90,7 @@ const scopeByUser:Record<UatUser,Scope>={
   supervisor:{label:'Alcance: 1 compañía / Galvarino',companies:['GAL']},
   agente:{label:'Alcance: 1 compañía / Galvarino',companies:['GAL']},
   cliente:{label:'Alcance restringido',companies:['GAL']},
+  monitor:{label:'Monitorista',companies:null},
 };
 
 const guayaquilDateFormatter=new Intl.DateTimeFormat('en-US',{timeZone:'America/Guayaquil',year:'numeric',month:'2-digit',day:'2-digit'});

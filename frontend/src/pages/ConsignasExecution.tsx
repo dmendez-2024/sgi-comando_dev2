@@ -107,6 +107,7 @@ const scopeByUser:Record<UatUser,Scope>={
   supervisor:{label:'Alcance: 1 compañía / Galvarino',companies:['GAL']},
   agente:{label:'Alcance: 1 compañía / Galvarino',companies:['GAL']},
   cliente:{label:'Alcance restringido / solo su operación',companies:['GAL']},
+  monitor:{label:'Monitorista',companies:null},
 };
 
 const latestDate=new Date();
