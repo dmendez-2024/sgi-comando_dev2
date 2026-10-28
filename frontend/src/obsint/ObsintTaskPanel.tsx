@@ -36,7 +36,6 @@ export function ObsintTaskPanel({task,running,captureFrame,onAnswered,onNotice}:
     try{
       const next=await obsintApi.answerTask(task.id,draft.decision,draft.justification.trim());
       clearDraft(task.id);
-      onNotice(next.status==='COMPLETED'?`Has completado las ${next.tasks.length} tareas.`:'Respuesta registrada.');
       onAnswered(next);
     }catch(error){onNotice(errorText(error))}
     finally{setSaving(false)}
