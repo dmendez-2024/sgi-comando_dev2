@@ -25,6 +25,7 @@ export default function ObsintConsole({onBack}:{onBack:()=>void}){
   const [opening,setOpening]=useState(false);
   const [selectedCameraId,setSelectedCameraId]=useState<string|null>(null);
   const [notice,setNotice]=useState('');
+  const [answerFeedback,setAnswerFeedback]=useState<{title:string;detail:string}|null>(null);
   const [reportsOpen,setReportsOpen]=useState(false);
   const videos=useRef(new Map<string,HTMLVideoElement>());
   const now=useNow();
@@ -32,6 +33,13 @@ export default function ObsintConsole({onBack}:{onBack:()=>void}){
 
   const showNotice=useCallback((text:string)=>setNotice(text),[]);
   useEffect(()=>{if(!notice)return;const id=setTimeout(()=>setNotice(''),3200);return()=>clearTimeout(id);},[notice]);
+  useEffect(()=>{if(!answerFeedback)return;const id=setTimeout(()=>setAnswerFeedback(null),8000);return()=>clearTimeout(id);},[answerFeedback]);
+
+  function handleAnswered(next:ObsintCase){
+    setObsCase(next);
+    setAnswerFeedback(next.status==='COMPLETED'?null:{title:'Respuesta registrada',detail:'La siguiente tarea está lista para revisar.'});
+    window.scrollTo({top:0,behavior:'smooth'});
+  }
 
   useEffect(()=>{
     let current=true;
@@ -51,12 +59,6 @@ export default function ObsintConsole({onBack}:{onBack:()=>void}){
     return()=>{current=false};
   },[currentTaskId]);
 
-  // Aviso único al vencer el tiempo: se puede seguir respondiendo, pero queda registrado como fuera de tiempo.
-  const warnedFor=useRef<string|null>(null);
-  useEffect(()=>{
-    if(countdown.expired&&task&&warnedFor.current!==task.id){warnedFor.current=task.id;showNotice('Tiempo agotado. Registra tu evaluación y continúa.');}
-  },[countdown.expired,task,showNotice]);
-
   const registerVideo=useCallback((cameraId:string,el:HTMLVideoElement|null)=>{if(el)videos.current.set(cameraId,el);else videos.current.delete(cameraId);},[]);
 
   // El tiempo arranca cuando las cámaras ya cargaron, no antes. En el servidor es idempotente.
@@ -73,12 +75,13 @@ export default function ObsintConsole({onBack}:{onBack:()=>void}){
   },[selectedCameraId]);
 
   async function openCase(){
-    setOpening(true);setError('');
+    setOpening(true);setError('');setAnswerFeedback(null);
     try{setObsCase(await obsintApi.openCase())}catch(e){setError(errorText(e))}finally{setOpening(false)}
   }
 
   const running=task?.status==='IN_PROGRESS';
   const timerTone=!task?.deadline?'idle':countdown.level;
+  const [today,clock]=formatDateTime(now).split(', ');
 
   if(reportsOpen)return <ObsintReports onBack={()=>setReportsOpen(false)}/>;
 
@@ -88,6 +91,8 @@ export default function ObsintConsole({onBack}:{onBack:()=>void}){
       {canViewObsintReports()&&<button type="button" className="obs-reports-entry" onClick={()=>setReportsOpen(true)}><FileText size={16}/>Reportes</button>}
     </div>
 
+    {answerFeedback&&<div className="obs-answer-feedback" role="status"><span><CircleCheck size={22}/></span><div><strong>{answerFeedback.title}</strong><p>{answerFeedback.detail}</p></div></div>}
+
     {error&&<div className="obs-error">{error}</div>}
     {loading?<div className="obs-card obs-message">Cargando consola OBSINT…</div>
     :!obsCase?<StartCard onStart={openCase} opening={opening}/>
@@ -96,12 +101,16 @@ export default function ObsintConsole({onBack}:{onBack:()=>void}){
     :<>
       <div className="obs-kpis">
         <Kpi icon={<FolderOpen size={20}/>} tone="blue" label="Caso" value={task.caseCode}/>
-        <Kpi icon={<Users size={20}/>} tone="purple" label="Grupo" value={`Grupo ${task.position} · ${task.cameras.length} ${task.cameras.length===1?'cámara':'cámaras'}`}/>
+        <Kpi icon={<Users size={20}/>} tone="purple" label="Grupo" value={<span className="obs-kpi-stack"><span>Grupo {task.position}</span><span>{task.cameras.length} {task.cameras.length===1?'cámara':'cámaras'}</span></span>}/>
         <Kpi icon={<ListChecks size={20}/>} tone="blue" label="Tarea" value={<>{task.position} de {task.totalTasks} <Dots total={task.totalTasks} current={task.position}/></>}/>
         <Kpi icon={<Clock3 size={20}/>} tone="green" label="Tiempo restante" value={<span className={`obs-timer ${timerTone}`}>{formatSeconds(countdown.seconds)}</span>}/>
-        <Kpi icon={<CalendarDays size={20}/>} tone="blue" label="Fecha y hora" value={formatDateTime(now)}/>
+        <Kpi icon={<CalendarDays size={20}/>} tone="blue" label="Fecha y hora" value={<span className="obs-kpi-stack obs-kpi-date"><span>{today}</span><span>{clock}</span></span>}/>
         <Kpi icon={<UserRound size={20}/>} tone="blue" label="Operador" value={task.operator}/>
       </div>
+      {running&&countdown.expired&&<div className="obs-timeout-alert" role="alert">
+        <span className="obs-timeout-icon"><Clock3 size={22}/></span>
+        <div><strong>Tiempo agotado para esta tarea</strong><p>Completa la evaluación y continúa. La respuesta se registrará fuera de tiempo.</p></div>
+      </div>}
       <div className="obs-workspace">
         <div className="obs-left">
           <section className="obs-card obs-video">
@@ -111,7 +120,7 @@ export default function ObsintConsole({onBack}:{onBack:()=>void}){
           </section>
           <ObsintCommPanel taskId={task.id} disabled={!running} onNotice={showNotice}/>
         </div>
-        <ObsintTaskPanel key={task.id} task={task} running={running} captureFrame={captureSelected} onAnswered={setObsCase} onNotice={showNotice}/>
+        <ObsintTaskPanel key={task.id} task={task} running={running} captureFrame={captureSelected} onAnswered={handleAnswered} onNotice={showNotice}/>
       </div>
     </>}
     {notice&&<div className="obs-toast" role="status">{notice}</div>}
@@ -132,12 +141,22 @@ function StartCard({onStart,opening}:{onStart:()=>void;opening:boolean}){
 }
 
 function Summary({obsCase,onNew,opening}:{obsCase:ObsintCase;onNew:()=>void;opening:boolean}){
-  return <section className="obs-card obs-start">
-    <CircleCheck size={34} className="obs-green"/>
-    <h3>Caso {obsCase.code} completado</h3>
-    <ul className="obs-summary">{obsCase.tasks.map(t=><li key={t.id}><span>Tarea {t.position}</span>
-      <b className={`obs-decision ${t.decision?.toLowerCase()??''}`}>{t.decision?decisionLabel(t.decision):'—'}</b>
-      {t.timedOut&&<small>Fuera de tiempo</small>}</li>)}</ul>
-    <button type="button" onClick={onNew} disabled={opening}><RefreshCw size={16}/>{opening?'Iniciando…':'Iniciar nuevo caso'}</button>
+  const yes=obsCase.tasks.filter(t=>t.decision==='YES').length;
+  const no=obsCase.tasks.filter(t=>t.decision==='NO').length;
+  const uncertain=obsCase.tasks.filter(t=>t.decision==='UNCERTAIN').length;
+  const late=obsCase.tasks.filter(t=>t.timedOut).length;
+  return <section className="obs-card obs-summary-card">
+    <div className="obs-summary-header"><span><CircleCheck size={30}/></span><div><h3>Caso {obsCase.code} completado</h3><p>Se registraron las {obsCase.tasks.length} respuestas de este caso OBSINT.</p></div></div>
+    <div className="obs-summary-body">
+      <div className="obs-summary-stats" aria-label="Resumen de respuestas">
+        <div><strong>{yes}</strong><span>Sí</span></div><div><strong>{no}</strong><span>No</span></div>
+        <div><strong>{uncertain}</strong><span>Incierto</span></div><div><strong>{late}</strong><span>Fuera de tiempo</span></div>
+      </div>
+      <h4>Resultados por tarea</h4>
+      <ul className="obs-summary">{obsCase.tasks.map(t=><li key={t.id}><span>Tarea {t.position}</span>
+        <b className={`obs-decision ${t.decision?.toLowerCase()??''}`}>{t.decision?decisionLabel(t.decision):'—'}</b>
+        {t.timedOut&&<small>Fuera de tiempo</small>}</li>)}</ul>
+      <button type="button" className="obs-summary-new" onClick={onNew} disabled={opening}><RefreshCw size={16}/>{opening?'Iniciando…':'Iniciar nuevo caso'}</button>
+    </div>
   </section>;
 }

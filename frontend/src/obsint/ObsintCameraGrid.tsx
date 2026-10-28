@@ -17,7 +17,7 @@ type Props={
 
 const SETTLE_TIMEOUT_MS=5000;
 
-/** Grilla de 1 a 4 cámaras (con 3, la tercera ocupa todo el ancho). Clic en una cámara la elige para capturar evidencia. */
+/** Cámara seleccionada en grande y las demás en miniaturas desplazables; todas mantienen su video activo para capturar evidencia. */
 export function ObsintCameraGrid({cameras,selectedId,onSelect,now,registerVideo,onAllSettled}:Props){
   const settled=useRef(new Set<string>());
   const notified=useRef(false);
@@ -37,9 +37,13 @@ export function ObsintCameraGrid({cameras,selectedId,onSelect,now,registerVideo,
   const handleSettled=(cameraId:string)=>{settled.current.add(cameraId);if(settled.current.size>=cameras.length)notify();};
 
   if(!cameras.length)return <div className="obs-no-cameras">Esta consigna no tiene cámaras asociadas.</div>;
-  return <div className={`obs-camera-grid count-${Math.min(cameras.length,4)}`}>
-    {cameras.slice(0,4).map((camera,i)=><Feed key={camera.id} camera={camera} index={i} now={now} selected={camera.id===selectedId}
-      onSelect={()=>onSelect(camera.id)} registerVideo={registerVideo} onSettled={handleSettled}/>)}
+  const main=cameras.find(camera=>camera.id===selectedId)??cameras[0];
+  const thumbnails=cameras.filter(camera=>camera.id!==main.id);
+  const feed=(camera:ObsintCamera)=><Feed key={camera.id} camera={camera} index={cameras.indexOf(camera)} now={now} selected={camera.id===main.id}
+    onSelect={()=>onSelect(camera.id)} registerVideo={registerVideo} onSettled={handleSettled}/>;
+  return <div className={`obs-camera-grid${cameras.length===1?' count-1':''}`}>
+    <div className="obs-camera-main">{feed(main)}</div>
+    {thumbnails.length>0&&<div className="obs-camera-thumbs" aria-label="Otras cámaras"><div className="obs-camera-thumbs-track">{thumbnails.map(feed)}</div></div>}
   </div>;
 }
 
@@ -72,7 +76,7 @@ function Feed({camera,index,now,selected,onSelect,registerVideo,onSettled}:{came
       ?<div className="obs-no-signal"><VideoOff size={34}/><span>Sin señal</span><small>{camera.streamUrl??'Video en vivo pendiente de conexión'}</small></div>
       :<video ref={el=>{videoRef.current=el;registerVideo(camera.id,el)}} autoPlay muted playsInline preload="auto"
           loop={!live} onLoadedData={()=>onSettled(camera.id)} onError={()=>{setFailed(true);onSettled(camera.id)}}/>}
-    <div className="obs-feed-title"><Video size={16}/><div><b>{camera.name||`Cámara ${String(index+1).padStart(2,'0')}`}</b><span>{camera.location??camera.code}</span></div></div>
+    <div className="obs-feed-title"><Video size={16}/><div><b>{camera.name||`Cámara ${String(index+1).padStart(2,'0')}`}</b><span>{camera.location??camera.code}</span>{selected&&<em>Seleccionada para evidencia</em>}</div></div>
     <div className={`obs-feed-badge ${live?'live':''}`}><i/>{live?'EN VIVO':'GRABACIÓN'}</div>
     <div className="obs-feed-time">{formatDateTime(now)}</div>
     {!failed&&<div className="obs-feed-controls">

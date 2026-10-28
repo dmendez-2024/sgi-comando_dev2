@@ -109,10 +109,11 @@ Pantalla de la diapositiva 10. Se abre desde Configuración del Punto.
   | Fecha y hora | Reloj en vivo |
   | Operador | Usuario con sesión iniciada |
 
-- **Video:** de 1 a 4 cámaras, con clic para elegir la de evidencia, pausa y pantalla completa. Una cámara sin video configurado muestra **Sin señal · Video en vivo pendiente de conexión**.
+- Al vencer el tiempo de una tarea, la consola mantiene visible una alerta junto a las tarjetas hasta que se responda y avance a la siguiente; la respuesta se registra como fuera de tiempo.
+- **Video:** de 1 a 4 cámaras por consigna (límite de configuración), con la seleccionada en grande y las demás como miniaturas alineadas arriba; la columna de miniaturas permite desplazamiento si no caben. Clic para elegir la de evidencia, pausa y pantalla completa. Una cámara sin video configurado muestra **Sin señal · Video en vivo pendiente de conexión**.
 - **Respuesta:** consigna, **Sí / No / Incierto**, justificación obligatoria (máximo 500 caracteres) y evidencia capturada de la cámara elegida.
-- **Comunicación:** mensajes al agente en sitio.
-- **Botones:** CONTINUAR, y FINALIZAR en la última tarea, que lleva al resumen del caso.
+- **Comunicación:** los mensajes actuales se registran como `TEST` y la pantalla indica **Modo prueba · no enviado al agente**. El envío real a SGI Operador sigue pendiente.
+- **Botones:** CONTINUAR muestra una confirmación visible junto a la cabecera durante ocho segundos y lleva a la siguiente tarea; FINALIZAR muestra el resumen del caso con conteos de Sí, No, Incierto y respuestas fuera de tiempo.
 - **Reportes** (botón en la cabecera, diapositivas 12 y 13): un **Informe Diario de Consignas por Cliente, Punto y día** (00:00–24:00, hora de Ecuador), que junta todos los casos del día. Lista con filtros (por defecto, los últimos 30 días) y descarga en PDF (`ObsintReports.tsx`, `ObsintReportResource.java`, `ObsintDailyReport.java`, `ObsintReportPdf.java` con Apache PDFBox). El PDF trae cabecera (cliente, punto, servicio, fecha y turno), resumen (configuradas, ejecutadas, cumplidas, incumplidas, tiempo promedio de revisión), desempeño por consigna con barra de %, incumplimientos con la foto de evidencia y observaciones generales automáticas. Dos indicadores: **cumplimiento** = cumplidas / (cumplidas + incumplidas), sobre lo que se pudo verificar, y **verificabilidad** = (cumplidas + incumplidas) / ejecutadas, cuánto se pudo verificar por cámara (en ámbar si baja del 90 %). **Incierto** cuenta como ejecutada y baja la verificabilidad, no el cumplimiento; columna "Inciertas" en la tabla. Regla elegida; pendiente de confirmar con el negocio. Solo **Presidente** y **Director Nacional**: roles `PRESIDENTE`, `DIRECTOR_OPERACIONES_NACIONAL` (el que trae IDENT para "Director Nacional de Operaciones") y `DIRECTOR_NACIONAL` (perfil UAT).
 
 ---
@@ -443,9 +444,7 @@ Con `consignmentCode`, `title` e `instruction` salen de Consignas. Sin él (tare
 - **HikCentral (bodycam DS-MCW409):** probado solo con un simulador local de la OpenAPI, en la rama local `prueba-hikcentral` (no subida). Falta que el administrador active la OpenAPI de `hikcentral.cajamarca.ec` (hoy `/artemis` responde 502) y validarlo con el manual de su versión.
 - **Alcance del monitorista más fino:** hoy el caso se limita a los Puntos de las Compañías del usuario (§3). Si más adelante se requiere separar por cliente o por puesto de monitoreo (Kaibil), hace falta una asignación nueva; solo cambiaría `ObsintPlatform.visiblePoints`.
 - **Envío real de mensajes** al agente en SGI Operador (requiere SITC). Mientras tanto se guardan como `TEST`.
-- **Panel de mensajes en modo prueba (frontend):** con `deliveryStatus = TEST`, el panel debe decir que los mensajes no se envían (por ejemplo, "Modo prueba · los mensajes no se envían al agente") en lugar de "Agente en sitio · Conectado", y marcar cada mensaje como "No enviado (prueba)" en lugar del doble check.
-- **Rol `MONITOR` en IDENT:** el backend ya lo acepta en la consola (§3). Falta que IDENT lo asigne a los cargos de monitoreo en SGI_COM, que el menú de Comando le muestre la Consola y el botón OBSINT (frontend), y que cada Compañía tenga su puesto de Monitoreo en Coordinación con los monitores asignados y el plan publicado.
-- Cambios visuales de la consola: una cámara grande con miniaturas, Cliente · Punto en la cabecera.
+- **Rol `MONITOR` en IDENT:** el backend y la visibilidad del botón OBSINT ya admiten este rol; el menú Consola ya existe. Falta que IDENT lo asigne a los cargos de monitoreo en SGI_COM y que cada Compañía tenga su puesto de Monitoreo en Coordinación con los monitores asignados y el plan publicado. La sesión real de IDENT requiere validación con una cuenta de monitorista.
 
 **Preguntas abiertas para el negocio**
 1. ¿Están de acuerdo con cómo cuenta "Incierto"? Propuesta aplicada: fuera del cumplimiento, medido aparte como verificabilidad, con alerta bajo el 90 %.

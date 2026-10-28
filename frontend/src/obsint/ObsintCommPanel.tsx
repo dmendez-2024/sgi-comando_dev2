@@ -21,7 +21,7 @@ export function ObsintCommPanel({taskId,disabled,onNotice}:{taskId:string;disabl
     const value=text.trim();
     if(!value)return onNotice('Escribe un mensaje antes de enviarlo.');
     setSending(true);
-    try{const message=await obsintApi.sendMessage(taskId,value);setMessages(prev=>[...prev,message]);setText('');onNotice('Mensaje enviado al agente.');}
+    try{const message=await obsintApi.sendMessage(taskId,value);setMessages(prev=>[...prev,message]);setText('');onNotice(message.deliveryStatus==='TEST'?'Mensaje registrado en modo prueba; no se envió al agente.':message.deliveryStatus==='SENT'?'Mensaje entregado al agente.':'No se pudo entregar el mensaje al agente.');}
     catch(error){onNotice(errorText(error))}
     finally{setSending(false)}
   }
@@ -29,19 +29,20 @@ export function ObsintCommPanel({taskId,disabled,onNotice}:{taskId:string;disabl
   return <section className="obs-card obs-comm">
     <div className="obs-comm-head">
       <h3><MessageSquare size={19}/>Comunicación</h3>
-      <span><i className="obs-dot"/>Agente en sitio · <b>Conectado</b> · Canal unidireccional <span title="Los mensajes van del monitorista al agente; el agente no responde por este canal."><Info size={14}/></span></span>
+      <span className="obs-comm-test"><i className="obs-dot"/><b>Modo prueba</b> · Los mensajes se registran, pero no llegan al agente <span title="El envío real a SGI Operador aún no está disponible."><Info size={14}/></span></span>
     </div>
     <div className="obs-messages">
       {messages.length===0
-        ?<div className="obs-empty-msg"><MessageSquare size={20}/>Aún no has enviado mensajes al agente.</div>
+        ?<div className="obs-empty-msg"><MessageSquare size={20}/>Aún no hay mensajes registrados.</div>
         :messages.map(m=><div className="obs-msg" key={m.id}>
           <b>{m.operator} <small>{formatClock(m.sentAt)}</small></b>
-          <div>{m.text} {m.deliveryStatus==='SENT'?<CheckCheck size={13} aria-label="Entregado"/>:<CircleAlert size={13} aria-label="No entregado"/>}</div>
+          <div>{m.text} {m.deliveryStatus==='SENT'?<CheckCheck size={13} aria-label="Entregado"/>:<CircleAlert size={13} aria-label={m.deliveryStatus==='TEST'?'No enviado (prueba)':'No entregado'}/>}</div>
+          <small className="obs-msg-status">{m.deliveryStatus==='TEST'?'No enviado (prueba)':m.deliveryStatus==='SENT'?'Entregado':'No entregado'}</small>
         </div>)}
     </div>
     <form className="obs-compose" onSubmit={submit}>
-      <input value={text} onChange={e=>setText(e.target.value)} maxLength={500} autoComplete="off" placeholder="Escribe un mensaje para el agente..." disabled={disabled||sending}/>
-      <button type="submit" disabled={disabled||sending}><Send size={16}/>Enviar</button>
+      <input value={text} onChange={e=>setText(e.target.value)} maxLength={500} autoComplete="off" placeholder="Escribe un mensaje de prueba..." disabled={disabled||sending}/>
+      <button type="submit" disabled={disabled||sending}><Send size={16}/>Registrar</button>
     </form>
   </section>;
 }
