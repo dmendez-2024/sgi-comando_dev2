@@ -14,8 +14,8 @@ const reportDate=(value:string)=>{
 
 export function canViewObsintReports(){
   return identEnabled()
-    ?identRoles().some(role=>role==='PRESIDENTE'||role==='DIRECTOR_NACIONAL')
-    :getUser()==='presidente'||getUser()==='dnacional';
+    ?identRoles().some(role=>role==='PRESIDENTE'||role==='DIRECTOR_NACIONAL'||role==='DIRECTOR_OPERACIONES_NACIONAL')
+    :getUser()==='presidente'||getUser()==='dnacional'||getUser()==='don';
 }
 
 export default function ObsintReports({onBack}:{onBack:()=>void}){

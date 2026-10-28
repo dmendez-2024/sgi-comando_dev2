@@ -113,6 +113,7 @@ Pantalla de la diapositiva 10. Se abre desde Configuración del Punto.
 - **Respuesta:** consigna, **Sí / No / Incierto**, justificación obligatoria (máximo 500 caracteres) y evidencia capturada de la cámara elegida.
 - **Comunicación:** mensajes al agente en sitio.
 - **Botones:** CONTINUAR, y FINALIZAR en la última tarea, que lleva al resumen del caso.
+- **Reportes** (botón en la cabecera, diapositivas 11 a 13): casos finalizados por Cliente y Punto, con filtros y descarga en PDF (`ObsintReports.tsx`, `ObsintReportResource.java`). Solo **Presidente** y **Director Nacional**: roles `PRESIDENTE`, `DIRECTOR_OPERACIONES_NACIONAL` (el que trae IDENT para "Director Nacional de Operaciones") y `DIRECTOR_NACIONAL` (perfil UAT). El PDF lista cada tarea con su resultado (Sí / No / Incierto, "fuera de tiempo") y la justificación completa, partida en líneas.
 
 ---
 
