@@ -126,17 +126,17 @@ final class ObsintReportPdf {
             float rowH = Math.max(24, 8 + 11 * Math.max(title.size(), cat.size()));
             if (ensure(rowH)) tableHeader(heads, cols);
             float x = M, base = y - 14;
-            String[] simple = {String.valueOf(++i), l.code()};
-            for (int c = 0; c < 2; c++) { text(simple[c], regular, 8.5f, x + 4, base, TEXT); x += cols[c]; }
+            centered(String.valueOf(++i), regular, 8.5f, x, cols[0], base, TEXT); x += cols[0];
+            text(l.code(), regular, 8.5f, x + 4, base, TEXT); x += cols[1];
             for (int k = 0; k < title.size(); k++) text(title.get(k), regular, 8.5f, x + 4, base - k * 11, TEXT);
             x += cols[2];
             for (int k = 0; k < cat.size(); k++) text(cat.get(k), regular, 8.5f, x + 4, base - k * 11, TEXT);
             x += cols[3];
             text(l.frequency(), regular, 8.5f, x + 4, base, TEXT); x += cols[4];
-            text(String.valueOf(l.executed()), regular, 8.5f, x + 4, base, TEXT); x += cols[5];
-            text(String.valueOf(l.yes()), bold, 8.5f, x + 4, base, GREEN); x += cols[6];
-            text(String.valueOf(l.no()), bold, 8.5f, x + 4, base, l.no() > 0 ? RED : TEXT); x += cols[7];
-            text(String.valueOf(l.uncertain()), regular, 8.5f, x + 4, base, l.uncertain() > 0 ? AMBER : TEXT); x += cols[8];
+            centered(String.valueOf(l.executed()), regular, 8.5f, x, cols[5], base, TEXT); x += cols[5];
+            centered(String.valueOf(l.yes()), bold, 8.5f, x, cols[6], base, GREEN); x += cols[6];
+            centered(String.valueOf(l.no()), bold, 8.5f, x, cols[7], base, l.no() > 0 ? RED : TEXT); x += cols[7];
+            centered(String.valueOf(l.uncertain()), regular, 8.5f, x, cols[8], base, l.uncertain() > 0 ? AMBER : TEXT); x += cols[8];
             bar(x + 4, base - 3, cols[9] - 10, 10, l.compliance());
             y -= rowH;
             line(M, y, M + CW, y, LINE);
@@ -284,10 +284,21 @@ final class ObsintReportPdf {
         float x = M;
         for (int i = 0; i < heads.length; i++) {
             String[] parts = heads[i].split("\n");
-            for (int k = 0; k < parts.length; k++) text(parts[k], bold, 6.6f, x + 4, y - (parts.length == 1 ? 17 : 12 + k * 8), MUTED);
+            for (int k = 0; k < parts.length; k++) {
+                float ty = y - (parts.length == 1 ? 17 : 12 + k * 8);
+                if (NUMERIC_COLUMNS.contains(i)) centered(parts[k], bold, 6.6f, x, cols[i], ty, MUTED);
+                else text(parts[k], bold, 6.6f, x + 4, ty, MUTED);
+            }
             x += cols[i];
         }
         y -= 28;
+    }
+
+    /** Columnas con números (#, veces ejecutada, cumplidas, incumplidas, inciertas): centradas bajo su encabezado. */
+    private static final java.util.Set<Integer> NUMERIC_COLUMNS = java.util.Set.of(0, 5, 6, 7, 8);
+
+    private void centered(String value, PDType1Font font, float size, float colX, float colW, float yb, Color color) throws IOException {
+        text(value, font, size, colX + (colW - width(value, font, size)) / 2, yb, color);
     }
 
     private void bar(float x, float yb, float w, float h, Double value) throws IOException {
