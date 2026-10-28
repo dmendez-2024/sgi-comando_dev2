@@ -10,6 +10,9 @@
 .obs-breadcrumbs small{font-size:12px;color:#7a8593}
 .obs-hero h2{margin:0 0 4px;font-size:24px;color:#16233b}
 .obs-hero p{margin:0;color:#6b778d;font-size:14px}
+.obs-console-titlebar{display:flex;align-items:flex-start;justify-content:space-between;gap:14px}
+.obs-reports-entry{height:36px;display:inline-flex;align-items:center;justify-content:center;gap:7px;padding:0 14px;border:1px solid #d9e2ee;border-radius:8px;background:#fff;color:#2364e8;font-size:13px;font-weight:700;white-space:nowrap;cursor:pointer}
+.obs-reports-entry:hover{background:#f5f9ff;border-color:#9fc0f5}
 .obs-error{padding:10px 12px;border-radius:9px;background:#fff0f1;color:#b32d38;border:1px solid #f1c2c7;font-size:13px;font-weight:700}
 .obs-kpis{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px}
 .obs-kpis article{display:grid;grid-template-columns:42px minmax(0,1fr);gap:10px;align-items:center;min-height:78px;padding:12px;border:1px solid #e0e6ed;border-radius:12px;background:#fff}
