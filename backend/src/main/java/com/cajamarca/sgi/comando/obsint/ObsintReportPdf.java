@@ -305,8 +305,13 @@ final class ObsintReportPdf {
         roundRect(x, yb, w, h, 2, new Color(0xE9EDF2));
         if (value == null) { text("—", regular, 8, x + 4, yb + 2, MUTED); return; }
         Color c = value >= 0.85 ? GREEN : value >= 0.7 ? AMBER : RED;
-        roundRect(x, yb, Math.max(h, (float) (w * value)), h, 2, c);
-        text(pct(value), bold, 6.8f, x + 3, yb + 2.6f, WHITE);
+        float fill = Math.max(h, (float) (w * value));
+        roundRect(x, yb, fill, h, 2, c);
+        // Si la barra es más corta que el texto (p. ej. 0 %), el % va en oscuro a su derecha para que se lea.
+        String label = pct(value);
+        float lw = width(label, bold, 6.8f);
+        if (lw + 6 <= fill) text(label, bold, 6.8f, x + 3, yb + 2.6f, WHITE);
+        else text(label, bold, 6.8f, x + fill + 3, yb + 2.6f, c);
     }
 
     private void heading(String title, String subtitle) throws IOException {
