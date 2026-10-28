@@ -1,5 +1,5 @@
-import {useEffect,useMemo,useState} from 'react';
-import {Activity,AlertTriangle,CalendarDays,CheckCircle2,ChevronDown,ClipboardCheck,Clock3,FileText,MapPin,Route,Search,ShieldAlert,Star,Users,UserRoundX,Repeat2,BookCheck,Flame} from 'lucide-react';
+import {useCallback,useEffect,useMemo,useState} from 'react';
+import {Activity,AlertTriangle,CalendarDays,ChevronDown,FileText,MapPin,Search} from 'lucide-react';
 import {api,getUser,type UatUser} from '../api';
 import {DashboardProvinceMap,type DashboardProvinceCount,type DashboardProvinceSubdivision} from './Territory';
 
@@ -16,12 +16,16 @@ type PointLocation={id:string;province?:string;city?:string};
 type Province={code:string;name:string;status?:string;geometryJson?:string;coreSubdivisionId?:string;coreDatasetVersion?:string};
 type DashboardMetrics={calculatedAt:string;idAverage:number|null;icAverage:number|null;idSamples:number;icSamples:number;lateReliefs:number;recordedReliefs:number};
 type Suitability={pointsBelowIdMinimum:number;idEvaluatedPoints:number;idGapPct:number|null;pointsBelowFullCompatibility:number;icEvaluatedPoints:number;icGapPct:number|null};
-type ConsignmentCompliance={nonCompliant:number;activeConsignments:number;nonCompliancePct:number|null};
+type ConsignmentAttention={pointId:string;clientName:string;pointName:string;date:string;nonCompliant:number};
+type ConsignmentCompliance={nonCompliant:number;activeConsignments:number;nonCompliancePct:number|null;attention?:ConsignmentAttention[]};
 type SupervisionRouteCompliance={missedVisits:number;expectedVisits:number;nonCompliancePct:number|null};
 type MissedReliefs={missedShifts:number;assignedShifts:number};
 type CriticalIncidents={reportedCriticalIncidents:number};
 type RiskTrendPoint={date:string;scheduledPoints:number;uncoveredPoints:number;riskIndex:number|null};
 type DashboardData={companies:Company[];rows:ServiceRow[];coverage:Coverage|null;metrics:DashboardMetrics|null;suitability:Suitability|null;consignments:ConsignmentCompliance|null;supervisionRoute:SupervisionRouteCompliance|null;missedReliefs:MissedReliefs|null;criticalIncidents:CriticalIncidents|null;riskTrend:RiskTrendPoint[]|null;locations:PointLocation[];provinces:Province[];errors:string[]};
+type DashboardField=Exclude<keyof DashboardData,'errors'>;
+type DashboardRequest={field:DashboardField;request:()=>Promise<unknown>;message:string;valid?:(value:any)=>boolean};
+const metricFields:DashboardField[]=['coverage','metrics','suitability','consignments','supervisionRoute','missedReliefs','criticalIncidents','riskTrend'];
 
 function hasNumber(value:unknown):value is number{return typeof value==='number'&&Number.isFinite(value)}
 function hasMetrics(value:unknown):value is DashboardMetrics{return typeof value==='object'&&value!==null&&typeof (value as Partial<DashboardMetrics>).calculatedAt==='string'&&hasNumber((value as Partial<DashboardMetrics>).lateReliefs)&&hasNumber((value as Partial<DashboardMetrics>).recordedReliefs)}
@@ -30,13 +34,15 @@ function hasConsignmentCompliance(value:unknown):value is ConsignmentCompliance{
 function hasSupervisionRouteCompliance(value:unknown):value is SupervisionRouteCompliance{return typeof value==='object'&&value!==null&&hasNumber((value as Partial<SupervisionRouteCompliance>).missedVisits)&&hasNumber((value as Partial<SupervisionRouteCompliance>).expectedVisits)}
 function hasMissedReliefs(value:unknown):value is MissedReliefs{return typeof value==='object'&&value!==null&&hasNumber((value as Partial<MissedReliefs>).missedShifts)&&hasNumber((value as Partial<MissedReliefs>).assignedShifts)}
 function hasCriticalIncidents(value:unknown):value is CriticalIncidents{return typeof value==='object'&&value!==null&&hasNumber((value as Partial<CriticalIncidents>).reportedCriticalIncidents)}
-function metricPercent(value:number|null|undefined){return hasNumber(value)?`${value.toFixed(1)}%`:'S/D'}
+function metricPercent(value:number|null|undefined){return hasNumber(value)?`${Number(value.toFixed(1))}%`:'0'}
 
 function CardSparkline({values,color}:{values:number[];color:string}){
-  if(values.length<2)return null;
-  const min=Math.min(...values),span=Math.max(1,Math.max(...values)-min);
-  const path=values.map((value,index)=>`${index?'L':'M'}${(index*70/(values.length-1)).toFixed(1)} ${(25-(value-min)*19/span).toFixed(1)}`).join(' ');
-  return <svg className="dash-v6-kpi-spark spark" viewBox="0 0 72 32" aria-hidden="true"><path d={path} stroke={color}/></svg>;
+  const hasHistory=values.length>=2;
+  const series=hasHistory?values:[0,0];
+  const min=Math.min(...series),span=Math.max(1,Math.max(...series)-min);
+  const path=series.map((value,index)=>`${index?'L':'M'}${(index*70/(series.length-1)).toFixed(1)} ${(25-(value-min)*19/span).toFixed(1)}`).join(' ');
+  const label=hasHistory?'Tendencia histórica':'Sin histórico disponible: línea en 0 por defecto';
+  return <svg className="dash-v6-kpi-spark spark" viewBox="0 0 72 32" role="img" aria-label={label}><title>{label}</title><path d={path} stroke={color}/></svg>;
 }
 
 function dateAtLocalNoon(value:Date){return new Date(value.getFullYear(),value.getMonth(),value.getDate(),12)}
@@ -50,12 +56,6 @@ function shiftDate(value:string,days:number){const [year,month,day]=value.split(
 function dateLabel(date:Date){return new Intl.DateTimeFormat('es-EC',{day:'numeric',month:'short'}).format(date)}
 function weekLabel(value:string){return `${dateLabel(shiftDate(value,0))} – ${dateLabel(shiftDate(value,6))}`}
 function normalize(value:string){return value.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLocaleLowerCase('es').trim()}
-function statusLabel(row:ServiceRow){
-  if(row.state==='PENDING_ASSIGNMENT')return 'Pendiente de asignación';
-  if(row.state==='TO_CONFIGURE')return 'Por configurar';
-  if(row.state==='INACTIVE')return 'Inactivo';
-  return row.pendingNews>0?'Novedad pendiente':'Activo';
-}
 
 function RiskTrendChart({points,mode}:{points:RiskTrendPoint[];mode:'risk'|'uncovered'}){
   const left=40,right=590,top=24,bottom=158;
@@ -89,18 +89,18 @@ function RiskTrendChart({points,mode}:{points:RiskTrendPoint[];mode:'risk'|'unco
 }
 
 const cardCatalog=[
-  {id:'coverageGap',label:'Puntos sin cobertura',tone:'red',icon:ShieldAlert},
-  {id:'nonIdealPerformance',label:'Puntos sin cobertura idónea',sub:'Índice de Desempeño',tone:'green',icon:ClipboardCheck},
-  {id:'nonIdealCompat',label:'Puntos sin cobertura idónea',sub:'Índice de Compatibilidad',tone:'blue',icon:CheckCircle2},
-  {id:'faltos',label:'Faltos registrados',tone:'blue',icon:UserRoundX},
-  {id:'lateRelief',label:'Relevos tardíos',tone:'orange',icon:Clock3},
-  {id:'consignas',label:'Incumplimiento de consignas',tone:'red',icon:BookCheck},
-  {id:'critical',label:'Incidentes críticos abiertos',tone:'red',icon:Flame},
-  {id:'route',label:'Incumplimiento ruta de supervisión',tone:'orange',icon:Route},
-  {id:'factor',label:'Factor hombre',tone:'blue',icon:Users},
-  {id:'rotation',label:'Rotación de personal',tone:'purple',icon:Repeat2},
-  {id:'cx',label:'Experiencia del cliente',tone:'yellow',icon:Star},
-  {id:'risk',label:'Índice de riesgo operacional',tone:'red',icon:Activity}
+  {id:'coverageGap',label:'Puntos sin cobertura',tone:'red',glyph:'◆'},
+  {id:'nonIdealPerformance',label:'Puntos sin cobertura idónea',sub:'Índice de Desempeño',tone:'green',glyph:'⊙'},
+  {id:'nonIdealCompat',label:'Puntos sin cobertura idónea',sub:'Índice de Compatibilidad',tone:'blue',glyph:'⚙'},
+  {id:'faltos',label:'Faltos registrados',tone:'blue',glyph:'▦'},
+  {id:'lateRelief',label:'Relevos tardíos',tone:'orange',glyph:'◷'},
+  {id:'consignas',label:'Incumplimiento de consignas',tone:'red',glyph:'▤'},
+  {id:'critical',label:'Incidentes críticos abiertos',tone:'red',glyph:'♨'},
+  {id:'route',label:'Incumplimiento ruta de supervisión',tone:'orange',glyph:'⌁'},
+  {id:'factor',label:'Factor hombre',tone:'blue',glyph:'●'},
+  {id:'rotation',label:'Rotación de personal',tone:'purple',glyph:'♟'},
+  {id:'cx',label:'Experiencia del cliente',tone:'yellow',glyph:'★'},
+  {id:'risk',label:'Índice de riesgo operacional',tone:'red',glyph:'♦'}
 ] as const;
 const provinceAliases:Record<string,string>={
   'azuay':'AZU','bolivar':'BOL','canar':'CAN','carchi':'CAR','chimborazo':'CHI','cotopaxi':'COT',
@@ -117,6 +117,7 @@ const dashboardTitleByUser:Record<UatUser,string>={
 };
 
 export default function Dashboard(){
+  const [showAllAttention,setShowAllAttention]=useState(false);
   const [weekStart,setWeekStart]=useState(()=>weekStartIso());
   const [period,setPeriod]=useState<'7d'|'30d'|'6m'>('30d');
   const [companyId,setCompanyId]=useState('');
@@ -124,54 +125,64 @@ export default function Dashboard(){
   const [clientSearch,setClientSearch]=useState('');
   const [clientMenuOpen,setClientMenuOpen]=useState(false);
   const [activeCard,setActiveCard]=useState<(typeof cardCatalog)[number]['id']>('coverageGap');
-  const [loading,setLoading]=useState(true);
+  const [pending,setPending]=useState<Set<DashboardField>>(()=>new Set(metricFields));
+  const [loadErrors,setLoadErrors]=useState<Partial<Record<DashboardField,string>>>({});
   const [data,setData]=useState<DashboardData>({companies:[],rows:[],coverage:null,metrics:null,suitability:null,consignments:null,supervisionRoute:null,missedReliefs:null,criticalIncidents:null,riskTrend:null,locations:[],provinces:[],errors:[]});
 
-  useEffect(()=>{
-    let cancelled=false;
-    setLoading(true);
-    const load=async()=>{
-      const [companiesResult,overviewResult,coverageResult,territoryResult,locationsResult,metricsResult,suitabilityResult,consignmentsResult,supervisionRouteResult,missedReliefsResult,criticalIncidentsResult,trendResult]=await Promise.allSettled([
-        api.companies(0,100),api.serviceOverview(),api.assignmentCoverage(weekStart,companyId,clientId),api.territory(),api.dashboardPointLocations(),api.dashboardMetrics(weekStart,companyId,clientId),api.dashboardSuitability(weekStart,companyId,clientId),api.dashboardConsignmentCompliance(weekStart,companyId,clientId),api.dashboardSupervisionRouteCompliance(weekStart,companyId,clientId),api.dashboardMissedReliefs(weekStart,companyId,clientId),api.dashboardCriticalIncidents(weekStart,companyId,clientId),api.dashboardRiskTrend(weekStart,companyId,clientId,period)
-      ]);
-      const errors:string[]=[];
-      const companies=companiesResult.status==='fulfilled'?(companiesResult.value.items??[]) as Company[]:[];
-      const rows=overviewResult.status==='fulfilled'?((overviewResult.value.rows??[]) as ServiceRow[]):[];
-      const coverage=coverageResult.status==='fulfilled'?coverageResult.value as Coverage:null;
-      const metrics=metricsResult.status==='fulfilled'&&hasMetrics(metricsResult.value)?metricsResult.value:null;
-      const suitability=suitabilityResult.status==='fulfilled'&&hasSuitability(suitabilityResult.value)?suitabilityResult.value:null;
-      const consignments=consignmentsResult.status==='fulfilled'&&hasConsignmentCompliance(consignmentsResult.value)?consignmentsResult.value:null;
-      const supervisionRoute=supervisionRouteResult.status==='fulfilled'&&hasSupervisionRouteCompliance(supervisionRouteResult.value)?supervisionRouteResult.value:null;
-      const missedReliefs=missedReliefsResult.status==='fulfilled'&&hasMissedReliefs(missedReliefsResult.value)?missedReliefsResult.value:null;
-      const criticalIncidents=criticalIncidentsResult.status==='fulfilled'&&hasCriticalIncidents(criticalIncidentsResult.value)?criticalIncidentsResult.value:null;
-      const riskTrend=trendResult.status==='fulfilled'?trendResult.value as RiskTrendPoint[]:null;
-      const provinces=territoryResult.status==='fulfilled'?((territoryResult.value.provinces??[]) as Province[]):[];
-      const locations=locationsResult.status==='fulfilled'?locationsResult.value as PointLocation[]:[];
-      if(companiesResult.status==='rejected')errors.push('No se pudieron cargar las compañías.');
-      if(overviewResult.status==='rejected')errors.push('No se pudo cargar el resumen de Servicios.');
-      if(coverageResult.status==='rejected')errors.push('No se pudo cargar la cobertura de la semana.');
-      else if(!hasNumber(coverage?.totalUncoveredPoints))errors.push('El backend de cobertura no devuelve totalUncoveredPoints; actualiza el backend para mostrar la cantidad.');
-      if(metricsResult.status==='rejected')errors.push('No se pudieron cargar los indicadores de la semana.');
-      else if(!metrics)errors.push('El backend no devuelve los indicadores de la semana; revisa la versión desplegada.');
-      if(suitabilityResult.status==='rejected')errors.push('No se pudo cargar la idoneidad de ID e IC.');
-      else if(!suitability)errors.push('El backend no devuelve la idoneidad de ID e IC; revisa la versión desplegada.');
-      if(consignmentsResult.status==='rejected')errors.push('No se pudo cargar el incumplimiento de consignas.');
-      else if(!consignments)errors.push('El backend no devuelve el incumplimiento de consignas; revisa la versión desplegada.');
-      if(supervisionRouteResult.status==='rejected')errors.push('No se pudo cargar el incumplimiento de rutas de supervisión.');
-      else if(!supervisionRoute)errors.push('El backend no devuelve el cumplimiento de rutas de supervisión; revisa la versión desplegada.');
-      if(missedReliefsResult.status==='rejected')errors.push('No se pudieron cargar los relevos no realizados.');
-      else if(!missedReliefs)errors.push('El backend no devuelve los relevos no realizados; revisa la versión desplegada.');
-      if(criticalIncidentsResult.status==='rejected')errors.push('No se pudieron cargar los incidentes críticos.');
-      else if(!criticalIncidents)errors.push('El backend no devuelve los incidentes críticos; revisa la versión desplegada.');
-      if(trendResult.status==='rejected')errors.push('No se pudo cargar la tendencia operacional.');
-      if(territoryResult.status==='rejected')errors.push('No se pudo cargar el catálogo territorial.');
 
-      if(locationsResult.status==='rejected')errors.push('No se pudieron cargar todas las ubicaciones de los puntos.');
-      if(!cancelled){setData({companies,rows,coverage,metrics,suitability,consignments,supervisionRoute,missedReliefs,criticalIncidents,riskTrend,locations,provinces,errors});setLoading(false)}
-    };
-    const loadTimer=window.setTimeout(()=>{void load()},0);
-    return()=>{cancelled=true;window.clearTimeout(loadTimer)};
-  },[weekStart,companyId,clientId,period]);
+  const startRequests=useCallback((requests:DashboardRequest[])=>{
+    let cancelled=false;
+    const fields=new Set(requests.map(item=>item.field));
+    setPending(previous=>new Set([...previous,...fields]));
+    setLoadErrors(previous=>Object.fromEntries(Object.entries(previous).filter(([field])=>!fields.has(field as DashboardField))));
+    // Defer requests so React StrictMode can cancel its discarded initial effect.
+    const timer=window.setTimeout(()=>{
+      requests.forEach(({field,request,message,valid})=>{
+        void Promise.resolve().then(request).then(value=>{
+          if(valid&&!valid(value))throw new Error(message);
+          if(!cancelled)setData(previous=>({...previous,[field]:value}));
+        }).catch(()=>{
+          if(cancelled)return;
+          setData(previous=>({...previous,[field]:metricFields.includes(field)?null:[]}));
+          setLoadErrors(previous=>({...previous,[field]:message}));
+        }).finally(()=>{
+          if(!cancelled)setPending(previous=>{const next=new Set(previous);next.delete(field);return next});
+        });
+      });
+    },0);
+    return()=>{cancelled=true;window.clearTimeout(timer)};
+  },[]);
+
+  useEffect(()=>{
+    let overviewPromise:ReturnType<typeof api.serviceOverview>|undefined;
+    const overview=()=>overviewPromise??=api.serviceOverview();
+    return startRequests([
+      {field:'companies',request:()=>api.companies(0,100).then(value=>value.items??[]),message:'No se pudieron cargar las compañías.'},
+      {field:'rows',request:()=>overview().then(value=>value.rows??[]),message:'No se pudo cargar el resumen de Servicios.'},
+      {field:'provinces',request:()=>api.territory().then(value=>value.provinces??[]),message:'No se pudo cargar el catálogo territorial.'},
+      {field:'locations',request:()=>api.dashboardPointLocations(),message:'No se pudieron cargar las ubicaciones de los puntos.'}
+    ]);
+  },[startRequests]);
+
+  useEffect(()=>startRequests([
+    {field:'coverage',request:()=>api.assignmentCoverage(weekStart,companyId,clientId),valid:value=>hasNumber(value?.totalUncoveredPoints),message:'No se pudo cargar la cobertura de la semana.'},
+    {field:'metrics',request:()=>api.dashboardMetrics(weekStart,companyId,clientId),valid:hasMetrics,message:'No se pudieron cargar los indicadores de la semana.'},
+    {field:'suitability',request:()=>api.dashboardSuitability(weekStart,companyId,clientId),valid:hasSuitability,message:'No se pudo cargar la idoneidad de ID e IC.'},
+    {field:'supervisionRoute',request:()=>api.dashboardSupervisionRouteCompliance(weekStart,companyId,clientId),valid:hasSupervisionRouteCompliance,message:'No se pudo cargar el incumplimiento de rutas de supervisión.'},
+    {field:'missedReliefs',request:()=>api.dashboardMissedReliefs(weekStart,companyId,clientId),valid:hasMissedReliefs,message:'No se pudieron cargar los relevos no realizados.'},
+    {field:'criticalIncidents',request:()=>api.dashboardCriticalIncidents(weekStart,companyId,clientId),valid:hasCriticalIncidents,message:'No se pudieron cargar los incidentes críticos.'}
+  ]),[startRequests,weekStart,companyId,clientId]);
+
+  useEffect(()=>{
+    setShowAllAttention(false);
+    return startRequests([
+      {field:'consignments',request:()=>api.dashboardConsignmentCompliance(weekStart,companyId,clientId,period),valid:hasConsignmentCompliance,message:'No se pudo cargar el incumplimiento de consignas.'},
+      {field:'riskTrend',request:()=>api.dashboardRiskTrend(weekStart,companyId,clientId,period),valid:Array.isArray,message:'No se pudo cargar la tendencia operacional.'}
+    ]);
+  },[startRequests,weekStart,companyId,clientId,period]);
+  const attentionLoading=pending.has('consignments');
+  const trendLoading=pending.has('riskTrend');
+  const errors=Object.values(loadErrors);
 
   const clients=useMemo(()=>{
     const unique=new Map<string,{id:string;name:string}>();
@@ -186,11 +197,7 @@ export default function Dashboard(){
   const uncoveredPoints=data.coverage?.totalUncoveredPoints??null;
   const coveragePct=data.coverage?.overallCoveragePct??null;
   const riskPoint=data.riskTrend?.slice().reverse().find(point=>point.riskIndex!=null);
-  const attentionRows=useMemo(()=>filteredRows.filter(row=>row.state!=='ACTIVE'||row.pendingNews>0)
-    .sort((a,b)=>{
-      const rank=(row:ServiceRow)=>row.state==='PENDING_ASSIGNMENT'?0:row.state==='TO_CONFIGURE'?1:row.state==='INACTIVE'?2:3;
-      return rank(a)-rank(b)||b.pendingNews-a.pendingNews||a.clientName.localeCompare(b.clientName,'es');
-    }),[filteredRows]);
+  const attentionRows=(data.consignments?.attention??[]).filter(row=>row.nonCompliant>0);
   const provinceCounts=useMemo<DashboardProvinceCount[]>(()=>{
     const provinceByName=new Map<string,Province>();
     data.provinces.forEach(province=>{provinceByName.set(normalize(province.name),province);provinceByName.set(normalize(province.code),province)});
@@ -207,21 +214,20 @@ export default function Dashboard(){
     });
     return Array.from(counts.values());
   },[data.locations,data.provinces,pointIds]);
-  const companyName=companyOptions.find(company=>company.id===companyId)?.name;
   const today=data.metrics?new Intl.DateTimeFormat('es-EC',{weekday:'long',day:'numeric',month:'long',year:'numeric',hour:'2-digit',minute:'2-digit',timeZone:'America/Guayaquil'}).format(new Date(data.metrics.calculatedAt)):'pendiente de cargar';
   const metricValues:Record<(typeof cardCatalog)[number]['id'],{value:string;note:string;available:boolean}>={
-    coverageGap:{value:uncoveredPoints==null?'S/D':uncoveredPoints.toLocaleString('es-EC'),note:coveragePct==null?'Cobertura S/D':`${coveragePct}% de cobertura`,available:uncoveredPoints!=null},
+    coverageGap:{value:uncoveredPoints==null?'0':uncoveredPoints.toLocaleString('es-EC'),note:coveragePct==null?'Cobertura S/D':`${coveragePct}% de cobertura`,available:uncoveredPoints!=null},
     nonIdealPerformance:{value:metricPercent(data.suitability?.idGapPct),note:data.suitability?.idEvaluatedPoints?`${data.suitability.pointsBelowIdMinimum} de ${data.suitability.idEvaluatedPoints} puntos`:'Sin ID evaluado',available:hasNumber(data.suitability?.idGapPct)},
     nonIdealCompat:{value:metricPercent(data.suitability?.icGapPct),note:data.suitability?.icEvaluatedPoints?`${data.suitability.pointsBelowFullCompatibility} de ${data.suitability.icEvaluatedPoints} puntos`:'Sin IC evaluado',available:hasNumber(data.suitability?.icGapPct)},
-    faltos:{value:data.missedReliefs?.assignedShifts?data.missedReliefs.missedShifts.toLocaleString('es-EC'):'S/D',note:data.missedReliefs?.assignedShifts?`${data.missedReliefs.missedShifts} de ${data.missedReliefs.assignedShifts} relevos`:'Sin turnos terminados',available:!!data.missedReliefs?.assignedShifts},
-    lateRelief:{value:data.metrics?data.metrics.lateReliefs.toLocaleString('es-EC'):'S/D',note:data.metrics?`${data.metrics.recordedReliefs} relevos registrados`:'Relevos S/D',available:data.metrics!=null},
+    faltos:{value:data.missedReliefs?.assignedShifts?data.missedReliefs.missedShifts.toLocaleString('es-EC'):'0',note:data.missedReliefs?.assignedShifts?`${data.missedReliefs.missedShifts} de ${data.missedReliefs.assignedShifts} relevos`:'Sin turnos terminados',available:!!data.missedReliefs?.assignedShifts},
+    lateRelief:{value:data.metrics?data.metrics.lateReliefs.toLocaleString('es-EC'):'0',note:data.metrics?`${data.metrics.recordedReliefs} relevos registrados`:'Relevos S/D',available:data.metrics!=null},
     consignas:{value:metricPercent(data.consignments?.nonCompliancePct),note:data.consignments?.activeConsignments?`${data.consignments.nonCompliant} de ${data.consignments.activeConsignments} activas`:'Sin consignas activas',available:hasNumber(data.consignments?.nonCompliancePct)},
-    critical:{value:data.criticalIncidents?data.criticalIncidents.reportedCriticalIncidents.toLocaleString('es-EC'):'S/D',note:'Críticos reportados',available:data.criticalIncidents!=null},
+    critical:{value:data.criticalIncidents?data.criticalIncidents.reportedCriticalIncidents.toLocaleString('es-EC'):'0',note:'Críticos reportados',available:data.criticalIncidents!=null},
     route:{value:metricPercent(data.supervisionRoute?.nonCompliancePct),note:data.supervisionRoute?.expectedVisits?`${data.supervisionRoute.missedVisits} de ${data.supervisionRoute.expectedVisits} visitas`:'Sin visitas previstas',available:hasNumber(data.supervisionRoute?.nonCompliancePct)},
-    factor:{value:'S/D',note:'Sin dotación',available:false},
-    rotation:{value:'S/D',note:'Sin bajas',available:false},
-    cx:{value:'S/D',note:'Sin evaluaciones',available:false},
-    risk:{value:riskPoint?.riskIndex==null?'S/D':`${riskPoint.riskIndex.toFixed(1)} / 100`,note:riskPoint?`Al ${dateLabel(shiftDate(riskPoint.date,0))}`:'Sin turnos',available:riskPoint?.riskIndex!=null}
+    factor:{value:'0',note:'Sin dotación',available:false},
+    rotation:{value:'0',note:'Sin bajas',available:false},
+    cx:{value:'0',note:'Sin evaluaciones',available:false},
+    risk:{value:riskPoint?.riskIndex==null?'0':`${riskPoint.riskIndex.toFixed(1)} / 100`,note:riskPoint?`Al ${dateLabel(shiftDate(riskPoint.date,0))}`:'Sin turnos',available:riskPoint?.riskIndex!=null}
   };
   const coverageSpark=data.riskTrend?.filter(point=>point.riskIndex!=null).map(point=>point.uncoveredPoints)??[];
   const riskSpark=data.riskTrend?.filter(point=>point.riskIndex!=null).map(point=>point.riskIndex as number)??[];
@@ -233,38 +239,38 @@ export default function Dashboard(){
     return {value,label:`${offset===0?'Semana actual · ':''}${weekLabel(value)}`};
   }),[]);
   return <div className="dash-v6">
-    {data.errors.length>0&&<div className="dash-v6-error"><AlertTriangle size={16}/><span>{data.errors.join(' ')}</span></div>}
+    {errors.length>0&&<div className="dash-v6-error"><AlertTriangle size={16}/><span>{errors.join(' ')}</span></div>}
     <div className="dash-v6-heading">
       <div><h2>{dashboardTitleByUser[getUser()]??'Dashboard Operacional'} · Seguridad Física</h2><p><Activity size={14}/>Actualizado {today}{selectedClient&&<span className="dash-v6-scope">Cliente: {selectedClient.name}</span>}</p></div>
       <div className="dash-v6-filters" role="group" aria-label="Filtros del Dashboard">
         <div className="dash-v6-client-filter"><span className="sr-only">Buscar cliente</span><Search size={16}/><input value={clientSearch} placeholder="Buscar cliente" aria-label="Buscar cliente" aria-expanded={clientMenuOpen} onFocus={()=>setClientMenuOpen(true)} onBlur={()=>window.setTimeout(()=>setClientMenuOpen(false),120)} onChange={event=>{setClientSearch(event.target.value);setClientId('');setCompanyId('');setClientMenuOpen(true)}} onKeyDown={event=>{if(event.key==='Escape')setClientMenuOpen(false)}}/>{clientSearch&&<button type="button" aria-label="Limpiar cliente" onMouseDown={event=>event.preventDefault()} onClick={()=>{setClientId('');setCompanyId('');setClientSearch('');setClientMenuOpen(false)}}>×</button>}<ChevronDown size={14} aria-hidden="true"/>{clientMenuOpen&&<div className="dash-v6-client-menu" role="listbox"><button type="button" role="option" aria-selected={!clientId} onMouseDown={event=>event.preventDefault()} onClick={()=>{setClientId('');setCompanyId('');setClientSearch('');setClientMenuOpen(false)}}>Todos los clientes</button>{visibleClients.map(client=><button type="button" role="option" aria-selected={clientId===client.id} key={client.id} onMouseDown={event=>event.preventDefault()} onClick={()=>{setClientId(client.id);setCompanyId('');setClientSearch(client.name);setClientMenuOpen(false)}}>{client.name}</button>)}{visibleClients.length===0&&<span>No hay clientes coincidentes</span>}</div>}</div>
         <label className="dash-v6-select dash-v6-company"><MapPin size={15}/><span className="dash-v6-select-value" aria-hidden="true">{companyOptions.find(company=>company.id===companyId)?.name??'Todas las compañías'}</span><select value={companyId} title={companyOptions.find(company=>company.id===companyId)?.name??'Todas las compañías'} aria-label="Filtrar por compañía" onChange={event=>setCompanyId(event.target.value)}><option value="">Todas las compañías</option>{companyOptions.map(company=><option key={company.id} value={company.id}>{company.name}</option>)}</select><ChevronDown size={14}/></label>
-        <label className="dash-v6-select"><CalendarDays size={15}/><span className="dash-v6-select-value" aria-hidden="true">{dateOptions.find(option=>option.value===weekStart)?.label}</span><select value={weekStart} title={dateOptions.find(option=>option.value===weekStart)?.label} aria-label="Semana de cobertura" onChange={event=>setWeekStart(event.target.value)}>{dateOptions.map(option=><option key={option.value} value={option.value}>{option.label}</option>)}</select><ChevronDown size={14}/></label>
-        <label className="dash-v6-select dash-v6-period"><CalendarDays size={15}/><span className="dash-v6-select-value" aria-hidden="true">{period==='7d'?'Últimos 7 días':period==='6m'?'Últimos 6 meses':'Últimos 30 días'}</span><select value={period} aria-label="Período de tendencia" onChange={event=>setPeriod(event.target.value as '7d'|'30d'|'6m')}><option value="7d">Últimos 7 días</option><option value="30d">Últimos 30 días</option><option value="6m">Últimos 6 meses</option></select><ChevronDown size={14}/></label>
+        <label className="dash-v6-select"><CalendarDays size={15}/><span className="dash-v6-select-value" aria-hidden="true">{dateOptions.find(option=>option.value===weekStart)?.label.replace('Semana actual · ','Semana · ')}</span><select value={weekStart} title={dateOptions.find(option=>option.value===weekStart)?.label} aria-label="Semana de cobertura" onChange={event=>setWeekStart(event.target.value)}>{dateOptions.map(option=><option key={option.value} value={option.value}>{option.label}</option>)}</select><ChevronDown size={14}/></label>
+        <label className="dash-v6-select dash-v6-period"><CalendarDays size={15}/><span className="dash-v6-select-value" aria-hidden="true">{period==='7d'?'Últimos 7 días':period==='6m'?'Últimos 6 meses':'Últimos 30 días'}</span><select value={period} aria-label="Período de tendencia y consignas" onChange={event=>setPeriod(event.target.value as '7d'|'30d'|'6m')}><option value="7d">Últimos 7 días</option><option value="30d">Últimos 30 días</option><option value="6m">Últimos 6 meses</option></select><ChevronDown size={14}/></label>
       </div>
     </div>
 
     <div className="dash-v6-kpis" aria-label="Indicadores operativos">
-      {cardCatalog.map(card=>{const metric=metricValues[card.id];const Icon=card.icon;const spark=card.id==='coverageGap'?coverageSpark:card.id==='risk'?riskSpark:[];return <button type="button" key={card.id} data-kpi={card.id} title={`Clic para visualizar ${card.label.toLocaleLowerCase('es')}. ${metric.note}`} aria-pressed={activeCard===card.id} onClick={()=>setActiveCard(card.id)} className={`dash-v6-kpi kpi tone-${card.tone} ${activeCard===card.id?'selected':''} ${metric.available?'':'unavailable'}`}>
-        <span className="dash-v6-kpi-mark kicon"><Icon size={21}/></span>
-        <span className="dash-v6-kpi-copy kcontent"><strong className="ktitle">{card.label}</strong>{'sub' in card&&<span className="dash-v6-kpi-sub ksub">{card.sub}</span>}{card.id==='factor'?<span className="dash-v6-factor factor"><span>FHT:</span><b>S/D</b><span>Disponible:</span><b>S/D</b><span>Exceso / Déficit:</span><b>S/D</b></span>:<span className="dash-v6-kpi-value-row value-row"><b className="kvalue">{loading?'…':metric.value}</b>{spark.length>1&&<CardSparkline values={spark} color="#ff243e"/>}</span>}<small className="dash-v6-kpi-delta delta">{metric.note}</small></span>
+      {cardCatalog.map(card=>{const metric=metricValues[card.id];const field:DashboardField|null=({coverageGap:'coverage',nonIdealPerformance:'suitability',nonIdealCompat:'suitability',faltos:'missedReliefs',lateRelief:'metrics',consignas:'consignments',critical:'criticalIncidents',route:'supervisionRoute',factor:null,rotation:null,cx:null,risk:'riskTrend'} as const)[card.id];const cardLoading=field!==null&&pending.has(field);const spark=card.id==='coverageGap'?coverageSpark:card.id==='risk'?riskSpark:[];return <button type="button" key={card.id} data-kpi={card.id} title={`Clic para visualizar ${card.label.toLocaleLowerCase('es')}. ${metric.note}`} aria-pressed={activeCard===card.id} onClick={()=>setActiveCard(card.id)} className={`dash-v6-kpi kpi tone-${card.tone} ${activeCard===card.id?'selected':''} ${metric.available?'':'unavailable'}`}>
+        <span className="dash-v6-kpi-mark kicon" aria-hidden="true">{card.glyph}</span>
+        <span className="dash-v6-kpi-copy kcontent"><span className="dash-v6-kpi-heading"><strong className="ktitle">{card.id==='coverageGap'?<>Puntos sin<br/>cobertura</>:card.label}</strong>{'sub' in card&&<span className="dash-v6-kpi-sub ksub">{card.sub}</span>}</span>{card.id==='factor'?<span className="dash-v6-factor factor"><span>FHT:</span><b>0</b><span>Disponible:</span><b>0</b><span>Exceso:</span><b>0</b></span>:<span className="dash-v6-kpi-value-row value-row"><b className="kvalue">{cardLoading?'…':card.id==='risk'&&hasNumber(riskPoint?.riskIndex)?<>{riskPoint.riskIndex.toFixed(1)}<span className="dash-v6-kpi-unit"> / 100</span></>:metric.value}</b>{!cardLoading&&<CardSparkline values={spark} color={({red:"#ff243e",green:"#00bf7d",blue:"#1687ff",orange:"#ff7b00",purple:"#8a38ff",yellow:"#f4a100"})[card.tone]}/>}</span>}{card.id!=='critical'&&<small className="dash-v6-kpi-delta delta dash-v6-kpi-comparison" title="0 % por defecto: la fuente actual no entrega una comparación con el período anterior.">0% <span>vs. período anterior</span></small>}</span>
       </button>})}
     </div>
 
     <div className="dash-v6-lower">
       <section className="dash-v6-panel dash-v6-attention">
-        <div className="dash-v6-panel-title"><span className="attention-icon"><AlertTriangle size={19}/></span><div><h3>Atención requerida</h3><small>{loading?'Cargando actividad…':`${attentionRows.length} registros con pendientes de operación${companyName?` · ${companyName}`:''}`}</small></div><b>{loading?'…':attentionRows.length}</b></div>
-        <div className="dash-v6-table-wrap"><table><thead><tr><th>Cliente / Punto</th><th>Compañía</th><th>Puesto</th><th>ID</th><th>IC</th><th>Estado</th></tr></thead><tbody>
-          {!loading&&attentionRows.map(row=><tr key={row.postId}><td><strong>{row.clientName}</strong><small>{row.pointName}</small></td><td>{row.companyName||'—'}</td><td><strong>{row.postCode}</strong><small>{row.postName}</small></td><td>{row.idAverage==null?'—':row.idAverage.toFixed(1)}</td><td>{row.icAverage==null?'—':`${row.icAverage.toFixed(1)}%`}</td><td><span className={`dash-v6-state state-${row.state.toLowerCase()}`}>{statusLabel(row)}</span>{row.pendingNews>0&&<small className="dash-v6-news">{row.pendingNews} novedad{row.pendingNews===1?'':'es'}</small>}</td></tr>)}
-          {!loading&&attentionRows.length===0&&<tr><td colSpan={6} className="dash-v6-empty">No hay pendientes para la compañía seleccionada.</td></tr>}
-          {loading&&<tr><td colSpan={6} className="dash-v6-empty">Cargando datos operativos…</td></tr>}
+        <div className="dash-v6-panel-title dash-v6-attention-title"><span className="attention-icon" aria-hidden="true">▲</span><h3>Atención requerida</h3><b aria-label="Puntos con consignas incumplidas">{attentionLoading?'…':attentionRows.length}</b>{attentionRows.length>10&&<button type="button" className="dash-v6-attention-toggle" aria-expanded={showAllAttention} onClick={()=>setShowAllAttention(value=>!value)}>{showAllAttention?'Ver menos':'Ver todos'} →</button>}</div>
+        <div className="dash-v6-table-wrap"><table aria-label="Atención requerida"><thead><tr><th scope="col">#</th><th scope="col">Cliente</th><th scope="col">Punto</th><th scope="col">Fecha</th><th scope="col">Riesgo</th><th scope="col">Incumplimiento de<br/>Consignas</th><th scope="col">Estado</th></tr></thead><tbody>
+          {!attentionLoading&&(showAllAttention?attentionRows:attentionRows.slice(0,10)).map((row,index)=><tr key={row.pointId}><td>{index+1}</td><td>{row.clientName||'—'}</td><td>{row.pointName||'—'}</td><td>{new Intl.DateTimeFormat('es-EC',{day:'2-digit',month:'2-digit',year:'numeric'}).format(shiftDate(row.date,0))}</td><td title="No hay una regla confirmada de riesgo por incumplimiento de consigna.">—</td><td>{row.nonCompliant}</td><td><span className="dash-v6-state state-pending_assignment">Incumplida</span></td></tr>)}
+          {!attentionLoading&&attentionRows.length===0&&<tr><td colSpan={7} className="dash-v6-empty">{!data.consignments?'No se pudieron consultar los incumplimientos de consignas.':data.consignments.nonCompliant>0?'El detalle de los incumplimientos requiere actualizar el backend.':'No hay incumplimientos de consignas en el período y el alcance seleccionados.'}</td></tr>}
+          {attentionLoading&&<tr><td colSpan={7} className="dash-v6-empty">Cargando datos operativos…</td></tr>}
         </tbody></table></div>
       </section>
 
       <div className="dash-v6-side-stack">
         <section className="dash-v6-panel dash-v6-trend">
           <div className="dash-v6-panel-title"><span className="blue-icon"><Activity size={18}/></span><div><h3>Tendencia — {activeCardTitle}</h3><small>{activeCard==='coverageGap'||activeCard==='risk'?`Histórico de ${periodLabel}`:'Histórico S/D'}</small></div></div>
-          {loading?<div className="dash-v6-no-history">Cargando tendencia operacional…</div>:activeCard!=='coverageGap'&&activeCard!=='risk'?<div className="dash-v6-no-history"><Activity size={24}/><strong>S/D</strong><span>Sin histórico para este indicador.</span></div>:!data.riskTrend?<div className="dash-v6-no-history"><Activity size={24}/><strong>S/D</strong><span>Tendencia no disponible.</span></div>:data.riskTrend.every(point=>point.riskIndex==null)?<div className="dash-v6-no-history"><Activity size={24}/><strong>S/D</strong><span>Sin turnos en el período.</span></div>:<RiskTrendChart points={data.riskTrend} mode={activeCard==='risk'?'risk':'uncovered'}/>}
+          {trendLoading?<div className="dash-v6-no-history">Cargando tendencia operacional…</div>:activeCard!=='coverageGap'&&activeCard!=='risk'?<div className="dash-v6-no-history"><Activity size={24}/><strong>S/D</strong><span>Sin histórico para este indicador.</span></div>:!data.riskTrend?<div className="dash-v6-no-history"><Activity size={24}/><strong>S/D</strong><span>Tendencia no disponible.</span></div>:data.riskTrend.every(point=>point.riskIndex==null)?<div className="dash-v6-no-history"><Activity size={24}/><strong>S/D</strong><span>Sin turnos en el período.</span></div>:<RiskTrendChart points={data.riskTrend} mode={activeCard==='risk'?'risk':'uncovered'}/>}
         </section>
         <section className="dash-v6-panel dash-v6-geography">
           <div className="dash-v6-panel-title"><span className="blue-icon"><MapPin size={18}/></span><div><h3>Mapa operacional por provincia</h3><small>{pointIds.size} punto{pointIds.size===1?'':'s'} en el alcance seleccionado</small></div></div>
@@ -272,6 +278,6 @@ export default function Dashboard(){
         </section>
       </div>
     </div>
-    <div className="dash-v6-footnote"><FileText size={14}/><span>Cobertura, relevos y riesgo usan datos registrados del alcance seleccionado. S/D indica que falta una fuente confirmada.</span></div>
+    <div className="dash-v6-footnote"><FileText size={14}/><span>Cobertura, relevos y riesgo usan datos registrados del alcance seleccionado. Los indicadores sin datos o sin regla de cálculo muestran 0 por defecto.</span></div>
   </div>;
 }

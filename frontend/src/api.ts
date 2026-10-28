@@ -225,7 +225,7 @@ export const api={
  dashboardPointLocations:()=>request<any[]>('/api/dashboard/point-locations'),
  dashboardMetrics:(weekStart:string,companyId='',clientId='')=>request<any>(`/api/dashboard/metrics?${new URLSearchParams({weekStart,...(companyId?{companyId}:{}),...(clientId?{clientId}:{})})}`),
  dashboardSuitability:(weekStart:string,companyId='',clientId='')=>request<any>(`/api/dashboard/suitability?${new URLSearchParams({weekStart,...(companyId?{companyId}:{}),...(clientId?{clientId}:{})})}`),
- dashboardConsignmentCompliance:(weekStart:string,companyId='',clientId='')=>request<any>(`/api/dashboard/consignment-compliance?${new URLSearchParams({weekStart,...(companyId?{companyId}:{}),...(clientId?{clientId}:{})})}`),
+ dashboardConsignmentCompliance:(weekStart:string,companyId='',clientId='',period?:'7d'|'30d'|'6m')=>request<any>(`/api/dashboard/consignment-compliance?${new URLSearchParams({weekStart,...(period?{period}:{}),...(companyId?{companyId}:{}),...(clientId?{clientId}:{})})}`),
  dashboardSupervisionRouteCompliance:(weekStart:string,companyId='',clientId='')=>request<any>(`/api/dashboard/supervision-route-compliance?${new URLSearchParams({weekStart,...(companyId?{companyId}:{}),...(clientId?{clientId}:{})})}`),
  dashboardMissedReliefs:(weekStart:string,companyId='',clientId='')=>request<any>(`/api/dashboard/missed-reliefs?${new URLSearchParams({weekStart,...(companyId?{companyId}:{}),...(clientId?{clientId}:{})})}`),
  dashboardCriticalIncidents:(weekStart:string,companyId='',clientId='')=>request<any>(`/api/dashboard/critical-incidents?${new URLSearchParams({weekStart,...(companyId?{companyId}:{}),...(clientId?{clientId}:{})})}`),

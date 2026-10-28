@@ -29,7 +29,10 @@ public class DashboardResource {
                           long idSamples, long icSamples, long lateReliefs, long recordedReliefs) {}
     public record Suitability(long pointsBelowIdMinimum, long idEvaluatedPoints, Double idGapPct,
                               long pointsBelowFullCompatibility, long icEvaluatedPoints, Double icGapPct) {}
-    public record ConsignmentCompliance(long nonCompliant, long activeConsignments, Double nonCompliancePct) {}
+    public record ConsignmentAttention(UUID pointId, String clientName, String pointName,
+                                       LocalDate date, long nonCompliant) {}
+    public record ConsignmentCompliance(long nonCompliant, long activeConsignments, Double nonCompliancePct,
+                                        List<ConsignmentAttention> attention) {}
     public record SupervisionRouteCompliance(long missedVisits, long expectedVisits, Double nonCompliancePct) {}
     public record MissedReliefs(long missedShifts, long assignedShifts) {}
     public record CriticalIncidents(long reportedCriticalIncidents) {}
@@ -68,11 +71,13 @@ public class DashboardResource {
 
     @GET @Path("/consignment-compliance")
     public ConsignmentCompliance consignmentCompliance(@QueryParam("weekStart") String weekStart,
-            @QueryParam("companyId") UUID companyId, @QueryParam("clientId") UUID clientId) {
+            @QueryParam("companyId") UUID companyId, @QueryParam("clientId") UUID clientId,
+            @QueryParam("period") String period) {
         LocalDate week = parseWeek(weekStart);
+        ConsignmentWindow window = consignmentWindow(week, period, LocalDate.now(OPERATING_ZONE));
         Set<UUID> allowed = scope.allowedCompanyIds();
         if (companyId != null) { scope.requireCompany(companyId); allowed = Set.of(companyId); }
-        if (allowed.isEmpty()) return new ConsignmentCompliance(0, 0, null);
+        if (allowed.isEmpty()) return new ConsignmentCompliance(0, 0, null, List.of());
         String sql = """
             select count(*) filter (where exists (
                      select 1 from consignment_compliance cc
@@ -90,9 +95,52 @@ public class DashboardResource {
               and (c.validity_until is null or c.validity_until>=:from)
             """ + (clientId == null ? "" : " and sv.client_id=:client");
         Object[] counts = (Object[]) query(sql, allowed, clientId,
-            week.atStartOfDay(OPERATING_ZONE).toInstant(), week.plusDays(7).atStartOfDay(OPERATING_ZONE).toInstant()).getSingleResult();
+            window.from(), window.to()).getSingleResult();
         long nonCompliant = ((Number) counts[0]).longValue(), active = ((Number) counts[1]).longValue();
-        return new ConsignmentCompliance(nonCompliant, active, percentage(nonCompliant, active));
+        String attentionSql = """
+            select p.id, p.client_name, p.name,
+                   to_char(max(cc.confirmed_at) at time zone 'America/Guayaquil', 'YYYY-MM-DD'),
+                   count(distinct c.id)
+            from consignment c
+            join consignment_protocol cp on cp.id=c.protocol_id and cp.instance_country_id=c.instance_country_id
+                and cp.point_id=c.point_id
+            join point p on p.id=c.point_id and p.instance_country_id=c.instance_country_id
+            join service sv on sv.id=p.service_id and sv.instance_country_id=p.instance_country_id
+            join consignment_compliance cc on cc.consignment_id=c.id and cc.instance_country_id=c.instance_country_id
+                and cc.result='NO_CUMPLIDA' and cc.confirmed_at>=:from and cc.confirmed_at<:to
+            where c.instance_country_id=:tenant and p.company_id in (:companies) and p.status='ACTIVE'
+              and cp.status='ACTIVO' and c.status='VIGENTE'
+              and (c.validity_from is null or c.validity_from<:to)
+              and (c.validity_until is null or c.validity_until>=:from)
+            """ + (clientId == null ? "" : " and sv.client_id=:client\n") + """
+            group by p.id, p.client_name, p.name
+            order by count(distinct c.id) desc, max(cc.confirmed_at) desc, p.id
+            """;
+        List<ConsignmentAttention> attention = new ArrayList<>();
+        for (Object result : query(attentionSql, allowed, clientId,
+                window.from(), window.to()).getResultList()) {
+            Object[] row = (Object[]) result;
+            attention.add(new ConsignmentAttention((UUID) row[0], (String) row[1], (String) row[2],
+                LocalDate.parse((String) row[3]), ((Number) row[4]).longValue()));
+        }
+        return new ConsignmentCompliance(nonCompliant, active, percentage(nonCompliant, active), attention);
+    }
+
+    record ConsignmentWindow(Instant from, Instant to) {}
+
+    static ConsignmentWindow consignmentWindow(LocalDate week, String period, LocalDate today) {
+        // Existing API callers without a period retain the weekly contract.
+        if (period == null) return new ConsignmentWindow(week.atStartOfDay(OPERATING_ZONE).toInstant(),
+            week.plusDays(7).atStartOfDay(OPERATING_ZONE).toInstant());
+        LocalDate end = week.plusDays(6).isAfter(today) ? today : week.plusDays(6);
+        LocalDate start = switch (period) {
+            case "7d" -> end.minusDays(6);
+            case "30d" -> end.minusDays(29);
+            case "6m" -> end.minusMonths(6).plusDays(1);
+            default -> throw new BadRequestException("period debe ser 7d, 30d o 6m.");
+        };
+        return new ConsignmentWindow(start.atStartOfDay(OPERATING_ZONE).toInstant(),
+            end.plusDays(1).atStartOfDay(OPERATING_ZONE).toInstant());
     }
 
     @GET @Path("/supervision-route-compliance")
