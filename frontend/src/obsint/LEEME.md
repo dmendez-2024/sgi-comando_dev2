@@ -97,7 +97,7 @@ Pantalla de la diapositiva 10. Se abre desde Configuración del Punto.
 ### 2.3 Consola OBSINT (`frontend/src/obsint/`)
 
 - Botón **OBSINT** en la cabecera de **Consola**, a la derecha del alcance. Es el único cambio en `ConsolaMonitor.tsx`.
-- Inicio: "Iniciar caso". **El caso toma las consignas activas de los protocolos ACTIVOS cuyo horario cubre el momento actual** (zona America/Guayaquil). Si no hay ninguna, muestra "No hay consignas OBSINT activas en este horario".
+- Inicio: "Iniciar caso". **El caso toma las consignas activas de los protocolos ACTIVOS cuyo horario cubre el momento actual** (zona America/Guayaquil). Si no hay ninguna, muestra "No hay consignas OBSINT pendientes en este horario". **Frecuencia:** una consigna ya respondida en ese Punto no vuelve hasta que pase su intervalo (cada turno = 12 h, cada 2 h, cada 4 h, una vez al día = hasta el día siguiente). Se desactiva con `SGI_OBSINT_APPLY_FREQUENCY=false` (útil en demos locales).
 - **Cabecera:**
 
   | Tarjeta | Contenido |
@@ -113,7 +113,7 @@ Pantalla de la diapositiva 10. Se abre desde Configuración del Punto.
 - **Respuesta:** consigna, **Sí / No / Incierto**, justificación obligatoria (máximo 500 caracteres) y evidencia capturada de la cámara elegida.
 - **Comunicación:** mensajes al agente en sitio.
 - **Botones:** CONTINUAR, y FINALIZAR en la última tarea, que lleva al resumen del caso.
-- **Reportes** (botón en la cabecera, diapositivas 11 a 13): casos finalizados por Cliente y Punto, con filtros y descarga en PDF (`ObsintReports.tsx`, `ObsintReportResource.java`). Solo **Presidente** y **Director Nacional**: roles `PRESIDENTE`, `DIRECTOR_OPERACIONES_NACIONAL` (el que trae IDENT para "Director Nacional de Operaciones") y `DIRECTOR_NACIONAL` (perfil UAT). El PDF lista cada tarea con su resultado (Sí / No / Incierto, "fuera de tiempo") y la justificación completa, partida en líneas.
+- **Reportes** (botón en la cabecera, diapositivas 12 y 13): un **Informe Diario de Consignas por Cliente, Punto y día** (00:00–24:00, hora de Ecuador), que junta todos los casos del día. Lista con filtros (por defecto, los últimos 30 días) y descarga en PDF (`ObsintReports.tsx`, `ObsintReportResource.java`, `ObsintDailyReport.java`, `ObsintReportPdf.java` con Apache PDFBox). El PDF trae cabecera (cliente, punto, servicio, fecha y turno), resumen (configuradas, ejecutadas, cumplidas, incumplidas, tiempo promedio de revisión), desempeño por consigna con barra de %, incumplimientos con la foto de evidencia y observaciones generales automáticas. **Incierto** se cuenta en "veces ejecutada" pero no en el % (cumplidas / (cumplidas + incumplidas)); pendiente de confirmar con el negocio. Solo **Presidente** y **Director Nacional**: roles `PRESIDENTE`, `DIRECTOR_OPERACIONES_NACIONAL` (el que trae IDENT para "Director Nacional de Operaciones") y `DIRECTOR_NACIONAL` (perfil UAT).
 
 ---
 
@@ -158,7 +158,7 @@ Pantalla de la diapositiva 10. Se abre desde Configuración del Punto.
   - Roles de Compañía (Coordinador, Asistente): solo las Compañías que tienen asignadas directamente.
   - Los demás: las Compañías de su zona, región o asignación directa (`user_operational_scope`).
   - **MONITOR:** además, las Compañías de los puestos de Monitoreo (Coordinación, `MON-xxx`) donde la persona tiene **turno en curso**. Se lee de Asignaciones con el mismo criterio que SGI Operador: asignación no eliminada, plan de la semana publicado o cerrado, cuenta quien cubrió el turno (`actual_employee_id`), y la persona se identifica por el `persona_id` de su token de IDENT. Fuera de su turno, o con el plan en borrador, no ve consignas.
-  - Un Punto sin Compañía no entra en ningún caso. Si no queda ninguna consigna, responde 409: "No hay consignas OBSINT activas en este horario en las Compañías de su alcance".
+  - Un Punto sin Compañía no entra en ningún caso. Si no queda ninguna consigna, responde 409: "No hay consignas OBSINT pendientes en este horario en las Compañías de su alcance…".
   - No separa por cliente: dos clientes atendidos por la misma Compañía se ven juntos.
 - Un usuario tiene un solo caso en curso. Las tareas se resuelven **en orden**.
 - Cada tarea copia de la consigna el código, la descripción y el tiempo máximo, así que editar la configuración no altera casos ya creados.

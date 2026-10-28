@@ -6,6 +6,7 @@ import jakarta.persistence.EntityManager;
 import jakarta.transaction.Transactional;
 import jakarta.ws.rs.BadRequestException;
 import jakarta.ws.rs.NotFoundException;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZonedDateTime;
 import java.time.temporal.ChronoUnit;
@@ -15,6 +16,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.jboss.logging.Logger;
 
 /** Casos de uso de la Consola OBSINT. Cada monitorista solo ve y modifica sus propios casos. */
@@ -26,6 +28,8 @@ public class ObsintService {
 
     @Inject ObsintPlatform platform;
     @Inject EntityManager em;
+    /** Si es false, cada consigna entra en todos los casos dentro de su horario (útil para demos locales). */
+    @ConfigProperty(name = "sgi.obsint.apply-frequency", defaultValue = "true") boolean applyFrequency;
 
     /** Postgres guarda microsegundos: truncar evita que el deadline cambie al releerlo. */
     public Instant now() { return Instant.now().truncatedTo(ChronoUnit.MICROS); }
@@ -55,11 +59,13 @@ public class ObsintService {
         Set<UUID> visible = platform.visiblePoints(scheduled.stream().map(c -> c.pointId).collect(Collectors.toSet()));
         Map<UUID, Map<String, ObsintPlatform.LinkedConsignment>> linked = platform.obsintConsignments(visible);
         Instant at = now();
+        Map<String, Instant> lastAnswers = applyFrequency ? lastAnswers(tenantId, visible) : Map.of();
         List<ObsintConsigna> consignas = scheduled.stream().filter(c -> visible.contains(c.pointId))
             .filter(c -> c.consignmentCode == null || Optional.ofNullable(linked.getOrDefault(c.pointId, Map.of()).get(c.consignmentCode))
                 .filter(source -> source.validAt(at)).isPresent())
+            .filter(c -> due(c.frequency, lastAnswers.get(c.pointId + "|" + c.code), at))
             .toList();
-        if (consignas.isEmpty()) throw new ObsintRuleException("No hay consignas OBSINT activas en este horario en las Compañías de su alcance.");
+        if (consignas.isEmpty()) throw new ObsintRuleException("No hay consignas OBSINT pendientes en este horario en las Compañías de su alcance. Las ya revisadas vuelven según su frecuencia.");
         long number = ((Number) em.createNativeQuery("select nextval('obsint_case_code_seq')").getSingleResult()).longValue();
         ObsintCase c = ObsintCase.open(tenantId, "CAJ-OBS-%03d".formatted(number), platform.username(), consignas, now());
         for (ObsintCaseTask t : c.tasks)
@@ -173,6 +179,29 @@ public class ObsintService {
         ObsintCaseTask t = ObsintCaseTask.<ObsintCaseTask>find("id=?1 and instanceCountryId=?2 and obsintCase.operator=?3", taskId, platform.instanceCountryId(), platform.username())
             .firstResultOptional().orElseThrow(() -> new NotFoundException("Tarea no encontrada"));
         return t.obsintCase;
+    }
+
+    /** Intervalo de cada frecuencia. "Cada turno" se toma como 12 h (turnos de 12 h de la operación) mientras no se use el turno real. */
+    static final Map<String, Duration> FREQUENCY_INTERVAL = Map.of("EVERY_SHIFT", Duration.ofHours(12), "EVERY_2_HOURS", Duration.ofHours(2),
+        "EVERY_4_HOURS", Duration.ofHours(4));
+
+    /** ¿Toca de nuevo? Nunca respondida, o pasó su intervalo; "Una vez al día" vuelve al día siguiente (hora de Ecuador). */
+    static boolean due(String frequency, Instant lastAnswer, Instant now) {
+        if (lastAnswer == null) return true;
+        if ("DAILY".equals(frequency))
+            return !lastAnswer.atZone(ObsintPlatform.ZONE).toLocalDate().equals(now.atZone(ObsintPlatform.ZONE).toLocalDate());
+        return !now.isBefore(lastAnswer.plus(FREQUENCY_INTERVAL.getOrDefault(frequency, Duration.ofHours(12))));
+    }
+
+    /** Última respuesta por Punto y código de consigna ("pointId|OBS-001"), de cualquier monitorista. */
+    private Map<String, Instant> lastAnswers(UUID tenantId, Set<UUID> points) {
+        if (points.isEmpty()) return Map.of();
+        List<Object[]> rows = em.createQuery("select t.consigna.pointId, t.consignaCode, max(t.answeredAt) from ObsintCaseTask t "
+                + "where t.instanceCountryId=:tenant and t.answeredAt is not null and t.consigna.pointId in :points group by t.consigna.pointId, t.consignaCode", Object[].class)
+            .setParameter("tenant", tenantId).setParameter("points", points).getResultList();
+        Map<String, Instant> out = new java.util.HashMap<>();
+        for (Object[] r : rows) out.put(r[0] + "|" + r[1], (Instant) r[2]);
+        return out;
     }
 
     private static String trim(String value, int max) { return value.length() > max ? value.substring(0, max) : value; }
