@@ -49,27 +49,35 @@ public class ReliefStationReviews {
         Integer distance = post != null && lat != null && lng != null ? (int) Math.round(GeoDistance.meters(lat, lng, post[0], post[1])) : null;
         boolean far = distance != null && distance > post[2];
         List<Object[]> photos = em.createNativeQuery("""
-            select id,purpose,sha256,content from operator_relief_evidence
+            select id,purpose,sha256,bucket,object_key,size_bytes,content from operator_relief_evidence
             where instance_country_id=:t and event_id=:e and purpose in ('station_0','station_1','station_2') order by purpose""")
             .setParameter("t", tenant).setParameter("e", reliefId).getResultList();
         String status = "NOT_REQUESTED";
         for (Object[] p : photos) {
             UUID photoId = (UUID) p[0];
             String purpose = (String) p[1];
-            byte[] bytes = (byte[]) p[3];
-            String ct = Optional.ofNullable(ImageSniffer.detect(bytes)).orElse("image/jpeg");
 
             EvidenceObject o = new EvidenceObject();
             o.id = UUID.randomUUID(); o.instanceCountryId = tenant; o.clientEvidenceId = photoId; o.uploadBatchId = ReliefContract.uuid(batch, "batchId");
             o.eventId = reliefId; o.assignmentId = assignmentId; o.employeeId = employee; o.username = username;
-            o.targetType = StandardReferenceImage.POST_CONFIG; o.targetId = postId; o.bucket = storage.evidenceBucket();
-            ZonedDateTime now = ZonedDateTime.now(ZoneOffset.UTC);
-            o.objectKey = String.format("evidence/%04d/%02d/%s/%s.%s", now.getYear(), now.getMonthValue(), reliefId, o.id, ImageSniffer.extension(ct));
-            o.contentType = ct; o.sizeBytes = bytes.length; o.sha256 = ((String) p[2]).trim(); o.capturedAt = executedAt;
+            o.targetType = StandardReferenceImage.POST_CONFIG; o.targetId = postId;
+            if (p[4] != null) {
+                // La foto ya está en MinIO (la subió el PUT del relevo): se referencia el mismo objeto, sin copiarlo.
+                o.bucket = (String) p[3]; o.objectKey = (String) p[4]; o.contentType = ReliefEvidencePhotos.CONTENT_TYPE; o.sizeBytes = ((Number) p[5]).longValue();
+            } else {
+                // Foto antigua guardada en content: se sube una copia como antes.
+                byte[] bytes = (byte[]) p[6];
+                String ct = Optional.ofNullable(ImageSniffer.detect(bytes)).orElse("image/jpeg");
+                ZonedDateTime now = ZonedDateTime.now(ZoneOffset.UTC);
+                o.bucket = storage.evidenceBucket();
+                o.objectKey = String.format("evidence/%04d/%02d/%s/%s.%s", now.getYear(), now.getMonthValue(), reliefId, o.id, ImageSniffer.extension(ct));
+                o.contentType = ct; o.sizeBytes = bytes.length;
+                storage.put(o.bucket, o.objectKey, bytes, ct);
+            }
+            o.sha256 = ((String) p[2]).trim(); o.capturedAt = executedAt;
             o.latitude = lat; o.longitude = lng; o.accuracyM = acc; o.flags = far ? "OUT_OF_RANGE" : "";
             o.referenceDistanceM = distance; o.referenceRadiusM = distance == null ? null : (int) post[2];
             o.source = "CAMERA"; o.status = "ATTACHED"; o.receivedAt = Instant.now();
-            storage.put(o.bucket, o.objectKey, bytes, ct);
             o.persist();
 
             TaskExecution x = new TaskExecution();

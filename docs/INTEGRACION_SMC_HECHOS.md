@@ -1,7 +1,7 @@
 # Entrega de hechos SGI Comando -> SMC
 
 Primera entrega, 2026-10-27. Contrato de entrada SMC-002v0.5 del 2026-10-27.
-Implementación apagada por defecto. No adjudica Impulsos, calcula el ID ni modifica tablas operativas.
+Activación controlada por `SGI_SMC_ENABLED`. No adjudica Impulsos, calcula el ID ni modifica tablas operativas.
 
 ## Alcance
 
@@ -33,6 +33,30 @@ SGI_SMC_FACTS_SINCE=2026-10-27T00:00:00-05:00
 Una vez acordado el corte, identidad de los agentes y periodo abierto en SMC, activar `SGI_SMC_ENABLED=true` y recrear el backend con las variables. No hay URL/token propio de SMC en Comando: se usa `GenericInterconnectionExecutor` con CORE y su resolución de credenciales.
 
 `SGI_SMC_INTERFACE_ID` debe coincidir con la interfaz efectiva del binding; su valor predeterminado es `SGI_COM_SMC_0001_IF01` hasta que CORE confirme otro. Ambos identificadores se pueden cambiar por ambiente sin recompilar; requieren recrear/reiniciar el proceso con la nueva configuración. El ejecutor usa el ID configurado tanto en la consulta a CORE como en X-Interconnection-Id.
+
+### OpenBao obligatorio para SMC
+
+El adaptador exige que CORE entregue autenticación Bearer o `OAUTH2_CLIENT_CREDENTIALS` y un `credentialRef` que comience por `vault:`. Un binding anónimo, Basic o con referencia de variable de entorno se rechaza con `OPENBAO_CREDENTIAL_REQUIRED` antes de enviar el hecho. Esta política se activa solo en las llamadas SMC y no cambia los demás adaptadores.
+
+- **BEARER**: OpenBao guarda el token de servicio que acepta SMC en el campo `value` de KV v2. Comando lee el secreto mediante su AppRole y lo usa como Bearer.
+- **OAUTH2_CLIENT_CREDENTIALS**: OpenBao guarda el secreto del cliente M2M en `value`. Comando obtiene el access token de IDENT y lo envía a SMC. Configurar `SGI_M2M_CLIENT_SMC` con el client_id real registrado en IDENT; es un identificador no secreto. El destino debe ser `SMC`; también se reconoce el alias `SGI_COM_SMC__0001_v001` cuando CORE omite targetProgramId.
+
+Ejemplo de configuración del binding (el marcador de ruta debe reemplazarse por la referencia real, no se crea automáticamente):
+
+```json
+{
+  "authType": "BEARER",
+  "credentialRef": "vault:kv/data/<ruta-real-del-secreto-SMC>"
+}
+```
+
+Se reutilizan `SGI_VAULT_ADDR`, `SGI_VAULT_ROLE_ID_FILE`, `SGI_VAULT_SECRET_ID_FILE` y `SGI_VAULT_CA_CERT_FILE` y el montaje de archivos del AppRole de SGI_COM que ya está en Compose. La política de ese AppRole debe permitir lectura de la ruta real. No copiar secretos a `.env.openbaoSGI` ni al repositorio. El nombre de ese archivo no implica que sus variables se lean automáticamente desde OpenBao: contiene configuración no secreta del contenedor.
+
+La bandera `SGI_SMC_ENABLED` y el corte `SGI_SMC_FACTS_SINCE` siguen siendo configuración independiente. Con `enabled=false` el publicador no resuelve el binding SMC ni lee su credencial de OpenBao; otras operaciones de Comando pueden seguir consultando CORE. Si OpenBao no está disponible o rechaza el acceso, la entrega queda PENDING para reintento. La configuración real en CORE/OpenBao debe comprobarse en DEV; no se modifica desde estas pruebas.
+
+`SmcOpenBaoTest` comprueba sobre HTTP local el resolver CORE, login AppRole, lectura KV v2 y llamada a SMC usando los componentes productivos, en ambos modos. También comprueba referencias no vault, autenticación anónima y denegación de OpenBao, sin usar secretos reales.
+
+Verificación 2026-10-27: `mvn -B -ntp -Dtest=SmcOpenBaoTest,IdentServiceTokensTest test`, 8 pruebas, 0 fallos, 0 errores. Compose validado con `config --no-interpolate --no-env-resolution --quiet`. No se verificaron ni modificaron el binding y los secretos reales de DEV.
 
 El publicador usa `@Scheduled`: **con `QUARKUS_SCHEDULER_ENABLED=false` solo funciona la publicación manual**. No se crea un hilo que evada el interruptor global. Cada ciclo encola hasta el tamaño del lote por fuente y entrega hasta el tamaño del lote total; no significa que todo un histórico se entregue en 30 segundos.
 

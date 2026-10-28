@@ -118,6 +118,12 @@ const EMPTY_FILTERS:Filters={type:'ALL',query:'',company:'ALL',client:'',city:''
 const typeLabel=(type:ExecutionType)=>type==='RELIEF'?'Relevo':type==='PATROL'?'Patrulla':'Consigna ad-hoc';
 const statusLabel=(status:ExecutionStatus)=>({IN_PROGRESS:'En curso',COMPLETED:'Completada',OVERDUE:'Vencida',PENDING:'Pendiente',CRITICAL:'Crítica'}[status]);
 const priorityLabel=(priority:Priority)=>({LOW:'Baja',MEDIUM:'Media',HIGH:'Alta',CRITICAL:'Crítica'}[priority]);
+const inventoryStatusLabel=(status?:string|null)=>({
+  COMPLETE:'Completo',
+  REPORTED:'Reportado',
+  PENDING_SOURCE:'Pendiente de fuente',
+  NOT_REPORTED:'No informado'
+}[String(status??'').trim().toUpperCase()]??'No informado');
 const typeClass=(type:ExecutionType)=>type==='RELIEF'?'relief':type==='PATROL'?'patrol':'adhoc';
 const statusClass=(status:ExecutionStatus)=>({IN_PROGRESS:'info',COMPLETED:'success',OVERDUE:'danger',PENDING:'warning',CRITICAL:'danger'}[status]);
 const typeIcon=(type:ExecutionType)=>type==='RELIEF'?<RefreshCw size={15}/>:type==='PATROL'?<CarFront size={15}/>:<FileText size={15}/>;
@@ -199,7 +205,7 @@ function reliefToExecution(item:any):Execution{
     timeline:[
       {id:`start-${item.reliefId}`,at,title:'Inicio del relevo',detail:item.postName||context.postName||'Puesto operativo',state:'DONE'},
       {id:`evidence-${item.reliefId}`,at,title:'Evidencias registradas',detail:`${evidenceCount} fotografía${evidenceCount===1?'':'s'}`,state:'DONE'},
-      {id:`inventory-${item.reliefId}`,at,title:'Inventario informado',detail:item.inventoryStatus||'Registrado',state:'DONE'},
+      {id:`inventory-${item.reliefId}`,at,title:'Inventario informado',detail:inventoryStatusLabel(item.inventoryStatus),state:'DONE'},
       {id:`finish-${item.reliefId}`,at:item.receivedAt,title:'Relevo finalizado',detail:item.submittedBy||'SGI Operador',state:'DONE'}
     ]
   };

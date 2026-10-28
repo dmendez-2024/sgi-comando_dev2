@@ -39,7 +39,7 @@ public class IdentServiceTokens {
     public static String targetOf(String interconnectionId) {
         String c = interconnectionId == null ? "" : interconnectionId.trim();
         if (!c.startsWith("SGI_COM_")) return "";
-        return c.substring("SGI_COM_".length()).replaceFirst("(?i)_\\d{4}(_v\\d{3})?$", "");
+        return c.substring("SGI_COM_".length()).replaceFirst("(?i)_+\\d{4}(_v\\d{3})?$", "");
     }
 
     /** Access token para llamar al Sistema destino; la clave esta en OpenBao (credentialRef vault: de CORE). */
