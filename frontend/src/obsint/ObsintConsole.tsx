@@ -1,10 +1,11 @@
 import {useCallback, useEffect, useRef, useState, type ReactNode} from 'react';
-import {ArrowLeft, CalendarDays, CircleCheck, Clock3, FolderOpen, ListChecks, Play, RefreshCw, UserRound, Users, Video} from 'lucide-react';
+import {ArrowLeft, CalendarDays, CircleCheck, Clock3, FileText, FolderOpen, ListChecks, Play, RefreshCw, UserRound, Users, Video} from 'lucide-react';
 import {errorText, obsintApi, type ObsintCase, type ObsintTask} from './obsintApi';
 import {ObsintCameraGrid} from './ObsintCameraGrid';
 import {ObsintCommPanel} from './ObsintCommPanel';
 import {Dots, ObsintTaskPanel, type CapturedFrame} from './ObsintTaskPanel';
 import {captureFrame, decisionLabel, formatDateTime, formatSeconds, useCountdown, useNow} from './obsint';
+import ObsintReports, {canViewObsintReports} from './ObsintReports';
 import './obsint.css';
 
 /** Botón de entrada a la Consola OBSINT; se muestra en la cabecera de Consola. */
@@ -24,6 +25,7 @@ export default function ObsintConsole({onBack}:{onBack:()=>void}){
   const [opening,setOpening]=useState(false);
   const [selectedCameraId,setSelectedCameraId]=useState<string|null>(null);
   const [notice,setNotice]=useState('');
+  const [reportsOpen,setReportsOpen]=useState(false);
   const videos=useRef(new Map<string,HTMLVideoElement>());
   const now=useNow();
   const countdown=useCountdown(task?.deadline??null,task?.serverNow??null,task?.timeLimitSeconds??0);
@@ -78,9 +80,13 @@ export default function ObsintConsole({onBack}:{onBack:()=>void}){
   const running=task?.status==='IN_PROGRESS';
   const timerTone=!task?.deadline?'idle':countdown.level;
 
+  if(reportsOpen)return <ObsintReports onBack={()=>setReportsOpen(false)}/>;
+
   return <div className="obs-page">
     <nav className="obs-breadcrumbs"><button type="button" onClick={onBack}><ArrowLeft size={15}/>Volver a Consola</button><span>/</span><small>OBSINT</small></nav>
-    <div className="obs-hero"><h2>Consola OBSINT</h2><p>Consola operativa para monitoristas de Observational Intelligence.</p></div>
+    <div className="obs-console-titlebar"><div className="obs-hero"><h2>Consola OBSINT</h2><p>Consola operativa para monitoristas de Observational Intelligence.</p></div>
+      {canViewObsintReports()&&<button type="button" className="obs-reports-entry" onClick={()=>setReportsOpen(true)}><FileText size={16}/>Reportes</button>}
+    </div>
 
     {error&&<div className="obs-error">{error}</div>}
     {loading?<div className="obs-card obs-message">Cargando consola OBSINT…</div>
