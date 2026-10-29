@@ -29,7 +29,7 @@
 | 11 | `SIC_RRMM_SGI_COM_0001_v001` | SIC_RRMM | SGI_COM | Provide SIC_RRMM with operational Company Point/Post catalog for MARE requirements. | UAT | BLOCKED |
 | 12 | `ATS_SGI_COM_0001_v001` | ATS | SGI_COM | Deliver a published .ats security architecture package to SGI: Comando/REGESEP. | UAT | READY |
 | 13 | `SGI_COM_ATS_0001_v001` | SGI_COM | ATS | Reconcile operational observations about security components/vulnerabilities with ATS design. | DESIGN | BLOCKED |
-| 14 | `SGI_COM_SMC_0001_v001` | SGI_COM | SMC | Publish normalized operational facts used by SMC to calculate ID/KPIs. | DESIGN | MANUAL_PENDING |
+| 14 | `SGI_COM_SMC_0001_v003` | SGI_COM | SMC | Publish normalized operational facts used by SMC to calculate ID/KPIs. | DESIGN | MANUAL_PENDING |
 | 15 | `SGI_COM_SMC_0002_v001` | SGI_COM | SMC | Read current employee ID/KPIs used by Assignments and operational views. | DESIGN | MANUAL_PENDING |
 | 16 | `SGI_COM_STC_0001_v001` | SGI_COM | STC | Create a work/case in STC for Incidents, Requirements and Activities while preserving SGI origin. | DESIGN | MANUAL_PENDING |
 | 17 | `SGI_COM_STC_0002_v001` | SGI_COM | STC | Read workflow status/progress/closure for an SGI-originated STC case. | DESIGN | MANUAL_PENDING |

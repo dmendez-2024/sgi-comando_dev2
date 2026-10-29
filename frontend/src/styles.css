@@ -2428,3 +2428,20 @@ button.nov-evidence-photo:hover{border-color:#9db8e6;box-shadow:0 4px 14px rgba(
 /* COM — Coordinador y Asistente independientes en Editar Compañía */
 .com-core-editor .com-editor-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
 @media(max-width:900px){.com-core-editor .com-editor-grid{grid-template-columns:1fr}}
+
+/* ASI: bounded filters on a single toolbar row. */
+.assignments-asi-v066 .assignment-toolbar{display:grid;grid-template-columns:minmax(180px,1fr) minmax(0,auto);gap:4px 16px;min-width:0}
+.assignments-asi-v066 .assignment-toolbar>div:first-child{min-width:0}
+.assignments-asi-v066 .assignment-title-row{min-width:0}
+.assignments-asi-v066 .assignment-title-row h2{overflow-wrap:anywhere}
+.assignments-asi-v066 .assignment-toolbar-actions{display:flex;flex-wrap:nowrap;gap:6px;min-width:0;max-width:100%;width:auto;overflow-x:auto;padding-bottom:3px;align-items:center}
+.assignments-asi-v066 .assignment-toolbar-actions .assignment-select{flex:0 0 180px;width:180px;min-width:0;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:0 10px;font-size:12px}
+.assignments-asi-v066 .assignment-toolbar-actions .assignment-company-filter{flex-basis:150px;width:150px;max-width:150px}
+.assignments-asi-v066 .assignment-toolbar-actions .week-switcher,.assignments-asi-v066 .assignment-toolbar-actions>button{flex:0 0 auto;white-space:nowrap}
+.assignments-asi-v066 .assignment-toolbar-actions .week-switcher button{flex:0 0 28px;width:28px}
+.assignments-asi-v066 .assignment-toolbar-actions .week-switcher span{font-size:12px;gap:5px;padding:0 5px}
+.assignments-asi-v066 .assignment-toolbar-actions>button{font-size:12px;padding-left:10px;padding-right:10px}
+@media(max-width:1400px){.assignments-asi-v066 .assignment-toolbar{grid-template-columns:minmax(0,1fr)}.assignments-asi-v066 .assignment-toolbar-actions{width:100%;justify-content:flex-start}}
+
+.assignments-asi-v066 .assignment-publish-row{grid-column:1/-1;display:flex;flex-wrap:wrap;justify-content:flex-end;align-items:center;gap:8px;min-width:0;margin-bottom:12px}
+.assignments-asi-v066 .assignment-publish-row .publish-button{white-space:nowrap;font-size:12px}

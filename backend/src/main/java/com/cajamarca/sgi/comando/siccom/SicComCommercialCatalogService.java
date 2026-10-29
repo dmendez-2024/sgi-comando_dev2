@@ -394,36 +394,70 @@ public class SicComCommercialCatalogService {
         .stream().map(assignment -> assignment.shiftOccurrenceId).collect(java.util.stream.Collectors.toSet());
     Set<LocalDate> publishedDates = publishedDates(instanceCountryId, post, future);
 
+    Map<UUID, PostShiftTemplate> activeTemplatesById = new HashMap<>();
     Map<String, PostShiftTemplate> activeTemplatesByCode = new HashMap<>();
     for (PostShiftTemplate template : PostShiftTemplate.<PostShiftTemplate>list(
         "instanceCountryId=?1 and postId=?2 and active=true", instanceCountryId, post.id)) {
+      activeTemplatesById.put(template.id, template);
       activeTemplatesByCode.put(template.shiftCode, template);
     }
 
     Set<LocalDate> rebuildDates = new HashSet<>();
     Set<LocalDate> protectedDates = new HashSet<>();
     for (ShiftOccurrenceEntity occurrence : future) {
-      if (assignedOccurrenceIds.contains(occurrence.id) || publishedDates.contains(occurrence.localDate)) {
-        protectedDates.add(occurrence.localDate);
+      LocalDate date = localDateOf(occurrence);
+      if (assignedOccurrenceIds.contains(occurrence.id) || publishedDates.contains(date)) {
+        protectedDates.add(date);
       } else {
-        rebuildDates.add(occurrence.localDate);
+        rebuildDates.add(date);
       }
     }
     rebuildDates.removeAll(protectedDates);
     if (rebuildDates.isEmpty()) return;
 
-    Map<OccurrenceKey, ShiftOccurrenceEntity> preserved = new HashMap<>();
+    Map<LocalDate, List<ShiftOccurrenceEntity>> occurrencesByDate = new HashMap<>();
     for (ShiftOccurrenceEntity occurrence : future) {
-      if (!rebuildDates.contains(occurrence.localDate)) continue;
-      PostShiftTemplate template = activeTemplatesByCode.get(occurrence.shiftCode);
-      if (template == null || !appliesOn(template, occurrence.localDate)) {
-        occurrence.delete();
-        continue;
+      LocalDate date = localDateOf(occurrence);
+      if (rebuildDates.contains(date)) {
+        occurrencesByDate.computeIfAbsent(date, ignored -> new ArrayList<>()).add(occurrence);
       }
-      applyTemplate(occurrence, template, version);
-      preserved.put(new OccurrenceKey(template.id, occurrence.localDate), occurrence);
     }
 
+    Map<OccurrenceKey, ShiftOccurrenceEntity> preserved = new HashMap<>();
+    Set<UUID> retainedOccurrenceIds = new HashSet<>();
+    for (LocalDate date : rebuildDates) {
+      for (ShiftOccurrenceEntity occurrence : occurrencesByDate.getOrDefault(date, List.of())) {
+        // Template id is stable across a commercial schedule change. Prefer it
+        // over shiftCode, which may be legacy or renamed by SIC:COM.
+        PostShiftTemplate template = activeTemplatesById.get(occurrence.templateId);
+        if (template == null) template = activeTemplatesByCode.get(occurrence.shiftCode);
+        if (template == null || !appliesOn(template, date)) continue;
+
+        OccurrenceKey key = new OccurrenceKey(template.id, date);
+        ShiftOccurrenceEntity selected = preserved.get(key);
+        boolean occurrenceUsesTemplateId = template.id.equals(occurrence.templateId);
+        boolean selectedUsesTemplateId = selected != null && template.id.equals(selected.templateId);
+        if (selected == null || (occurrenceUsesTemplateId && !selectedUsesTemplateId)) {
+          preserved.put(key, occurrence);
+        }
+      }
+    }
+
+    retainedOccurrenceIds.addAll(preserved.values().stream().map(occurrence -> occurrence.id).toList());
+    for (List<ShiftOccurrenceEntity> occurrences : occurrencesByDate.values()) {
+      for (ShiftOccurrenceEntity occurrence : occurrences) {
+        if (!retainedOccurrenceIds.contains(occurrence.id)) occurrence.delete();
+      }
+    }
+    // Flush deletes before reusing a template/date key. PostgreSQL enforces this
+    // pair as unique and historical rows can carry an obsolete shift code.
+    entityManager.flush();
+
+    for (Map.Entry<OccurrenceKey, ShiftOccurrenceEntity> entry : preserved.entrySet()) {
+      ShiftOccurrenceEntity occurrence = entry.getValue();
+      occurrence.localDate = entry.getKey().date;
+      applyTemplate(occurrence, activeTemplatesById.get(entry.getKey().templateId), version);
+    }
     for (LocalDate date : rebuildDates) {
       for (PostShiftTemplate template : activeTemplatesByCode.values()) {
         if (!appliesOn(template, date)) continue;
@@ -449,14 +483,19 @@ public class SicComCommercialCatalogService {
 
     Set<LocalDate> dates = new HashSet<>();
     for (ShiftOccurrenceEntity occurrence : future) {
+      LocalDate date = localDateOf(occurrence);
       for (AssignmentPlanEntity plan : publishedPlans) {
-        if (!occurrence.localDate.isBefore(plan.weekStart) && occurrence.localDate.isBefore(plan.weekStart.plusDays(7))) {
-          dates.add(occurrence.localDate);
+        if (!date.isBefore(plan.weekStart) && date.isBefore(plan.weekStart.plusDays(7))) {
+          dates.add(date);
           break;
         }
       }
     }
     return dates;
+  }
+
+  private LocalDate localDateOf(ShiftOccurrenceEntity occurrence) {
+    return occurrence.localDate != null ? occurrence.localDate : occurrence.startsAt.atZone(OPERATING_ZONE).toLocalDate();
   }
 
   private boolean appliesOn(PostShiftTemplate template, LocalDate date) {
@@ -539,9 +578,9 @@ public class SicComCommercialCatalogService {
           if (!postInactive || !INACTIVATED.equals(request.eventType())) {
             required(post.name(), "posts.name"); required(post.format(), "posts.format");
             if (post.fhe() == null || post.tier() == null) throw validation("posts.fhe y posts.tier son obligatorios.");
+            boolean hasPlanning = post.rotation() != null || !safe(post.shifts()).isEmpty();
+            if (!INACTIVATED.equals(request.eventType()) || hasPlanning) validatePlanning(post);
           }
-          boolean hasPlanning = post.rotation() != null || !safe(post.shifts()).isEmpty();
-          if (!INACTIVATED.equals(request.eventType()) || hasPlanning) validatePlanning(post);
         }
       }
     }
@@ -557,6 +596,10 @@ public class SicComCommercialCatalogService {
     if (cycleLengthDays == null || cycleLengthDays < 1 || cycleLengthDays > MAX_CYCLE_LENGTH_DAYS) {
       throw unprocessable("posts.rotation.cycleLengthDays debe estar entre 1 y " + MAX_CYCLE_LENGTH_DAYS + ".");
     }
+    validateShifts(post);
+  }
+
+  private void validateShifts(PostInput post) {
     List<ShiftInput> shifts = safe(post.shifts());
     if (shifts.isEmpty()) throw validation("posts.shifts debe incluir al menos un turno.");
     for (ShiftInput shift : shifts) {

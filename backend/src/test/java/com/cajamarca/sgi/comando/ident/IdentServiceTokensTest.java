@@ -13,7 +13,7 @@ class IdentServiceTokensTest {
         assertEquals("SIC_RRMM", IdentServiceTokens.targetOf("SGI_COM_SIC_RRMM_0002"));
         assertEquals("SIC_RRHH", IdentServiceTokens.targetOf("SGI_COM_SIC_RRHH_0001_v001"));
         assertEquals("SMC", IdentServiceTokens.targetOf("SGI_COM_SMC__0001_v001"));
-        assertEquals("SMC", IdentServiceTokens.targetOf("SGI_COM_SMC_0001_v001"));
+        assertEquals("SMC", IdentServiceTokens.targetOf("SGI_COM_SMC_0001_v003"));
         assertEquals("", IdentServiceTokens.targetOf("SIC_RRMM_SGI_COM_0001_v001"));
     }
 

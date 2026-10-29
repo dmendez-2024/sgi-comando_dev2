@@ -193,7 +193,7 @@ Reconcile operational observations about security components/vulnerabilities wit
 - `SGI_COM_ATS_0001_IF01` — `POST` `/api/v1/sgi-operational-observations` — Operational observation linked to ATS component/location
 - aliases históricos: `SGI_COM__ATS__00001__V0001`, `SGI_COM__ATS__00001`
 
-## `SGI_COM_SMC_0001_v001` — SGI_COM → SMC
+## `SGI_COM_SMC_0001_v003` — SGI_COM → SMC
 Publish normalized operational facts used by SMC to calculate ID/KPIs.
 
 - SoR de los datos principales: `SGI_COM`
