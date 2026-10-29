@@ -5,7 +5,7 @@ import {
   CarFront, AlertCircle, X, ChevronRight
 } from 'lucide-react';
 import {api, getUser, type UatUser} from '../api';
-import {PhotoEvidenceGallery, ReferenceImageGallery} from '../components/PhotoEvidenceGallery';
+import {PhotoEvidenceGallery, ReferenceImageGallery, ReliefInventoryCards, type ReliefInventoryItem} from '../components/PhotoEvidenceGallery';
 
 type ExecutionType='RELIEF'|'PATROL'|'ADHOC';
 type ExecutionStatus='IN_PROGRESS'|'COMPLETED'|'OVERDUE'|'PENDING'|'CRITICAL';
@@ -16,6 +16,7 @@ type Execution={
   id:string;
   evidenceEventId?:string;
   photoCount?:number;
+  inventoryItems?:ReliefInventoryItem[];
   type:ExecutionType;
   code:string;
   name:string;
@@ -196,6 +197,7 @@ function reliefToExecution(item:any):Execution{
   const opening=event.reliefMode==='OPENING_WITHOUT_PREVIOUS_SHIFT';
   return {
     id:`relief-${item.reliefId}`,evidenceEventId:String(item.reliefId),photoCount:evidenceCount,type:'RELIEF',
+    inventoryItems:Array.isArray(item.inventoryReport?.items)?item.inventoryReport.items:[],
     code:`REL-${String(item.reliefId).slice(0,8).toUpperCase()}`,name:'Relevo de puesto',
     client:item.clientName||context.clientName||'—',company:item.companyName||'—',companyCode:item.companyCode||'',city:item.city||'—',
     point:item.pointName||context.pointName||'—',post:item.postName||context.postName||'—',
@@ -359,7 +361,8 @@ export default function ConsignasExecution(){
             <ModalReadField label="Estado" value={statusLabel(inspected.status)}/><ModalReadField label="Resultado" value={inspected.result}/>
           </div>
           <section className="cns-detail-progress"><div><strong>Progreso {inspected.type==='RELIEF'?'del relevo':inspected.type==='PATROL'?'de hitos':'de acciones'}</strong><b>{inspected.progressCurrent}/{inspected.progressTotal}</b></div><div className="bar"><i style={{width:`${Math.round(inspected.progressCurrent/Math.max(inspected.progressTotal,1)*100)}%`}}/></div><span>{Math.round(inspected.progressCurrent/Math.max(inspected.progressTotal,1)*100)}% completado</span></section>
-          <PhotoEvidenceGallery eventId={inspected.evidenceEventId} declaredCount={inspected.photoCount}/>
+          <PhotoEvidenceGallery eventId={inspected.evidenceEventId} declaredCount={inspected.photoCount} hideInventory={inspected.type==='RELIEF'}/>
+          {inspected.type==='RELIEF'&&<ReliefInventoryCards eventId={inspected.evidenceEventId} items={inspected.inventoryItems}/>}
           <ReferenceImageGallery eventId={inspected.evidenceEventId}/>
           <section className="cns-timeline"><div className="cns-timeline-head"><h4>{inspected.type==='RELIEF'?'Hitos del relevo':'Últimos eventos'}</h4></div>{inspected.timeline.map(event=><article key={event.id}><i className={event.state.toLowerCase()}/><div><span>{formatDateTime(event.at)}</span><strong>{event.title}</strong><small>{event.detail}</small></div></article>)}</section>
         </div>

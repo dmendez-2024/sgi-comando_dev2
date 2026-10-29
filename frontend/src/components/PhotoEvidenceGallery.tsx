@@ -1,6 +1,6 @@
-import {useEffect, useState} from 'react';
+import {useEffect, useState, type ReactNode} from 'react';
 import {api, ApiError} from '../api';
-import {ImageOff} from 'lucide-react';
+import {AlertTriangle, Camera, CheckCircle2, ImageOff, SearchX, XCircle} from 'lucide-react';
 import {ImageCarousel} from './ImageCarousel';
 
 type Photo={id:string;url:string|null;purpose?:string;label?:string;source?:string;mime?:string;loading:boolean;missing?:boolean};
@@ -73,11 +73,14 @@ function PhotoGrid({photos,label,title}:{photos:Photo[];label:(photo:Photo,index
 }
 
 /** Galería de archivos realmente almacenados; un contador declarado no crea fotos ficticias. */
-export function PhotoEvidenceGallery({eventId,declaredCount=0,incident=false}:{eventId?:string;declaredCount?:number;incident?:boolean}){
-  const {photos,loading,error,pending,available,missing}=useProgressiveImages(eventId,
-    incident?api.incidentEvidences:api.operationalEventEvidences,
+export function PhotoEvidenceGallery({eventId,declaredCount=0,incident=false,hideInventory=false}:{eventId?:string;declaredCount?:number;incident?:boolean;hideInventory?:boolean}){
+  // hideInventory: las fotos de los materiales se muestran en su tarjeta (ReliefInventoryCards), no en la galería.
+  const list=incident?api.incidentEvidences:hideInventory
+    ?(id:string)=>api.operationalEventEvidences(id).then(refs=>refs.filter(ref=>ref.source!=='INVENTORY'))
+    :api.operationalEventEvidences;
+  const {photos,loading,error,pending,available,missing}=useProgressiveImages(eventId,list,
     incident?api.incidentEvidenceImage:api.operationalEventEvidenceImage,
-    !incident,`${incident}:${declaredCount}`);
+    !incident,`${incident}:${declaredCount}:${hideInventory}`);
   // Las fotos MISSING ya se ven como tarjeta con su nombre; el aviso solo cuenta las que no se pueden ubicar.
   const unavailable=Math.max(0,declaredCount-available,photos.length-available)-missing;
   return <section className="nov-photo-block" aria-label="Evidencia fotográfica" aria-busy={loading||pending}>
@@ -87,6 +90,66 @@ export function PhotoEvidenceGallery({eventId,declaredCount=0,incident=false}:{e
     {!loading&&error&&<p className="nov-evidence-message">{error}</p>}
     {!loading&&!pending&&!error&&available>0&&unavailable>0&&<p className="nov-evidence-message">{unavailable} {unavailable===1?'fotografía declarada no tiene archivo disponible':'fotografías declaradas no tienen archivos disponibles'}.</p>}
     {!loading&&!pending&&!error&&available===0&&missing===0&&<p className="nov-evidence-message">{photos.length>0?'No se pudieron cargar las fotografías. Cierre y vuelva a abrir el detalle para reintentar.':unavailable>0?`Hay imágenes declaradas sin archivo disponible.${incident?' Vuelva a adjuntarlas desde Editar incidente.':''}`:'No contiene Imagen de Evidencia.'}</p>}
+  </section>;
+}
+
+export type ReliefInventoryItem={assetId:string;code?:string;description?:string;condition?:string;previousCondition?:string;observation?:string;evidenceIds?:string[]};
+
+// Mismos estados y textos que la tarjeta de Relevo completado en SGI Operador.
+const CONDITIONS:Record<string,{label:string;tone:string;icon:ReactNode}>={
+  GOOD:{label:'Bueno',tone:'good',icon:<CheckCircle2 size={13}/>},
+  WITH_ISSUE:{label:'Con novedad',tone:'issue',icon:<AlertTriangle size={13}/>},
+  DAMAGED:{label:'Dañado',tone:'bad',icon:<XCircle size={13}/>},
+  MISSING:{label:'No encontrado',tone:'bad',icon:<SearchX size={13}/>}
+};
+
+/** Materiales informados en el relevo: foto, descripción, código, estado y observación de cada uno. */
+export function ReliefInventoryCards({eventId,items}:{eventId?:string;items?:ReliefInventoryItem[]}){
+  const assets=(items??[]).filter(item=>item.assetId);
+  const [photos,setPhotos]=useState<Record<string,{url:string|null;mime?:string;loading:boolean}>>({});
+  const [open,setOpen]=useState<number|null>(null);
+  const evidenceKey=assets.map(item=>item.evidenceIds?.[0]??'').join(',');
+
+  useEffect(()=>{
+    let active=true;
+    const urls:string[]=[];
+    setOpen(null);
+    // Como en Operador, cada material muestra su primera foto.
+    const pending=eventId?assets.filter(item=>item.evidenceIds?.[0]):[];
+    setPhotos(Object.fromEntries(pending.map(item=>[item.assetId,{url:null,loading:true}])));
+    pending.forEach(item=>{
+      const settle=(url:string|null,mime?:string)=>{if(active)setPhotos(current=>({...current,[item.assetId]:{url,mime,loading:false}}))};
+      void api.operationalEventEvidenceImage(eventId!,item.evidenceIds![0])
+        .then(blob=>{const url=URL.createObjectURL(blob);if(active){urls.push(url);settle(url,blob.type)}else URL.revokeObjectURL(url)})
+        .catch(()=>settle(null));
+    });
+    return()=>{active=false;urls.forEach(url=>URL.revokeObjectURL(url))};
+  // assets cambia de referencia en cada render; eventId y las fotos de cada material deciden cuándo recargar.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[eventId,evidenceKey]);
+
+  if(!assets.length)return null;
+  const title=(item:ReliefInventoryItem)=>item.description?.trim()||item.code?.trim()||'Activo';
+  const viewable=assets.flatMap(item=>{const photo=photos[item.assetId];return photo?.url?[{id:item.assetId,src:photo.url,mime:photo.mime,label:title(item),fit:'cover' as const}]:[]});
+  return <section className="nov-photo-block" aria-label="Materiales del relevo">
+    <div className="nov-section-title"><strong>Materiales ({assets.length})</strong></div>
+    <div className="rel-inventory-list">{assets.map(item=>{
+      const name=title(item);
+      const photo=photos[item.assetId];
+      const condition=CONDITIONS[item.condition??''];
+      return <article className="rel-inventory-card" key={item.assetId}>
+        {photo?.url
+          ?<button type="button" className="rel-inventory-thumb" aria-label={`Ver foto de ${name}`} aria-haspopup="dialog"
+              onClick={()=>setOpen(viewable.findIndex(image=>image.id===item.assetId))}><img src={photo.url} alt={`Foto de ${name}`}/></button>
+          :<div className={`rel-inventory-thumb${photo?.loading?' pending':' empty'}`} aria-label={photo?.loading?`Cargando foto de ${name}`:`Foto de ${name} no disponible`}>{!photo?.loading&&<Camera size={22}/>}</div>}
+        <div className="rel-inventory-body">
+          <strong>{name}</strong>
+          {item.code&&item.code!==name&&<small>{item.code}</small>}
+          <span className={`rel-inventory-status ${condition?.tone??'none'}`}>{condition?.icon}{condition?.label??'Sin estado'}</span>
+          {item.observation?.trim()&&<div className="rel-inventory-observation"><b>Observación</b><p>{item.observation}</p></div>}
+        </div>
+      </article>})}</div>
+    {open!==null&&viewable.length>0&&<ImageCarousel images={viewable} index={Math.min(open,viewable.length-1)} onIndexChange={setOpen} onClose={()=>setOpen(null)} title="Materiales del relevo"/>}
   </section>;
 }
 

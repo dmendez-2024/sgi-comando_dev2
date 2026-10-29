@@ -2445,3 +2445,26 @@ button.nov-evidence-photo:hover{border-color:#9db8e6;box-shadow:0 4px 14px rgba(
 
 .assignments-asi-v066 .assignment-publish-row{grid-column:1/-1;display:flex;flex-wrap:wrap;justify-content:flex-end;align-items:center;gap:8px;min-width:0;margin-bottom:12px}
 .assignments-asi-v066 .assignment-publish-row .publish-button{white-space:nowrap;font-size:12px}
+
+/* Consignas · detalle de relevo: tarjetas de materiales (foto, descripción, estado y observación), como en SGI Operador. */
+.rel-inventory-list{display:flex;flex-direction:column;gap:10px}
+.rel-inventory-card{display:grid;grid-template-columns:84px minmax(0,1fr);gap:12px;padding:12px;border:1px solid #e1e8f2;border-radius:12px;background:#fff}
+.rel-inventory-thumb{width:84px;height:100px;border:1px solid #d5e1ef;border-radius:10px;background:#f7faff;overflow:hidden;padding:0;display:grid;place-items:center;color:#8a97ab}
+.rel-inventory-thumb img{width:100%;height:100%;object-fit:cover;display:block}
+button.rel-inventory-thumb{cursor:zoom-in;transition:border-color .15s,box-shadow .15s}
+button.rel-inventory-thumb:hover{border-color:#9db8e6;box-shadow:0 4px 14px rgba(35,100,232,.14)}
+button.rel-inventory-thumb:focus-visible{outline:3px solid rgba(45,103,216,.3);outline-offset:2px}
+.rel-inventory-thumb.pending{background:linear-gradient(90deg,#eef3f9 25%,#f8fbff 50%,#eef3f9 75%);background-size:200% 100%;animation:nov-photo-pending 1.2s linear infinite}
+.rel-inventory-thumb.empty{border-style:dashed}
+.rel-inventory-body{min-width:0;display:flex;flex-direction:column;align-items:flex-start}
+.rel-inventory-body>strong{font-size:14px;color:#16233b;overflow-wrap:anywhere}
+.rel-inventory-body>small{font-size:11px;color:#6f7d92;margin-top:3px}
+.rel-inventory-status{display:inline-flex;align-items:center;gap:5px;margin-top:8px;padding:3px 10px 3px 8px;border:1px solid currentColor;border-radius:999px;background:#f7f9fc;font-size:11px;font-weight:800}
+.rel-inventory-status.good{color:#187648}
+.rel-inventory-status.issue{color:#b7791f}
+.rel-inventory-status.bad{color:#aa2430}
+.rel-inventory-status.none{color:#7a8699}
+.rel-inventory-observation{margin-top:10px}
+.rel-inventory-observation b{display:block;font-size:10px;letter-spacing:.04em;text-transform:uppercase;color:#6f7d92}
+.rel-inventory-observation p{margin:3px 0 0;font-size:12px;line-height:1.45;color:#24314d;overflow-wrap:anywhere}
+@media(prefers-reduced-motion:reduce){.rel-inventory-thumb.pending{animation:none}}
