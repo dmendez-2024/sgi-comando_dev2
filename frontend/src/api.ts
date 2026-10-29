@@ -108,7 +108,7 @@ export const api={
  context:()=>request<any>('/api/context'),
  companies:(page=0,size=50)=>request<any>(`/api/companies?page=${page}&size=${size}`),
  companyCoreCatalog:()=>request<any[]>('/api/companies/core-catalog'),
- companyResponsibles:()=>request<any[]>('/api/companies/responsibles'),
+ companyResponsibles:(companyId?:string)=>request<any[]>(`/api/companies/responsibles${companyId?`?companyId=${encodeURIComponent(companyId)}`:''}`),
  activateCompany:(body:any)=>request<any>('/api/companies/activate',{method:'POST',body:JSON.stringify(body)}),
  company:(id:string)=>request<any>(`/api/companies/${encodeURIComponent(id)}`),
  updateCompany:(id:string,body:any)=>request<any>(`/api/companies/${encodeURIComponent(id)}`,{method:'PUT',body:JSON.stringify(body)}),

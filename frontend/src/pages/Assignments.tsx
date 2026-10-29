@@ -24,6 +24,7 @@ type HistoryOperation={label:string;before:SnapshotCell[];after:SnapshotCell[]};
 type CopyMode='NONE'|'DAY_SOURCE'|'DAY_TARGET'|'CYCLE_TARGET'|'SELECTION_TARGET';
 type PersonnelSort='PERSON'|'ID'|'FREE';
 type SortDirection='ASC'|'DESC';
+type PointLayout={point:Point;top:number;height:number;bottom:number};
 
 const ROLE_LABEL:Record<string,string>={AGENTE_SEGURIDAD:'Agente de Seguridad',SUPERVISOR_SEGURIDAD:'Supervisor de Seguridad',ESCOLTA_SEGURIDAD:'Escolta de Seguridad',DIRECTOR_OPERACIONES_NACIONAL:'Director Nacional de Operaciones',DIRECTOR_NACIONAL:'Director Nacional de Operaciones',DIRECTOR_ZONAL:'Director Zonal de Operaciones',JEFE_REGIONAL:'Jefe Regional de Operaciones',MONITOR:'Monitor'};
 const UNAV_LABEL:Record<string,string>={MEDICAL_LEAVE:'Permiso médico',VACATION:'Vacaciones',PERMISSION:'Permisos generales'};
@@ -35,6 +36,12 @@ const VIRTUAL_RENDER_DAYS=17;
 const VIRTUAL_BUFFER_DAYS=4;
 const PERSONNEL_PAGE_SIZE=100;
 const PERSONNEL_PREFETCH_PX=180;
+const MATRIX_HEADER_HEIGHT=59;
+const POINT_BAND_HEIGHT=46;
+const POST_MIN_HEIGHT=72;
+const SHIFT_ROW_HEIGHT=80;
+const VERTICAL_POINT_OVERSCAN_PX=720;
+const INITIAL_VERTICAL_POINT_COUNT=12;
 const COORDINATION_POINT_ID='coordination-posts';
 const COORDINATION_CLIENT='Coordinación';
 const PERSONNEL_SORT_COLUMNS:{key:PersonnelSort;label:string}[]=[{key:'PERSON',label:'Persona / Rol'},{key:'ID',label:'ID'},{key:'FREE',label:'Libre'}];
@@ -70,6 +77,14 @@ function isFormTarget(target:EventTarget|null){const el=target as HTMLElement|nu
 function normalizeName(v:string){return v.trim().toLocaleLowerCase('es-EC').replace(/\s+/g,' ')}
 function compactAssignmentName(v:string){const parts=v.trim().split(/\s+/).filter(Boolean);if(!parts.length)return v;if(parts.length===1)return parts[0];return `${parts[0][0]?.toUpperCase()??''}.${parts[parts.length-1]}`;}
 function clampIso(date:string,min:string,max:string){return date<min?min:date>max?max:date}
+function verticalPointRange(layouts:PointLayout[],scrollTop:number,viewportHeight:number){
+  if(!layouts.length)return{start:0,end:0};
+  const visibleTop=Math.max(0,scrollTop-MATRIX_HEADER_HEIGHT),startY=Math.max(0,visibleTop-VERTICAL_POINT_OVERSCAN_PX),endY=visibleTop+Math.max(viewportHeight,300)+VERTICAL_POINT_OVERSCAN_PX;
+  let start=0;while(start<layouts.length&&layouts[start].bottom<startY)start++;
+  let end=start;while(end<layouts.length&&layouts[end].top<=endY)end++;
+  if(end===start&&start<layouts.length)end=start+1;
+  return{start,end};
+}
 
 export default function Assignments(){
   const user=getUser();const today=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Guayaquil',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
@@ -87,6 +102,7 @@ export default function Assignments(){
   const [history,setHistory]=useState<HistoryOperation[]>([]);const [redoStack,setRedoStack]=useState<HistoryOperation[]>([]);
   const [fillDragging,setFillDragging]=useState(false);const [fillBlock,setFillBlock]=useState<ClipboardBlock|null>(null);const [fillTargetId,setFillTargetId]=useState('');
   const [virtualStart,setVirtualStart]=useState(Math.max(0,HORIZONTAL_DAY_RADIUS-VIRTUAL_BUFFER_DAYS));
+  const [verticalRange,setVerticalRange]=useState({start:0,end:INITIAL_VERTICAL_POINT_COUNT});
   const matrixRef=useRef<HTMLDivElement|null>(null);const freezePaneRef=useRef<HTMLDivElement|null>(null);const mainTopRef=useRef<HTMLDivElement|null>(null);const personnelListRef=useRef<HTMLDivElement|null>(null);const suppressAssignmentClickRef=useRef(false);const evaluationCacheRef=useRef<Map<string,Evaluation[]>>(new Map());const evaluationTokenRef=useRef(0);const weeksLoadTokenRef=useRef(0);const personnelLoadTokenRef=useRef(0);const personnelLoadingRef=useRef(false);const [freezePaneOffset,setFreezePaneOffset]=useState(0);const [mainTopOffset,setMainTopOffset]=useState(0);
 
   const timelineStart=useMemo(()=>addDays(today,-HORIZONTAL_DAY_RADIUS),[today]);
@@ -136,6 +152,11 @@ export default function Assignments(){
   const coordByShift=useMemo(()=>{const m=new Map<string,CellCoord>();for(const [key,shift] of shiftAt){const split=key.lastIndexOf('|');const rowKey=key.slice(0,split);const date=key.slice(split+1);const row=rowByKey.get(rowKey),dayIndex=dayIndexByDate.get(date);if(row&&dayIndex!=null)m.set(shift.id,{rowIndex:row.rowIndex,dayIndex,rowKey,date})}return m},[shiftAt,rowByKey,dayIndexByDate]);
   const rowByIndex=useMemo(()=>new Map(rows.map(r=>[r.rowIndex,r])),[rows]);
   const rowsByPost=useMemo(()=>{const m=new Map<string,RowDef[]>();for(const row of rows){const list=m.get(row.post.id);if(list)list.push(row);else m.set(row.post.id,[row])}return m},[rows]);
+  const pointLayouts=useMemo<PointLayout[]>(()=>{let top=0;return visiblePoints.map(point=>{const posts=postsByPoint.get(point.id)??[];const height=POINT_BAND_HEIGHT+1+posts.reduce((sum,post)=>sum+1+Math.max(POST_MIN_HEIGHT,(rowsByPost.get(post.id)?.length??0)*SHIFT_ROW_HEIGHT),0);const layout={point,top,height,bottom:top+height};top=layout.bottom;return layout})},[visiblePoints,postsByPoint,rowsByPost]);
+  const totalPointHeight=pointLayouts.length?pointLayouts[pointLayouts.length-1].bottom:0;
+  const renderedPointLayouts=pointLayouts.slice(verticalRange.start,verticalRange.end);
+  const topPointSpacer=renderedPointLayouts.length?renderedPointLayouts[0].top:0;
+  const bottomPointSpacer=renderedPointLayouts.length?Math.max(0,totalPointHeight-renderedPointLayouts[renderedPointLayouts.length-1].bottom):0;
   const shiftByCoord=useMemo(()=>{const m=new Map<string,Shift>();for(const [id,c] of coordByShift){const shift=shiftById.get(id);if(shift)m.set(`${c.rowIndex}|${c.dayIndex}`,shift)}return m},[coordByShift,shiftById]);
 
   const displaySummary=useMemo(()=>{
@@ -173,6 +194,7 @@ export default function Assignments(){
   useEffect(()=>{if(!error)return;const id=window.setTimeout(()=>setError(''),5000);return()=>window.clearTimeout(id)},[error]);
   useEffect(()=>{const update=()=>setFreezePaneOffset(freezePaneRef.current?.offsetHeight??0);update();window.addEventListener('resize',update);return()=>window.removeEventListener('resize',update)},[week?.plan.status,clientFilter,error,notice,selectedEmployeeId,canEdit,selectedShiftIds.size,copyMode]);
   useEffect(()=>{const update=()=>setMainTopOffset(mainTopRef.current?.offsetHeight??0);update();window.addEventListener('resize',update);return()=>window.removeEventListener('resize',update)},[selectedEmployeeId,canEdit,week?.plan.status,selectedShiftIds.size,copyMode,history.length,redoStack.length]);
+  useEffect(()=>{const el=matrixRef.current;if(!el)return;const next=verticalPointRange(pointLayouts,el.scrollTop,el.clientHeight);setVerticalRange(current=>current.start===next.start&&current.end===next.end?current:next)},[pointLayouts]);
 
 
   const evaluatePerson=async(employeeId:string,force=false)=>{if(!windowData.length)return;const token=++evaluationTokenRef.current;setEvaluating(true);try{const batches=await Promise.all(windowData.map(async w=>{const key=`${employeeId}|${w.plan.id}`;if(!force&&evaluationCacheRef.current.has(key))return evaluationCacheRef.current.get(key)!;const result:Evaluation[]=await api.assignmentEvaluate(w.plan.id,employeeId);evaluationCacheRef.current.set(key,result);return result}));if(token===evaluationTokenRef.current){setEvaluations(new Map(batches.flat().map(x=>[x.shiftOccurrenceId,x])));setEvaluating(false)}}catch(e){if(token===evaluationTokenRef.current){setError(errorMessage(e));setEvaluating(false)}}};
@@ -219,7 +241,7 @@ export default function Assignments(){
   const setWeekAndScroll=(target:string)=>{const clamped=clampIso(target,minWeekStart,maxWeekStart);setWeekStart(clamped);scrollToDate(clamped)};
   const goWeek=(delta:number)=>setWeekAndScroll(addDays(weekStart,delta));
   const goToday=()=>{const current=monday();setWeekStart(current);scrollToDate(today)};
-  const handleMatrixScroll=(e:any)=>{const left=e.currentTarget.scrollLeft||0;const first=Math.max(0,Math.min(days.length-1,Math.floor(left/DAY_WIDTH)));const next=Math.max(0,Math.min(days.length-VIRTUAL_RENDER_DAYS,first-VIRTUAL_BUFFER_DAYS));if(next!==virtualStart)setVirtualStart(next)};
+  const handleMatrixScroll=(e:any)=>{const el=e.currentTarget as HTMLDivElement;const left=el.scrollLeft||0;const first=Math.max(0,Math.min(days.length-1,Math.floor(left/DAY_WIDTH)));const next=Math.max(0,Math.min(days.length-VIRTUAL_RENDER_DAYS,first-VIRTUAL_BUFFER_DAYS));if(next!==virtualStart)setVirtualStart(next);const vertical=verticalPointRange(pointLayouts,el.scrollTop,el.clientHeight);setVerticalRange(current=>current.start===vertical.start&&current.end===vertical.end?current:vertical)};
   const handleMatrixWheel=(e:any)=>{if(Math.abs(e.deltaY)<=Math.abs(e.deltaX))return;window.scrollBy({top:e.deltaY,left:0,behavior:'auto'});e.preventDefault?.();};
   useEffect(()=>{scrollToDate(weekStart)},[weekStart,companyId]);
 
@@ -317,7 +339,7 @@ export default function Assignments(){
     </div>;
   };
 
-  return <div className="assignments-page assignments-v05 assignments-v06 assignments-asi-v01 assignments-asi-v02 assignments-asi-v03 assignments-asi-v04 assignments-asi-v05 assignments-asi-v06 assignments-asi-v062 assignments-asi-v063 assignments-asi-v064 assignments-asi-v065" style={{['--asi-day-count' as any]:String(days.length),['--freeze-pane-offset' as any]:`${freezePaneOffset}px`,['--main-top-offset' as any]:`${mainTopOffset}px`}}>
+  return <div className="assignments-page assignments-v05 assignments-v06 assignments-asi-v01 assignments-asi-v02 assignments-asi-v03 assignments-asi-v04 assignments-asi-v05 assignments-asi-v06 assignments-asi-v062 assignments-asi-v063 assignments-asi-v064 assignments-asi-v065 assignments-asi-v066" style={{['--asi-day-count' as any]:String(days.length),['--freeze-pane-offset' as any]:`${freezePaneOffset}px`,['--main-top-offset' as any]:`${mainTopOffset}px`}}>
     <div className="assignments-freeze-pane" ref={freezePaneRef}>
       <div className="assignment-toolbar"><div><div className="assignment-title-row"><h2>Asignaciones: {companies.find(c=>c.id===companyId)?.name??'—'}</h2><span>Timeline operacional</span></div><div className="plan-state"><b className={`plan-pill ${week?.plan.status?.toLowerCase()}`}>{week?.plan.status==='DRAFT'?'Borrador':week?.plan.status==='PUBLISHED'?'Publicado':'Cerrado'}</b>{week?.plan.draftSavedAt&&week.plan.status==='DRAFT'&&<small>Último guardado {formatDateTime(week.plan.draftSavedAt)} · {week.plan.draftSavedBy}</small>}{week?.plan.publishedAt&&<small>Publicado {formatDateTime(week.plan.publishedAt)} por {week.plan.publishedBy}</small>}</div></div>
         <div className="assignment-toolbar-actions">{showCompanyFilter&&<select className="assignment-select assignment-company-filter" value={companyId} onChange={e=>{weeksLoadTokenRef.current++;personnelLoadTokenRef.current++;setWindowData([]);setPersonnel([]);setSelectedEmployee(null);setCompanyId(e.target.value)}} aria-label="Compañía">{companies.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select>}<select className="assignment-select assignment-client-filter" value={clientFilter} onChange={e=>setClientFilter(e.target.value)} aria-label="Cliente"><option value="">Todos los clientes</option>{clients.map(client=><option key={client} value={client}>{client}</option>)}</select><div className="week-switcher"><button onClick={()=>goWeek(-7)} disabled={weekStart<=minWeekStart}><ChevronLeft size={16}/></button><span><CalendarDays size={16}/>{formatDate(weekStart)} – {formatDate(addDays(weekStart,6))}</span><button onClick={()=>goWeek(7)} disabled={weekStart>=maxWeekStart}><ChevronRight size={16}/></button></div><button className="secondary-button today-button" onClick={goToday}>Hoy</button>{week?.plan.status==='DRAFT'&&canEdit&&<button className="draft-save-button" onClick={()=>void saveDraft(false)} disabled={saving}><Save size={15}/>{saving?'Guardando…':'Guardar borrador'}</button>}{week?.plan.status==='DRAFT'&&canEdit&&<button className="publish-button" onClick={()=>void publish()} disabled={publishing}><Send size={15}/>{publishing?'Publicando…':'Publicar asignaciones'}</button>}</div>
@@ -352,13 +374,13 @@ export default function Assignments(){
 
         <div className="assignment-matrix-wrap spreadsheet-matrix" ref={matrixRef} onMouseLeave={()=>setHoverDate('')} onScroll={handleMatrixScroll}>
           <div className="matrix-days spreadsheet-days"><div className="matrix-corner">Puesto / Turno</div>{leftSpacerWidth>0&&<div className="virtual-day-spacer" style={{flex:`0 0 ${leftSpacerWidth}px`}}/>}{renderDays.map(d=><div key={d} data-date-header={d} className={`day-head ${dayHeaderClass(d)}`} onMouseEnter={()=>setHoverDate(d)} onClick={()=>onDayHeaderClick(d)}><strong>{dayName(d)}</strong><span>{new Date(`${d}T12:00:00`).getDate()}</span><small>{formatDate(d)}</small></div>)}{rightSpacerWidth>0&&<div className="virtual-day-spacer" style={{flex:`0 0 ${rightSpacerWidth}px`}}/>}</div>
-          {loading&&!week?<div className="matrix-loading">Cargando timeline operacional…</div>:visiblePoints.map(point=>{const coverage=pointCoverage(point),posts=postsByPoint.get(point.id)??[],coordination=point.id===COORDINATION_POINT_ID;return <div className={`point-assignment-block spreadsheet-point ${coordination?'coordination-assignment-block':''}`} key={point.id}>
+          {loading&&!week?<div className="matrix-loading">Cargando timeline operacional…</div>:<>{topPointSpacer>0&&<div className="virtual-point-spacer" style={{height:topPointSpacer}} aria-hidden="true"/>}{renderedPointLayouts.map(({point})=>{const coverage=pointCoverage(point),posts=postsByPoint.get(point.id)??[],coordination=point.id===COORDINATION_POINT_ID;return <div className={`point-assignment-block spreadsheet-point ${coordination?'coordination-assignment-block':''}`} key={point.id}>
             <div className={`point-band ${coverage.pct===100?'complete':coverage.pct>=80?'partial':'critical'}`}><div className="point-band-sticky"><div className="point-band-meta"><strong className="point-band-title">{point.name}</strong><span className="point-band-subtitle">{coordination?`Compañía: ${selectedCompany?.name??'—'} · Supervisión y Monitoreo`:`Cliente: ${point.clientName} · Ciudad: ${point.city}`}</span></div><b className="point-band-coverage">Asignación {coverage.pct}%</b></div><div className="point-band-fill" aria-hidden="true"/></div>
             {posts.map(post=>{const postRows=rowsByPost.get(post.id)??[],pm=postMetrics(post.id),isCoordination=post.targetType==='COORDINATION';return <div className="post-assignment spreadsheet-post" key={post.id}>
               <div className="post-info-v04 spreadsheet-post-info compact-post-info" onClick={()=>isCoordination?setNotice(`${post.code} · ${post.coordinationType==='SUPERVISION'?`Ruta activa: ${post.routeName??'sin ruta'}`:'Puesto interno de Monitoreo'} · Rol requerido: ${ROLE_LABEL[post.requiredRoleCode??'']??post.requiredRoleCode}`):void openPost(post.id)}><div className="post-info-headline"><div className="post-info-title"><strong>{post.code}</strong><span>{post.name}</span></div>{isCoordination?<div className="post-tier-inline"><span>COO</span><b>{post.coordinationType==='SUPERVISION'?'SUP':'MON'}</b></div>:<div className={`post-tier-inline post-tier-${post.tier}`}><span>TIER</span><b>{post.tier}</b></div>}</div><em>{pm.hours} h/semana requeridas</em>{isCoordination?<div className="post-metrics"><span>Rol: <b>{ROLE_LABEL[post.requiredRoleCode??'']??post.requiredRoleCode}</b></span><span>{post.routeName?`Ruta: ${post.routeName}`:'Sin ruta requerida'}</span></div>:<div className="post-metrics">IC: <b className={pm.ic==null?'':metricClass(pm.ic)}>{pm.ic==null?'—':`${pm.ic}%`}</b><span>ID: <b className={pm.id==null?'':metricClass(pm.id)}>{pm.id==null?'—':`${pm.id}%`}</b></span></div>}<div className={`cycle-chip ${post.cycleLengthDays?'':'missing'}`}>{post.cycleLengthDays?<><b>{post.rotationCode}</b><span>Ciclo {post.cycleLengthDays} días</span></>:<span>Ciclo no informado</span>}</div><button className="post-more"><Info size={11}/>{isCoordination?'Información de Coordinación':'Más información'}</button></div>
               <div className="post-shift-rows spreadsheet-shift-rows">{postRows.map(row=><div className="shift-row spreadsheet-row" key={row.rowKey}><div className="shift-label spreadsheet-shift-label"><Clock3 size={15}/><div><strong>{shiftLabel(row.representative,postRows.length)}</strong><span>{time(row.representative.startsAt)} – {time(row.representative.endsAt)}{crossesMidnight(row.representative)?' +1':''}</span></div></div>{leftSpacerWidth>0&&<div className="virtual-day-spacer" style={{flex:`0 0 ${leftSpacerWidth}px`}}/>}{renderDays.map(d=>{const s=shiftAt.get(`${row.rowKey}|${d}`);return <div className={`calendar-day-cell spreadsheet-day-cell ${d<today?'past-readonly':''} ${copyClass(post.id,d)}`} key={`${row.rowKey}-${d}`} onMouseEnter={()=>setHoverDate(d)}>{s?renderShiftCell(s,row,d):<div className="calendar-empty-day">—</div>}</div>})}{rightSpacerWidth>0&&<div className="virtual-day-spacer" style={{flex:`0 0 ${rightSpacerWidth}px`}}/>}</div>)}</div>
             </div>})}
-          </div>})}
+          </div>})}{bottomPointSpacer>0&&<div className="virtual-point-spacer" style={{height:bottomPointSpacer}} aria-hidden="true"/>}</>}
         </div>
       </div>
     </div>

@@ -27,16 +27,34 @@ public class ResponsibleOperationalScopeService {
         synchronize(tenant.instanceCountryId(), scopeType, scopeId, previousResponsibleEmployeeId, newResponsibleEmployeeId);
     }
 
+    /**
+     * Sincroniza los dos responsables de una Compañía sin que la actualización de
+     * uno elimine el alcance del otro.
+     */
+    @Transactional
+    public void synchronizeCompany(UUID scopeId, UUID coordinatorEmployeeId, UUID assistantEmployeeId) {
+        UUID instanceCountryId = tenant.instanceCountryId();
+        synchronizeSlot(instanceCountryId, "COMPANY", scopeId, "coord", coordinatorEmployeeId);
+        synchronizeSlot(instanceCountryId, "COMPANY", scopeId, "asistente", assistantEmployeeId);
+    }
+
     void synchronize(UUID instanceCountryId, String scopeType, UUID scopeId, UUID previousResponsibleEmployeeId, UUID newResponsibleEmployeeId) {
+        String normalizedScopeType = normalizeScopeType(scopeType);
+        EmployeeOperationalSnapshot newResponsible = requireNewResponsible(instanceCountryId, newResponsibleEmployeeId);
+        EmployeeOperationalSnapshot previousResponsible = employee(instanceCountryId, previousResponsibleEmployeeId);
+        String roleCode = newResponsible != null ? newResponsible.roleCode : previousResponsible == null ? null : previousResponsible.roleCode;
+        String username = usernameFor(normalizedScopeType, roleCode);
+        synchronizeSlot(instanceCountryId, normalizedScopeType, scopeId, username, newResponsibleEmployeeId);
+    }
+
+    private void synchronizeSlot(UUID instanceCountryId, String scopeType, UUID scopeId, String username,
+                                 UUID newResponsibleEmployeeId) {
         String normalizedScopeType = normalizeScopeType(scopeType);
         if (instanceCountryId == null) throw new BadRequestException("La Instancia-País es obligatoria para asignar el alcance operacional.");
         if (scopeId == null) throw new BadRequestException("El objeto territorial es obligatorio para asignar el alcance operacional.");
 
-        Long previousPersonaId = personaId(instanceCountryId, previousResponsibleEmployeeId);
         EmployeeOperationalSnapshot newResponsible = requireNewResponsible(instanceCountryId, newResponsibleEmployeeId);
         Long newPersonaId = newResponsible == null ? null : newResponsible.personaId;
-        String username = usernameFor(normalizedScopeType, newResponsible == null ? null : newResponsible.roleCode);
-        Set<String> managedUsernames = managedUsernamesFor(normalizedScopeType);
 
         List<UserOperationalScope> existing = UserOperationalScope.list(
             "instanceCountryId=?1 and scopeType=?2 and scopeId=?3",
@@ -45,13 +63,9 @@ public class ResponsibleOperationalScopeService {
 
         UserOperationalScope keeper = null;
         for (UserOperationalScope row : existing) {
+            if (!username.equals(row.username)) continue;
             boolean belongsToNewResponsible = newPersonaId != null && Objects.equals(row.personaId, newPersonaId);
-            boolean managedRow = managedUsernames.contains(row.username)
-                || previousPersonaId != null && Objects.equals(row.personaId, previousPersonaId)
-                || belongsToNewResponsible;
-            if (!managedRow) continue;
-
-            if (belongsToNewResponsible && username.equals(row.username) && keeper == null) {
+            if (belongsToNewResponsible && keeper == null) {
                 keeper = row;
             } else {
                 row.delete();
@@ -94,15 +108,6 @@ public class ResponsibleOperationalScopeService {
         };
     }
 
-    private static Set<String> managedUsernamesFor(String scopeType) {
-        return switch (normalizeScopeType(scopeType)) {
-            case "ZONE" -> Set.of("dzonal");
-            case "REGION" -> Set.of("jregional");
-            case "COMPANY" -> Set.of("coord", "asistente");
-            default -> throw new IllegalStateException("Tipo de alcance no soportado.");
-        };
-    }
-
     private static boolean isAssistantRole(String roleCode) {
         return roleCode != null && roleCode.trim().toLowerCase(Locale.ROOT).contains("asistente");
     }
@@ -125,11 +130,6 @@ public class ResponsibleOperationalScopeService {
             throw new BadRequestException("El responsable seleccionado no tiene persona_id sincronizado desde SIC:DHO/RRHH.");
         }
         return employee;
-    }
-
-    private Long personaId(UUID instanceCountryId, UUID employeeId) {
-        EmployeeOperationalSnapshot employee = employee(instanceCountryId, employeeId);
-        return employee == null ? null : employee.personaId;
     }
 
     private EmployeeOperationalSnapshot employee(UUID instanceCountryId, UUID employeeId) {
