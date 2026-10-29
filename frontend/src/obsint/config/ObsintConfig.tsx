@@ -1,4 +1,4 @@
-import {useEffect, useMemo, useState, type FormEvent, type ReactNode} from 'react';
+import {useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode} from 'react';
 import {AlertTriangle, ArrowLeft, BrushCleaning, CarFront, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ClipboardList, Factory, Package, Pencil, Plus, Power, Save, Search, Send, ShieldCheck, Trash2, UserRound, UsersRound, X} from 'lucide-react';
 import {errorText, obsintConfigApi, type ObsintCameraOption, type ObsintCategory, type ObsintConsignaConfig, type ObsintConsignaSave, type ObsintConsignmentOption, type ObsintFrequency, type ObsintProtocol, type ObsintSlot} from '../obsintApi';
 import {CATEGORIES, categoryLabel, DAYS, protocolStatusLabel} from '../obsint';
@@ -57,6 +57,16 @@ export default function ObsintConfig({point,onBack}:{point:ObsintPointContext;on
   useEffect(()=>{void load()},[point.pointId]);
   useEffect(()=>{if(!notice)return;const id=setTimeout(()=>setNotice(''),3200);return()=>clearTimeout(id)},[notice]);
 
+  // El menú de Versión se cierra al hacer clic fuera de él o con Esc.
+  const versionMenu=useRef<HTMLDetailsElement>(null);
+  useEffect(()=>{
+    const close=()=>{if(versionMenu.current)versionMenu.current.open=false};
+    const onPointer=(e:PointerEvent)=>{if(versionMenu.current?.open&&!versionMenu.current.contains(e.target as Node))close()};
+    const onKey=(e:KeyboardEvent)=>{if(e.key==='Escape')close()};
+    document.addEventListener('pointerdown',onPointer);document.addEventListener('keydown',onKey);
+    return()=>{document.removeEventListener('pointerdown',onPointer);document.removeEventListener('keydown',onKey)};
+  },[]);
+
   const protocol=protocols.find(p=>p.id===versionId)??null;
   const draft=protocols.find(p=>p.status==='BORRADOR')??null;
   const editable=protocol?.status==='BORRADOR';
@@ -114,7 +124,7 @@ export default function ObsintConfig({point,onBack}:{point:ObsintPointContext;on
       {point.clientName&&<div><span>Cliente</span><b>{point.clientName}</b></div>}
       <div><span>Punto</span><b>{point.pointName}</b></div>
       <div className="obs-cfg-version-cell"><span>Versión</span>
-        <details className="obs-cfg-version-menu"><summary aria-label="Opciones de versión" title="Opciones de versión"><b>{protocol?`${protocol.code} v${protocol.versionNo}`:loading?'Cargando…':'Sin protocolo'}</b><ChevronDown size={14}/></summary>
+        <details ref={versionMenu} className="obs-cfg-version-menu"><summary aria-label="Opciones de versión" title="Opciones de versión"><b>{protocol?`${protocol.code} v${protocol.versionNo}`:loading?'Cargando…':'Sin protocolo'}</b><ChevronDown size={14}/></summary>
           <div className="obs-cfg-version-popover">
             {loading?<small>Cargando protocolo…</small>:!protocol&&error?<button type="button" className="ghost" onClick={()=>void load()}>Reintentar</button>:!protocol?<>
               <p>Este punto no tiene protocolo OBSINT.</p>
