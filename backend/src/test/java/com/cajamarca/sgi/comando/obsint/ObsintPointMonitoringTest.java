@@ -17,7 +17,7 @@ import static org.hamcrest.Matchers.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Monitoreo OBSINT del Punto: llega a Kaibil, se puede pasar a otra Compañía y se elige el monitorista responsable y su suplente;
+ * Monitorista OBSINT del Punto: responsable y suplente de la Compañía del Punto (la asignada en Servicios),
  * y quién lo ve en la consola según eso.
  */
 @QuarkusTest
@@ -53,35 +53,34 @@ class ObsintPointMonitoringTest {
             .setParameter("pe", PE).setParameter("point", UUID.fromString(POINT)).executeUpdate());
     }
 
-    static Map<String, Object> body(UUID company, UUID responsible, UUID backup) {
+    static Map<String, Object> body(UUID responsible, UUID backup) {
         Map<String, Object> b = new HashMap<>();
-        b.put("companyId", company); b.put("responsibleEmployeeId", responsible); b.put("backupEmployeeId", backup);
+        b.put("responsibleEmployeeId", responsible); b.put("backupEmployeeId", backup);
         return b;
     }
 
-    @Test void withoutConfigurationTheOrderStaysInKaibil() {
+    @Test void companyIsTheOneAssignedInServices() {
         as("coord").get(URL).then().statusCode(200)
-            .body("companyName", is("Kaibil")).body("kaibil", is(true)).body("configured", is(false)).body("responsible", nullValue());
-        as("coord").get(URL + "/companies").then().statusCode(200).body("[0].name", is("Kaibil")).body("[0].kaibil", is(true));
+            .body("companyId", is(GALVARINO.toString())).body("companyName", is("Galvarino")).body("configured", is(false)).body("responsible", nullValue());
+        as("coord").get(URL + "/monitors").then().statusCode(200)
+            .body("employeeId", hasItems(MONITOR_A.toString(), MONITOR_B.toString())).body("employeeId", not(hasItem(GUARD.toString())));
     }
 
-    @Test void passToAnotherCompanyWithResponsibleAndBackup() {
-        as("coord").get(URL + "/monitors?companyId=" + GALVARINO).then().statusCode(200)
-            .body("employeeId", hasItems(MONITOR_A.toString(), MONITOR_B.toString())).body("employeeId", not(hasItem(GUARD.toString())));
-        as("coord").contentType(ContentType.JSON).body(body(GALVARINO, MONITOR_A, MONITOR_B)).put(URL).then().statusCode(200)
-            .body("companyName", is("Galvarino")).body("kaibil", is(false)).body("configured", is(true))
+    @Test void chooseResponsibleAndBackup() {
+        as("coord").contentType(ContentType.JSON).body(body(MONITOR_A, MONITOR_B)).put(URL).then().statusCode(200)
+            .body("companyName", is("Galvarino")).body("configured", is(true))
             .body("responsible.name", is("Monitor A pruebas")).body("backup.name", is("Monitor B pruebas")).body("updatedBy", is("coord"));
         as("coord").get(URL).then().statusCode(200).body("responsible.employeeId", is(MONITOR_A.toString()));
+        as("coord").contentType(ContentType.JSON).body(body(null, null)).put(URL).then().statusCode(200).body("configured", is(false));
     }
 
     @Test void rejectsInvalidSelections() {
-        as("coord").contentType(ContentType.JSON).body(body(GALVARINO, GUARD, null)).put(URL).then().statusCode(400)
+        as("coord").contentType(ContentType.JSON).body(body(GUARD, null)).put(URL).then().statusCode(400)
             .body("message", containsString("cargo de monitoreo"));
-        as("coord").contentType(ContentType.JSON).body(body(GALVARINO, MONITOR_A, MONITOR_A)).put(URL).then().statusCode(400)
+        as("coord").contentType(ContentType.JSON).body(body(MONITOR_A, MONITOR_A)).put(URL).then().statusCode(400)
             .body("message", containsString("otra persona"));
-        as("coord").contentType(ContentType.JSON).body(body(GALVARINO, null, MONITOR_B)).put(URL).then().statusCode(400)
+        as("coord").contentType(ContentType.JSON).body(body(null, MONITOR_B)).put(URL).then().statusCode(400)
             .body("message", containsString("responsable"));
-        as("coord").contentType(ContentType.JSON).body(body(null, null, null)).put(URL).then().statusCode(400);
     }
 
     @Test void monitorCannotConfigure() {
@@ -90,16 +89,17 @@ class ObsintPointMonitoringTest {
 
     /** Quién ve el Punto en la consola, estando de turno. */
     @Test void monitorVisibilityRule() {
-        UUID kaibil = UUID.randomUUID(), other = UUID.randomUUID(), me = UUID.randomUUID(), colleague = UUID.randomUUID();
-        var unassigned = new ObsintPlatform.Monitoring(kaibil, null, null);
-        var assigned = new ObsintPlatform.Monitoring(kaibil, colleague, null);
-        var mine = new ObsintPlatform.Monitoring(other, me, null);
+        UUID company = UUID.randomUUID(), other = UUID.randomUUID(), me = UUID.randomUUID(), colleague = UUID.randomUUID();
+        var unassigned = new ObsintPlatform.Monitoring(company, null, null);
+        var assigned = new ObsintPlatform.Monitoring(company, colleague, null);
+        var mine = new ObsintPlatform.Monitoring(company, me, null);
 
-        assertTrue(ObsintPlatform.monitorSees(unassigned, me, Set.of(kaibil), Set.of()), "sin responsable: cualquier monitor de turno de Kaibil");
+        assertTrue(ObsintPlatform.monitorSees(unassigned, me, Set.of(company), Set.of()), "sin responsable: cualquier monitor de turno de la Compañía");
         assertFalse(ObsintPlatform.monitorSees(unassigned, me, Set.of(other), Set.of()), "de turno en otra Compañía no lo ve");
-        assertFalse(ObsintPlatform.monitorSees(assigned, me, Set.of(kaibil), Set.of(colleague)), "el responsable está de turno: solo él");
-        assertTrue(ObsintPlatform.monitorSees(assigned, me, Set.of(kaibil), Set.of()), "el responsable no está de turno: cola de Kaibil");
-        assertTrue(ObsintPlatform.monitorSees(mine, me, Set.of(kaibil), Set.of(me)), "el responsable lo ve aunque su turno sea en otra Compañía");
+        assertFalse(ObsintPlatform.monitorSees(assigned, me, Set.of(company), Set.of(colleague)), "el responsable está de turno: solo él");
+        assertTrue(ObsintPlatform.monitorSees(assigned, me, Set.of(company), Set.of()), "el responsable no está de turno: cualquiera de la Compañía");
+        assertTrue(ObsintPlatform.monitorSees(mine, me, Set.of(other), Set.of(me)), "el responsable lo ve aunque su turno sea en otro puesto");
         assertFalse(ObsintPlatform.monitorSees(mine, me, Set.of(), Set.of()), "fuera de turno nadie lo ve");
+        assertFalse(ObsintPlatform.monitorSees(new ObsintPlatform.Monitoring(null, null, null), me, Set.of(company), Set.of()), "Punto aún en Kaibil, sin Compañía");
     }
 }

@@ -79,19 +79,17 @@ export const obsintConfigApi={
   createConsigna:(protocolId:string,body:ObsintConsignaSave)=>request<ObsintConsignaConfig>(`${protocol(protocolId)}/consignas`,{method:'POST',body:JSON.stringify(body)}),
   updateConsigna:(consignaId:string,body:ObsintConsignaSave)=>request<ObsintConsignaConfig>(`${config}/consignas/${encodeURIComponent(consignaId)}`,{method:'PUT',body:JSON.stringify(body)}),
   deleteConsigna:(consignaId:string)=>request<void>(`${config}/consignas/${encodeURIComponent(consignaId)}`,{method:'DELETE'}),
-  /** Monitoreo del Punto: Compañía que lo monitorea (Kaibil por defecto) y monitorista responsable y suplente. */
+  /** Monitoreo del Punto: monitorista responsable y suplente, de la Compañía del Punto (la asignada en Servicios). */
   monitoring:(pointId:string)=>request<ObsintMonitoring>(monitoringUrl(pointId)),
-  monitoringCompanies:(pointId:string)=>request<ObsintCompanyOption[]>(`${monitoringUrl(pointId)}/companies`),
-  monitors:(pointId:string,companyId:string)=>request<ObsintMonitorOption[]>(`${monitoringUrl(pointId)}/monitors?companyId=${encodeURIComponent(companyId)}`),
+  monitors:(pointId:string)=>request<ObsintMonitorOption[]>(`${monitoringUrl(pointId)}/monitors`),
   saveMonitoring:(pointId:string,body:ObsintMonitoringSave)=>request<ObsintMonitoring>(monitoringUrl(pointId),{method:'PUT',body:JSON.stringify(body)}),
 };
 
 export type ObsintMonitorOption={employeeId:string;name:string;cargo:string|null};
-export type ObsintCompanyOption={id:string;name:string;kaibil:boolean};
-/** configured=false: sigue como llegó la orden (Kaibil, sin responsable). */
-export type ObsintMonitoring={companyId:string|null;companyName:string|null;kaibil:boolean;configured:boolean;
+/** configured=false: aún sin responsable; lo atiende cualquier monitor de turno de la Compañía del Punto. */
+export type ObsintMonitoring={companyId:string|null;companyName:string|null;configured:boolean;
   responsible:ObsintMonitorOption|null;backup:ObsintMonitorOption|null;updatedBy:string|null;updatedAt:string|null};
-export type ObsintMonitoringSave={companyId:string;responsibleEmployeeId:string|null;backupEmployeeId:string|null};
+export type ObsintMonitoringSave={responsibleEmployeeId:string|null;backupEmployeeId:string|null};
 
 /** Texto para mostrar de un error de la API: el backend devuelve {"message": …}; si no, el cuerpo tal cual. */
 export const errorText=(error:unknown)=>{

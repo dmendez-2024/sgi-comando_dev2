@@ -1,7 +1,6 @@
 package com.cajamarca.sgi.comando.obsint;
 
 import com.cajamarca.sgi.comando.common.TenantContext;
-import com.cajamarca.sgi.comando.companies.Company;
 import com.cajamarca.sgi.comando.consignments.Consignment;
 import com.cajamarca.sgi.comando.operations.PointEntity;
 import com.cajamarca.sgi.comando.storage.Digests;
@@ -26,7 +25,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
-import org.eclipse.microprofile.config.inject.ConfigProperty;
 
 /**
  * Único punto de contacto de OBSINT con el resto de SGI: Comando (tenant, usuario, acceso al Punto, MinIO, validación de imágenes).
@@ -45,7 +43,6 @@ public class ObsintPlatform {
     @Inject SecurityIdentity identity;
     @Inject EntityManager em;
     @Inject MonitorShiftScope monitorShift;
-    @ConfigProperty(name = "sgi.integrations.rrhh.default-company-core-catalog-id") UUID kaibilCoreCatalogId;
 
     public UUID instanceCountryId() { return tenant.instanceCountryId(); }
     public String username() { return scope.username(); }
@@ -87,7 +84,10 @@ public class ObsintPlatform {
         return obsintConsignments(List.of(pointId)).getOrDefault(pointId, Map.of());
     }
 
-    /** Monitoreo OBSINT del Punto: Compañía que lo monitorea, monitorista responsable y suplente (employee_id, pueden faltar). */
+    /**
+     * Monitoreo OBSINT del Punto: la Compañía es la que opera el Punto (la que se asigna en Servicios: la orden llega a Kaibil y
+     * desde ahí se manda a una Compañía); en la pestaña OBSINT solo se eligen el monitorista responsable y el suplente (pueden faltar).
+     */
     public record Monitoring(UUID companyId, UUID responsibleEmployeeId, UUID backupEmployeeId) {
         Set<UUID> assigned() {
             Set<UUID> out = new HashSet<>();
@@ -97,32 +97,33 @@ public class ObsintPlatform {
         }
     }
 
-    /** Kaibil: la Compañía de Operaciones, por su identificador canónico de CORE (nunca por el company.id local). */
-    public UUID kaibilCompanyId() {
-        Company kaibil = Company.find("instanceCountryId=?1 and coreCatalogId=?2", tenant.instanceCountryId(), kaibilCoreCatalogId).firstResult();
-        return kaibil == null ? null : kaibil.id;
-    }
-
-    /** Monitoreo de cada Punto. Sin configurar, lo monitorea Kaibil sin responsable: así llega la orden OBSINT. */
-    public Map<UUID, Monitoring> monitoring(Collection<UUID> pointIds) {
+    /** Monitoreo de cada Punto: su Compañía y, si se eligieron, responsable y suplente. */
+    public Map<UUID, Monitoring> monitoring(Collection<PointEntity> points) {
         Map<UUID, Monitoring> out = new HashMap<>();
-        if (pointIds.isEmpty()) return out;
+        if (points.isEmpty()) return out;
         @SuppressWarnings("unchecked")
         List<Object[]> rows = em.createNativeQuery("""
-            select point_id, company_id, responsible_employee_id, backup_employee_id from obsint_point_monitoring
+            select point_id, responsible_employee_id, backup_employee_id from obsint_point_monitoring
             where instance_country_id=:tenant and point_id in (:points)""")
-            .setParameter("tenant", tenant.instanceCountryId()).setParameter("points", pointIds).getResultList();
-        for (Object[] r : rows) out.put(uuid(r[0]), new Monitoring(uuid(r[1]), uuid(r[2]), uuid(r[3])));
-        UUID kaibil = kaibilCompanyId();
-        for (UUID pointId : pointIds) out.putIfAbsent(pointId, new Monitoring(kaibil, null, null));
+            .setParameter("tenant", tenant.instanceCountryId()).setParameter("points", points.stream().map(p -> p.id).toList()).getResultList();
+        Map<UUID, Object[]> byPoint = new HashMap<>();
+        for (Object[] r : rows) byPoint.put(uuid(r[0]), r);
+        for (PointEntity p : points) {
+            Object[] r = byPoint.get(p.id);
+            out.put(p.id, new Monitoring(p.companyId, r == null ? null : uuid(r[1]), r == null ? null : uuid(r[2])));
+        }
         return out;
     }
 
-    public Monitoring monitoring(UUID pointId) { return monitoring(List.of(pointId)).get(pointId); }
+    public Monitoring monitoring(UUID pointId) {
+        PointEntity point = PointEntity.find("id=?1 and instanceCountryId=?2", pointId, tenant.instanceCountryId()).firstResult();
+        if (point == null) throw new NotFoundException("Punto no encontrado");
+        return monitoring(List.of(point)).get(pointId);
+    }
 
     /**
      * Regla del Monitor para un Punto, estando él de turno: lo ve si es el responsable o el suplente; y, si ninguno de los dos
-     * está de turno, cualquier monitor de turno de la Compañía de monitoreo lo atiende (cola de esa Compañía, Kaibil por defecto).
+     * está de turno (o no se eligieron), cualquier monitor de turno de la Compañía del Punto lo atiende.
      */
     static boolean monitorSees(Monitoring m, UUID me, Set<UUID> myShiftCompanies, Set<UUID> assignedOnShift) {
         if (me == null || myShiftCompanies.isEmpty()) return false;
@@ -132,21 +133,19 @@ public class ObsintPlatform {
 
     /**
      * De esos Puntos, los que el usuario ve en la consola.
-     * MONITOR: según el monitoreo OBSINT del Punto (ver monitorSees). Demás roles: los de las Compañías de su alcance, tanto la que
-     * opera el Punto (misma regla que requirePoint) como la que lo monitorea.
+     * MONITOR: según el monitoreo OBSINT del Punto (ver monitorSees). Demás roles: los de las Compañías de su alcance (misma regla que requirePoint).
      */
     public Set<UUID> visiblePoints(Collection<UUID> pointIds) {
         if (pointIds.isEmpty()) return Set.of();
         List<PointEntity> points = PointEntity.list("instanceCountryId=?1 and id in ?2", tenant.instanceCountryId(), pointIds);
-        Map<UUID, Monitoring> monitoring = monitoring(points.stream().map(p -> p.id).toList());
         Set<UUID> out = new HashSet<>();
         if (identity.getRoles().stream().anyMatch(r -> !MONITOR_ROLE.equals(r))) {
             Set<UUID> companies = scope.allowedCompanyIdsForCompanyRoles();
-            for (PointEntity p : points)
-                if (p.companyId != null && companies.contains(p.companyId) || companies.contains(monitoring.get(p.id).companyId())) out.add(p.id);
+            for (PointEntity p : points) if (p.companyId != null && companies.contains(p.companyId)) out.add(p.id);
         }
         UUID me = monitorShift.employeeNow();
         if (me != null) {
+            Map<UUID, Monitoring> monitoring = monitoring(points);
             Set<UUID> myShiftCompanies = monitorShift.companiesNow();
             Set<UUID> assigned = monitoring.values().stream().flatMap(m -> m.assigned().stream()).collect(Collectors.toSet());
             Set<UUID> onShift = monitorShift.employeesOnShift(tenant.instanceCountryId(), assigned, Instant.now());

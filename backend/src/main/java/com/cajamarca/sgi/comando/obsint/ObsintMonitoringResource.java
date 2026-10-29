@@ -14,9 +14,9 @@ import java.util.*;
 import org.jboss.resteasy.reactive.server.ServerExceptionMapper;
 
 /**
- * Monitoreo OBSINT del Punto (pestaña OBSINT de Configuración del Punto): qué Compañía lo monitorea y quién es el
- * monitorista responsable y su suplente. La orden OBSINT llega a Kaibil; desde aquí se puede pasar a otra Compañía.
- * Mismos roles y misma regla de acceso al Punto que el resto de la configuración OBSINT.
+ * Monitoreo OBSINT del Punto (pestaña OBSINT de Configuración del Punto): el monitorista responsable y su suplente.
+ * La Compañía es la del Punto, la que se asigna en Servicios (la orden llega a Kaibil y desde ahí se manda a una Compañía);
+ * aquí no se cambia. Mismos roles y misma regla de acceso al Punto que el resto de la configuración OBSINT.
  */
 @Path("/api/obsint/monitoring/points/{pointId}")
 @Produces(MediaType.APPLICATION_JSON)
@@ -26,11 +26,10 @@ public class ObsintMonitoringResource {
     @Inject EntityManager em;
 
     public record MonitorOption(UUID employeeId, String name, String cargo) {}
-    public record CompanyOption(UUID id, String name, boolean kaibil) {}
-    /** configured=false: el Punto sigue con lo que trae la orden (Kaibil, sin responsable). */
-    public record MonitoringView(UUID companyId, String companyName, boolean kaibil, boolean configured,
+    /** configured=false: aún no se eligió responsable; lo atiende cualquier monitor de turno de la Compañía del Punto. */
+    public record MonitoringView(UUID companyId, String companyName, boolean configured,
                                  MonitorOption responsible, MonitorOption backup, String updatedBy, Instant updatedAt) {}
-    public record SaveMonitoring(UUID companyId, UUID responsibleEmployeeId, UUID backupEmployeeId) {}
+    public record SaveMonitoring(UUID responsibleEmployeeId, UUID backupEmployeeId) {}
 
     @GET @Transactional
     public MonitoringView get(@PathParam("pointId") UUID pointId) {
@@ -38,21 +37,12 @@ public class ObsintMonitoringResource {
         return view(pointId);
     }
 
-    /** Compañías activas que pueden monitorear el Punto; Kaibil primero. */
-    @GET @Path("/companies") @Transactional
-    public List<CompanyOption> companies(@PathParam("pointId") UUID pointId) {
-        platform.requirePoint(pointId);
-        UUID kaibil = platform.kaibilCompanyId();
-        return Company.<Company>list("instanceCountryId=?1 and status='ACTIVE' order by name", platform.instanceCountryId()).stream()
-            .map(c -> new CompanyOption(c.id, c.name, c.id.equals(kaibil)))
-            .sorted(Comparator.comparing((CompanyOption c) -> !c.kaibil())).toList();
-    }
-
-    /** Empleados activos de esa Compañía con cargo de monitoreo: los que se pueden elegir como responsable o suplente. */
+    /** Empleados activos de la Compañía del Punto con cargo de monitoreo: los que se pueden elegir como responsable o suplente. */
     @GET @Path("/monitors") @Transactional
-    public List<MonitorOption> monitors(@PathParam("pointId") UUID pointId, @QueryParam("companyId") UUID companyId) {
+    public List<MonitorOption> monitors(@PathParam("pointId") UUID pointId) {
         platform.requirePoint(pointId);
-        if (companyId == null) throw new BadRequestException("companyId obligatorio.");
+        UUID companyId = platform.monitoring(pointId).companyId();
+        if (companyId == null) return List.of();
         @SuppressWarnings("unchecked")
         List<Object[]> rows = em.createNativeQuery("""
             select employee_id, full_name, role_code from employee_operational_snapshot
@@ -66,25 +56,24 @@ public class ObsintMonitoringResource {
     @PUT @Consumes(MediaType.APPLICATION_JSON) @Transactional
     public MonitoringView save(@PathParam("pointId") UUID pointId, SaveMonitoring body) {
         platform.requirePoint(pointId);
-        if (body == null || body.companyId() == null) throw new BadRequestException("Seleccione la Compañía que monitorea el Punto.");
-        Company company = Company.find("id=?1 and instanceCountryId=?2 and status='ACTIVE'", body.companyId(), platform.instanceCountryId()).firstResult();
-        if (company == null) throw new BadRequestException("La Compañía seleccionada no existe o no está activa.");
+        if (body == null) throw new BadRequestException("Solicitud obligatoria.");
+        ObsintPlatform.Monitoring current = platform.monitoring(pointId);
+        if (current.companyId() == null) throw new BadRequestException("Asigne primero el Punto a una Compañía en Servicios.");
         if (body.backupEmployeeId() != null && body.responsibleEmployeeId() == null)
             throw new BadRequestException("Elija primero el monitorista responsable; el suplente es opcional.");
         if (body.backupEmployeeId() != null && body.backupEmployeeId().equals(body.responsibleEmployeeId()))
             throw new BadRequestException("El suplente debe ser otra persona.");
         Set<UUID> allowed = new HashSet<>();
-        monitors(pointId, company.id).forEach(m -> allowed.add(m.employeeId()));
+        monitors(pointId).forEach(m -> allowed.add(m.employeeId()));
         for (UUID employee : Arrays.asList(body.responsibleEmployeeId(), body.backupEmployeeId()))
             if (employee != null && !allowed.contains(employee))
-                throw new BadRequestException("El monitorista debe ser un empleado activo de " + company.name + " con cargo de monitoreo.");
+                throw new BadRequestException("El monitorista debe ser un empleado activo de " + companyName(current.companyId()) + " con cargo de monitoreo.");
         em.createNativeQuery("""
-            insert into obsint_point_monitoring(instance_country_id, point_id, company_id, responsible_employee_id, backup_employee_id, updated_by, updated_at)
-            values (:tenant, :point, :company, :responsible, :backup, :user, now())
-            on conflict (instance_country_id, point_id) do update set company_id=excluded.company_id,
-              responsible_employee_id=excluded.responsible_employee_id, backup_employee_id=excluded.backup_employee_id,
-              updated_by=excluded.updated_by, updated_at=excluded.updated_at""")
-            .setParameter("tenant", platform.instanceCountryId()).setParameter("point", pointId).setParameter("company", company.id)
+            insert into obsint_point_monitoring(instance_country_id, point_id, responsible_employee_id, backup_employee_id, updated_by, updated_at)
+            values (:tenant, :point, :responsible, :backup, :user, now())
+            on conflict (instance_country_id, point_id) do update set responsible_employee_id=excluded.responsible_employee_id,
+              backup_employee_id=excluded.backup_employee_id, updated_by=excluded.updated_by, updated_at=excluded.updated_at""")
+            .setParameter("tenant", platform.instanceCountryId()).setParameter("point", pointId)
             .setParameter("responsible", body.responsibleEmployeeId()).setParameter("backup", body.backupEmployeeId())
             .setParameter("user", platform.username()).executeUpdate();
         return view(pointId);
@@ -97,13 +86,17 @@ public class ObsintMonitoringResource {
 
     private MonitoringView view(UUID pointId) {
         ObsintPlatform.Monitoring m = platform.monitoring(pointId);
-        Company company = m.companyId() == null ? null : Company.findById(m.companyId());
         @SuppressWarnings("unchecked")
         List<Object[]> meta = em.createNativeQuery("select updated_by, updated_at from obsint_point_monitoring where instance_country_id=:tenant and point_id=:point")
             .setParameter("tenant", platform.instanceCountryId()).setParameter("point", pointId).getResultList();
-        return new MonitoringView(m.companyId(), company == null ? null : company.name, m.companyId() != null && m.companyId().equals(platform.kaibilCompanyId()),
-            !meta.isEmpty(), person(m.responsibleEmployeeId()), person(m.backupEmployeeId()),
+        boolean configured = !meta.isEmpty() && m.responsibleEmployeeId() != null;
+        return new MonitoringView(m.companyId(), companyName(m.companyId()), configured, person(m.responsibleEmployeeId()), person(m.backupEmployeeId()),
             meta.isEmpty() ? null : (String) meta.get(0)[0], meta.isEmpty() ? null : instant(meta.get(0)[1]));
+    }
+
+    private static String companyName(UUID companyId) {
+        Company company = companyId == null ? null : Company.findById(companyId);
+        return company == null ? null : company.name;
     }
 
     private MonitorOption person(UUID employeeId) {
