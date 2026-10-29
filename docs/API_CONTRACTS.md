@@ -412,3 +412,7 @@ Respuesta exitosa con datos:
 - El filtro temporal utiliza `shift_occurrence.ends_at >= startsAt` y `< endsAt`, igualando la atribución diaria utilizada por el SGI antiguo.
 - `clientTaxIdentifier` proviene de `client.tax_identifier`. El catálogo comercial acepta `client.taxIdentifier` de forma retrocompatible; los clientes utilizados en nómina deben tenerlo informado.
 - El identificador canónico CORE es `SIC_DHO_SGI_COM_0003_v001`; la credencial compartida se resuelve desde `sgi.rrhh.inbound.credential-ref`.
+
+### Identificación del puesto: alias y nombre
+
+PUT /api/post-configurations/{postId} guarda el alias (máximo 120 caracteres, sin espacios en los extremos) en post_operational_config.alias. Si el alias no está vacío, actualiza también post.name en la misma transacción, tanto con configStatus=DRAFT como con CONFIGURED. La respuesta postName devuelve el nombre actualizado. Un alias nulo, vacío o compuesto solo por espacios se guarda como NULL y conserva el nombre actual del puesto. El código del puesto no cambia. Si falla una validación, no se persiste ninguna de las dos modificaciones.

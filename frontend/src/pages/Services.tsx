@@ -632,11 +632,15 @@ function PostsPage({point,onBack}:{point:PointRow;onBack:()=>void}){
     return()=>{active=false};
   },[selectedPostId,canEditVisualRule]);
 
+  const postRows=useMemo(()=>{
+    const names=new Map(configs.map(config=>[config.postId,config.postName]));
+    return point.posts.map((post:Row)=>names.get(post.postId)?{...post,postName:names.get(post.postId)!}:post);
+  },[point.posts,configs]);
   const filteredPosts=useMemo(()=>{
     const q=searchPost.trim().toLowerCase();
-    return point.posts.filter((post:Row)=>!q||post.postCode.toLowerCase().includes(q)||post.postName.toLowerCase().includes(q));
-  },[point.posts,searchPost]);
-  const selectedRow=point.posts.find((post:Row)=>post.postId===selectedPostId)??point.posts[0];
+    return postRows.filter((post:Row)=>!q||post.postCode.toLowerCase().includes(q)||post.postName.toLowerCase().includes(q));
+  },[postRows,searchPost]);
+  const selectedRow=postRows.find((post:Row)=>post.postId===selectedPostId)??postRows[0];
   const commercialPost=commercialWeek?.posts?.find((post:CommercialPost)=>post.id===selectedPostId);
   const postShifts=(commercialWeek?.shifts??[]).filter((shift:CommercialShift)=>shift.postId===selectedPostId);
   const shiftNames=Array.from(new Set(postShifts.map((shift:CommercialShift)=>shift.shiftName))).join(' / ')||'—';
