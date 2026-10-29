@@ -1,5 +1,5 @@
 import {useEffect,useMemo,useRef,useState} from 'react';
-import {AlertTriangle,ArrowRightLeft,Building2,CalendarDays,CheckCircle2,ChevronDown,ChevronLeft,ChevronRight,ClipboardCopy,ClipboardPaste,Clock3,Copy,History,Info,Lock,MapPinned,Save,Search,Send,ShieldCheck,Trash2,Users,X,XCircle} from 'lucide-react';
+import {AlertTriangle,ArrowRightLeft,Building2,CalendarDays,CheckCircle2,ChevronDown,ChevronLeft,ChevronRight,ClipboardCopy,ClipboardPaste,Clock3,Copy,History,Info,Lock,MapPinned,RefreshCcw,Save,Search,Send,ShieldCheck,Trash2,Users,X,XCircle} from 'lucide-react';
 import {ApiError,api,getUser} from '../api';
 
 type Company={id:string;name:string;code:string;companyType?:string;alwaysActive?:boolean};
@@ -24,6 +24,7 @@ type HistoryOperation={label:string;before:SnapshotCell[];after:SnapshotCell[]};
 type CopyMode='NONE'|'DAY_SOURCE'|'DAY_TARGET'|'CYCLE_TARGET'|'SELECTION_TARGET';
 type PersonnelSort='PERSON'|'ID'|'FREE';
 type SortDirection='ASC'|'DESC';
+type PointLayout={point:Point;top:number;height:number;bottom:number};
 
 const ROLE_LABEL:Record<string,string>={AGENTE_SEGURIDAD:'Agente de Seguridad',SUPERVISOR_SEGURIDAD:'Supervisor de Seguridad',ESCOLTA_SEGURIDAD:'Escolta de Seguridad',DIRECTOR_OPERACIONES_NACIONAL:'Director Nacional de Operaciones',DIRECTOR_NACIONAL:'Director Nacional de Operaciones',DIRECTOR_ZONAL:'Director Zonal de Operaciones',JEFE_REGIONAL:'Jefe Regional de Operaciones',MONITOR:'Monitor'};
 const UNAV_LABEL:Record<string,string>={MEDICAL_LEAVE:'Permiso médico',VACATION:'Vacaciones',PERMISSION:'Permisos generales'};
@@ -35,6 +36,12 @@ const VIRTUAL_RENDER_DAYS=17;
 const VIRTUAL_BUFFER_DAYS=4;
 const PERSONNEL_PAGE_SIZE=100;
 const PERSONNEL_PREFETCH_PX=180;
+const MATRIX_HEADER_HEIGHT=59;
+const POINT_BAND_HEIGHT=46;
+const POST_MIN_HEIGHT=72;
+const SHIFT_ROW_HEIGHT=80;
+const VERTICAL_POINT_OVERSCAN_PX=720;
+const INITIAL_VERTICAL_POINT_COUNT=12;
 const COORDINATION_POINT_ID='coordination-posts';
 const COORDINATION_CLIENT='Coordinación';
 const PERSONNEL_SORT_COLUMNS:{key:PersonnelSort;label:string}[]=[{key:'PERSON',label:'Persona / Rol'},{key:'ID',label:'ID'},{key:'FREE',label:'Libre'}];
@@ -70,6 +77,14 @@ function isFormTarget(target:EventTarget|null){const el=target as HTMLElement|nu
 function normalizeName(v:string){return v.trim().toLocaleLowerCase('es-EC').replace(/\s+/g,' ')}
 function compactAssignmentName(v:string){const parts=v.trim().split(/\s+/).filter(Boolean);if(!parts.length)return v;if(parts.length===1)return parts[0];return `${parts[0][0]?.toUpperCase()??''}.${parts[parts.length-1]}`;}
 function clampIso(date:string,min:string,max:string){return date<min?min:date>max?max:date}
+function verticalPointRange(layouts:PointLayout[],scrollTop:number,viewportHeight:number){
+  if(!layouts.length)return{start:0,end:0};
+  const visibleTop=Math.max(0,scrollTop-MATRIX_HEADER_HEIGHT),startY=Math.max(0,visibleTop-VERTICAL_POINT_OVERSCAN_PX),endY=visibleTop+Math.max(viewportHeight,300)+VERTICAL_POINT_OVERSCAN_PX;
+  let start=0;while(start<layouts.length&&layouts[start].bottom<startY)start++;
+  let end=start;while(end<layouts.length&&layouts[end].top<=endY)end++;
+  if(end===start&&start<layouts.length)end=start+1;
+  return{start,end};
+}
 
 export default function Assignments(){
   const user=getUser();const today=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Guayaquil',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
@@ -79,6 +94,7 @@ export default function Assignments(){
   const selectedCompany=useMemo(()=>companies.find(c=>c.id===companyId),[companies,companyId]);const canEdit=selectedCompany?.alwaysActive?isKaibilLeadership:['coord','asistente'].includes(user);
   const [windowData,setWindowData]=useState<WeekData[]>([]);const [personnel,setPersonnel]=useState<Personnel[]>([]);const [personnelRoles,setPersonnelRoles]=useState<PersonnelRole[]>([]);const [personnelTotal,setPersonnelTotal]=useState(0);const [personnelPage,setPersonnelPage]=useState(0);const [personnelLoadingMore,setPersonnelLoadingMore]=useState(false);const [query,setQuery]=useState('');const [role,setRole]=useState('');const [availabilityFilter,setAvailabilityFilter]=useState('');const [personnelCollapsed,setPersonnelCollapsed]=useState(false);
   const [personnelSort,setPersonnelSort]=useState<{key:PersonnelSort;direction:SortDirection}>({key:'PERSON',direction:'ASC'});
+  const [refreshing,setRefreshing]=useState(false);
   const [loading,setLoading]=useState(true);const [error,setError]=useState('');const [notice,setNotice]=useState('');const [publishing,setPublishing]=useState(false);const [saving,setSaving]=useState(false);const [dragOver,setDragOver]=useState('');
   const [selectedEmployeeId,setSelectedEmployeeId]=useState('');const [evaluations,setEvaluations]=useState<Map<string,Evaluation>>(new Map());const [evaluating,setEvaluating]=useState(false);
   const [selectedEmployee,setSelectedEmployee]=useState<any|null>(null);const [transferModal,setTransferModal]=useState<any|null>(null);const [transferSendConfirm,setTransferSendConfirm]=useState(false);const [transferSendError,setTransferSendError]=useState('');const [reviewTransfer,setReviewTransfer]=useState<any|null>(null);const [transferDecision,setTransferDecision]=useState<{kind:'ACCEPT'|'REJECT'|'CANCEL';transfer:any}|null>(null);const [transferDecisionError,setTransferDecisionError]=useState('');const [transferHistory,setTransferHistory]=useState<any[]|null>(null);const [transferReasons,setTransferReasons]=useState<any[]>([]);const [transferDestinations,setTransferDestinations]=useState<any[]>([]);const [transferBusy,setTransferBusy]=useState(false);const [compatibility,setCompatibility]=useState<any|null>(null);const [postDetails,setPostDetails]=useState<any|null>(null);const [assignmentInspector,setAssignmentInspector]=useState<any|null>(null);
@@ -87,6 +103,7 @@ export default function Assignments(){
   const [history,setHistory]=useState<HistoryOperation[]>([]);const [redoStack,setRedoStack]=useState<HistoryOperation[]>([]);
   const [fillDragging,setFillDragging]=useState(false);const [fillBlock,setFillBlock]=useState<ClipboardBlock|null>(null);const [fillTargetId,setFillTargetId]=useState('');
   const [virtualStart,setVirtualStart]=useState(Math.max(0,HORIZONTAL_DAY_RADIUS-VIRTUAL_BUFFER_DAYS));
+  const [verticalRange,setVerticalRange]=useState({start:0,end:INITIAL_VERTICAL_POINT_COUNT});
   const matrixRef=useRef<HTMLDivElement|null>(null);const freezePaneRef=useRef<HTMLDivElement|null>(null);const mainTopRef=useRef<HTMLDivElement|null>(null);const personnelListRef=useRef<HTMLDivElement|null>(null);const suppressAssignmentClickRef=useRef(false);const evaluationCacheRef=useRef<Map<string,Evaluation[]>>(new Map());const evaluationTokenRef=useRef(0);const weeksLoadTokenRef=useRef(0);const personnelLoadTokenRef=useRef(0);const personnelLoadingRef=useRef(false);const [freezePaneOffset,setFreezePaneOffset]=useState(0);const [mainTopOffset,setMainTopOffset]=useState(0);
 
   const timelineStart=useMemo(()=>addDays(today,-HORIZONTAL_DAY_RADIUS),[today]);
@@ -99,7 +116,7 @@ export default function Assignments(){
   const renderDays=useMemo(()=>days.slice(virtualStart,virtualEnd),[days,virtualStart,virtualEnd]);
   const leftSpacerWidth=virtualStart*DAY_WIDTH;
   const rightSpacerWidth=Math.max(0,(days.length-virtualEnd)*DAY_WIDTH);
-  const requiredWeekStarts=useMemo(()=>{const set=new Set<string>([weekStart]);for(const d of renderDays)set.add(monday(new Date(`${d}T12:00:00`)));if(renderDays.length){set.add(monday(new Date(`${addDays(renderDays[0],-7)}T12:00:00`)));set.add(monday(new Date(`${addDays(renderDays[renderDays.length-1],7)}T12:00:00`)))}return Array.from(set).filter(d=>d>=minWeekStart&&d<=maxWeekStart).sort()},[weekStart,renderDays,minWeekStart,maxWeekStart]);
+  const requiredWeekStarts=useMemo(()=>{const set=new Set<string>([weekStart]);for(const d of renderDays)set.add(monday(new Date(`${d}T12:00:00`)));return Array.from(set).filter(d=>d>=minWeekStart&&d<=maxWeekStart).sort()},[weekStart,renderDays,minWeekStart,maxWeekStart]);
   const requiredWeekKey=requiredWeekStarts.join('|');
   const week=useMemo(()=>windowData.find(w=>w.plan.weekStart===weekStart)??null,[windowData,weekStart]);
   const allShifts=useMemo(()=>windowData.flatMap(w=>w.shifts),[windowData]);
@@ -136,6 +153,11 @@ export default function Assignments(){
   const coordByShift=useMemo(()=>{const m=new Map<string,CellCoord>();for(const [key,shift] of shiftAt){const split=key.lastIndexOf('|');const rowKey=key.slice(0,split);const date=key.slice(split+1);const row=rowByKey.get(rowKey),dayIndex=dayIndexByDate.get(date);if(row&&dayIndex!=null)m.set(shift.id,{rowIndex:row.rowIndex,dayIndex,rowKey,date})}return m},[shiftAt,rowByKey,dayIndexByDate]);
   const rowByIndex=useMemo(()=>new Map(rows.map(r=>[r.rowIndex,r])),[rows]);
   const rowsByPost=useMemo(()=>{const m=new Map<string,RowDef[]>();for(const row of rows){const list=m.get(row.post.id);if(list)list.push(row);else m.set(row.post.id,[row])}return m},[rows]);
+  const pointLayouts=useMemo<PointLayout[]>(()=>{let top=0;return visiblePoints.map(point=>{const posts=postsByPoint.get(point.id)??[];const height=POINT_BAND_HEIGHT+1+posts.reduce((sum,post)=>sum+1+Math.max(POST_MIN_HEIGHT,(rowsByPost.get(post.id)?.length??0)*SHIFT_ROW_HEIGHT),0);const layout={point,top,height,bottom:top+height};top=layout.bottom;return layout})},[visiblePoints,postsByPoint,rowsByPost]);
+  const totalPointHeight=pointLayouts.length?pointLayouts[pointLayouts.length-1].bottom:0;
+  const renderedPointLayouts=pointLayouts.slice(verticalRange.start,verticalRange.end);
+  const topPointSpacer=renderedPointLayouts.length?renderedPointLayouts[0].top:0;
+  const bottomPointSpacer=renderedPointLayouts.length?Math.max(0,totalPointHeight-renderedPointLayouts[renderedPointLayouts.length-1].bottom):0;
   const shiftByCoord=useMemo(()=>{const m=new Map<string,Shift>();for(const [id,c] of coordByShift){const shift=shiftById.get(id);if(shift)m.set(`${c.rowIndex}|${c.dayIndex}`,shift)}return m},[coordByShift,shiftById]);
 
   const displaySummary=useMemo(()=>{
@@ -148,9 +170,9 @@ export default function Assignments(){
 
   useEffect(()=>{let cancelled=false;weeksLoadTokenRef.current++;personnelLoadTokenRef.current++;setCompanyId('');setCompanies([]);setCompaniesLoaded(false);setWindowData([]);setPersonnel([]);setSelectedEmployee(null);setLoading(true);void(async()=>{try{const list:Company[]=await api.assignmentCompanies();if(cancelled)return;setCompanies(list);setCompaniesLoaded(true);if(list.length){const kaibil=list.find(c=>c.alwaysActive||c.companyType==='COORDINATION'||normalizeName(c.name)==='kaibil');setCompanyId(isKaibilLeadership&&kaibil?kaibil.id:list[0].id)}else setLoading(false)}catch(e){if(!cancelled){setError(errorMessage(e));setLoading(false)}}})();return()=>{cancelled=true}},[user]);
 
-  const reloadWeeks=async()=>{
+  const reloadWeeks=async(force=false)=>{
     if(!companyId)return;const token=++weeksLoadTokenRef.current;setLoading(true);setError('');
-    try{const weeks=await Promise.all(requiredWeekStarts.map(ws=>api.assignmentWeek(companyId,ws)));if(token===weeksLoadTokenRef.current)setWindowData(weeks)}catch(e){if(token===weeksLoadTokenRef.current)setError(errorMessage(e))}finally{if(token===weeksLoadTokenRef.current)setLoading(false)}
+    try{const cached=force?[]:windowData.filter(w=>w.plan.companyId===companyId&&requiredWeekStarts.includes(w.plan.weekStart));const cachedByStart=new Map(cached.map(w=>[w.plan.weekStart,w]));const missing=force?requiredWeekStarts:requiredWeekStarts.filter(ws=>!cachedByStart.has(ws));const fresh=await Promise.all(missing.map(ws=>api.assignmentWeek(companyId,ws)));if(token===weeksLoadTokenRef.current){for(const w of fresh)cachedByStart.set(w.plan.weekStart,w);setWindowData(requiredWeekStarts.map(ws=>cachedByStart.get(ws)).filter((w):w is WeekData=>Boolean(w)))}}catch(e){if(token===weeksLoadTokenRef.current)setError(errorMessage(e))}finally{if(token===weeksLoadTokenRef.current)setLoading(false)}
   };
   const refreshWeeks=async(starts:string[])=>{
     if(!companyId)return;const unique=Array.from(new Set(starts));if(!unique.length)return;
@@ -161,7 +183,12 @@ export default function Assignments(){
   const loadMorePersonnel=async()=>{if(personnelLoadingMore||personnel.length>=personnelTotal)return;await loadPersonnelPage(personnelPage+1,false)};
   const handlePersonnelScroll=(e:React.UIEvent<HTMLDivElement>)=>{const el=e.currentTarget;if(el.scrollHeight-el.scrollTop-el.clientHeight<=PERSONNEL_PREFETCH_PX)void loadMorePersonnel()};
   const changePersonnelSort=(key:PersonnelSort)=>{personnelLoadTokenRef.current++;setPersonnel([]);setPersonnelTotal(0);setPersonnelPage(0);setPersonnelSort(current=>({key,direction:current.key===key&&current.direction==='ASC'?'DESC':'ASC'}));if(personnelListRef.current)personnelListRef.current.scrollTop=0};
-  const reload=async()=>{await Promise.all([reloadWeeks(),reloadPersonnel(true)])};
+  const reload=async()=>{await Promise.all([reloadWeeks(true),reloadPersonnel(true)])};
+  const refreshAssignments=async()=>{
+    if(!companyId||loading||refreshing||saving||publishing)return;
+    setRefreshing(true);
+    try{await reload()}finally{setRefreshing(false)}
+  };
   useEffect(()=>{void reloadWeeks()},[companyId,user,requiredWeekKey]);
   useEffect(()=>{const delay=query.trim()?250:0;const t=window.setTimeout(()=>{setPersonnel([]);setPersonnelTotal(0);setPersonnelPage(0);void reloadPersonnel(true)},delay);return()=>window.clearTimeout(t)},[companyId,weekStart,role,availabilityFilter,user,query,personnelSort]);
   useEffect(()=>{let cancelled=false;if(!companyId){setPersonnelRoles([]);setRole('');return()=>{cancelled=true}};api.assignmentPersonnelRoles(companyId).then((roles:PersonnelRole[])=>{if(cancelled)return;setPersonnelRoles(roles);setRole(current=>current&&roles.some(item=>item.code===current)?current:'')}).catch(e=>{if(!cancelled)setError(errorMessage(e))});return()=>{cancelled=true}},[companyId,user]);
@@ -173,6 +200,7 @@ export default function Assignments(){
   useEffect(()=>{if(!error)return;const id=window.setTimeout(()=>setError(''),5000);return()=>window.clearTimeout(id)},[error]);
   useEffect(()=>{const update=()=>setFreezePaneOffset(freezePaneRef.current?.offsetHeight??0);update();window.addEventListener('resize',update);return()=>window.removeEventListener('resize',update)},[week?.plan.status,clientFilter,error,notice,selectedEmployeeId,canEdit,selectedShiftIds.size,copyMode]);
   useEffect(()=>{const update=()=>setMainTopOffset(mainTopRef.current?.offsetHeight??0);update();window.addEventListener('resize',update);return()=>window.removeEventListener('resize',update)},[selectedEmployeeId,canEdit,week?.plan.status,selectedShiftIds.size,copyMode,history.length,redoStack.length]);
+  useEffect(()=>{const el=matrixRef.current;if(!el)return;const next=verticalPointRange(pointLayouts,el.scrollTop,el.clientHeight);setVerticalRange(current=>current.start===next.start&&current.end===next.end?current:next)},[pointLayouts]);
 
 
   const evaluatePerson=async(employeeId:string,force=false)=>{if(!windowData.length)return;const token=++evaluationTokenRef.current;setEvaluating(true);try{const batches=await Promise.all(windowData.map(async w=>{const key=`${employeeId}|${w.plan.id}`;if(!force&&evaluationCacheRef.current.has(key))return evaluationCacheRef.current.get(key)!;const result:Evaluation[]=await api.assignmentEvaluate(w.plan.id,employeeId);evaluationCacheRef.current.set(key,result);return result}));if(token===evaluationTokenRef.current){setEvaluations(new Map(batches.flat().map(x=>[x.shiftOccurrenceId,x])));setEvaluating(false)}}catch(e){if(token===evaluationTokenRef.current){setError(errorMessage(e));setEvaluating(false)}}};
@@ -194,9 +222,9 @@ export default function Assignments(){
   const openEmployee=async(employeeId:string)=>{try{setSelectedEmployee(await api.assignmentEmployee(employeeId,weekStart,companyId))}catch(e){setError(errorMessage(e))}};
   const openTransferDialog=async()=>{if(!selectedEmployee)return;try{const [reasons,dests]=await Promise.all([api.transferReasons(),api.transferDestinations(selectedEmployee.companyId)]);setTransferReasons(reasons);setTransferDestinations(dests);setTransferModal({employee:selectedEmployee,destinationCompanyId:'',reasonCode:'',observations:''})}catch(e){setError(errorMessage(e))}};
   const requestSendTransfer=()=>{if(!transferModal)return;if(!transferModal.destinationCompanyId||!transferModal.reasonCode||!transferModal.observations.trim()){setError('Compañía destino, Motivo y Observaciones son obligatorios.');return}setTransferSendError('');setTransferSendConfirm(true)};
-  const executeSendTransfer=async()=>{if(!transferModal)return;setTransferBusy(true);setTransferSendError('');try{await api.createCompanyTransfer({employeeId:transferModal.employee.employeeId,destinationCompanyId:transferModal.destinationCompanyId,reasonCode:transferModal.reasonCode,observations:transferModal.observations});setTransferSendConfirm(false);setTransferModal(null);setSelectedEmployee(null);setNotice('Transferencia enviada. Queda pendiente de aceptación por la Compañía destino.');await reloadPersonnel(true);await reloadWeeks()}catch(e){const message=errorMessage(e);setTransferSendError(message);setError(message)}finally{setTransferBusy(false)}};
+  const executeSendTransfer=async()=>{if(!transferModal)return;setTransferBusy(true);setTransferSendError('');try{await api.createCompanyTransfer({employeeId:transferModal.employee.employeeId,destinationCompanyId:transferModal.destinationCompanyId,reasonCode:transferModal.reasonCode,observations:transferModal.observations});setTransferSendConfirm(false);setTransferModal(null);setSelectedEmployee(null);setNotice('Transferencia enviada. Queda pendiente de aceptación por la Compañía destino.');await reloadPersonnel(true);await reloadWeeks(true)}catch(e){const message=errorMessage(e);setTransferSendError(message);setError(message)}finally{setTransferBusy(false)}};
   const requestTransferDecision=(kind:'ACCEPT'|'REJECT'|'CANCEL',transfer:any)=>{setTransferDecisionError('');setTransferDecision({kind,transfer})};
-  const executeTransferDecision=async()=>{if(!transferDecision)return;const {kind,transfer}=transferDecision;setTransferBusy(true);setTransferDecisionError('');try{if(kind==='ACCEPT'){const result=await api.acceptCompanyTransfer(transfer.id);setReviewTransfer(null);setSelectedEmployee(null);setNotice(result?.status==='ACCEPTED_PENDING_EFFECTIVE'?`Transferencia aceptada. Será efectiva ${formatDateTime(result.effectiveAt)} al finalizar el turno en curso.`:'Transferencia aceptada y efectiva. El colaborador ya pertenece a la Compañía destino.');await reloadPersonnel(true);await reloadWeeks()}else if(kind==='REJECT'){await api.rejectCompanyTransfer(transfer.id);setReviewTransfer(null);setSelectedEmployee(null);setNotice('Transferencia rechazada. El colaborador permanece en la Compañía de origen.');await reloadPersonnel(true)}else{await api.cancelCompanyTransfer(transfer.id);setSelectedEmployee(null);setNotice('Transferencia anulada. El colaborador vuelve a estar disponible en la Compañía origen.');await reloadPersonnel(true)}setTransferDecision(null)}catch(e){const message=errorMessage(e);setTransferDecisionError(message);setError(message)}finally{setTransferBusy(false)}};
+  const executeTransferDecision=async()=>{if(!transferDecision)return;const {kind,transfer}=transferDecision;setTransferBusy(true);setTransferDecisionError('');try{if(kind==='ACCEPT'){const result=await api.acceptCompanyTransfer(transfer.id);setReviewTransfer(null);setSelectedEmployee(null);setNotice(result?.status==='ACCEPTED_PENDING_EFFECTIVE'?`Transferencia aceptada. Será efectiva ${formatDateTime(result.effectiveAt)} al finalizar el turno en curso.`:'Transferencia aceptada y efectiva. El colaborador ya pertenece a la Compañía destino.');await reloadPersonnel(true);await reloadWeeks(true)}else if(kind==='REJECT'){await api.rejectCompanyTransfer(transfer.id);setReviewTransfer(null);setSelectedEmployee(null);setNotice('Transferencia rechazada. El colaborador permanece en la Compañía de origen.');await reloadPersonnel(true)}else{await api.cancelCompanyTransfer(transfer.id);setSelectedEmployee(null);setNotice('Transferencia anulada. El colaborador vuelve a estar disponible en la Compañía origen.');await reloadPersonnel(true)}setTransferDecision(null)}catch(e){const message=errorMessage(e);setTransferDecisionError(message);setError(message)}finally{setTransferBusy(false)}};
   const acceptTransfer=(t:any)=>requestTransferDecision('ACCEPT',t);
   const rejectTransfer=(t:any)=>requestTransferDecision('REJECT',t);
   const cancelTransfer=(t:any)=>requestTransferDecision('CANCEL',t);
@@ -219,7 +247,7 @@ export default function Assignments(){
   const setWeekAndScroll=(target:string)=>{const clamped=clampIso(target,minWeekStart,maxWeekStart);setWeekStart(clamped);scrollToDate(clamped)};
   const goWeek=(delta:number)=>setWeekAndScroll(addDays(weekStart,delta));
   const goToday=()=>{const current=monday();setWeekStart(current);scrollToDate(today)};
-  const handleMatrixScroll=(e:any)=>{const left=e.currentTarget.scrollLeft||0;const first=Math.max(0,Math.min(days.length-1,Math.floor(left/DAY_WIDTH)));const next=Math.max(0,Math.min(days.length-VIRTUAL_RENDER_DAYS,first-VIRTUAL_BUFFER_DAYS));if(next!==virtualStart)setVirtualStart(next)};
+  const handleMatrixScroll=(e:any)=>{const el=e.currentTarget as HTMLDivElement;const left=el.scrollLeft||0;const first=Math.max(0,Math.min(days.length-1,Math.floor(left/DAY_WIDTH)));const next=Math.max(0,Math.min(days.length-VIRTUAL_RENDER_DAYS,first-VIRTUAL_BUFFER_DAYS));if(next!==virtualStart)setVirtualStart(next);const vertical=verticalPointRange(pointLayouts,el.scrollTop,el.clientHeight);setVerticalRange(current=>current.start===vertical.start&&current.end===vertical.end?current:vertical)};
   const handleMatrixWheel=(e:any)=>{if(Math.abs(e.deltaY)<=Math.abs(e.deltaX))return;window.scrollBy({top:e.deltaY,left:0,behavior:'auto'});e.preventDefault?.();};
   useEffect(()=>{scrollToDate(weekStart)},[weekStart,companyId]);
 
@@ -317,10 +345,11 @@ export default function Assignments(){
     </div>;
   };
 
-  return <div className="assignments-page assignments-v05 assignments-v06 assignments-asi-v01 assignments-asi-v02 assignments-asi-v03 assignments-asi-v04 assignments-asi-v05 assignments-asi-v06 assignments-asi-v062 assignments-asi-v063 assignments-asi-v064 assignments-asi-v065" style={{['--asi-day-count' as any]:String(days.length),['--freeze-pane-offset' as any]:`${freezePaneOffset}px`,['--main-top-offset' as any]:`${mainTopOffset}px`}}>
+  return <div className="assignments-page assignments-v05 assignments-v06 assignments-asi-v01 assignments-asi-v02 assignments-asi-v03 assignments-asi-v04 assignments-asi-v05 assignments-asi-v06 assignments-asi-v062 assignments-asi-v063 assignments-asi-v064 assignments-asi-v065 assignments-asi-v066" style={{['--asi-day-count' as any]:String(days.length),['--freeze-pane-offset' as any]:`${freezePaneOffset}px`,['--main-top-offset' as any]:`${mainTopOffset}px`}}>
     <div className="assignments-freeze-pane" ref={freezePaneRef}>
       <div className="assignment-toolbar"><div><div className="assignment-title-row"><h2>Asignaciones: {companies.find(c=>c.id===companyId)?.name??'—'}</h2><span>Timeline operacional</span></div><div className="plan-state"><b className={`plan-pill ${week?.plan.status?.toLowerCase()}`}>{week?.plan.status==='DRAFT'?'Borrador':week?.plan.status==='PUBLISHED'?'Publicado':'Cerrado'}</b>{week?.plan.draftSavedAt&&week.plan.status==='DRAFT'&&<small>Último guardado {formatDateTime(week.plan.draftSavedAt)} · {week.plan.draftSavedBy}</small>}{week?.plan.publishedAt&&<small>Publicado {formatDateTime(week.plan.publishedAt)} por {week.plan.publishedBy}</small>}</div></div>
-        <div className="assignment-toolbar-actions">{showCompanyFilter&&<select className="assignment-select assignment-company-filter" value={companyId} onChange={e=>{weeksLoadTokenRef.current++;personnelLoadTokenRef.current++;setWindowData([]);setPersonnel([]);setSelectedEmployee(null);setCompanyId(e.target.value)}} aria-label="Compañía">{companies.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select>}<select className="assignment-select assignment-client-filter" value={clientFilter} onChange={e=>setClientFilter(e.target.value)} aria-label="Cliente"><option value="">Todos los clientes</option>{clients.map(client=><option key={client} value={client}>{client}</option>)}</select><div className="week-switcher"><button onClick={()=>goWeek(-7)} disabled={weekStart<=minWeekStart}><ChevronLeft size={16}/></button><span><CalendarDays size={16}/>{formatDate(weekStart)} – {formatDate(addDays(weekStart,6))}</span><button onClick={()=>goWeek(7)} disabled={weekStart>=maxWeekStart}><ChevronRight size={16}/></button></div><button className="secondary-button today-button" onClick={goToday}>Hoy</button>{week?.plan.status==='DRAFT'&&canEdit&&<button className="draft-save-button" onClick={()=>void saveDraft(false)} disabled={saving}><Save size={15}/>{saving?'Guardando…':'Guardar borrador'}</button>}{week?.plan.status==='DRAFT'&&canEdit&&<button className="publish-button" onClick={()=>void publish()} disabled={publishing}><Send size={15}/>{publishing?'Publicando…':'Publicar asignaciones'}</button>}</div>
+        <div className="assignment-toolbar-actions">{showCompanyFilter&&<select className="assignment-select assignment-company-filter" title={selectedCompany?.name} value={companyId} onChange={e=>{weeksLoadTokenRef.current++;personnelLoadTokenRef.current++;setWindowData([]);setPersonnel([]);setSelectedEmployee(null);setCompanyId(e.target.value)}} aria-label="Compañía">{companies.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select>}<select className="assignment-select assignment-client-filter" title={clientFilter||'Todos los clientes'} value={clientFilter} onChange={e=>setClientFilter(e.target.value)} aria-label="Cliente"><option value="">Todos los clientes</option>{clients.map(client=><option key={client} value={client}>{client}</option>)}</select><div className="week-switcher"><button onClick={()=>goWeek(-7)} disabled={weekStart<=minWeekStart}><ChevronLeft size={16}/></button><span><CalendarDays size={16}/>{formatDate(weekStart)} – {formatDate(addDays(weekStart,6))}</span><button onClick={()=>goWeek(7)} disabled={weekStart>=maxWeekStart}><ChevronRight size={16}/></button></div><button className="secondary-button today-button" onClick={goToday}>Hoy</button>{week?.plan.status==='DRAFT'&&canEdit&&<button className="draft-save-button" onClick={()=>void saveDraft(false)} disabled={saving}><Save size={15}/>{saving?'Guardando…':'Guardar borrador'}</button>}</div>
+        <div className="assignment-publish-row"><button type="button" className="ser-refresh assignment-refresh" onClick={()=>void refreshAssignments()} disabled={!companyId||loading||refreshing||saving||publishing} aria-busy={loading||refreshing}><RefreshCcw size={15}/>{loading||refreshing?'Actualizando…':'Actualizar'}</button>{week?.plan.status==='DRAFT'&&canEdit&&<button className="publish-button" onClick={()=>void publish()} disabled={publishing}><Send size={15}/>{publishing?'Publicando…':'Publicar asignaciones'}</button>}</div>
       </div>
 
       {error&&<div className="assignment-message error">{error}<button onClick={()=>setError('')}><X size={14}/></button></div>}{notice&&<div className="assignment-message notice">{notice}<button onClick={()=>setNotice('')}><X size={14}/></button></div>}
@@ -352,13 +381,13 @@ export default function Assignments(){
 
         <div className="assignment-matrix-wrap spreadsheet-matrix" ref={matrixRef} onMouseLeave={()=>setHoverDate('')} onScroll={handleMatrixScroll}>
           <div className="matrix-days spreadsheet-days"><div className="matrix-corner">Puesto / Turno</div>{leftSpacerWidth>0&&<div className="virtual-day-spacer" style={{flex:`0 0 ${leftSpacerWidth}px`}}/>}{renderDays.map(d=><div key={d} data-date-header={d} className={`day-head ${dayHeaderClass(d)}`} onMouseEnter={()=>setHoverDate(d)} onClick={()=>onDayHeaderClick(d)}><strong>{dayName(d)}</strong><span>{new Date(`${d}T12:00:00`).getDate()}</span><small>{formatDate(d)}</small></div>)}{rightSpacerWidth>0&&<div className="virtual-day-spacer" style={{flex:`0 0 ${rightSpacerWidth}px`}}/>}</div>
-          {loading&&!week?<div className="matrix-loading">Cargando timeline operacional…</div>:visiblePoints.map(point=>{const coverage=pointCoverage(point),posts=postsByPoint.get(point.id)??[],coordination=point.id===COORDINATION_POINT_ID;return <div className={`point-assignment-block spreadsheet-point ${coordination?'coordination-assignment-block':''}`} key={point.id}>
+          {loading&&!week?<div className="matrix-loading">Cargando timeline operacional…</div>:<>{topPointSpacer>0&&<div className="virtual-point-spacer" style={{height:topPointSpacer}} aria-hidden="true"/>}{renderedPointLayouts.map(({point})=>{const coverage=pointCoverage(point),posts=postsByPoint.get(point.id)??[],coordination=point.id===COORDINATION_POINT_ID;return <div className={`point-assignment-block spreadsheet-point ${coordination?'coordination-assignment-block':''}`} key={point.id}>
             <div className={`point-band ${coverage.pct===100?'complete':coverage.pct>=80?'partial':'critical'}`}><div className="point-band-sticky"><div className="point-band-meta"><strong className="point-band-title">{point.name}</strong><span className="point-band-subtitle">{coordination?`Compañía: ${selectedCompany?.name??'—'} · Supervisión y Monitoreo`:`Cliente: ${point.clientName} · Ciudad: ${point.city}`}</span></div><b className="point-band-coverage">Asignación {coverage.pct}%</b></div><div className="point-band-fill" aria-hidden="true"/></div>
             {posts.map(post=>{const postRows=rowsByPost.get(post.id)??[],pm=postMetrics(post.id),isCoordination=post.targetType==='COORDINATION';return <div className="post-assignment spreadsheet-post" key={post.id}>
               <div className="post-info-v04 spreadsheet-post-info compact-post-info" onClick={()=>isCoordination?setNotice(`${post.code} · ${post.coordinationType==='SUPERVISION'?`Ruta activa: ${post.routeName??'sin ruta'}`:'Puesto interno de Monitoreo'} · Rol requerido: ${ROLE_LABEL[post.requiredRoleCode??'']??post.requiredRoleCode}`):void openPost(post.id)}><div className="post-info-headline"><div className="post-info-title"><strong>{post.code}</strong><span>{post.name}</span></div>{isCoordination?<div className="post-tier-inline"><span>COO</span><b>{post.coordinationType==='SUPERVISION'?'SUP':'MON'}</b></div>:<div className={`post-tier-inline post-tier-${post.tier}`}><span>TIER</span><b>{post.tier}</b></div>}</div><em>{pm.hours} h/semana requeridas</em>{isCoordination?<div className="post-metrics"><span>Rol: <b>{ROLE_LABEL[post.requiredRoleCode??'']??post.requiredRoleCode}</b></span><span>{post.routeName?`Ruta: ${post.routeName}`:'Sin ruta requerida'}</span></div>:<div className="post-metrics">IC: <b className={pm.ic==null?'':metricClass(pm.ic)}>{pm.ic==null?'—':`${pm.ic}%`}</b><span>ID: <b className={pm.id==null?'':metricClass(pm.id)}>{pm.id==null?'—':`${pm.id}%`}</b></span></div>}<div className={`cycle-chip ${post.cycleLengthDays?'':'missing'}`}>{post.cycleLengthDays?<><b>{post.rotationCode}</b><span>Ciclo {post.cycleLengthDays} días</span></>:<span>Ciclo no informado</span>}</div><button className="post-more"><Info size={11}/>{isCoordination?'Información de Coordinación':'Más información'}</button></div>
               <div className="post-shift-rows spreadsheet-shift-rows">{postRows.map(row=><div className="shift-row spreadsheet-row" key={row.rowKey}><div className="shift-label spreadsheet-shift-label"><Clock3 size={15}/><div><strong>{shiftLabel(row.representative,postRows.length)}</strong><span>{time(row.representative.startsAt)} – {time(row.representative.endsAt)}{crossesMidnight(row.representative)?' +1':''}</span></div></div>{leftSpacerWidth>0&&<div className="virtual-day-spacer" style={{flex:`0 0 ${leftSpacerWidth}px`}}/>}{renderDays.map(d=>{const s=shiftAt.get(`${row.rowKey}|${d}`);return <div className={`calendar-day-cell spreadsheet-day-cell ${d<today?'past-readonly':''} ${copyClass(post.id,d)}`} key={`${row.rowKey}-${d}`} onMouseEnter={()=>setHoverDate(d)}>{s?renderShiftCell(s,row,d):<div className="calendar-empty-day">—</div>}</div>})}{rightSpacerWidth>0&&<div className="virtual-day-spacer" style={{flex:`0 0 ${rightSpacerWidth}px`}}/>}</div>)}</div>
             </div>})}
-          </div>})}
+          </div>})}{bottomPointSpacer>0&&<div className="virtual-point-spacer" style={{height:bottomPointSpacer}} aria-hidden="true"/>}</>}
         </div>
       </div>
     </div>

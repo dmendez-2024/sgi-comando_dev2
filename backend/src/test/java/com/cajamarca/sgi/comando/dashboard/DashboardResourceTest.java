@@ -107,6 +107,10 @@ class DashboardResourceTest {
             .get("/api/dashboard/consignment-compliance").then().statusCode(200)
             .body("activeConsignments", is(previousActive + 1)).body("nonCompliant", is(previousNonCompliant + 1))
             .body("nonCompliancePct", is(Math.round(1000f * (previousNonCompliant + 1) / (previousActive + 1)) / 10f));
+        as("presidente").queryParam("weekStart", "2001-01-03").queryParam("companyId", company).queryParam("clientId", client)
+            .get("/api/dashboard/consignment-compliance").then().statusCode(200)
+            .body("attention.find { it.pointId == '" + pointId + "' }.nonCompliant", greaterThanOrEqualTo(1))
+            .body("attention.find { it.pointId == '" + pointId + "' }.date", is("2001-01-02"));
         QuarkusTransaction.requiringNew().run(() -> em.createNativeQuery("update consignment set validity_from='2002-01-01 00:00:00+00' where id=:id")
             .setParameter("id", createdConsignmentId).executeUpdate());
         as("presidente").queryParam("weekStart", "2001-01-03").queryParam("companyId", company).queryParam("clientId", client)
@@ -114,7 +118,7 @@ class DashboardResourceTest {
             .body("activeConsignments", is(previousActive)).body("nonCompliant", is(previousNonCompliant));
         as("presidente").queryParam("weekStart", "2001-01-03").queryParam("clientId", UUID.randomUUID())
             .get("/api/dashboard/consignment-compliance").then().statusCode(200)
-            .body("activeConsignments", is(0)).body("nonCompliancePct", nullValue());
+            .body("activeConsignments", is(0)).body("nonCompliancePct", nullValue()).body("attention", empty());
         as("presidente").queryParam("weekStart", "2001-01-03").queryParam("companyId", company).queryParam("clientId", client)
             .get("/api/dashboard/operational-risk-trend").then().statusCode(200)
             .body("find { it.date == '2001-01-02' }.scheduledPoints", is(1))

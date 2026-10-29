@@ -3,6 +3,7 @@ package com.cajamarca.sgi.comando.operation;
 import com.cajamarca.sgi.comando.common.TenantContext;
 import com.cajamarca.sgi.comando.execution.EvidenceObject;
 import com.cajamarca.sgi.comando.operator.OperatorTasks;
+import com.cajamarca.sgi.comando.operator.ReliefEvidencePhotos;
 import com.cajamarca.sgi.comando.storage.StandardReferenceImage;
 import com.cajamarca.sgi.comando.storage.StandardReferenceImages;
 import com.cajamarca.sgi.comando.storage.StorageService;
@@ -43,6 +44,7 @@ public class OperationalEvidenceResource {
     @Inject StorageService storage;
     @Inject ObjectMapper mapper;
     @Inject StandardReferenceImages references;
+    @Inject ReliefEvidencePhotos reliefPhotoStore;
 
     private static final int RELIEF = 0, LOGBOOK = 1, CONSIGNMENT_REQUEST = 2, OPERATIONAL_REPORT = 3, PATROL = 4, TASK = 5;
     private record VisibleEvent(UUID pointId, int kind) {}
@@ -88,7 +90,7 @@ public class OperationalEvidenceResource {
         }
         Object[] relief = reliefPhoto(eventId, photoId);
         if (relief != null && relief[0] != null && relief[0].toString().startsWith("image/"))
-            return image((byte[]) relief[1], relief[0].toString());
+            return image(reliefPhotoStore.read(relief[1], relief[2], relief[3]), relief[0].toString());
         byte[] patrol = embeddedPhoto(patrolPhotoJson(eventId, photoId));
         if (patrol != null) return image(patrol, "image/jpeg");
         throw new NotFoundException("Fotografía no encontrada");
@@ -313,7 +315,7 @@ public class OperationalEvidenceResource {
 
     @SuppressWarnings("unchecked")
     private Object[] reliefPhoto(UUID eventId, UUID photoId) {
-        List<Object[]> rows = em.createNativeQuery("select content_type,content from operator_relief_evidence where instance_country_id=:tenant and event_id=:event and id=:photo")
+        List<Object[]> rows = em.createNativeQuery("select content_type,bucket,object_key,content from operator_relief_evidence where instance_country_id=:tenant and event_id=:event and id=:photo")
             .setParameter("tenant", tenant.instanceCountryId()).setParameter("event", eventId).setParameter("photo", photoId).getResultList();
         return rows.isEmpty() ? null : rows.get(0);
     }

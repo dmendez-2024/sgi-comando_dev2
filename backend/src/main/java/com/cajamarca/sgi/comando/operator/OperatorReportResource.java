@@ -98,10 +98,11 @@ public class OperatorReportResource {
     /** Las coordenadas no viven en el reporte: se toman de su fotografía (evidence_object), la primera con ubicación. */
     private static final String SELECT="""
           select r.id,r.employee_id,r.report_type,r.category,r.subcategory,r.title,r.description,r.severity,r.status,
-                 r.occurred_at,r.created_at,r.assignment_id,r.point_id,r.post_id,r.username,p.name,coalesce(po.name,'—'),
+                 r.occurred_at,r.created_at,r.assignment_id,r.point_id,r.post_id,coalesce(employee.full_name,r.username),p.name,coalesce(po.name,'—'),
                  p.client_name,p.city,p.company_id,co.code,co.name,r.payload_hash,r.routing_target,r.routing_status,r.routing_reference_id,r.photo_count,
                  ev.latitude,ev.longitude,ev.accuracy_m
           from operator_operational_report r join point p on p.id=r.point_id and p.instance_country_id=r.instance_country_id
+          left join employee_operational_snapshot employee on employee.employee_id=r.employee_id and employee.instance_country_id=r.instance_country_id
           left join post po on po.id=r.post_id and po.instance_country_id=r.instance_country_id
           left join company co on co.id=p.company_id and co.instance_country_id=r.instance_country_id
           left join lateral (

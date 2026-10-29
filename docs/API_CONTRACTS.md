@@ -9,8 +9,9 @@ Base: `/api`
 - `GET /api/companies?page=0&size=50`
 - `POST /api/companies`
 - `PUT /api/companies/{id}`
-- `GET /api/companies/responsibles` — candidatos para Responsable operacional (extensión observada, RC/CR por confirmar).
-- `PUT /api/companies/{id}` admite `responsibleEmployeeId` UUID o `null`; respuesta reporta ID, nombre y código de rol del responsable (extensión observada, pendiente de contrato/versionado formal).
+- `GET /api/companies/responsibles?companyId={uuid}` — candidatos activos del país-instancia para Coordinador o Asistente; solo incluye personas con `persona_id` sincronizado. `companyId` valida que la Compañía editada esté dentro del alcance del usuario, pero no filtra por `employee_operational_snapshot.company_id`, pues la autorización efectiva se asigna en `user_operational_scope` al guardar.
+- `PUT /api/companies/{id}` admite `coordinatorEmployeeId` y `assistantEmployeeId`. El Coordinador es obligatorio cuando el catálogo anterior contiene al menos un Coordinador elegible; el Asistente siempre es opcional.
+- `responsibleEmployeeId` se conserva como alias legado de `coordinatorEmployeeId` para compatibilidad.
 
 ## Operación comercial local/mock
 - `GET /api/services`

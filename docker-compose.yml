@@ -77,7 +77,7 @@ services:
       # Llave para cifrar las contraseñas de cámaras (Seguridad Electrónica). Definirla en .env.
       SGI_SECELEC_SECRET_KEY: ${SGI_SECELEC_SECRET_KEY:-}
       # Hechos hacia SMC: identificadores configurables del binding efectivo de CORE.
-      SGI_SMC_INTERCONNECTION_ID: ${SGI_SMC_INTERCONNECTION_ID:-SGI_COM_SMC__0001_v001}
+      SGI_SMC_INTERCONNECTION_ID: ${SGI_SMC_INTERCONNECTION_ID:-SGI_COM_SMC_0001_v003}
       SGI_SMC_INTERFACE_ID: ${SGI_SMC_INTERFACE_ID:-SGI_COM_SMC_0001_IF01}
     ports:
       - "8080:8080"

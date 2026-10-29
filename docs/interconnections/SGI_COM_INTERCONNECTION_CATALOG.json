@@ -1358,7 +1358,7 @@
   },
   {
     "interconnectionRef": "SGI_COM_SMC_0001",
-    "interconnectionId": "SGI_COM_SMC_0001_v001",
+    "interconnectionId": "SGI_COM_SMC_0001_v003",
     "sourceProgramId": "SGI_COM",
     "targetProgramId": "SMC",
     "purpose": "Publish normalized operational facts used by SMC to calculate ID/KPIs.",

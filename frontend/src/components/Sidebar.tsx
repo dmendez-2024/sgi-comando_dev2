@@ -1,4 +1,5 @@
 import {useEffect,useState} from 'react';
+import sidebarLogo from '../assets/sgi-comando-logo-sidebar.png';
 import {BarChart3,Bell,Building2,ChevronDown,ClipboardList,FileSearch,FileText,Gauge,MapPinned,MessageSquareText,Radio,Settings,ShieldCheck,Users,UserCheck,Warehouse,Map,Network,Smartphone} from 'lucide-react';
 
 type NavItem={name:string;icon:any};
@@ -55,7 +56,7 @@ export default function Sidebar({active,onChange,uatTools,monitorOnly=false}:{ac
     <nav><button onClick={()=>onChange('Consola')} className={active==='Consola'?'active':''}><Bell size={18}/><span>Consola</span></button></nav>
   </aside>;
   return <aside className="sidebar">
-    <div className="brand"><img className="brand-logo" src={`${import.meta.env.BASE_URL}sgi-comando-logo-sidebar.png`} alt="SGI Comando"/></div>
+    <div className="brand"><img className="brand-logo" src={sidebarLogo} alt="SGI Comando"/></div>
     <nav>
       <button onClick={()=>onChange('Dashboard')} className={active==='Dashboard'?'active':''}><Gauge size={18}/><span>Dashboard</span></button>
       <Group group={ops} active={active} onChange={onChange}/>
