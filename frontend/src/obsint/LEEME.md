@@ -134,7 +134,7 @@ Pantalla de la diapositiva 10. Se abre desde Configuración del Punto.
 ### OBSINT como "puesto" en Consignas (diapositiva 9)
 
 - En **Servicios / Consignas**, pestaña **Alcance**, cada consigna tiene la casilla **OBSINT**: "el Monitorista OBSINT verifica esta Consigna por cámara". En "Cobertura por Puesto" aparece la tarjeta **OBSINT** junto a los puestos.
-- Se guarda en `consignment.obsint` (V98). Es independiente del alcance de guardias:
+- Se guarda en `consignment.obsint` (V102). Es independiente del alcance de guardias:
   - "Todo el Punto" + OBSINT → la reciben los guardias y el monitorista.
   - "Puestos específicos" sin ningún puesto + OBSINT → **solo el monitorista**. Sin OBSINT sigue exigiendo al menos un puesto.
   - Las consultas de SGI Operador no cambian: una consigna solo OBSINT no le llega a ningún guardia.
@@ -172,7 +172,7 @@ Pantalla de la diapositiva 10. Se abre desde Configuración del Punto.
   - Fotograma JPEG del video elegido.
   - Máximo 6 por tarea, de hasta 5 MiB, solo JPEG, PNG o WebP (detectados por sus bytes).
   - Se guarda en MinIO, en el bucket de evidencias de Comando, con SHA‑256.
-- **Mensajes al agente (modo prueba):** solo se registran, con `deliveryStatus = TEST`: **no se envían al agente** y no deben salir a producción como reales. V95 agregó `TEST` y pasó a `TEST` los mensajes ya guardados como `SENT`, porque ninguno se envió. `SENT` y `FAILED` quedan para cuando exista el envío real a SGI Operador (SITC).
+- **Mensajes al agente (modo prueba):** solo se registran, con `deliveryStatus = TEST`: **no se envían al agente** y no deben salir a producción como reales. V99 agregó `TEST` y pasó a `TEST` los mensajes ya guardados como `SENT`, porque ninguno se envió. `SENT` y `FAILED` quedan para cuando exista el envío real a SGI Operador (SITC).
 - Cada usuario ve solo sus propios casos.
 
 ### Seguridad
@@ -276,13 +276,13 @@ const obs = await obsintConfigApi.summary(pointId);  // {status, meta:'Protocolo
 | `ObsintReportPdf.java` | Dibuja el PDF con Apache PDFBox (dependencia `org.apache.pdfbox:pdfbox:3.0.3`); logo en `resources/obsint/sgi-comando-logo.png` |
 
 **Base de datos:**
-- `V92__obsint_console.sql`: la primera versión de la consola. **No se modifica.** Era V91: todas las de OBSINT se corrieron +1 porque SMC tomó V91 en `sgiComandoDev`.
-- `V93__obsint_config_and_security_components.sql`: transforma V92 al modelo actual (ver §7).
-- `V94__secelec_camera_channel_geo_streaming.sql`: canal, coordenadas y streaming de las cámaras (ver §7).
-- `V95__obsint_agent_message_test_status.sql`: estado `TEST` (modo prueba) para los mensajes al agente (ver §3).
-- `V96__obsint_consigna_description.sql` y `V97__obsint_consigna_frequency.sql`: descripción y frecuencia de cada consigna OBSINT (pantalla de crear tarea).
-- `V98__obsint_consignment_link.sql`: casilla OBSINT en `consignment` y vínculo `obsint_consigna.consignment_code` (ver §3, "OBSINT como puesto").
-- **Migraciones nuevas: desde V99.** SMC usa V91; revisar el último número en `sgiComandoDev` antes de crear una.
+- `V96__obsint_console.sql`: la primera versión de la consola. **No se modifica.** Era V91 y luego V92: todas las de OBSINT se corrieron porque `sgiComandoDev` tomó V91 (SMC) y V92 a V95 (relevos, SMC, Compañías, inventario).
+- `V97__obsint_config_and_security_components.sql`: transforma V96 al modelo actual (ver §7).
+- `V98__secelec_camera_channel_geo_streaming.sql`: canal, coordenadas y streaming de las cámaras (ver §7).
+- `V99__obsint_agent_message_test_status.sql`: estado `TEST` (modo prueba) para los mensajes al agente (ver §3).
+- `V100__obsint_consigna_description.sql` y `V101__obsint_consigna_frequency.sql`: descripción y frecuencia de cada consigna OBSINT (pantalla de crear tarea).
+- `V102__obsint_consignment_link.sql`: casilla OBSINT en `consignment` y vínculo `obsint_consigna.consignment_code` (ver §3, "OBSINT como puesto").
+- **Migraciones nuevas: desde V103.** `sgiComandoDev` usa V91 a V95; revisar el último número en `sgiComandoDev` antes de crear una.
 
 **Pruebas**
 
@@ -323,7 +323,7 @@ const obs = await obsintConfigApi.summary(pointId);  // {status, meta:'Protocolo
 - Integración con Comando: el botón OBSINT en `src/pages/ConsolaMonitor.tsx`, los `export` de `src/api.ts` y la coordinación con quien hace el menú de Servicios.
 
 **Persona B — backend y algo de frontend**
-- Backend completo: `secelec/*` y `obsint/*`, migraciones (V92 no se toca; V93 y siguientes), `sgi.secelec.secret-key` y todas las pruebas.
+- Backend completo: `secelec/*` y `obsint/*`, migraciones (V96 no se toca; V97 y siguientes), `sgi.secelec.secret-key` y todas las pruebas.
 - Frontend de Componentes de Seguridad: `src/secelec/SecurityComponents.tsx` y `secelec.css`.
 - Contrato de la API: `src/secelec/secelecApi.ts` y `src/obsint/obsintApi.ts` (tipos y llamadas).
 
@@ -338,20 +338,20 @@ const obs = await obsintConfigApi.summary(pointId);  // {status, meta:'Protocolo
 
 ---
 
-## 7. Base de datos (V92 a V98)
+## 7. Base de datos (V96 a V102)
 
-V92 creó la consola con un catálogo DEMO global. **V93 la transforma**:
-- **Borra los datos DEMO de V92** (casos, tareas, evidencias, mensajes y consignas). Las fotos de evidencia de esos casos quedan en MinIO, en `evidence/{tenant}/obsint/…`, y pueden borrarse a mano.
+V96 creó la consola con un catálogo DEMO global. **V97 la transforma**:
+- **Borra los datos DEMO de V96** (casos, tareas, evidencias, mensajes y consignas). Las fotos de evidencia de esos casos quedan en MinIO, en `evidence/{tenant}/obsint/…`, y pueden borrarse a mano.
 - Crea `secelec_component`, `obsint_protocol` y `obsint_consigna_schedule`.
 - Agrega a `obsint_consigna` las columnas `protocol_id`, `point_id` y `category`. El código pasa a ser único por protocolo.
 - Rehace `obsint_consigna_camera` para que apunte a `secelec_component`, y cambia la llave de `obsint_evidence.camera_id` a `secelec_component`.
 - Elimina `obsint_camera`.
 
-Probado sobre PostgreSQL 17 de dos formas: aplicando V92 y V93 sobre una base vacía, y aplicando V93 sobre una base que ya tenía datos DEMO de V92.
+Probado sobre PostgreSQL 17 de dos formas: aplicando V96 y V97 sobre una base vacía, y aplicando V97 sobre una base que ya tenía datos DEMO de V96.
 
-**V94** agrega a `secelec_component` las columnas `channel`, `latitude`, `longitude` (`numeric(9,6)`), `streaming_enabled` y `streaming_mode` (COPY / TRANSCODE), con sus CHECK de rango. Las cámaras existentes quedan con canal 1 y streaming activo en modo COPY. En las demás familias las cinco columnas quedan en null.
+**V98** agrega a `secelec_component` las columnas `channel`, `latitude`, `longitude` (`numeric(9,6)`), `streaming_enabled` y `streaming_mode` (COPY / TRANSCODE), con sus CHECK de rango. Las cámaras existentes quedan con canal 1 y streaming activo en modo COPY. En las demás familias las cinco columnas quedan en null.
 
-**V95** agrega el estado `TEST` a los mensajes al agente. **V96** y **V97** agregan `description` y `frequency` (EVERY_SHIFT, EVERY_2_HOURS, EVERY_4_HOURS, DAILY) a `obsint_consigna`. **V98** agrega `consignment.obsint` (la casilla de Consignas) y `obsint_consigna.consignment_code` (vínculo por código).
+**V99** agrega el estado `TEST` a los mensajes al agente. **V100** y **V101** agregan `description` y `frequency` (EVERY_SHIFT, EVERY_2_HOURS, EVERY_4_HOURS, DAILY) a `obsint_consigna`. **V102** agrega `consignment.obsint` (la casilla de Consignas) y `obsint_consigna.consignment_code` (vínculo por código).
 
 Esquema resultante (todas las tablas llevan `instance_country_id`, `created_at` y `updated_at`):
 
@@ -489,7 +489,7 @@ Con `consignmentCode`, `title` e `instruction` salen de Consignas. Sin él (tare
   | `ObsintResourceTest` | `@QuarkusTest` | 4 |
   | `SecElecResourceTest` | `@QuarkusTest` | 4 |
 
-  Las `@QuarkusTest` corrieron contra un PostgreSQL 17 y un MinIO temporales, con todas las migraciones V1–V92 aplicadas.
+  Las `@QuarkusTest` corrieron contra un PostgreSQL 17 y un MinIO temporales, con todas las migraciones V1–V96 aplicadas.
   - Las migraciones **no crean** los datos UAT que usan las pruebas de Comando (usuarios `coord`, `dnacional`…, compañía y Punto `40000000-…0001`). Para correrlas en una base vacía se sembraron a mano: cliente, compañía, servicio, Punto, usuarios con la contraseña UAT de V6, y alcances.
   - En una base local ya poblada no hace falta sembrar nada.
 - **Pantallas revisadas en el navegador** con el backend real, usando una página de vista previa provisional que ya se eliminó:
