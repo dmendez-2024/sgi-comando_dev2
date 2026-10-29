@@ -76,7 +76,7 @@ function PhotoGrid({photos,label,title}:{photos:Photo[];label:(photo:Photo,index
 export function PhotoEvidenceGallery({eventId,declaredCount=0,incident=false,hideInventory=false}:{eventId?:string;declaredCount?:number;incident?:boolean;hideInventory?:boolean}){
   // hideInventory: las fotos de los materiales se muestran en su tarjeta (ReliefInventoryCards), no en la galería.
   const list=incident?api.incidentEvidences:hideInventory
-    ?(id:string)=>api.operationalEventEvidences(id).then(refs=>refs.filter(ref=>ref.source!=='INVENTORY'))
+    ?(id:string)=>api.operationalEventEvidences(id).then(refs=>refs.filter(ref=>ref.source!=='INVENTORY'&&ref.purpose!=='inventory'))
     :api.operationalEventEvidences;
   const {photos,loading,error,pending,available,missing}=useProgressiveImages(eventId,list,
     incident?api.incidentEvidenceImage:api.operationalEventEvidenceImage,
@@ -131,22 +131,22 @@ export function ReliefInventoryCards({eventId,items}:{eventId?:string;items?:Rel
   if(!assets.length)return null;
   const title=(item:ReliefInventoryItem)=>item.description?.trim()||item.code?.trim()||'Activo';
   const viewable=assets.flatMap(item=>{const photo=photos[item.assetId];return photo?.url?[{id:item.assetId,src:photo.url,mime:photo.mime,label:title(item),fit:'cover' as const}]:[]});
-  return <section className="nov-photo-block" aria-label="Materiales del relevo">
-    <div className="nov-section-title"><strong>Materiales ({assets.length})</strong></div>
-    <div className="rel-inventory-list">{assets.map(item=>{
+  return <section className="rel-materials" aria-labelledby="rel-materials-title">
+    <div className="rel-materials-head"><h4 id="rel-materials-title">Materiales</h4><span>{assets.length} {assets.length===1?'material':'materiales'}</span></div>
+    <div className="rel-materials-grid">{assets.map(item=>{
       const name=title(item);
       const photo=photos[item.assetId];
       const condition=CONDITIONS[item.condition??''];
-      return <article className="rel-inventory-card" key={item.assetId}>
+      return <article className="rel-material-card" key={item.assetId}>
         {photo?.url
-          ?<button type="button" className="rel-inventory-thumb" aria-label={`Ver foto de ${name}`} aria-haspopup="dialog"
-              onClick={()=>setOpen(viewable.findIndex(image=>image.id===item.assetId))}><img src={photo.url} alt={`Foto de ${name}`}/></button>
-          :<div className={`rel-inventory-thumb${photo?.loading?' pending':' empty'}`} aria-label={photo?.loading?`Cargando foto de ${name}`:`Foto de ${name} no disponible`}>{!photo?.loading&&<Camera size={22}/>}</div>}
-        <div className="rel-inventory-body">
-          <strong>{name}</strong>
-          {item.code&&item.code!==name&&<small>{item.code}</small>}
-          <span className={`rel-inventory-status ${condition?.tone??'none'}`}>{condition?.icon}{condition?.label??'Sin estado'}</span>
-          {item.observation?.trim()&&<div className="rel-inventory-observation"><b>Observación</b><p>{item.observation}</p></div>}
+          ?<button type="button" className="rel-material-image" aria-label={`Ver imagen de ${name}`} aria-haspopup="dialog"
+              onClick={()=>setOpen(viewable.findIndex(image=>image.id===item.assetId))}><img src={photo.url} alt={`Imagen de ${name}`}/></button>
+          :<div className={`rel-material-image${photo?.loading?' pending':' empty'}`} role="img" aria-label={photo?.loading?`Cargando imagen de ${name}`:`Sin imagen de ${name}`}>
+            {!photo?.loading&&<><Camera size={24}/><small>Sin imagen</small></>}</div>}
+        <div className="rel-material-body">
+          <div className="rel-material-title"><strong>{name}</strong>{item.code?.trim()&&item.code.trim()!==name&&<code>{item.code.trim()}</code>}</div>
+          <span className={`rel-material-status ${condition?.tone??'none'}`}>{condition?.icon}{condition?.label??'Sin estado'}</span>
+          <div className="rel-material-observation"><b>Observación</b><p>{item.observation?.trim()||'Sin observación'}</p></div>
         </div>
       </article>})}</div>
     {open!==null&&viewable.length>0&&<ImageCarousel images={viewable} index={Math.min(open,viewable.length-1)} onIndexChange={setOpen} onClose={()=>setOpen(null)} title="Materiales del relevo"/>}
