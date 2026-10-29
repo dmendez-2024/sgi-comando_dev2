@@ -28,7 +28,7 @@ services:
       SGI_VAULT_SECRET_ID_FILE: /run/secrets/openbao-sgi-com/secret_id
       SGI_VAULT_CA_CERT_FILE: /run/secrets/openbao-sgi-com/ca.pem
       # Hechos hacia SMC: identificadores configurables del binding efectivo de CORE.
-      SGI_SMC_INTERCONNECTION_ID: ${SGI_SMC_INTERCONNECTION_ID:-SGI_COM_SMC__0001_v001}
+      SGI_SMC_INTERCONNECTION_ID: ${SGI_SMC_INTERCONNECTION_ID:-SGI_COM_SMC_0001_v001}
       SGI_SMC_INTERFACE_ID: ${SGI_SMC_INTERFACE_ID:-SGI_COM_SMC_0001_IF01}
       # Solo si CORE usa OAUTH2_CLIENT_CREDENTIALS. El client_id no es secreto.
       SGI_M2M_CLIENT_SMC: ${SGI_M2M_CLIENT_SMC:-}
