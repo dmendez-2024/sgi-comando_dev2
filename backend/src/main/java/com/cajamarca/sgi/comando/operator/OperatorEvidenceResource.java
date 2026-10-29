@@ -94,6 +94,17 @@ public class OperatorEvidenceResource {
         return new UploadResponse(results);
     }
 
+    /** Foto que el propio agente cargó en su asignación (por ejemplo, la de un activo del inventario del relevo). */
+    @GET @Path("/evidences/{evidenceId}/content") @Produces("image/*")
+    public Response content(@PathParam("evidenceId") UUID evidenceId, @QueryParam("assignmentId") UUID assignmentId) {
+        if (assignmentId == null) throw new BadRequestException("assignmentId es obligatorio");
+        ctx.assignment(assignmentId, ctx.employee());
+        EvidenceObject e = EvidenceObject.find("id=?1 and instanceCountryId=?2 and assignmentId=?3 and username=?4 and status in ?5",
+            evidenceId, tenant.instanceCountryId(), assignmentId, ctx.username(), List.of("STORED", "ATTACHED")).firstResult();
+        if (e == null || e.contentType == null || !e.contentType.startsWith("image/")) throw new NotFoundException("Foto no disponible");
+        return Response.ok(storage.read(e.bucket, e.objectKey)).type(e.contentType).header(HttpHeaders.CACHE_CONTROL, "no-store").build();
+    }
+
     /** Foto estándar de un Hito, evidencia de Consigna, campo de Bitácora o del propio Puesto (relevo), para que el agente la use como guía. */
     @GET @Path("/standard-images/{imageId}")
     public Response standardImage(@PathParam("imageId") UUID imageId, @QueryParam("assignmentId") UUID assignmentId) {

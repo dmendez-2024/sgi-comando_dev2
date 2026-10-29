@@ -13,7 +13,10 @@ public final class ReliefContract {
     private static final Set<String> INVENTORY_STATUSES=Set.of("PENDING_SOURCE","REPORTED","COMPLETE",INVENTORY_NOT_REPORTED);
     /** Estados con los que el relevo se acepta sin activos, aunque RRMM tenga inventario del puesto. */
     public static final Set<String> INVENTORY_WITHOUT_ITEMS=Set.of("PENDING_SOURCE",INVENTORY_NOT_REPORTED);
-    private static final Set<String> INVENTORY_CONDITIONS=Set.of("GOOD","DAMAGED","MISSING","REPLACED","NOT_VERIFIED");
+    public static final Set<String> INVENTORY_CONDITIONS=Set.of("GOOD","WITH_ISSUE","DAMAGED","MISSING","REPLACED","NOT_VERIFIED");
+    /** Contrato de inventario v2: foto en cada activo y observación en los estados con novedad. Sin el campo (apps anteriores) es v1. */
+    public static final int INVENTORY_CONTRACT_V2=2;
+    public static final Set<String> CONDITIONS_REQUIRING_OBSERVATION=Set.of("WITH_ISSUE","DAMAGED","MISSING");
     /** Relevo con agente saliente presente (turno anterior inmediato de otro agente). */
     public static final String MODE_NORMAL="NORMAL";
     /** Saliente esperado ausente; el agente escribe el motivo. */
@@ -36,6 +39,13 @@ public final class ReliefContract {
         JsonNode status=event.path("inventoryStatus");
         if(status.isMissingNode() || status.isNull() || (status.isTextual() && status.asText().isBlank())) return INVENTORY_NOT_REPORTED;
         return text(event,"inventoryStatus").toUpperCase(Locale.ROOT);
+    }
+    /** inventoryContractVersion del evento; sin el campo (apps anteriores) es 1. */
+    public static int inventoryContractVersion(JsonNode event) {
+        JsonNode version=event.path("inventoryContractVersion");
+        if(version.isMissingNode() || version.isNull()) return 1;
+        if(!version.isInt() || version.asInt()<1 || version.asInt()>INVENTORY_CONTRACT_V2) throw new BadRequestException("inventoryContractVersion inválido");
+        return version.asInt();
     }
     public static String text(JsonNode n,String key) {
         if(n==null || !n.path(key).isTextual() || n.path(key).asText().isBlank()) throw new BadRequestException("Campo requerido: "+key);
@@ -66,6 +76,7 @@ public final class ReliefContract {
                 ? "inventoryStatus es obligatorio cuando se envían activos de inventario" : "No envíe activos mientras el inventario está pendiente de fuente");
         } else {
             if(!inventoryItems.isArray()) throw new BadRequestException("inventoryItems es obligatorio cuando se reporta inventario");
+            boolean v2=inventoryContractVersion(e)==INVENTORY_CONTRACT_V2;
             Set<UUID> inventoryAssets=new HashSet<>();
             for(JsonNode item:inventoryItems) {
                 UUID assetId=uuid(item,"assetId");
@@ -82,6 +93,9 @@ public final class ReliefContract {
                     try { evidenceId=UUID.fromString(id.asText()); } catch(Exception ex) { throw new BadRequestException("UUID inválido en evidenceIds"); }
                     if(!evidence.add(evidenceId)) throw new BadRequestException("Evidencia de inventario duplicada");
                 }
+                if(v2 && evidence.isEmpty()) throw new BadRequestException("El activo "+assetId+" requiere una foto");
+                if(v2 && CONDITIONS_REQUIRING_OBSERVATION.contains(condition) && item.path("observation").asText("").isBlank())
+                    throw new BadRequestException("El activo "+assetId+" requiere observación");
             }
         }
         if(!e.path("unilateral").isBoolean()) throw new BadRequestException("unilateral debe ser booleano");

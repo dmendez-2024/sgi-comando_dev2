@@ -36,5 +36,18 @@ class ReliefContractTest {
  @Test void modeMustMatchUnilateralFlag(){var b=opening();event(b).put("unilateral",true).put("unilateralReason","x");assertThrows(jakarta.ws.rs.BadRequestException.class,()->ReliefContract.validate(b,employee,country,now));
   var normal=batch(false);event(normal).put("reliefMode","OTRO");assertThrows(jakarta.ws.rs.BadRequestException.class,()->ReliefContract.validate(normal,employee,country,now));}
  @Test void legacyEventsWithoutModeKeepTheirMeaning(){assertEquals(ReliefContract.MODE_UNILATERAL,ReliefContract.mode(event(batch(true))));assertEquals(ReliefContract.MODE_NORMAL,ReliefContract.mode(event(batch(false))));}
+ ObjectNode inventory(Integer version,String condition,String observation,boolean photo){var b=batch(false);event(b).put("inventoryStatus","REPORTED");if(version!=null)event(b).put("inventoryContractVersion",version);
+  ObjectNode item=event(b).putArray("inventoryItems").addObject().put("assetId",UUID.randomUUID().toString()).put("condition",condition);
+  if(observation!=null)item.put("observation",observation);ArrayNode ids=item.putArray("evidenceIds");if(photo)ids.add(UUID.randomUUID().toString());return b;}
+ @Test void acceptsWithIssueCondition(){assertDoesNotThrow(()->ReliefContract.validate(inventory(2,"WITH_ISSUE","Antena floja",true),employee,country,now));}
+ @Test void v1KeepsAcceptingItemsWithoutPhotoNorObservation(){assertDoesNotThrow(()->ReliefContract.validate(inventory(null,"MISSING",null,false),employee,country,now));
+  assertDoesNotThrow(()->ReliefContract.validate(inventory(1,"GOOD",null,false),employee,country,now));}
+ @Test void v2RequiresAPhotoPerAsset(){assertThrows(jakarta.ws.rs.BadRequestException.class,()->ReliefContract.validate(inventory(2,"GOOD",null,false),employee,country,now));
+  assertDoesNotThrow(()->ReliefContract.validate(inventory(2,"GOOD",null,true),employee,country,now));}
+ @Test void v2RequiresObservationForIssuesDamageAndMissing(){for(String c:ReliefContract.CONDITIONS_REQUIRING_OBSERVATION){
+   assertThrows(jakarta.ws.rs.BadRequestException.class,()->ReliefContract.validate(inventory(2,c,null,true),employee,country,now));
+   assertThrows(jakarta.ws.rs.BadRequestException.class,()->ReliefContract.validate(inventory(2,c,"  ",true),employee,country,now));
+   assertDoesNotThrow(()->ReliefContract.validate(inventory(2,c,"Detalle",true),employee,country,now));}}
+ @Test void refusesUnknownInventoryContractVersion(){assertThrows(jakarta.ws.rs.BadRequestException.class,()->ReliefContract.validate(inventory(3,"GOOD",null,true),employee,country,now));}
  @Test void refusesMissingUnilateralReason(){var b=batch(true);event(b).remove("unilateralReason");assertThrows(jakarta.ws.rs.BadRequestException.class,()->ReliefContract.validate(b,employee,country,now));}
 }

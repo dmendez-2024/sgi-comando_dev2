@@ -442,10 +442,12 @@ public class OperatorResource {
         n.set("nextActions",c.coordination()?mapper.createArrayNode():nextActions(c,assignmentConsignments));
         n.putArray("stationPhotos").add("Vista general del puesto").add("Área de trabajo o garita").add("Acceso principal");
         // fetchedAt/warning/status cambian por disponibilidad de red y no deben invalidar una confirmación del mismo inventario.
+        // El último estado reportado es informativo: otro relevo puede cambiarlo mientras el agente confirma.
         ObjectNode versionedContext=n.deepCopy();
         if(versionedContext.path("inventory").isObject()) {
             ObjectNode versionedInventory=(ObjectNode)versionedContext.path("inventory");
             versionedInventory.remove(List.of("fetchedAt","warning","status","message"));
+            for(JsonNode item:versionedInventory.path("items")) ((ObjectNode)item).remove(List.of("lastCondition","lastObservation","lastReportedAt"));
         }
         versionedContext.remove("inventoryStatus");
         n.put("configurationVersion",hash(versionedContext.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8)));
@@ -1199,6 +1201,7 @@ public class OperatorResource {
                 .put("inventoryDeliveryStatus",inventory.reportStatus(UUID.fromString(row[0].toString()))).put("validationStatus","PENDING_REVIEW")
                 .put("clientName",point.clientName).put("city",point.city).put("companyCode",company==null?"":company.code)
                 .put("companyName",company==null?"—":company.name).put("submittedBy",row[6].toString()).put("photoCount",photoCount.intValue());
+            n.putObject("inventoryReport").set("items",inventory.reportItems(UUID.fromString(row[0].toString())));
             n.set("context",context);
             if(context.hasNonNull("incomingEmployeeName")) n.put("incomingEmployeeName",context.path("incomingEmployeeName").asText());
             try { n.set("event",mapper.readTree(row[5].toString())); } catch(Exception e) { throw new InternalServerErrorException(); }
