@@ -93,7 +93,10 @@ Fragmento de respuesta:
         "assignmentStatus": "ASSIGNED",
         "critical": false,
         "recordType": "IDENTIFIED",
-        "quantity": 1
+        "quantity": 1,
+        "lastCondition": "WITH_ISSUE",
+        "lastObservation": "Antena floja",
+        "lastReportedAt": "2026-10-06T18:31:00Z"
       }
     ],
     "materials": [
@@ -110,6 +113,8 @@ Fragmento de respuesta:
   }
 }
 ```
+
+`lastCondition`, `lastObservation` y `lastReportedAt` vienen del último relevo que reportó el activo, en cualquier Puesto. El Operador precarga con ellos el estado del activo. Si el activo nunca se reportó, no vienen. No forman parte de `configurationVersion`.
 
 Estados de lectura:
 
@@ -128,7 +133,9 @@ Estados de lectura:
 - `targetId`: `assetId`
 - `eventId`: identificador del relevo que se enviará después.
 
-Cada archivo conserva la idempotencia por `clientEvidenceId`. Un activo con condición `DAMAGED` requiere por lo menos una evidencia válida del mismo evento, asignación, activo y usuario.
+Cada archivo conserva la idempotencia por `clientEvidenceId`. Se admite una foto por activo y relevo. Un activo con condición `DAMAGED` requiere por lo menos una evidencia válida del mismo evento, asignación, activo y usuario.
+
+La foto se sube antes de enviar el relevo. El Operador la descarga después con `GET /api/v1/operator/evidences/{evidenceId}/content?assignmentId={assignmentId}`, solo si la cargó el mismo usuario en esa asignación.
 
 ## 4. Operador confirma el inventario y el relevo
 
@@ -143,6 +150,7 @@ Fragmento del evento `RELIEF_SUBMITTED`:
   "eventId": "386e3a76-fad0-4dfd-a135-950531f696b5",
   "assignmentId": "ca2138df-3e12-4777-a275-e264e55dfb2c",
   "inventoryStatus": "REPORTED",
+  "inventoryContractVersion": 2,
   "inventoryItems": [
     {
       "assetId": "0f339371-d769-4ded-9f11-a4b42e71505c",
@@ -157,11 +165,15 @@ Fragmento del evento `RELIEF_SUBMITTED`:
 Reglas:
 
 - `inventoryStatus`: `PENDING_SOURCE`, `REPORTED` o `COMPLETE`.
-- Condiciones: `GOOD`, `DAMAGED`, `MISSING`, `REPLACED`, `NOT_VERIFIED`.
+- Condiciones: `GOOD`, `WITH_ISSUE` (con novedad), `DAMAGED`, `MISSING`, `REPLACED`, `NOT_VERIFIED`.
+- `inventoryContractVersion`: `1` o `2`. Sin el campo es `1` (apps anteriores). Con `2`, cada activo requiere al menos una foto en `evidenceIds`, y `WITH_ISSUE`, `DAMAGED` y `MISSING` requieren `observation`.
+- Comando guarda en `previous_condition` el `lastCondition` que se le mostró al agente.
 - Cuando el inventario está disponible, deben reportarse exactamente todos los activos de la versión incluida en `configurationVersion`.
 - `observation` admite hasta 1000 caracteres.
 - No se admiten activos ni evidencias duplicadas.
 - La respuesta incluye `inventoryDeliveryStatus`: `NOT_REQUIRED`, `PENDING`, `DELIVERED` o `FAILED`.
+
+Detalle del relevo completado: cada relevo de `GET /api/v1/operator/reliefs` trae `inventoryReport.items[]` con `assetId`, `code`, `description`, `condition`, `previousCondition`, `observation` y `evidenceIds`.
 
 ## 5. SGI Comando reporta a SIC:RRMM
 
@@ -202,6 +214,8 @@ Solicitud:
 }
 ```
 
+`condition` puede llegar como `WITH_ISSUE` (con novedad); SIC:RRMM debe aceptarlo.
+
 Respuesta esperada de RRMM:
 
 ```json
@@ -228,7 +242,7 @@ La migración `V72__rrmm_inventory_integration.sql` crea las tablas y `V84__rrmm
 - `inventory_expected_asset`: instantánea vigente de activos identificados y materiales.
 - `inventory_sync_state`: versión y fecha de la última consulta válida.
 - `inventory_report`: cabecera, JSON original, hash, correlación y estado de entrega.
-- `inventory_report_item`: condición esperada y observada por activo.
+- `inventory_report_item`: condición esperada, observada y precargada (`previous_condition`, desde `V94`) por activo.
 - `inventory_report_item_evidence`: vínculo entre activo reportado y evidencia.
 
 Los reportes pendientes se reintentan cada 60 segundos. Después de diez intentos quedan en `FAILED` para intervención operativa.
