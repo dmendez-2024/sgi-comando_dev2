@@ -79,7 +79,7 @@ export default function ObsintConfig({point,onBack}:{point:ObsintPointContext;on
   const selected=consignas.find(c=>c.id===selectedId)??null;
 
   async function run(action:()=>Promise<ObsintProtocol|void>,message:string){
-    setBusy(true);
+    setBusy(true);setError('');
     try{const result=await action();setNotice(message);setEditing(null);await load(result?result.id:undefined)}
     catch(e){setError(errorText(e))}
     finally{setBusy(false)}
@@ -128,7 +128,6 @@ export default function ObsintConfig({point,onBack}:{point:ObsintPointContext;on
           <div className="obs-cfg-version-popover">
             {loading?<small>Cargando protocolo…</small>:!protocol&&error?<button type="button" className="ghost" onClick={()=>void load()}>Reintentar</button>:!protocol?<>
               <p>Este punto no tiene protocolo OBSINT.</p>
-              <button type="button" className="obs-cfg-primary" disabled={busy} onClick={()=>void run(()=>obsintConfigApi.draft(point.pointId),'Borrador creado.')}><Plus size={16}/>Crear protocolo</button>
             </>:<>
               <label>Versión del protocolo<select value={protocol.id} onChange={e=>{setVersionId(e.target.value);setSelectedId(protocols.find(p=>p.id===e.target.value)?.consignas[0]?.id??'');setEditing(null)}}>
                 {protocols.map(p=><option key={p.id} value={p.id}>v{p.versionNo} · {protocolStatusLabel(p.status)}</option>)}
@@ -153,6 +152,17 @@ export default function ObsintConfig({point,onBack}:{point:ObsintPointContext;on
       </div>
     </div>
     {error&&<div className="obs-error">{error}</div>}
+
+    {!protocol&&<section className="obs-card obs-cfg-start" aria-labelledby="obs-cfg-start-title">
+      <span className="obs-cfg-start-icon"><ClipboardList size={30}/></span>
+      <h3 id="obs-cfg-start-title">{loading?'Cargando consignas OBSINT…':error?'No se pudo cargar la configuración':'Aún no hay un protocolo OBSINT'}</h3>
+      {!loading&&<>
+        <p>{error?'Revise la conexión y vuelva a cargar la configuración de este punto.':'Cree el protocolo de este punto para empezar a agregar tareas, asociar cámaras y definir horarios.'}</p>
+        {error
+          ?<button type="button" className="ghost" disabled={busy} onClick={()=>void load()}>Reintentar</button>
+          :<button type="button" className="obs-cfg-primary" disabled={busy} onClick={()=>void run(()=>obsintConfigApi.draft(point.pointId),'Borrador creado.')}><Plus size={16}/>{busy?'Creando protocolo…':'Crear protocolo OBSINT'}</button>}
+      </>}
+    </section>}
 
     {protocol&&<div className="obs-cfg-layout">
       <section className="obs-card obs-cfg-categories">
@@ -234,6 +244,14 @@ function ConsignaForm({protocolId,initial,cameras,linkable,defaultCategory,onSav
   })) as Record<number,{start:string;end:string}>);
   const [saving,setSaving]=useState(false);
   const [error,setError]=useState('');
+  const [categoryAbove,setCategoryAbove]=useState(false);
+  const categoryMenu=useRef<HTMLDetailsElement>(null);
+  useEffect(()=>{
+    const closeOutside=(event:PointerEvent)=>{if(categoryMenu.current?.open&&!categoryMenu.current.contains(event.target as Node))categoryMenu.current.open=false};
+    const closeOnEscape=(event:KeyboardEvent)=>{if(event.key==='Escape'&&categoryMenu.current?.open){categoryMenu.current.open=false;categoryMenu.current.querySelector('summary')?.focus()}};
+    document.addEventListener('pointerdown',closeOutside);document.addEventListener('keydown',closeOnEscape);
+    return()=>{document.removeEventListener('pointerdown',closeOutside);document.removeEventListener('keydown',closeOnEscape)};
+  },[]);
   const set=<K extends keyof ObsintConsignaSave>(key:K,value:ObsintConsignaSave[K])=>setForm(prev=>({...prev,[key]:value}));
   const setTime=(day:number,key:'start'|'end',value:string)=>setTimes(prev=>({...prev,[day]:{...prev[day],[key]:value}}));
   const toggleCamera=(id:string)=>set('cameraIds',form.cameraIds.includes(id)?form.cameraIds.filter(x=>x!==id):[...form.cameraIds,id]);
@@ -273,7 +291,18 @@ function ConsignaForm({protocolId,initial,cameras,linkable,defaultCategory,onSav
         {options.map(o=><option key={o.code} value={o.code}>{o.code} · {o.title}</option>)}
       </select>{!options.length&&<small className="obs-cfg-hint"><AlertTriangle size={13}/>No hay consignas con OBSINT. Márquelas en Servicios → Consignas → Alcance y active el protocolo.</small>}</Field>
       <Field label="Nombre de la tarea" required><input value={form.title} onChange={e=>set('title',e.target.value)} required maxLength={160} readOnly={linked} title={linked?'Sale de la consigna; se edita en Consignas.':undefined} placeholder="Verificación de uso de EPP"/></Field>
-      <Field label="Categoría" required><span className="obs-cfg-category-select"><CategoryIcon category={form.category} size={16}/><span>{categoryLabel(form.category)}</span><ChevronDown size={13}/><select value={form.category} onChange={e=>set('category',e.target.value as ObsintCategory)}>{CATEGORIES.map(c=><option key={c.value} value={c.value}>{c.label}</option>)}</select></span></Field>
+       <div className="obs-cfg-field"><span id="obs-cfg-category-label">Categoría<RequiredMark/></span>
+         <details ref={categoryMenu} className={`obs-cfg-category-select${categoryAbove?' drop-up':''}`}
+           onToggle={()=>{const menu=categoryMenu.current;if(menu?.open){const rect=menu.getBoundingClientRect();setCategoryAbove(window.innerHeight-rect.bottom<260&&rect.top>window.innerHeight-rect.bottom)}}}>
+           <summary aria-labelledby="obs-cfg-category-label"><CategoryIcon category={form.category} size={17}/><span>{categoryLabel(form.category)}</span><ChevronDown size={15}/></summary>
+           <div className="obs-cfg-category-options" role="group" aria-label="Categorías disponibles">
+             {CATEGORIES.map(c=><button key={c.value} type="button" className={form.category===c.value?'selected':''} aria-pressed={form.category===c.value}
+               onClick={()=>{set('category',c.value);if(categoryMenu.current)categoryMenu.current.open=false}}>
+               <CategoryIcon category={c.value} size={17}/><span>{c.label}</span>{form.category===c.value&&<CheckCircle2 size={15} className="obs-cfg-category-check"/>}
+             </button>)}
+           </div>
+         </details>
+       </div>
       <Field label="Descripción" required><textarea className="obs-cfg-description-input" value={form.description} onChange={e=>set('description',e.target.value)} required maxLength={1000} rows={4} placeholder="Describa lo que se debe observar en el punto."/></Field>
       <Field label="Frecuencia" required><select value={form.frequency} onChange={e=>set('frequency',e.target.value as ObsintFrequency)} required>{FREQUENCIES.map(option=><option key={option.value} value={option.value}>{option.label}</option>)}</select></Field>
       <Field label="Tiempo máximo de ejecución" required><select value={form.timeLimitSeconds} onChange={e=>set('timeLimitSeconds',Number(e.target.value))}>{timeLimits.map(s=><option key={s} value={s}>{timeLimitLabel(s)}</option>)}</select></Field>
