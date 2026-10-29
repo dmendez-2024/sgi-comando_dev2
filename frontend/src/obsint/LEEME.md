@@ -155,11 +155,10 @@ Pantalla de la diapositiva 10. Se abre desde Configuración del Punto.
 
 ### Caso y tareas (Consola)
 
-- **Alcance del monitorista:** el caso solo toma consignas de los Puntos cuya **Compañía** está en el alcance del usuario. Es la misma regla que la configuración (`requirePoint`):
-  - Roles de país (Presidente, Gerencia General, directores nacionales y LATAM): todas las Compañías.
-  - Roles de Compañía (Coordinador, Asistente): solo las Compañías que tienen asignadas directamente.
-  - Los demás: las Compañías de su zona, región o asignación directa (`user_operational_scope`).
-  - **MONITOR:** además, las Compañías de los puestos de Monitoreo (Coordinación, `MON-xxx`) donde la persona tiene **turno en curso**. Se lee de Asignaciones con el mismo criterio que SGI Operador: asignación no eliminada, plan de la semana publicado o cerrado, cuenta quien cubrió el turno (`actual_employee_id`), y la persona se identifica por el `persona_id` de su token de IDENT. Fuera de su turno, o con el plan en borrador, no ve consignas. Vive en `territory/MonitorShiftScope` y lo suma `OperationalScopeService`, así que vale para toda la Consola, no solo OBSINT.
+- **Monitoreo del Punto (pestaña OBSINT, panel "Monitoreo OBSINT"):** la orden OBSINT llega a **Kaibil**; ahí se puede pasar el monitoreo a **otra Compañía** y elegir el **monitorista responsable** y un **suplente** (empleados activos de esa Compañía con cargo "Monitor" o "Agente de Consola de Monitoreo Senior"). Se guarda en `obsint_point_monitoring` (V103); sin fila, el Punto lo monitorea Kaibil sin responsable. Kaibil se busca por su id canónico de CORE (`sgi.integrations.rrhh.default-company-core-catalog-id`). Endpoints: `/api/obsint/monitoring/points/{pointId}` (GET/PUT), `/companies` y `/monitors?companyId=` (`ObsintMonitoringResource`), mismos roles que la configuración. La Compañía de monitoreo es independiente de la que opera el Punto con guardias.
+- **Alcance en la consola** (`ObsintPlatform.visiblePoints`):
+  - **MONITOR** (`monitorSees`), siempre que esté de **turno en curso** en un puesto de Monitoreo (Asignaciones, plan publicado o cerrado; cuenta quien cubrió el turno; persona por `persona_id` del token de IDENT o, en UAT, `operator_employee_binding`): ve el Punto si es su **responsable o suplente**; y si ninguno de los dos está de turno, lo ve **cualquier monitor de turno de la Compañía de monitoreo** (la "cola" de esa Compañía, Kaibil por defecto). Fuera de turno no ve nada.
+  - **Demás roles:** los Puntos cuya Compañía operadora **o** Compañía de monitoreo está en su alcance: roles de país, todas; Coordinador y Asistente, las asignadas directamente; los demás, las de su zona, región o asignación directa (`user_operational_scope`).
   - Un Punto sin Compañía no entra en ningún caso. Si no queda ninguna consigna, responde 409: "No hay consignas OBSINT pendientes en este horario en las Compañías de su alcance…".
   - No separa por cliente: dos clientes atendidos por la misma Compañía se ven juntos.
 - Un usuario tiene un solo caso en curso. Las tareas se resuelven **en orden**.
@@ -181,8 +180,8 @@ Pantalla de la diapositiva 10. Se abre desde Configuración del Punto.
   - PRESIDENTE, GERENCIA_GENERAL, DIRECTOR_OPERACIONES_LATAM, DIRECTOR_OPERACIONES_NACIONAL, DIRECTOR_NACIONAL, DIRECTOR_ZONAL, JEFE_REGIONAL, COORDINADOR_COMPANIA, ASISTENTE_COORDINACION y SUPERVISOR_SEGURIDAD.
   - **MONITOR** (`ObsintPlatform.MONITOR_ROLE`): solo la **consola** (`/api/obsint`) y el contexto del país (`/api/context`); no la configuración, Reportes ni Componentes de Seguridad. IDENT debe enviarlo para los cargos "Monitor" y "Agente de Consola de Monitoreo Senior" del programa SGI_COM.
   - **Persona del monitor:** la del token de IDENT; con usuario UAT (sin IDENT), la del empleado vinculado en `operator_employee_binding`, igual que SGI Operador.
-  - **Pantalla del monitor:** perfil "Monitor" (`api.ts`, `isMonitor()`); entra directo a la **Consola** y el menú solo muestra "Consola". Dentro tiene el botón OBSINT; el botón "Reportes" de OBSINT no le aparece (solo Presidente y Director Nacional, nota de las diapositivas 11 y 12). La Consola general (incidentes, clientes, resumen de servicios, reportes de agentes) usa el mismo alcance: muestra los casos de las Compañías de su turno en curso (`OperationalScopeService` suma `MonitorShiftScope`; solo afecta a usuarios con rol MONITOR).
-  - **Probar en local (sin IDENT):** hace falta un usuario UAT con rol `MONITOR` (`app_user`), vinculado en `operator_employee_binding` a un empleado con cargo de monitor que tenga turno en curso en un puesto de Monitoreo de su Compañía, con el plan de la semana publicado.
+  - **Pantalla del monitor:** perfil "Monitor" (`api.ts`, `isMonitor()`); entra directo a la **Consola** y el menú solo muestra "Consola". Dentro tiene el botón OBSINT; el botón "Reportes" de OBSINT no le aparece (solo Presidente y Director Nacional, nota de las diapositivas 11 y 12). La Consola general (incidentes, clientes, resumen de servicios, reportes de agentes) muestra los casos de las Compañías de su turno en curso (`OperationalScopeService` suma `MonitorShiftScope`; solo afecta a usuarios con rol MONITOR). Ojo: un monitor de Kaibil ve en esa bandeja los casos de Kaibil, no los de las Compañías de los Puntos que monitorea (pendiente, ver §9).
+  - **Probar en local (sin IDENT):** hace falta un usuario UAT con rol `MONITOR` (`app_user`), vinculado en `operator_employee_binding` a un empleado con cargo de monitor que tenga turno en curso en un puesto de Monitoreo de su Compañía, con el plan de la semana publicado. El script local `.local/uat-seed-monitor.sql` lo deja en Kaibil (puesto MON-K01).
 - **Acceso al punto:** la configuración aplica la **misma regla que Consignas**. El punto debe existir en el tenant y el usuario debe poder gestionar su compañía (`requireCompanyForCompanyRoles`).
 - **Errores:** cada rechazo responde `{"message": "…"}` con el código HTTP (400, 403, 404, 409, 503), y la pantalla muestra el mensaje tal cual.
 
@@ -291,6 +290,7 @@ const obs = await obsintConfigApi.summary(pointId);  // {status, meta:'Protocolo
 | `obsint/ObsintCaseTest` | Reglas del caso y horario (unitaria) |
 | `obsint/ObsintResourceTest` | Configuración y consola de punta a punta (`@QuarkusTest`) |
 | `obsint/ObsintMonitorScopeTest` | Alcance del rol MONITOR por turno en curso (`@QuarkusTest`) |
+| `obsint/ObsintPointMonitoringTest` | Monitoreo del Punto: Kaibil por defecto, pasar a otra Compañía, responsable y suplente, regla de quién lo ve (`@QuarkusTest`) |
 | `obsint/ObsintConsignmentLinkTest` | OBSINT como puesto en Consignas: vínculo, consola y consigna desmarcada (`@QuarkusTest`) |
 | `obsint/ObsintReportResourceTest` | Frecuencia, cumplimiento y verificabilidad, acceso por rol y contenido del PDF (`@QuarkusTest`) |
 | `secelec/SecElecResourceTest` | API de componentes (`@QuarkusTest`) |
@@ -445,7 +445,7 @@ Con `consignmentCode`, `title` e `instruction` salen de Consignas. Sin él (tare
 - **Hikvision ISAPI:** foto de vista previa (`/ISAPI/Streaming/channels/{canal}01/picture`) y datos del equipo (`/ISAPI/System/deviceInfo`). Necesitan el puerto HTTP (80), que hoy no está en el formulario. "Probar conexión" ya existe, por RTSP.
 - **Frecuencia:** "cada turno" se toma como 12 h; usar el turno real del puesto de Monitoreo cuando se defina.
 - **HikCentral (bodycam DS-MCW409):** probado solo con un simulador local de la OpenAPI, en la rama local `prueba-hikcentral` (no subida). Falta que el administrador active la OpenAPI de `hikcentral.cajamarca.ec` (hoy `/artemis` responde 502) y validarlo con el manual de su versión.
-- **Alcance del monitorista más fino:** hoy el caso se limita a los Puntos de las Compañías del usuario (§3). Si más adelante se requiere separar por cliente o por puesto de monitoreo (Kaibil), hace falta una asignación nueva; solo cambiaría `ObsintPlatform.visiblePoints`.
+- **Bandeja de la Consola del monitor de Kaibil:** hoy muestra los casos de su Compañía de turno (Kaibil). Si debe ver los incidentes y novedades de los Puntos que monitorea, hay que sumar esas Compañías en `OperationalScopeService` para el rol MONITOR.
 - **Envío real de mensajes** al agente en SGI Operador (requiere SITC). Mientras tanto se guardan como `TEST`.
 - **Rol `MONITOR` en IDENT:** backend y pantalla listos (§3). Falta que IDENT lo asigne a los cargos de monitoreo en SGI_COM y que cada Compañía tenga su puesto de Monitoreo en Coordinación con los monitores asignados y el plan publicado.
 

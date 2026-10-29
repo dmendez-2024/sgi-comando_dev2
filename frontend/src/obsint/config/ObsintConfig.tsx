@@ -2,6 +2,7 @@ import {useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode} fr
 import {AlertTriangle, ArrowLeft, BrushCleaning, CarFront, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ClipboardList, Factory, Package, Pencil, Plus, Power, Save, Search, Send, ShieldCheck, Trash2, UserRound, UsersRound, X} from 'lucide-react';
 import {errorText, obsintConfigApi, type ObsintCameraOption, type ObsintCategory, type ObsintConsignaConfig, type ObsintConsignaSave, type ObsintConsignmentOption, type ObsintFrequency, type ObsintProtocol, type ObsintSlot} from '../obsintApi';
 import {CATEGORIES, categoryLabel, DAYS, protocolStatusLabel} from '../obsint';
+import {ObsintMonitoringPanel} from './ObsintMonitoringPanel';
 import '../obsint.css';
 import './obsint-config.css';
 
@@ -151,6 +152,7 @@ export default function ObsintConfig({point,onBack}:{point:ObsintPointContext;on
         {protocol&&<small>Actualizado {formatDate(protocol.updatedAt)}</small>}
       </div>
     </div>
+    <ObsintMonitoringPanel pointId={point.pointId}/>
     {error&&<div className="obs-error">{error}</div>}
 
     {!protocol&&<section className="obs-card obs-cfg-start" aria-labelledby="obs-cfg-start-title">
