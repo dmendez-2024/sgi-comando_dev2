@@ -382,10 +382,15 @@ public class SicComCommercialCatalogService {
    * commercial templates for that post.
    */
   private void reconcileFutureUnassignedOccurrences(UUID instanceCountryId, PostEntity post, String version) {
-    Instant now = Instant.now();
+    // A commercial update must not rebuild a day already in progress. Even if a
+    // post has no assignment, one shift may have started while another has not;
+    // rebuilding only the latter would try to create a duplicate template/date
+    // occurrence. Apply the new commercial schedule from the next full local day.
+    LocalDate firstRebuildDate = LocalDate.now(OPERATING_ZONE).plusDays(1);
+    Instant firstRebuildInstant = firstRebuildDate.atStartOfDay(OPERATING_ZONE).toInstant();
     List<ShiftOccurrenceEntity> future = ShiftOccurrenceEntity.list(
-        "instanceCountryId=?1 and postId=?2 and startsAt>?3 order by localDate, startsAt",
-        instanceCountryId, post.id, now);
+        "instanceCountryId=?1 and postId=?2 and startsAt>=?3 order by localDate, startsAt",
+        instanceCountryId, post.id, firstRebuildInstant);
     if (future.isEmpty()) return;
 
     Set<UUID> occurrenceIds = future.stream().map(occurrence -> occurrence.id).collect(java.util.stream.Collectors.toSet());
