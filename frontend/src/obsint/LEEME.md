@@ -155,9 +155,9 @@ Pantalla de la diapositiva 10. Se abre desde Configuración del Punto.
 
 ### Caso y tareas (Consola)
 
-- **Monitorista del Punto (pestaña OBSINT, panel "Monitorista OBSINT"):** la orden llega a **Kaibil** y desde **Servicios → Asignación** se manda a una Compañía; esa es la Compañía del Punto (`point.company_id`) y en OBSINT **no se cambia**. En la pestaña OBSINT solo se eligen el **monitorista responsable** y un **suplente**, entre los empleados activos de esa Compañía con cargo "Monitor" o "Agente de Consola de Monitoreo Senior". Se guarda en `obsint_point_monitoring` (V103; V104 le quitó la Compañía propia). Endpoints: `/api/obsint/monitoring/points/{pointId}` (GET/PUT) y `/monitors` (`ObsintMonitoringResource`), mismos roles que la configuración.
+- **Monitoristas del Punto (pestaña OBSINT, panel "Monitoristas OBSINT"):** la orden llega a **Kaibil** y desde **Servicios → Asignación** se manda a una Compañía; esa es la Compañía del Punto (`point.company_id`) y en OBSINT **no se cambia**. En la pestaña OBSINT solo se eligen **uno o más monitoristas**, entre los empleados activos de esa Compañía con cargo "Monitor" o "Agente de Consola de Monitoreo Senior". Se guarda en `obsint_point_monitor` (V105, una fila por monitorista; reemplazó a `obsint_point_monitoring` de V103/V104). Endpoints: `/api/obsint/monitoring/points/{pointId}` (GET/PUT) y `/monitors` (`ObsintMonitoringResource`), mismos roles que la configuración.
 - **Alcance en la consola** (`ObsintPlatform.visiblePoints`):
-  - **MONITOR** (`monitorSees`), siempre que esté de **turno en curso** en un puesto de Monitoreo (Asignaciones, plan publicado o cerrado; cuenta quien cubrió el turno; persona por `persona_id` del token de IDENT o, en UAT, `operator_employee_binding`): ve el Punto si es su **responsable o suplente**; y si no hay responsable o ninguno de los dos está de turno, lo ve **cualquier monitor de turno de la Compañía del Punto**. Fuera de turno no ve nada; un Punto aún en Kaibil (sin Compañía) no lo ve ningún monitor.
+  - **MONITOR** (`monitorSees`), siempre que esté de **turno en curso** en un puesto de Monitoreo (Asignaciones, plan publicado o cerrado; cuenta quien cubrió el turno; persona por `persona_id` del token de IDENT o, en UAT, `operator_employee_binding`): ve el Punto si es **uno de sus monitoristas**; y si no se eligió ninguno o ninguno está de turno, lo ve **cualquier monitor de turno de la Compañía del Punto**. Fuera de turno no ve nada; un Punto aún en Kaibil (sin Compañía) no lo ve ningún monitor.
   - **Demás roles:** los Puntos cuya Compañía está en su alcance (misma regla que `requirePoint`): roles de país, todas; Coordinador y Asistente, las asignadas directamente; los demás, las de su zona, región o asignación directa (`user_operational_scope`).
   - Un Punto sin Compañía no entra en ningún caso. Si no queda ninguna consigna, responde 409: "No hay consignas OBSINT pendientes en este horario en las Compañías de su alcance…".
   - No separa por cliente: dos clientes atendidos por la misma Compañía se ven juntos.
@@ -281,7 +281,7 @@ const obs = await obsintConfigApi.summary(pointId);  // {status, meta:'Protocolo
 - `V99__obsint_agent_message_test_status.sql`: estado `TEST` (modo prueba) para los mensajes al agente (ver §3).
 - `V100__obsint_consigna_description.sql` y `V101__obsint_consigna_frequency.sql`: descripción y frecuencia de cada consigna OBSINT (pantalla de crear tarea).
 - `V102__obsint_consignment_link.sql`: casilla OBSINT en `consignment` y vínculo `obsint_consigna.consignment_code` (ver §3, "OBSINT como puesto").
-- **Migraciones nuevas: desde V105.** `sgiComandoDev` usa V91 a V95; revisar el último número en `sgiComandoDev` antes de crear una.
+- **Migraciones nuevas: desde V106.** `sgiComandoDev` usa V91 a V95; revisar el último número en `sgiComandoDev` antes de crear una.
 
 **Pruebas**
 
@@ -290,7 +290,7 @@ const obs = await obsintConfigApi.summary(pointId);  // {status, meta:'Protocolo
 | `obsint/ObsintCaseTest` | Reglas del caso y horario (unitaria) |
 | `obsint/ObsintResourceTest` | Configuración y consola de punta a punta (`@QuarkusTest`) |
 | `obsint/ObsintMonitorScopeTest` | Alcance del rol MONITOR por turno en curso (`@QuarkusTest`) |
-| `obsint/ObsintPointMonitoringTest` | Monitorista del Punto: Compañía de Servicios, responsable y suplente, regla de quién lo ve (`@QuarkusTest`) |
+| `obsint/ObsintPointMonitoringTest` | Monitoristas del Punto: Compañía de Servicios, uno o más monitoristas, regla de quién lo ve (`@QuarkusTest`) |
 | `obsint/ObsintConsignmentLinkTest` | OBSINT como puesto en Consignas: vínculo, consola y consigna desmarcada (`@QuarkusTest`) |
 | `obsint/ObsintReportResourceTest` | Frecuencia, cumplimiento y verificabilidad, acceso por rol y contenido del PDF (`@QuarkusTest`) |
 | `secelec/SecElecResourceTest` | API de componentes (`@QuarkusTest`) |

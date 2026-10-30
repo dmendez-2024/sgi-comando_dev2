@@ -14,9 +14,9 @@ import java.util.*;
 import org.jboss.resteasy.reactive.server.ServerExceptionMapper;
 
 /**
- * Monitoreo OBSINT del Punto (pestaña OBSINT de Configuración del Punto): el monitorista responsable y su suplente.
- * La Compañía es la del Punto, la que se asigna en Servicios (la orden llega a Kaibil y desde ahí se manda a una Compañía);
- * aquí no se cambia. Mismos roles y misma regla de acceso al Punto que el resto de la configuración OBSINT.
+ * Monitoristas OBSINT del Punto (pestaña OBSINT de Configuración del Punto): uno o más, de la Compañía del Punto.
+ * La Compañía es la que se asigna en Servicios (la orden llega a Kaibil y desde ahí se manda a una Compañía); aquí no se cambia.
+ * Mismos roles y misma regla de acceso al Punto que el resto de la configuración OBSINT.
  */
 @Path("/api/obsint/monitoring/points/{pointId}")
 @Produces(MediaType.APPLICATION_JSON)
@@ -26,10 +26,9 @@ public class ObsintMonitoringResource {
     @Inject EntityManager em;
 
     public record MonitorOption(UUID employeeId, String name, String cargo) {}
-    /** configured=false: aún no se eligió responsable; lo atiende cualquier monitor de turno de la Compañía del Punto. */
-    public record MonitoringView(UUID companyId, String companyName, boolean configured,
-                                 MonitorOption responsible, MonitorOption backup, String updatedBy, Instant updatedAt) {}
-    public record SaveMonitoring(UUID responsibleEmployeeId, UUID backupEmployeeId) {}
+    /** monitors vacío: lo atiende cualquier monitor de turno de la Compañía del Punto. */
+    public record MonitoringView(UUID companyId, String companyName, List<MonitorOption> monitors, String updatedBy, Instant updatedAt) {}
+    public record SaveMonitoring(List<UUID> employeeIds) {}
 
     @GET @Transactional
     public MonitoringView get(@PathParam("pointId") UUID pointId) {
@@ -37,7 +36,7 @@ public class ObsintMonitoringResource {
         return view(pointId);
     }
 
-    /** Empleados activos de la Compañía del Punto con cargo de monitoreo: los que se pueden elegir como responsable o suplente. */
+    /** Empleados activos de la Compañía del Punto con cargo de monitoreo: los que se pueden elegir como monitoristas. */
     @GET @Path("/monitors") @Transactional
     public List<MonitorOption> monitors(@PathParam("pointId") UUID pointId) {
         platform.requirePoint(pointId);
@@ -53,29 +52,26 @@ public class ObsintMonitoringResource {
         return rows.stream().map(r -> new MonitorOption(uuid(r[0]), (String) r[1], (String) r[2])).toList();
     }
 
+    /** Reemplaza los monitoristas del Punto por los de la lista (vacía = ninguno). */
     @PUT @Consumes(MediaType.APPLICATION_JSON) @Transactional
     public MonitoringView save(@PathParam("pointId") UUID pointId, SaveMonitoring body) {
         platform.requirePoint(pointId);
-        if (body == null) throw new BadRequestException("Solicitud obligatoria.");
-        ObsintPlatform.Monitoring current = platform.monitoring(pointId);
-        if (current.companyId() == null) throw new BadRequestException("Asigne primero el Punto a una Compañía en Servicios.");
-        if (body.backupEmployeeId() != null && body.responsibleEmployeeId() == null)
-            throw new BadRequestException("Elija primero el monitorista responsable; el suplente es opcional.");
-        if (body.backupEmployeeId() != null && body.backupEmployeeId().equals(body.responsibleEmployeeId()))
-            throw new BadRequestException("El suplente debe ser otra persona.");
+        UUID companyId = platform.monitoring(pointId).companyId();
+        if (companyId == null) throw new BadRequestException("Asigne primero el Punto a una Compañía en Servicios.");
+        Set<UUID> chosen = new LinkedHashSet<>(body == null || body.employeeIds() == null ? List.of() : body.employeeIds());
+        chosen.remove(null);
         Set<UUID> allowed = new HashSet<>();
         monitors(pointId).forEach(m -> allowed.add(m.employeeId()));
-        for (UUID employee : Arrays.asList(body.responsibleEmployeeId(), body.backupEmployeeId()))
-            if (employee != null && !allowed.contains(employee))
-                throw new BadRequestException("El monitorista debe ser un empleado activo de " + companyName(current.companyId()) + " con cargo de monitoreo.");
-        em.createNativeQuery("""
-            insert into obsint_point_monitoring(instance_country_id, point_id, responsible_employee_id, backup_employee_id, updated_by, updated_at)
-            values (:tenant, :point, :responsible, :backup, :user, now())
-            on conflict (instance_country_id, point_id) do update set responsible_employee_id=excluded.responsible_employee_id,
-              backup_employee_id=excluded.backup_employee_id, updated_by=excluded.updated_by, updated_at=excluded.updated_at""")
-            .setParameter("tenant", platform.instanceCountryId()).setParameter("point", pointId)
-            .setParameter("responsible", body.responsibleEmployeeId()).setParameter("backup", body.backupEmployeeId())
-            .setParameter("user", platform.username()).executeUpdate();
+        if (!allowed.containsAll(chosen))
+            throw new BadRequestException("Los monitoristas deben ser empleados activos de " + companyName(companyId) + " con cargo de monitoreo.");
+        em.createNativeQuery("delete from obsint_point_monitor where instance_country_id=:tenant and point_id=:point")
+            .setParameter("tenant", platform.instanceCountryId()).setParameter("point", pointId).executeUpdate();
+        for (UUID employee : chosen)
+            em.createNativeQuery("""
+                insert into obsint_point_monitor(instance_country_id, point_id, employee_id, updated_by, updated_at)
+                values (:tenant, :point, :employee, :user, now())""")
+                .setParameter("tenant", platform.instanceCountryId()).setParameter("point", pointId).setParameter("employee", employee)
+                .setParameter("user", platform.username()).executeUpdate();
         return view(pointId);
     }
 
@@ -85,26 +81,22 @@ public class ObsintMonitoringResource {
     }
 
     private MonitoringView view(UUID pointId) {
-        ObsintPlatform.Monitoring m = platform.monitoring(pointId);
+        UUID companyId = platform.monitoring(pointId).companyId();
         @SuppressWarnings("unchecked")
-        List<Object[]> meta = em.createNativeQuery("select updated_by, updated_at from obsint_point_monitoring where instance_country_id=:tenant and point_id=:point")
+        List<Object[]> rows = em.createNativeQuery("""
+            select m.employee_id, coalesce(e.full_name, 'Empleado no encontrado'), e.role_code, m.updated_by, m.updated_at
+            from obsint_point_monitor m
+            left join employee_operational_snapshot e on e.instance_country_id=m.instance_country_id and e.employee_id=m.employee_id
+            where m.instance_country_id=:tenant and m.point_id=:point order by 2""")
             .setParameter("tenant", platform.instanceCountryId()).setParameter("point", pointId).getResultList();
-        boolean configured = !meta.isEmpty() && m.responsibleEmployeeId() != null;
-        return new MonitoringView(m.companyId(), companyName(m.companyId()), configured, person(m.responsibleEmployeeId()), person(m.backupEmployeeId()),
-            meta.isEmpty() ? null : (String) meta.get(0)[0], meta.isEmpty() ? null : instant(meta.get(0)[1]));
+        List<MonitorOption> monitors = rows.stream().map(r -> new MonitorOption(uuid(r[0]), (String) r[1], (String) r[2])).toList();
+        return new MonitoringView(companyId, companyName(companyId), monitors,
+            rows.isEmpty() ? null : (String) rows.get(0)[3], rows.isEmpty() ? null : instant(rows.get(0)[4]));
     }
 
     private static String companyName(UUID companyId) {
         Company company = companyId == null ? null : Company.findById(companyId);
         return company == null ? null : company.name;
-    }
-
-    private MonitorOption person(UUID employeeId) {
-        if (employeeId == null) return null;
-        @SuppressWarnings("unchecked")
-        List<Object[]> rows = em.createNativeQuery("select full_name, role_code from employee_operational_snapshot where instance_country_id=:tenant and employee_id=:employee")
-            .setParameter("tenant", platform.instanceCountryId()).setParameter("employee", employeeId).getResultList();
-        return rows.isEmpty() ? new MonitorOption(employeeId, "Empleado no encontrado", null) : new MonitorOption(employeeId, (String) rows.get(0)[0], (String) rows.get(0)[1]);
     }
 
     private static Instant instant(Object value) {
