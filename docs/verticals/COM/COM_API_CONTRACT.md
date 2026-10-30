@@ -68,15 +68,24 @@ El backend valida:
 
 El campo `logoDataUrl` del contrato UAT deberá sustituirse por un flujo de archivo/MinIO o referencia de objeto antes del despliegue productivo final.
 
-## Extensión operacional observada después de COM v1.1.3 — pendiente de RC
+## Responsables operacionales de Compañía
 
 La nota de implementación DME describe:
 
 ```http
-GET /api/companies/responsibles
+GET /api/companies/responsibles?companyId={uuid}
 PUT /api/companies/{id}
 ```
 
-El `PUT` admite `responsibleEmployeeId` como UUID o `null`; la respuesta incorpora `responsibleEmployeeId`, `responsibleName` y `responsibleRoleCode`. El catálogo devuelve candidatos según la regla de cargo implementada en el backend.
+El catálogo devuelve personal activo del país-instancia con cargo de Coordinador de Compañía o Asistente de Operaciones y con `persona_id` sincronizado. El parámetro `companyId` valida el alcance de edición, pero no restringe por `employee_operational_snapshot.company_id`: la autorización sobre la Compañía seleccionada se materializa en `user_operational_scope` al guardar.
 
-Esta extensión cambia modelo/API y no se considera aprobada por esta documentación. Confirmar CR, permisos, regla de elegibilidad y versión objetivo antes de cerrar contrato.
+El `PUT` admite:
+
+```json
+{
+  "coordinatorEmployeeId": "uuid o null",
+  "assistantEmployeeId": "uuid o null"
+}
+```
+
+Si existen Coordinadores elegibles, `coordinatorEmployeeId` es obligatorio. Si no existe ninguno, puede enviarse `null`. `assistantEmployeeId` siempre es opcional. Ambos responsables generan alcances `COMPANY` independientes en `user_operational_scope` para que puedan acceder a la información de la Compañía. `responsibleEmployeeId` se conserva como alias legado del Coordinador para compatibilidad con consumidores anteriores.

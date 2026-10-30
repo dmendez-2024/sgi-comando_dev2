@@ -23,6 +23,7 @@ import jakarta.transaction.Transactional;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.*;
 
+import java.text.Normalizer;
 import java.time.Instant;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -43,7 +44,9 @@ public class CompanyResource {
     @Inject CoreCatalogService coreCatalogService;
     @Inject ResponsibleOperationalScopeService responsibleScopes;
 
-    public record CompanyUpdateRequest(String status, UUID zoneId, List<UUID> regionIds, UUID responsibleEmployeeId, String changeReason) {}
+    public record CompanyUpdateRequest(String status, UUID zoneId, List<UUID> regionIds,
+                                       UUID responsibleEmployeeId, UUID coordinatorEmployeeId,
+                                       UUID assistantEmployeeId, String changeReason) {}
     public record CompanyActivationRequest(UUID coreCompanyId, String status, UUID zoneId, List<UUID> regionIds, String changeReason) {}
     public record CoreCompanyDto(UUID coreCompanyId,String code,String name,String historicalReview,String logoDataUrl,String companyType,String sourceVersion,String sourceStatus,boolean activated) {}
     public record RegionLoadDto(UUID regionId, int activeServiceCount) {}
@@ -53,7 +56,9 @@ public class CompanyResource {
         UUID id,String code,String name,String status,int requiredChangeCount,UUID zoneId,List<UUID> regionIds,
         String logoDataUrl,String historicalReview,int versionNumber,int activeServiceCount,List<RegionLoadDto> regionLoads,List<ServiceBlockerDto> activeServices,
         UUID coreCompanyId,String sourceSystem,String sourceVersion,String companyType,boolean alwaysActive,
-        UUID responsibleEmployeeId,String responsibleName,String responsibleRoleCode
+        UUID responsibleEmployeeId,String responsibleName,String responsibleRoleCode,
+        UUID coordinatorEmployeeId,String coordinatorName,String coordinatorRoleCode,
+        UUID assistantEmployeeId,String assistantName,String assistantRoleCode
     ) {}
     public record CompanyVersionDto(int versionNumber,String changeType,String changeReason,String actorUsername,Instant effectiveAt,String snapshotJson) {}
     public record PageResponse<T>(List<T> items,long total,int page,int size) {}
@@ -82,7 +87,11 @@ public class CompanyResource {
 
     @GET @Path("/responsibles")
     @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL"})
-    public List<ResponsibleDto> responsibles(){
+    public List<ResponsibleDto> responsibles(@QueryParam("companyId") UUID companyId){
+        if(companyId!=null){
+            requireComCompany(companyId);
+            return eligibleCompanyResponsibles().stream().map(e->new ResponsibleDto(e.employeeId,e.fullName,e.roleCode)).toList();
+        }
         Set<UUID> companyIds=visibleCompanyIdsForCom();
         if(companyIds.isEmpty())return List.of();
         List<EmployeeOperationalSnapshot> people=EmployeeOperationalSnapshot.list(
@@ -153,15 +162,22 @@ public class CompanyResource {
         String nextStatus=kaibil?"ACTIVE":normalizeStatus(req.status(),c.status);
         if(!Set.of("ACTIVE","INACTIVE","DRAFT").contains(nextStatus))throw new BadRequestException("Estado inválido");
         if("INACTIVE".equals(nextStatus)&&activeServices(c.id).size()>0)throw conflict("No se puede inactivar la Compañía mientras tenga Servicios activos.");
-        EmployeeOperationalSnapshot responsible=validateResponsible(req.responsibleEmployeeId());
-        String previousStatus=c.status;UUID previousZone=c.zoneId,previousResponsible=c.responsibleEmployeeId;Set<UUID> previousRegions=new LinkedHashSet<>(currentRegions);
+        if(req.responsibleEmployeeId()!=null&&req.coordinatorEmployeeId()!=null&&!Objects.equals(req.responsibleEmployeeId(),req.coordinatorEmployeeId()))throw new BadRequestException("No envíe dos coordinadores diferentes para la misma Compañía.");
+        UUID coordinatorEmployeeId=req.coordinatorEmployeeId()!=null?req.coordinatorEmployeeId():req.responsibleEmployeeId();
+        List<EmployeeOperationalSnapshot> eligiblePeople=eligibleCompanyResponsibles();
+        boolean coordinatorRequired=coordinatorRequired(eligiblePeople);
+        if(coordinatorRequired&&coordinatorEmployeeId==null)throw new BadRequestException("Seleccione un Coordinador de Compañía antes de guardar. Hay personal disponible para este cargo.");
+        EmployeeOperationalSnapshot coordinator=validateCompanyResponsible(coordinatorEmployeeId,true);
+        EmployeeOperationalSnapshot assistant=validateCompanyResponsible(req.assistantEmployeeId(),false);
+        if(coordinator!=null&&assistant!=null&&Objects.equals(coordinator.employeeId,assistant.employeeId))throw new BadRequestException("El Coordinador y el Asistente deben ser personas diferentes.");
+        String previousStatus=c.status;UUID previousZone=c.zoneId,previousCoordinator=c.responsibleEmployeeId,previousAssistant=c.assistantEmployeeId;Set<UUID> previousRegions=new LinkedHashSet<>(currentRegions);
         // Identity always comes from CORE and is never accepted from the SGI request.
         if(core!=null){c.name=core.name;c.logoDataUrl=core.logoDataUrl;c.historicalReview=core.historicalReview;c.sourceVersion=core.sourceVersion;c.sourceSystem="CORE";c.companyType=core.companyType;}
-        c.status=nextStatus;c.zoneId=kaibil?null:selection.zone().id;c.regionId=kaibil?null:selection.regions().get(0).id;c.responsibleEmployeeId=responsible==null?null:responsible.employeeId;
-        responsibleScopes.synchronize("COMPANY",c.id,previousResponsible,c.responsibleEmployeeId);
+        c.status=nextStatus;c.zoneId=kaibil?null:selection.zone().id;c.regionId=kaibil?null:selection.regions().get(0).id;c.responsibleEmployeeId=coordinator==null?null:coordinator.employeeId;c.assistantEmployeeId=assistant==null?null:assistant.employeeId;
+        responsibleScopes.synchronizeCompany(c.id,c.responsibleEmployeeId,c.assistantEmployeeId);
         if(kaibil)CompanyRegion.delete("instanceCountryId=?1 and companyId=?2",tenant.instanceCountryId(),c.id);else replaceRegions(c,selection.regions());
         c.versionNumber=Math.max(c.versionNumber,1)+1;
-        String changeType="UPDATED";if(!Objects.equals(previousStatus,c.status)&&"INACTIVE".equals(c.status))changeType="INACTIVATED";else if(!Objects.equals(previousStatus,c.status)&&"ACTIVE".equals(c.status))changeType="REACTIVATED";else if(!Objects.equals(previousZone,c.zoneId)||!previousRegions.equals(nextRegions))changeType="TERRITORY_UPDATED";else if(!Objects.equals(previousResponsible,c.responsibleEmployeeId))changeType="RESPONSIBLE_UPDATED";
+        String changeType="UPDATED";if(!Objects.equals(previousStatus,c.status)&&"INACTIVE".equals(c.status))changeType="INACTIVATED";else if(!Objects.equals(previousStatus,c.status)&&"ACTIVE".equals(c.status))changeType="REACTIVATED";else if(!Objects.equals(previousZone,c.zoneId)||!previousRegions.equals(nextRegions))changeType="TERRITORY_UPDATED";else if(!Objects.equals(previousCoordinator,c.responsibleEmployeeId)||!Objects.equals(previousAssistant,c.assistantEmployeeId))changeType="RESPONSIBLES_UPDATED";
         persistVersion(c,changeType,req.changeReason());return dto(c);
     }
 
@@ -177,8 +193,11 @@ public class CompanyResource {
     private CompanyDto dto(Company c){
         CoreCompanyCatalogSnapshot core=core(c);String name=core==null?c.name:core.name,logo=core==null?c.logoDataUrl:core.logoDataUrl,review=core==null?c.historicalReview:core.historicalReview,sourceVersion=core==null?c.sourceVersion:core.sourceVersion,companyType=core==null?c.companyType:core.companyType;
         List<UUID> regions=regionIds(c.id);List<ServiceBlockerDto> blockers=activeServices(c.id);List<RegionLoadDto> loads=regions.stream().map(r->new RegionLoadDto(r,activeServicesInRegion(c.id,r).size())).toList();
-        EmployeeOperationalSnapshot responsible=responsible(c.responsibleEmployeeId);
-        return new CompanyDto(c.id,c.code,name,c.status,c.requiredChangeCount,c.zoneId,regions,logo,review,Math.max(c.versionNumber,1),blockers.size(),loads,blockers,c.coreCatalogId,c.sourceSystem,sourceVersion,companyType,c.alwaysActive,c.responsibleEmployeeId,responsible==null?null:responsible.fullName,responsible==null?null:responsible.roleCode);
+        EmployeeOperationalSnapshot coordinator=responsible(c.responsibleEmployeeId),assistant=responsible(c.assistantEmployeeId);
+        return new CompanyDto(c.id,c.code,name,c.status,c.requiredChangeCount,c.zoneId,regions,logo,review,Math.max(c.versionNumber,1),blockers.size(),loads,blockers,c.coreCatalogId,c.sourceSystem,sourceVersion,companyType,c.alwaysActive,
+            c.responsibleEmployeeId,coordinator==null?null:coordinator.fullName,coordinator==null?null:coordinator.roleCode,
+            c.responsibleEmployeeId,coordinator==null?null:coordinator.fullName,coordinator==null?null:coordinator.roleCode,
+            c.assistantEmployeeId,assistant==null?null:assistant.fullName,assistant==null?null:assistant.roleCode);
     }
     private CoreCompanyCatalogSnapshot core(Company c){return c.coreCatalogId==null?null:CoreCompanyCatalogSnapshot.find("instanceCountryId=?1 and coreCompanyId=?2",tenant.instanceCountryId(),c.coreCatalogId).firstResult();}
     private List<UUID> regionIds(UUID companyId){List<CompanyRegion> links=CompanyRegion.list("instanceCountryId=?1 and companyId=?2 order by createdAt,regionId",tenant.instanceCountryId(),companyId);if(!links.isEmpty())return links.stream().map(l->l.regionId).toList();Company c=company(companyId);return c.regionId==null?List.of():List.of(c.regionId);}
@@ -187,17 +206,27 @@ public class CompanyResource {
     private String normalizeKey(String value){return value==null?"":value.trim().toLowerCase(Locale.ROOT);}private String normalizeStatus(String value,String fallback){return value==null||value.isBlank()?fallback:value.trim().toUpperCase(Locale.ROOT);}
 
     private void persistVersion(Company c,String changeType,String reason){CompanyVersion v=new CompanyVersion();v.instanceCountryId=tenant.instanceCountryId();v.companyId=c.id;v.versionNumber=Math.max(c.versionNumber,1);v.changeType=changeType;v.changeReason=reason==null||reason.isBlank()?null:reason.trim();v.actorUsername=scope.username();v.effectiveAt=Instant.now();v.snapshotJson=snapshot(c);v.persist();}
-    private String snapshot(Company c){try{CoreCompanyCatalogSnapshot core=core(c);EmployeeOperationalSnapshot responsible=responsible(c.responsibleEmployeeId);ObjectNode node=mapper.createObjectNode();node.put("code",c.code);node.put("name",core==null?c.name:core.name);node.put("status",c.status);if(c.zoneId!=null)node.put("zoneId",c.zoneId.toString());else node.putNull("zoneId");ArrayNode arr=node.putArray("regionIds");for(UUID r:regionIds(c.id))arr.add(r.toString());if(c.responsibleEmployeeId!=null)node.put("responsibleEmployeeId",c.responsibleEmployeeId.toString());else node.putNull("responsibleEmployeeId");if(responsible!=null){node.put("responsibleName",responsible.fullName);node.put("responsibleRoleCode",responsible.roleCode);}else{node.putNull("responsibleName");node.putNull("responsibleRoleCode");}String review=core==null?c.historicalReview:core.historicalReview,StringLogo=core==null?c.logoDataUrl:core.logoDataUrl;if(review!=null)node.put("historicalReview",review);else node.putNull("historicalReview");if(StringLogo!=null)node.put("logoDataUrl",StringLogo);else node.putNull("logoDataUrl");node.put("sourceSystem",c.sourceSystem);node.put("sourceVersion",c.sourceVersion);node.put("companyType",c.companyType);node.put("alwaysActive",c.alwaysActive);node.put("requiredChangeCount",c.requiredChangeCount);node.put("versionNumber",Math.max(c.versionNumber,1));return mapper.writeValueAsString(node);}catch(JsonProcessingException e){throw new InternalServerErrorException("No se pudo generar snapshot de Compañía.");}}
+    private String snapshot(Company c){try{CoreCompanyCatalogSnapshot core=core(c);EmployeeOperationalSnapshot coordinator=responsible(c.responsibleEmployeeId),assistant=responsible(c.assistantEmployeeId);ObjectNode node=mapper.createObjectNode();node.put("code",c.code);node.put("name",core==null?c.name:core.name);node.put("status",c.status);if(c.zoneId!=null)node.put("zoneId",c.zoneId.toString());else node.putNull("zoneId");ArrayNode arr=node.putArray("regionIds");for(UUID r:regionIds(c.id))arr.add(r.toString());putResponsibleSnapshot(node,"responsible",c.responsibleEmployeeId,coordinator);putResponsibleSnapshot(node,"coordinator",c.responsibleEmployeeId,coordinator);putResponsibleSnapshot(node,"assistant",c.assistantEmployeeId,assistant);String review=core==null?c.historicalReview:core.historicalReview,StringLogo=core==null?c.logoDataUrl:core.logoDataUrl;if(review!=null)node.put("historicalReview",review);else node.putNull("historicalReview");if(StringLogo!=null)node.put("logoDataUrl",StringLogo);else node.putNull("logoDataUrl");node.put("sourceSystem",c.sourceSystem);node.put("sourceVersion",c.sourceVersion);node.put("companyType",c.companyType);node.put("alwaysActive",c.alwaysActive);node.put("requiredChangeCount",c.requiredChangeCount);node.put("versionNumber",Math.max(c.versionNumber,1));return mapper.writeValueAsString(node);}catch(JsonProcessingException e){throw new InternalServerErrorException("No se pudo generar snapshot de Compañía.");}}
+    private void putResponsibleSnapshot(ObjectNode node,String prefix,UUID employeeId,EmployeeOperationalSnapshot employee){if(employeeId!=null)node.put(prefix+"EmployeeId",employeeId.toString());else node.putNull(prefix+"EmployeeId");if(employee!=null){node.put(prefix+"Name",employee.fullName);node.put(prefix+"RoleCode",employee.roleCode);}else{node.putNull(prefix+"Name");node.putNull(prefix+"RoleCode");}}
     private EmployeeOperationalSnapshot responsible(UUID employeeId){return employeeId==null?null:EmployeeOperationalSnapshot.find("instanceCountryId=?1 and employeeId=?2",tenant.instanceCountryId(),employeeId).firstResult();}
-    private EmployeeOperationalSnapshot validateResponsible(UUID employeeId){
+    private List<EmployeeOperationalSnapshot> eligibleCompanyResponsibles(){
+        List<EmployeeOperationalSnapshot> people=EmployeeOperationalSnapshot.list("instanceCountryId=?1 and employmentStatus='ACTIVE' order by fullName",tenant.instanceCountryId());
+        return people.stream().filter(e->e.personaId!=null&&e.personaId>0&&(isCoordinatorRole(e.roleCode)||isAssistantRole(e.roleCode))).toList();
+    }
+    private EmployeeOperationalSnapshot validateCompanyResponsible(UUID employeeId,boolean coordinator){
         if(employeeId==null)return null;
         EmployeeOperationalSnapshot employee=responsible(employeeId);
-        if(employee==null||!"ACTIVE".equalsIgnoreCase(employee.employmentStatus))throw new BadRequestException("El responsable seleccionado no existe o no está activo.");
-        if(!isEligibleResponsibleRole(employee.roleCode))throw new BadRequestException("El responsable debe tener un cargo de Asistente de Operaciones, Coordinador de Compañía, Jefe, Director o Presidente.");
-        if(!visibleCompanyIdsForCom().contains(employee.companyId))throw new ForbiddenException("El responsable está fuera del alcance territorial del usuario.");
+        String label=coordinator?"Coordinador de Compañía":"Asistente de Operaciones";
+        if(employee==null||!"ACTIVE".equalsIgnoreCase(employee.employmentStatus))throw new BadRequestException("El "+label+" seleccionado no existe o no está activo.");
+        if(employee.personaId==null||employee.personaId<=0)throw new BadRequestException("El "+label+" seleccionado no tiene persona_id sincronizado desde SIC:DHO/RRHH.");
+        if(coordinator&&!isCoordinatorRole(employee.roleCode))throw new BadRequestException("Seleccione una persona activa con cargo de Coordinador de Compañía.");
+        if(!coordinator&&!isAssistantRole(employee.roleCode))throw new BadRequestException("Seleccione una persona activa con cargo de Asistente de Operaciones.");
         return employee;
     }
-    static boolean isEligibleResponsibleRole(String roleCode){String role=roleCode==null?"":roleCode.trim().toLowerCase(Locale.ROOT);return role.contains("asistente")||role.contains("coordinador")||role.contains("jefe")||role.contains("director")||role.contains("presidente");}
+    static boolean isCoordinatorRole(String roleCode){return normalizeRole(roleCode).contains("coordinador");}
+    static boolean isAssistantRole(String roleCode){return normalizeRole(roleCode).contains("asistente");}
+    static boolean coordinatorRequired(Collection<EmployeeOperationalSnapshot> people){return people!=null&&people.stream().anyMatch(e->e!=null&&isCoordinatorRole(e.roleCode));}
+    private static String normalizeRole(String roleCode){return Normalizer.normalize(roleCode==null?"":roleCode,Normalizer.Form.NFD).replaceAll("\\p{M}","").trim().toLowerCase(Locale.ROOT);}
     private Company company(UUID id){Company c=Company.find("id=?1 and instanceCountryId=?2",id,tenant.instanceCountryId()).firstResult();if(c==null)throw new NotFoundException();return c;}
 
     private Set<UUID> visibleCompanyIdsForCom(){

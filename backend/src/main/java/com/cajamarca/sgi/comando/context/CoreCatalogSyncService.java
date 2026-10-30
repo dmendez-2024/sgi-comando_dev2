@@ -1,5 +1,6 @@
 package com.cajamarca.sgi.comando.context;
 
+import com.cajamarca.sgi.comando.assignments.EmployeeOperationalSnapshot;
 import com.cajamarca.sgi.comando.companies.CoreCompanyCatalogSnapshot;
 import com.cajamarca.sgi.comando.companies.CoreCompanyCodes;
 import com.cajamarca.sgi.comando.companies.Company;
@@ -179,7 +180,11 @@ public class CoreCatalogSyncService {
             if (company.zoneId == null) snapshot.putNull("zoneId"); else snapshot.put("zoneId", company.zoneId.toString());
             ArrayNode regions = snapshot.putArray("regionIds");
             for (CompanyRegion link : CompanyRegion.<CompanyRegion>list("instanceCountryId=?1 and companyId=?2", company.instanceCountryId, company.id)) regions.add(link.regionId.toString());
-            if (company.responsibleEmployeeId == null) snapshot.putNull("responsibleEmployeeId"); else snapshot.put("responsibleEmployeeId", company.responsibleEmployeeId.toString());
+            EmployeeOperationalSnapshot coordinator = companyResponsible(company, company.responsibleEmployeeId);
+            EmployeeOperationalSnapshot assistant = companyResponsible(company, company.assistantEmployeeId);
+            putCompanyResponsibleSnapshot(snapshot, "responsible", company.responsibleEmployeeId, coordinator);
+            putCompanyResponsibleSnapshot(snapshot, "coordinator", company.responsibleEmployeeId, coordinator);
+            putCompanyResponsibleSnapshot(snapshot, "assistant", company.assistantEmployeeId, assistant);
             if (company.historicalReview == null) snapshot.putNull("historicalReview"); else snapshot.put("historicalReview", company.historicalReview);
             if (company.logoDataUrl == null) snapshot.putNull("logoDataUrl"); else snapshot.put("logoDataUrl", company.logoDataUrl);
             snapshot.put("coreCatalogId", company.coreCatalogId.toString());
@@ -304,6 +309,26 @@ public class CoreCatalogSyncService {
         if (node == null || node.isArray()) return node;
         JsonNode nested = first(node, "items", "subdivisions", "companies");
         return nested == null ? node : nested;
+    }
+
+    private EmployeeOperationalSnapshot companyResponsible(Company company, UUID employeeId) {
+        if (employeeId == null) return null;
+        return EmployeeOperationalSnapshot.find(
+            "instanceCountryId=?1 and employeeId=?2", company.instanceCountryId, employeeId
+        ).firstResult();
+    }
+
+    private void putCompanyResponsibleSnapshot(ObjectNode snapshot, String prefix, UUID employeeId,
+                                               EmployeeOperationalSnapshot employee) {
+        if (employeeId == null) snapshot.putNull(prefix + "EmployeeId");
+        else snapshot.put(prefix + "EmployeeId", employeeId.toString());
+        if (employee == null) {
+            snapshot.putNull(prefix + "Name");
+            snapshot.putNull(prefix + "RoleCode");
+        } else {
+            snapshot.put(prefix + "Name", employee.fullName);
+            snapshot.put(prefix + "RoleCode", employee.roleCode);
+        }
     }
 
     private JsonNode first(JsonNode node, String... names) {

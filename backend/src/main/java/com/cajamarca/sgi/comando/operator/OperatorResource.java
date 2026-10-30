@@ -48,6 +48,7 @@ public class OperatorResource {
     @Inject TaskEvidenceService taskEvidences;
     @Inject OperatorTasks tasks;
     @Inject ReliefStationReviews stationReviews;
+    @Inject ReliefEvidencePhotos reliefPhotos;
     @Inject InventoryService inventory;
     @Inject com.cajamarca.sgi.comando.integration.ExternalPorts.SicRrmmPort rrmm;
     @Inject com.cajamarca.sgi.comando.impulses.ImpulseLedger impulses;
@@ -441,10 +442,12 @@ public class OperatorResource {
         n.set("nextActions",c.coordination()?mapper.createArrayNode():nextActions(c,assignmentConsignments));
         n.putArray("stationPhotos").add("Vista general del puesto").add("Área de trabajo o garita").add("Acceso principal");
         // fetchedAt/warning/status cambian por disponibilidad de red y no deben invalidar una confirmación del mismo inventario.
+        // El último estado reportado es informativo: otro relevo puede cambiarlo mientras el agente confirma.
         ObjectNode versionedContext=n.deepCopy();
         if(versionedContext.path("inventory").isObject()) {
             ObjectNode versionedInventory=(ObjectNode)versionedContext.path("inventory");
             versionedInventory.remove(List.of("fetchedAt","warning","status","message"));
+            for(JsonNode item:versionedInventory.path("items")) ((ObjectNode)item).remove(List.of("lastCondition","lastObservation","lastReportedAt"));
         }
         versionedContext.remove("inventoryStatus");
         n.put("configurationVersion",hash(versionedContext.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8)));
@@ -969,8 +972,11 @@ public class OperatorResource {
             return Map.of("evidenceId",row[0].toString(),"sha256",digest); }
         if(!em.createNativeQuery("select id from relief_event where id=:id").setParameter("id",eventId).getResultList().isEmpty()) throw new ClientErrorException("El relevo ya fue recibido",409);
         UUID id=UUID.randomUUID();
-        em.createNativeQuery("insert into operator_relief_evidence(id,instance_country_id,event_id,assignment_id,username,purpose,sha256,content_type,content,created_at) values(:id,:t,:e,:a,:u,:p,:h,'image/jpeg',:b,current_timestamp)")
-            .setParameter("id",id).setParameter("t",tenant.instanceCountryId()).setParameter("e",eventId).setParameter("a",assignmentId).setParameter("u",user).setParameter("p",purpose).setParameter("h",digest).setParameter("b",bytes).executeUpdate();
+        // La foto va a MinIO; la fila solo guarda dónde quedó. Si el insert o el commit fallan, ReliefEvidencePhotos borra el objeto.
+        ReliefEvidencePhotos.Stored stored=reliefPhotos.store(eventId,purpose,id,bytes);
+        em.createNativeQuery("insert into operator_relief_evidence(id,instance_country_id,event_id,assignment_id,username,purpose,sha256,content_type,bucket,object_key,size_bytes,created_at) values(:id,:t,:e,:a,:u,:p,:h,'image/jpeg',:bucket,:key,:size,current_timestamp)")
+            .setParameter("id",id).setParameter("t",tenant.instanceCountryId()).setParameter("e",eventId).setParameter("a",assignmentId).setParameter("u",user).setParameter("p",purpose).setParameter("h",digest)
+            .setParameter("bucket",stored.bucket()).setParameter("key",stored.objectKey()).setParameter("size",stored.size()).executeUpdate();
         return Map.of("evidenceId",id,"sha256",digest);
     }
     @GET @Path("/relief-evidence/{eventId}/{purpose}") @Produces("image/jpeg")
@@ -978,12 +984,12 @@ public class OperatorResource {
         UUID employee=employee();
         if(!PURPOSES.contains(purpose) || assignmentId==null) throw new BadRequestException("Evidencia o asignación inválida");
         assignment(assignmentId,employee);
-        List<?> rows=em.createNativeQuery("select content,content_type from operator_relief_evidence where instance_country_id=:t and event_id=:e and assignment_id=:a and username=:u and purpose=:p")
+        List<?> rows=em.createNativeQuery("select content_type,bucket,object_key,content from operator_relief_evidence where instance_country_id=:t and event_id=:e and assignment_id=:a and username=:u and purpose=:p")
             .setParameter("t",tenant.instanceCountryId()).setParameter("e",eventId).setParameter("a",assignmentId)
             .setParameter("u",identity.getPrincipal().getName()).setParameter("p",purpose).getResultList();
         if(rows.size()!=1) throw new NotFoundException("Evidencia no disponible");
         Object[] row=(Object[])rows.get(0);
-        return Response.ok((byte[])row[0]).type(row[1].toString()).header(HttpHeaders.CACHE_CONTROL,"no-store").build();
+        return Response.ok(reliefPhotos.read(row[1],row[2],row[3])).type(row[0].toString()).header(HttpHeaders.CACHE_CONTROL,"no-store").build();
     }
     @POST @Path("/executions") @Consumes(MediaType.APPLICATION_JSON) @Transactional
     public ObjectNode submit(JsonNode batch) {
@@ -1142,7 +1148,7 @@ public class OperatorResource {
             throw new ForbiddenException("Tu usuario no tiene un alcance operativo configurado. Solicita a Comando que parametrice tu persona y compañía.");
         }
         @SuppressWarnings("unchecked") List<Object[]> rows=em.createNativeQuery("""
-            select id,point_id,post_id,employee_id,username,title,instruction,priority,submitted_at,schedule,start_time,end_time,status,has_photo
+            select id,point_id,post_id,employee_id,username,title,instruction,priority,submitted_at,schedule,start_time,end_time,status,has_photo,scope
             from operator_consignment_review_request where instance_country_id=:t and status=:status order by submitted_at desc
             """).setParameter("t",tenant.instanceCountryId()).setParameter("status",status).setMaxResults(200).getResultList();
         ArrayNode result=mapper.createArrayNode();
@@ -1155,7 +1161,7 @@ public class OperatorResource {
             ObjectNode item=result.addObject().put("id",row[0].toString()).put("title",row[5].toString()).put("instruction",row[6].toString()).put("priority",row[7].toString())
                 .put("submittedAt",row[8].toString()).put("schedule",row[9].toString()).put("status",row[12].toString()).put("pointName",point.name).put("postName",post.name)
                 .put("clientName",point.clientName).put("city",point.city).put("submittedBy",row[4].toString())
-                .put("hasPhoto",Boolean.TRUE.equals(row[13]));
+                .put("hasPhoto",Boolean.TRUE.equals(row[13])).put("pointId",row[1].toString()).put("postId",row[2].toString()).put("scope",row[14].toString());
             if(row[10]!=null) item.put("startTime",row[10].toString());
             if(row[11]!=null) item.put("endTime",row[11].toString());
             if(company!=null) { item.put("companyName",company.name); item.put("companyCode",company.code); }
@@ -1195,6 +1201,7 @@ public class OperatorResource {
                 .put("inventoryDeliveryStatus",inventory.reportStatus(UUID.fromString(row[0].toString()))).put("validationStatus","PENDING_REVIEW")
                 .put("clientName",point.clientName).put("city",point.city).put("companyCode",company==null?"":company.code)
                 .put("companyName",company==null?"—":company.name).put("submittedBy",row[6].toString()).put("photoCount",photoCount.intValue());
+            n.putObject("inventoryReport").set("items",inventory.reportItems(UUID.fromString(row[0].toString())));
             n.set("context",context);
             if(context.hasNonNull("incomingEmployeeName")) n.put("incomingEmployeeName",context.path("incomingEmployeeName").asText());
             try { n.set("event",mapper.readTree(row[5].toString())); } catch(Exception e) { throw new InternalServerErrorException(); }

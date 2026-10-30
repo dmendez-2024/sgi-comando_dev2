@@ -169,10 +169,12 @@ public class AssignmentResource {
             List<PostPlanningCycleSnapshot> cycleSnapshots=PostPlanningCycleSnapshot.list("instanceCountryId=?1 and postId in ?2",tenant.instanceCountryId(),postIds);
             cycleByPost=cycleSnapshots.stream().collect(Collectors.toMap(x->x.postId,x->x));
         }
+        Map<UUID,PostSkillRequirement> requirementByPost=postIds.isEmpty()?Map.of():PostSkillRequirement.<PostSkillRequirement>list("instanceCountryId=?1 and postId in ?2",tenant.instanceCountryId(),postIds).stream()
+            .collect(Collectors.toMap(r->r.postId,r->r,(left,right)->left));
         List<PostDto> postDtos=new ArrayList<>();
         for(PostEntity p:allPosts){
             PostPlanningCycleSnapshot c=cycleByPost.get(p.id);
-            PostSkillRequirement r=PostSkillRequirement.find("instanceCountryId=?1 and postId=?2",tenant.instanceCountryId(),p.id).firstResult();
+            PostSkillRequirement r=requirementByPost.get(p.id);
             postDtos.add(new PostDto(p.id,p.pointId,p.code,p.name,p.format,p.fhe,p.tier,
                 c==null?null:c.rotationCode,c==null?null:c.cycleLengthDays,c==null?null:c.sourceVersion,
                 "OPERATIONAL",null,r==null?null:r.requiredRoleCode,null));
@@ -589,12 +591,16 @@ public class AssignmentResource {
         List<PostEntity> posts=activeOperationalPosts(pointIds);
         Set<UUID> postIds=posts.stream().map(p->p.id).collect(Collectors.toSet());
         List<PostShiftTemplate> templates=postIds.isEmpty()?List.of():PostShiftTemplate.list("instanceCountryId=?1 and postId in ?2 and active=true",tenant.instanceCountryId(),postIds);
+        Set<UUID> templateIds=templates.stream().map(t->t.id).collect(Collectors.toSet());
+        Set<OperationalShiftKey> existingKeys=templateIds.isEmpty()?new HashSet<>():ShiftOccurrenceEntity.<ShiftOccurrenceEntity>list(
+            "instanceCountryId=?1 and templateId in ?2 and localDate>=?3 and localDate<?4",
+            tenant.instanceCountryId(),templateIds,week,week.plusDays(7)).stream()
+            .map(s->new OperationalShiftKey(s.templateId,s.localDate)).collect(Collectors.toCollection(HashSet::new));
         for(PostShiftTemplate t:templates){
             for(int i=0;i<7;i++){
                 if((t.dayMask & (1<<i))==0) continue;
                 LocalDate d=week.plusDays(i);
-                long exists=ShiftOccurrenceEntity.count("instanceCountryId=?1 and templateId=?2 and localDate=?3",tenant.instanceCountryId(),t.id,d);
-                if(exists>0) continue;
+                if(!existingKeys.add(new OperationalShiftKey(t.id,d))) continue;
                 ZonedDateTime start=d.atTime(t.startTime).atZone(OPERATING_ZONE);
                 LocalDate endDate=!t.endTime.isAfter(t.startTime)?d.plusDays(1):d;
                 ZonedDateTime end=endDate.atTime(t.endTime).atZone(OPERATING_ZONE);
@@ -610,16 +616,23 @@ public class AssignmentResource {
             tenant.instanceCountryId(),pointIds);
     }
 
+    private record OperationalShiftKey(UUID templateId,LocalDate date) {}
+    private record CoordinationShiftKey(UUID coordinationPostId,LocalDate date,String shiftCode) {}
     private record CoordinationShift(String code,String name,LocalTime start,LocalTime end) {}
 
     private void materializeCoordinationShifts(UUID companyId,LocalDate week){
-        for(CoordinationPost post:assignableCoordinationPosts(companyId)){
+        List<CoordinationPost> posts=assignableCoordinationPosts(companyId);
+        Set<UUID> postIds=posts.stream().map(p->p.id).collect(Collectors.toSet());
+        Set<CoordinationShiftKey> existingKeys=postIds.isEmpty()?new HashSet<>():ShiftOccurrenceEntity.<ShiftOccurrenceEntity>list(
+            "instanceCountryId=?1 and coordinationPostId in ?2 and localDate>=?3 and localDate<?4",
+            tenant.instanceCountryId(),postIds,week,week.plusDays(7)).stream()
+            .map(s->new CoordinationShiftKey(s.coordinationPostId,s.localDate,s.shiftCode)).collect(Collectors.toCollection(HashSet::new));
+        for(CoordinationPost post:posts){
             for(CoordinationShift template:coordinationShifts(post)){
                 for(int i=0;i<7;i++){
                     if((post.dayMask&(1<<i))==0)continue;
                     LocalDate date=week.plusDays(i);
-                    long exists=ShiftOccurrenceEntity.count("instanceCountryId=?1 and coordinationPostId=?2 and localDate=?3 and shiftCode=?4",tenant.instanceCountryId(),post.id,date,template.code());
-                    if(exists>0)continue;
+                    if(!existingKeys.add(new CoordinationShiftKey(post.id,date,template.code())))continue;
                     ZonedDateTime start=date.atTime(template.start()).atZone(OPERATING_ZONE);
                     LocalDate endDate=!template.end().isAfter(template.start())?date.plusDays(1):date;
                     ZonedDateTime end=endDate.atTime(template.end()).atZone(OPERATING_ZONE);

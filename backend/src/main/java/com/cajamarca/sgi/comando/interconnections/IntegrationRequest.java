@@ -7,6 +7,8 @@ public class IntegrationRequest {
     public Object body;
     public String idempotencyKey;
     public String correlationId;
+    /** Política por llamada: la credencial debe proceder de OpenBao, sin fallback a variables. */
+    public boolean requireOpenBaoCredentials;
     public Map<String,String> pathParams = new HashMap<>();
     public Map<String,String> queryParams = new HashMap<>();
     public Map<String,String> headers = new HashMap<>();

@@ -20,7 +20,9 @@ public class Company extends BaseEntity {
     @Column(name="region_id") public UUID regionId;
 
     @Column(name="zone_id") public UUID zoneId;
+    /** Campo legado que desde COM representa al Coordinador de Compañía. */
     @Column(name="responsible_employee_id") public UUID responsibleEmployeeId;
+    @Column(name="assistant_employee_id") public UUID assistantEmployeeId;
     @Column(name="historical_review", length=750) public String historicalReview;
     @Column(name="logo_data_url", columnDefinition="text") public String logoDataUrl;
     @Column(name="version_number", nullable=false) public int versionNumber;

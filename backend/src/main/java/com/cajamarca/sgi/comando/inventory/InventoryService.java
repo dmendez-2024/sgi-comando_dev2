@@ -26,7 +26,7 @@ import java.util.*;
 public class InventoryService {
     public static final String EVIDENCE_TARGET = "INVENTORY_ASSET";
     private static final Logger LOG = Logger.getLogger(InventoryService.class);
-    private static final Set<String> CONDITIONS = Set.of("GOOD","DAMAGED","MISSING","REPLACED","NOT_VERIFIED");
+    private static final Set<String> CONDITIONS = ReliefContract.INVENTORY_CONDITIONS;
 
     @Inject TenantContext tenant;
     @Inject EntityManager em;
@@ -119,10 +119,11 @@ public class InventoryService {
             String condition=requiredText(item,"condition",32).toUpperCase(Locale.ROOT), expectedCondition=master.path("expectedCondition").asText("UNKNOWN");
             em.createNativeQuery("""
                 insert into inventory_report_item(id,instance_country_id,report_id,asset_id,product_id,asset_code,asset_description,
-                  expected_condition,observed_condition,observation,compliant,created_at)
-                values(:id,:t,:report,:asset,:product,:code,:description,:expected,:observed,:observation,
+                  expected_condition,observed_condition,previous_condition,observation,compliant,created_at)
+                values(:id,:t,:report,:asset,:product,:code,:description,:expected,:observed,:previous,:observation,
                   case when :expected='UNKNOWN' then null else :compliant end,current_timestamp)
                 """).setParameter("id",itemId).setParameter("t",tenant.instanceCountryId()).setParameter("report",reportId).setParameter("asset",entry.getKey())
+                .setParameter("previous",master.path("lastCondition").asText(null))
                 .setParameter("product",nullableUuid(master.path("productId").asText(null))).setParameter("code",master.path("code").asText())
                 .setParameter("description",master.path("description").asText()).setParameter("expected",expectedCondition).setParameter("observed",condition)
                 .setParameter("observation",optionalText(item,"observation",1000))
@@ -138,6 +139,26 @@ public class InventoryService {
         List<?> rows=em.createNativeQuery("select delivery_status from inventory_report where instance_country_id=:t and relief_event_id=:r")
             .setParameter("t",tenant.instanceCountryId()).setParameter("r",reliefId).getResultList();
         return rows.isEmpty()?"NOT_REQUIRED":rows.get(0).toString();
+    }
+
+    /** Activos reportados en el relevo, con su estado, observación y fotos, para el detalle del relevo completado. */
+    public ArrayNode reportItems(UUID reliefId) {
+        ArrayNode out=mapper.createArrayNode();
+        @SuppressWarnings("unchecked") List<Object[]> rows=em.createNativeQuery("""
+            select i.asset_id,i.asset_code,i.asset_description,i.observed_condition,i.previous_condition,i.observation,
+                   string_agg(e.evidence_id::text,',' order by e.sort_order)
+            from inventory_report r join inventory_report_item i on i.report_id=r.id
+            left join inventory_report_item_evidence e on e.report_item_id=i.id
+            where r.instance_country_id=:t and r.relief_event_id=:r
+            group by i.id,i.asset_id,i.asset_code,i.asset_description,i.observed_condition,i.previous_condition,i.observation
+            order by i.asset_code,i.asset_id
+            """).setParameter("t",tenant.instanceCountryId()).setParameter("r",reliefId).getResultList();
+        for(Object[] row:rows){ObjectNode item=out.addObject().put("assetId",row[0].toString()).put("code",row[1].toString())
+            .put("description",row[2].toString()).put("condition",row[3].toString());
+            if(row[4]!=null)item.put("previousCondition",row[4].toString());
+            if(row[5]!=null)item.put("observation",row[5].toString());
+            ArrayNode evidence=item.putArray("evidenceIds");if(row[6]!=null)for(String id:row[6].toString().split(","))evidence.add(id);}
+        return out;
     }
 
     @Scheduled(every="60s", delayed="15s")
@@ -197,16 +218,25 @@ public class InventoryService {
         if("RRMM-EMPTY".equals(version))out.putNull("sourceVersion");else out.put("sourceVersion",version);
         if(warning!=null)out.put("warning",warning); ArrayNode items=out.putArray("items"); ArrayNode materials=out.putArray("materials");
         @SuppressWarnings("unchecked") List<Object[]> rows=em.createNativeQuery("""
-            select asset_id,product_id,code,description,expected_condition,assignment_status,critical,
-                   record_type,quantity,serial_number,lot_code
-            from inventory_expected_asset where instance_country_id=:t and post_id=:p and active=true order by code,asset_id
+            select a.asset_id,a.product_id,a.code,a.description,a.expected_condition,a.assignment_status,a.critical,
+                   a.record_type,a.quantity,a.serial_number,a.lot_code,last.observed_condition,last.observation,last.created_at
+            from inventory_expected_asset a
+            left join lateral (
+              select i.observed_condition,i.observation,i.created_at from inventory_report_item i
+              where i.instance_country_id=a.instance_country_id and i.asset_id=a.asset_id
+              order by i.created_at desc limit 1
+            ) last on a.record_type='IDENTIFIED'
+            where a.instance_country_id=:t and a.post_id=:p and a.active=true order by a.code,a.asset_id
             """).setParameter("t",instance).setParameter("p",postId).getResultList();
         for(Object[] row:rows){boolean identified="IDENTIFIED".equals(row[7]); ObjectNode item=(identified?items:materials).addObject().put("assetId",row[0].toString()).put("recordId",row[0].toString());if(row[1]!=null)item.put("productId",row[1].toString());
             item.put("code",row[2].toString()).put("description",row[3].toString()).put("expectedCondition",row[4].toString())
                 .put("assignmentStatus",row[5].toString()).put("critical",Boolean.TRUE.equals(row[6]))
                 .put("recordType",row[7].toString()).put("quantity",((java.math.BigDecimal)row[8]));
             if(row[9]!=null)item.put("serialNumber",row[9].toString());
-            if(row[10]!=null)item.put("lotCode",row[10].toString());}
+            if(row[10]!=null)item.put("lotCode",row[10].toString());
+            // Estado precargado: último reporte del activo en cualquier Puesto (el activo pudo moverse).
+            if(row[11]!=null){item.put("lastCondition",row[11].toString()).put("lastReportedAt",instant(row[13]).toString());
+                if(row[12]!=null)item.put("lastObservation",row[12].toString());}}
         boolean hasHoldings=!items.isEmpty()||!materials.isEmpty();
         out.put("hasHoldings",hasHoldings);
         out.put("message","STALE".equals(status)

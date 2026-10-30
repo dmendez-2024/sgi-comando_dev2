@@ -49,7 +49,7 @@ public final class InterconnectionIds {
     public static final String ATS_PUBLISHED_PACKAGE = "ATS_SGI_COM_0001_v001";
     public static final String ATS_OPERATIONAL_RECONCILIATION = "SGI_COM_ATS_0001_v001";
 
-    public static final String SMC_OPERATIONAL_FACTS = "SGI_COM_SMC_0001_v001";
+    public static final String SMC_OPERATIONAL_FACTS = "SGI_COM_SMC_0001_v003";
     public static final String SMC_KPI_QUERY = "SGI_COM_SMC_0002_v001";
 
     public static final String STC_CREATE_CASE = "SGI_COM_STC_0001_v001";

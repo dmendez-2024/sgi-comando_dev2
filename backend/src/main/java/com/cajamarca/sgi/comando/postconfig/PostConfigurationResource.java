@@ -101,6 +101,7 @@ public class PostConfigurationResource {
         config.postType=request.postType().trim().toUpperCase(Locale.ROOT);
         config.description=blankToEmpty(request.description());
         config.alias=blankToNull(request.alias());
+        if(config.alias!=null) post.name=config.alias;
         config.visualTitle=blankToNull(request.visualTitle());
         config.atsLocationKey=blankToEmpty(request.atsLocationKey()).toUpperCase(Locale.ROOT);
         config.atsLocationLabel=blankToEmpty(request.atsLocationLabel());

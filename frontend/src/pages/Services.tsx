@@ -632,11 +632,15 @@ function PostsPage({point,onBack}:{point:PointRow;onBack:()=>void}){
     return()=>{active=false};
   },[selectedPostId,canEditVisualRule]);
 
+  const postRows=useMemo(()=>{
+    const names=new Map(configs.map(config=>[config.postId,config.postName]));
+    return point.posts.map((post:Row)=>names.get(post.postId)?{...post,postName:names.get(post.postId)!}:post);
+  },[point.posts,configs]);
   const filteredPosts=useMemo(()=>{
     const q=searchPost.trim().toLowerCase();
-    return point.posts.filter((post:Row)=>!q||post.postCode.toLowerCase().includes(q)||post.postName.toLowerCase().includes(q));
-  },[point.posts,searchPost]);
-  const selectedRow=point.posts.find((post:Row)=>post.postId===selectedPostId)??point.posts[0];
+    return postRows.filter((post:Row)=>!q||post.postCode.toLowerCase().includes(q)||post.postName.toLowerCase().includes(q));
+  },[postRows,searchPost]);
+  const selectedRow=postRows.find((post:Row)=>post.postId===selectedPostId)??postRows[0];
   const commercialPost=commercialWeek?.posts?.find((post:CommercialPost)=>post.id===selectedPostId);
   const postShifts=(commercialWeek?.shifts??[]).filter((shift:CommercialShift)=>shift.postId===selectedPostId);
   const shiftNames=Array.from(new Set(postShifts.map((shift:CommercialShift)=>shift.shiftName))).join(' / ')||'—';
@@ -1132,10 +1136,10 @@ export default function Services(){
     </div>
 
     <div className="ser-filterbar">
+      <label className="ser-search"><span className="sr-only">Buscar</span><Search size={16}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar cliente o punto…"/></label>
       <label><span>Compañía</span><select value={company} onChange={e=>setCompany(e.target.value)}><option value="">Todas las compañías</option>{companies.map((item:string)=><option key={item}>{item}</option>)}</select></label>
       <label><span>Cliente</span><select value={client} onChange={e=>setClient(e.target.value)}><option value="">Todos los clientes</option>{clients.map((item:ClientOption)=><option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
       <label><span>Estado</span><select value={state} onChange={e=>setState(e.target.value)}><option value="">Todos los estados</option><option value="ACTIVE">Activo</option><option value="TO_CONFIGURE">Por Configurar</option><option value="PENDING_ASSIGNMENT">Pendiente de asignación</option><option value="INACTIVE">Inactivo</option></select></label>
-      <label className="ser-search"><span className="sr-only">Buscar</span><Search size={16}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar cliente o punto…"/></label>
       <button className="ser-clear" onClick={clearFilters}><RefreshCcw size={15}/>Limpiar filtros</button>
     </div>
 
