@@ -92,7 +92,7 @@ class ObsintReportResourceTest {
         try (PDDocument doc = Loader.loadPDF(pdf)) {
             String text = new PDFTextStripper().getText(doc).replaceAll("\\s+", " ");
             for (String expected : List.of("Informe Diario de Consignas", "Resumen General", "Desempeño por Consigna", "Incumplimientos (",
-                    "Observaciones Generales", "VERIFICABILIDAD", "INCIERTAS", code, "Se observa un veh"))
+                    "Observaciones Generales", "VERIFICABILIDAD", "INCIERTAS", code, "Se observa un veh", "Servicio de Auditoría OBSINT"))
                 assertTrue(text.contains(expected), "falta en el PDF: " + expected);
             long images = 0;
             for (var page : doc.getPages())

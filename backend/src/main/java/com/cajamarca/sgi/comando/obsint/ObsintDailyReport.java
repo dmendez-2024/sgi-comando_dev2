@@ -1,7 +1,6 @@
 package com.cajamarca.sgi.comando.obsint;
 
 import com.cajamarca.sgi.comando.operations.PointEntity;
-import com.cajamarca.sgi.comando.operations.ServiceEntity;
 import com.cajamarca.sgi.comando.secelec.SecElecComponent;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -18,6 +17,8 @@ import org.jboss.logging.Logger;
  */
 @ApplicationScoped
 public class ObsintDailyReport {
+    /** Nombre del producto OBSINT (diapositiva 2 de "OBSINT Estructura"); va en "Servicio" del informe, no el servicio de guardias del Punto. */
+    static final String PRODUCT_NAME = "Servicio de Auditoría OBSINT";
     private static final Logger LOG = Logger.getLogger(ObsintDailyReport.class);
     static final Map<String, String> CATEGORY = Map.of("SSO", "Seguridad y salud ocupacional", "PRODUCTION", "Producción industrial",
         "LOGISTICS", "Logística y almacenamiento", "CLEANING", "Orden y limpieza", "MOBILITY", "Movilidad y tránsito interno",
@@ -59,7 +60,6 @@ public class ObsintDailyReport {
         List<ObsintCaseTask> tasks = answered(date, date).stream().filter(t -> pointId.equals(t.consigna.pointId))
             .sorted(Comparator.comparing(t -> t.answeredAt)).toList();
         if (tasks.isEmpty()) return Optional.empty();
-        ServiceEntity service = ServiceEntity.find("id=?1 and instanceCountryId=?2", point.serviceId, platform.instanceCountryId()).firstResult();
 
         int yes = count(tasks, ObsintCaseTask.Decision.YES), no = count(tasks, ObsintCaseTask.Decision.NO);
         OptionalDouble avg = tasks.stream().filter(t -> t.secondsUsed != null).mapToInt(t -> t.secondsUsed).average();
@@ -75,7 +75,7 @@ public class ObsintDailyReport {
         }).toList();
 
         List<Failure> failures = tasks.stream().filter(t -> t.decision == ObsintCaseTask.Decision.NO).map(this::failure).toList();
-        return Optional.of(new Report(date, point.clientName, point.name, service == null ? "—" : service.name, Instant.now(),
+        return Optional.of(new Report(date, point.clientName, point.name, PRODUCT_NAME, Instant.now(),
             summary, lines, failures, observations(summary, lines)));
     }
 
