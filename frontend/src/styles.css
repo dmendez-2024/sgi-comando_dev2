@@ -2449,6 +2449,13 @@ button.nov-evidence-photo:hover{border-color:#9db8e6;box-shadow:0 4px 14px rgba(
 .assignments-asi-v066 .assignment-publish-row{grid-column:1/-1;display:flex;flex-wrap:wrap;justify-content:flex-end;align-items:center;gap:8px;min-width:0;margin-bottom:12px}
 .assignments-asi-v066 .assignment-publish-row .publish-button{white-space:nowrap;font-size:12px}
 
+/* ASI: ambos lados del encabezado del Punto comparten la altura del contenido. */
+.assignments-asi-v066 .spreadsheet-point>.point-band{height:auto;min-height:46px;align-items:stretch}
+
+/* ASI: una asignación ocupa la misma altura visual que el recuadro Histórico. */
+.assignments-asi-v066 .assignment-card-compact{min-height:54px;max-height:none}
+.assignments-asi-v066 .assignment-card-compact .remove-assignment{top:6px;right:6px}
+
 /* Consignas · detalle de relevo: sección propia de Materiales (imagen, nombre, estado y observación), como en SGI Operador. */
 .rel-materials{padding:14px 0 0;border-top:1px solid #e7edf6}
 .rel-materials-head{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:12px}
@@ -2479,3 +2486,14 @@ button.rel-material-image:focus-visible{outline:3px solid rgba(45,103,216,.3);ou
 @media(max-width:1000px){.rel-materials-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:760px){.rel-materials-grid{grid-template-columns:1fr}}
 @media(prefers-reduced-motion:reduce){.rel-material-image.pending{animation:none}}
+
+/* Etiquetas uniformes únicamente dentro de columnas de tablas/listados.
+   El ancho exacto lo calcula UniformColumnBadges a partir del contenido real. */
+.uniform-column-badge{box-sizing:border-box;display:inline-flex;align-items:center;justify-content:flex-start;text-align:left;white-space:nowrap;flex-shrink:0}
+
+/* Territorio y Compañías usan filas CSS Grid independientes. Estas variables
+   mantienen alineada también la pista de la columna cuando el texto crece. */
+.ter-structure-card .ter-grid-head,
+.ter-structure-card .ter-row{grid-template-columns:minmax(420px,2.5fr) minmax(180px,1fr) 90px 110px 100px max(105px,var(--ter-status-column-width,105px)) 75px}
+.com-card .com-table-head,
+.com-card .com-row{grid-template-columns:minmax(280px,2.1fr) minmax(120px,.8fr) minmax(max(190px,var(--com-region-badge-width,190px)),1.4fr) 110px 105px max(100px,var(--com-status-column-width,100px)) 72px 90px}

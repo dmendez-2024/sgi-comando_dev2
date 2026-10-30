@@ -18,6 +18,7 @@ import NovedadesExecution from './pages/NovedadesExecution';
 import Supervisiones from './pages/Supervisiones';
 import Placeholder from './pages/Placeholder';
 import AgentSimulator from './pages/AgentSimulator';
+import UniformColumnBadges from './components/UniformColumnBadges';
 
 export default function App() {
   const [active, setActive] = useState('Dashboard');
@@ -76,6 +77,7 @@ export default function App() {
 
   return (
     <div className="app">
+      <UniformColumnBadges />
       <Sidebar active={active} onChange={setActive} uatTools={uatTools} />
       <main>
         <Header title={title} coreContext={coreContext} onUserChange={() => {setCoreLoaded(false);setUserRevision((x) => x + 1)}} />
