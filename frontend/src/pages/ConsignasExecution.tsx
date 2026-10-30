@@ -2,7 +2,7 @@ import {useCallback, useEffect, useMemo, useState, type ReactNode} from 'react';
 import {
   AlertTriangle, ClipboardList, Clock3, Download,
   FileText, FilterX, RefreshCw, Search, ShieldCheck,
-  CarFront, AlertCircle, X, ChevronRight
+  CarFront, AlertCircle, X, ChevronRight, CheckCircle2, Ban
 } from 'lucide-react';
 import {api, getUser, type UatUser} from '../api';
 import {PhotoEvidenceGallery, ReferenceImageGallery, ReliefInventoryCards, type ReliefInventoryItem} from '../components/PhotoEvidenceGallery';
@@ -12,6 +12,7 @@ type ExecutionStatus='IN_PROGRESS'|'COMPLETED'|'OVERDUE'|'PENDING'|'CRITICAL';
 type Priority='LOW'|'MEDIUM'|'HIGH'|'CRITICAL';
 
 type TimelineEvent={id:string;at:string;title:string;detail:string;state:'DONE'|'ACTIVE'|'PENDING'};
+type ReviewRequestData={id:string;pointId:string;postId:string;instruction:string;scope:string};
 type Execution={
   id:string;
   evidenceEventId?:string;
@@ -38,6 +39,7 @@ type Execution={
   progressUnit:string;
   result:string;
   timeline:TimelineEvent[];
+  reviewRequest?:ReviewRequestData;
 };
 
 type Scope={label:string;companies:string[]|null;region?:string;zone?:string};
@@ -153,6 +155,7 @@ function reviewRequestToExecution(request:any):Execution{
   const priority:Priority=request.priority==='Crítica'?'CRITICAL':request.priority==='Alta'?'HIGH':'MEDIUM';
   return {
     id:`opr-review-${request.id}`,
+    reviewRequest:{id:String(request.id),pointId:String(request.pointId),postId:String(request.postId),instruction:request.instruction||'',scope:request.scope||'Punto'},
     evidenceEventId:String(request.id),photoCount:request.hasPhoto?1:0,
     // La foto llega aparte (POST /operator/evidences, CONSIGNMENT_REQUEST); mientras no llegue, el backend la informa como MISSING.
     type:'ADHOC',
@@ -222,6 +225,15 @@ export default function ConsignasExecution(){
   const [patrolExecutions,setPatrolExecutions]=useState<Execution[]>([]);
   const [reliefExecutions,setReliefExecutions]=useState<Execution[]>([]);
   const [loadWarnings,setLoadWarnings]=useState<string[]>([]);
+  const [decision,setDecision]=useState<'APPROVE'|'DISCARD'|null>(null);
+  const [protocols,setProtocols]=useState<any[]>([]);
+  const [targetProtocolId,setTargetProtocolId]=useState('');
+  const [reviewTitle,setReviewTitle]=useState('');
+  const [reviewInstruction,setReviewInstruction]=useState('');
+  const [reviewComment,setReviewComment]=useState('');
+  const [decisionError,setDecisionError]=useState('');
+  const [decisionBusy,setDecisionBusy]=useState(false);
+  const [actionNotice,setActionNotice]=useState('');
 
   const loadReviewRequests=useCallback(async()=>{
     const [requests,patrols,reliefs]=await Promise.allSettled([api.consignmentReviewRequests('PENDING'),api.patrolExecutions(),api.reliefs(100)]);
@@ -285,7 +297,24 @@ export default function ConsignasExecution(){
 
   function set<K extends keyof Filters>(key:K,value:Filters[K]){setFilters(prev=>({...prev,[key]:value}))}
   function openInspector(row:Execution){setInspectorId(row.id)}
-  function closeInspector(){setInspectorId(null)}
+  function closeInspector(){setInspectorId(null);setDecision(null);setDecisionError('')}
+  const canReview=(user==='coord'||user==='asistente');
+  async function beginApprove(){
+    if(!inspected?.reviewRequest)return;setDecisionError('');setReviewTitle(inspected.name);setReviewInstruction(inspected.reviewRequest.instruction);setReviewComment('');setDecision('APPROVE');
+    try{const list=await api.consignmentProtocols(inspected.reviewRequest.pointId);setProtocols(list);const preferred=list.find((p:any)=>p.status==='BORRADOR')??list[0];setTargetProtocolId(preferred?.id??'');}
+    catch(e){setProtocols([]);setTargetProtocolId('');setDecisionError(apiMessage(e,'No fue posible consultar los protocolos del punto.'));}
+  }
+  function beginDiscard(){setDecisionError('');setReviewComment('');setDecision('DISCARD')}
+  async function approveReview(){
+    if(!inspected?.reviewRequest||!targetProtocolId)return;setDecisionBusy(true);setDecisionError('');
+    try{const result=await api.approveConsignmentReview(inspected.reviewRequest.id,{protocolId:targetProtocolId,title:reviewTitle,instruction:reviewInstruction,comment:reviewComment});setActionNotice(result.message);closeInspector();await loadReviewRequests();}
+    catch(e){setDecisionError(apiMessage(e,'No fue posible aprobar la propuesta.'));}finally{setDecisionBusy(false)}
+  }
+  async function discardReview(){
+    if(!inspected?.reviewRequest||!reviewComment.trim())return;setDecisionBusy(true);setDecisionError('');
+    try{const result=await api.discardConsignmentReview(inspected.reviewRequest.id,reviewComment);setActionNotice(result.message);closeInspector();await loadReviewRequests();}
+    catch(e){setDecisionError(apiMessage(e,'No fue posible descartar la propuesta.'));}finally{setDecisionBusy(false)}
+  }
   function clear(){setFilters(EMPTY_FILTERS)}
   function setClient(value:string){setFilters(prev=>({...prev,client:value,point:'',post:''}))}
   function setPoint(value:string){setFilters(prev=>({...prev,point:value,post:''}))}
@@ -328,6 +357,7 @@ export default function ConsignasExecution(){
           <Field label="Fecha fin"><input type="date" value={filters.dateTo} onChange={e=>set('dateTo',e.target.value)}/></Field>
         </div>
         {dateError && <div className="cns-validation-error"><AlertTriangle size={16}/><span>{dateError}</span></div>}
+        {actionNotice&&<div className="cns-action-notice"><CheckCircle2 size={16}/><span>{actionNotice}</span><button onClick={()=>setActionNotice('')} aria-label="Cerrar mensaje"><X size={14}/></button></div>}
         {loadWarnings.map(message=><div className="cns-validation-error" key={message}><AlertTriangle size={16}/><span>{message}</span></div>)}
         <div className="cns-search-actions nov-actions"><button className="primary" disabled={!!dateError} onClick={()=>void loadReviewRequests()}><Search size={16}/>Buscar</button><button onClick={clear}><FilterX size={16}/>Limpiar filtros</button><div className="cns-rules-note"><AlertCircle size={15}/><span>Fechas obligatorias · rango máximo de 1 año</span></div><button className="export" onClick={exportCsv} disabled={!!dateError || !rows.length}><Download size={16}/>Exportar</button></div>
 
@@ -342,7 +372,7 @@ export default function ConsignasExecution(){
 
     {inspected&&<div className="nov-modal-backdrop" onClick={closeInspector}>
       <aside className="nov-modal cns-inspector" role="dialog" aria-modal="true" aria-labelledby="cns-inspector-title" onClick={e=>e.stopPropagation()}>
-        <header><div><h3 id="cns-inspector-title">Detalle de ejecución</h3><span>{inspected.code} · {typeLabel(inspected.type)} · Solo lectura</span></div><button aria-label="Cerrar detalle" onClick={closeInspector}><X size={19}/></button></header>
+        <header><div><h3 id="cns-inspector-title">Detalle de ejecución</h3><span>{inspected.code} · {typeLabel(inspected.type)}{inspected.reviewRequest?' · Pendiente de revisión':' · Solo lectura'}</span></div><button aria-label="Cerrar detalle" onClick={closeInspector}><X size={19}/></button></header>
         <div className="nov-modal-body cns-inspector-body">
           <div className="cns-inspector-summary"><span className={`cns-type ${typeClass(inspected.type)}`}>{typeIcon(inspected.type)}{typeLabel(inspected.type)}</span><strong>{inspected.name}</strong><span className={`cns-status ${statusClass(inspected.status)}`}>{statusLabel(inspected.status)}</span></div>
           <div className="nov-edit-grid three">
@@ -366,8 +396,28 @@ export default function ConsignasExecution(){
           <ReferenceImageGallery eventId={inspected.evidenceEventId}/>
           <section className="cns-timeline"><div className="cns-timeline-head"><h4>{inspected.type==='RELIEF'?'Hitos del relevo':'Últimos eventos'}</h4></div>{inspected.timeline.map(event=><article key={event.id}><i className={event.state.toLowerCase()}/><div><span>{formatDateTime(event.at)}</span><strong>{event.title}</strong><small>{event.detail}</small></div></article>)}</section>
         </div>
-        <footer><button type="button" className="close" onClick={closeInspector}><X size={15}/>Cerrar</button></footer>
+        <footer>{canReview&&inspected.reviewRequest&&<><button type="button" className="discard" onClick={beginDiscard}><Ban size={15}/>Descartar propuesta</button><button type="button" className="approve" onClick={()=>void beginApprove()}><CheckCircle2 size={15}/>Aprobar e incorporar</button></>}<button type="button" className="close" onClick={closeInspector}><X size={15}/>Cerrar</button></footer>
       </aside>
+    </div>}
+
+    {inspected?.reviewRequest&&decision&&<div className="cns-decision-backdrop" onClick={()=>!decisionBusy&&setDecision(null)}>
+      <section className="cns-decision-modal" role="dialog" aria-modal="true" aria-labelledby="cns-decision-title" onClick={e=>e.stopPropagation()}>
+        <header><div><h3 id="cns-decision-title">{decision==='APPROVE'?'Aprobar e incorporar propuesta':'Descartar propuesta'}</h3><span>{inspected.code} · {inspected.point} · {inspected.post}</span></div><button disabled={decisionBusy} onClick={()=>setDecision(null)} aria-label="Cerrar"><X size={18}/></button></header>
+        <div className="cns-decision-body">
+          {decision==='APPROVE'?<>
+            <div className="cns-decision-info"><AlertCircle size={17}/><span>La consigna se incorporará a una versión borrador. Si selecciona un protocolo publicado o activo, se creará automáticamente una nueva versión sin alterar el histórico.</span></div>
+            <label><span>Título revisado</span><input maxLength={200} value={reviewTitle} onChange={e=>setReviewTitle(e.target.value)}/></label>
+            <label><span>Instrucción revisada</span><textarea maxLength={2000} value={reviewInstruction} onChange={e=>setReviewInstruction(e.target.value)}/></label>
+            <label><span>Protocolo del punto</span><select value={targetProtocolId} onChange={e=>setTargetProtocolId(e.target.value)}><option value="">Seleccione un protocolo</option>{protocols.map((p:any)=><option key={p.id} value={p.id}>{p.code} · {p.name} · v{p.versionNo} · {p.status} · {p.consignments?.length??0}/20</option>)}</select><small>Solo se muestran protocolos del mismo punto. El puesto se conserva como alcance de la consigna.</small></label>
+            <label><span>Comentario de revisión (opcional)</span><textarea maxLength={500} value={reviewComment} onChange={e=>setReviewComment(e.target.value)}/></label>
+          </>:<>
+            <div className="cns-decision-warning"><AlertTriangle size={17}/><span>La propuesta se conservará en el historial y no modificará ningún protocolo.</span></div>
+            <label><span>Motivo del descarte</span><textarea autoFocus maxLength={500} value={reviewComment} onChange={e=>setReviewComment(e.target.value)} placeholder="Explique por qué no se incorporará la propuesta."/></label>
+          </>}
+          {decisionError&&<div className="nov-modal-error"><AlertTriangle size={16}/>{decisionError}</div>}
+        </div>
+        <footer><button disabled={decisionBusy} onClick={()=>setDecision(null)}>Cancelar</button>{decision==='APPROVE'?<button className="approve" disabled={decisionBusy||!targetProtocolId||!reviewTitle.trim()||!reviewInstruction.trim()} onClick={()=>void approveReview()}><CheckCircle2 size={15}/>{decisionBusy?'Procesando…':'Aprobar e incorporar'}</button>:<button className="discard" disabled={decisionBusy||!reviewComment.trim()} onClick={()=>void discardReview()}><Ban size={15}/>{decisionBusy?'Procesando…':'Confirmar descarte'}</button>}</footer>
+      </section>
     </div>}
   </div>
 }
@@ -375,3 +425,4 @@ export default function ConsignasExecution(){
 function Metric({icon,label,value,subtitle,tone}:{icon:ReactNode;label:string;value:string|number;subtitle:string;tone:'blue'|'green'|'purple'|'red'}){return <article className={`cns-metric ${tone}`}><span>{icon}</span><div><small>{label}</small><strong>{value}</strong><p>{subtitle}</p></div></article>}
 function Field({label,children}:{label:string;children:ReactNode}){return <label className="cns-field"><span>{label}</span>{children}</label>}
 function ModalReadField({label,value}:{label:string;value:string}){return <label className="nov-modal-field"><span>{label}</span><input value={value} disabled readOnly/></label>}
+function apiMessage(error:unknown,fallback:string){if(error instanceof Error){const raw=error.message.replace(/^\d+\s*/, '');try{const parsed=JSON.parse(raw);return parsed.details||parsed.message||fallback}catch{return raw||fallback}}return fallback}
