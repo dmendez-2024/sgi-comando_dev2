@@ -1,4 +1,5 @@
 import {useEffect,useMemo,useRef,useState} from 'react';
+import {PatrolPlanPicker} from '../components/PatrolPlan';
 import type {CSSProperties,MouseEvent as ReactMouseEvent,ReactNode} from 'react';
 import {
   AlertTriangle,
@@ -525,6 +526,7 @@ function AtsPage({point,onBack}:{point:PointRow;onBack:()=>void}){
 }
 
 function PostLocationMap({planUrl,x,y,onSelect}:{planUrl:string;x?:number|null;y?:number|null;onSelect:(x:number,y:number)=>void}){
+  const [expanded,setExpanded]=useState(false);
   const hasSelection=x!=null&&y!=null;
   if(!planUrl){
     return <div className="post-map-picker post-map-picker-empty"><div className="post-map-empty"><MapIcon size={26}/><strong>Plano ATS no disponible</strong><span>Importe primero un archivo .ats desde Configuración → ATS para seleccionar la ubicación del Puesto.</span></div></div>;
@@ -539,6 +541,8 @@ function PostLocationMap({planUrl,x,y,onSelect}:{planUrl:string;x?:number|null;y
     onSelect(Number(nx.toFixed(6)),Number(ny.toFixed(6)));
   };
   return <div className="post-map-picker">
+    <div className="post-map-expand-row"><button type="button" onClick={()=>setExpanded(true)}><MapIcon size={14}/>Expandir plano</button></div>
+    {expanded&&<PatrolPlanPicker title="Ubicación del puesto en plano ATS" planUrl={planUrl} checkpoints={hasSelection?[{id:'puesto',code:'Puesto',atsX:x,atsY:y}]:[]} selectedId={hasSelection?'puesto':undefined} error="" onCancel={()=>setExpanded(false)} onConfirm={async(nx,ny)=>{onSelect(Number(nx.toFixed(6)),Number(ny.toFixed(6)));setExpanded(false)}}/>}
     <div className="post-map-real-surface" onClick={choose} role="button" tabIndex={0} aria-label="Seleccione la ubicación del Puesto sobre el plano ATS">
       <img src={planUrl} alt="Plano ATS del Punto" draggable={false}/>
       {hasSelection&&<span className="post-map-real-pin" style={{left:`${x!*100}%`,top:`${y!*100}%`}}><MapPin size={18}/></span>}
@@ -821,9 +825,11 @@ function PostsPage({point,onBack}:{point:PointRow;onBack:()=>void}){
           <section className="posts-section posts-sgi-config">
             <header><h4>B. Configuración SGI</h4></header>
             {draft&&<div className="posts-config-form">
+              <div className="posts-config-fields">
               <label><span>Tipo de Puesto</span><select value={draft.postType} onChange={event=>selectType(event.target.value as PostOperationalConfig['postType'])}><option value="CAA">CAA</option><option value="PAT">PAT</option><option value="VIG">VIG</option><option value="MIX">MIX</option></select></label>
               <label className={`posts-description ${!draft.description.trim()?'posts-invalid-field':''}`}><span>Descripción *</span><textarea aria-invalid={!draft.description.trim()} value={draft.description} maxLength={600} onChange={event=>setDraft({...draft,description:event.target.value})} placeholder="Describe brevemente la función operacional del puesto…"/>{!draft.description.trim()&&<small className="posts-field-error">Ingresa la descripción operacional del Puesto.</small>}</label>
               <div className="posts-config-status"><span>Estado de configuración</span><b className={isConfigCurrent(draft)?'complete':'pending'}>{isConfigCurrent(draft)?'Completo':'Pendiente'}</b></div>
+              </div>
               <div className={`posts-map-field ${!hasPlanLocation?'posts-invalid-field':''}`}><div className="posts-map-title"><div><strong>Ubicación en el plano *</strong><span>{atsPackage?'Seleccione directamente en el plano importado desde el archivo .ats.':'No existe un archivo .ats vigente para este Punto.'}</span></div><Info size={14}/></div><PostLocationMap planUrl={atsPlanUrl} x={draft.atsLocationX} y={draft.atsLocationY} onSelect={(x:number,y:number)=>setDraft({...draft,atsPackageId:atsPackage?.id??null,atsLocationX:x,atsLocationY:y,atsLocationKey:'XY',atsLocationLabel:`Ubicación en plano (${(x*100).toFixed(1)}%, ${(y*100).toFixed(1)}%)`})}/>{!hasPlanLocation&&<small className="posts-field-error">Selecciona la ubicación del Puesto directamente en el plano ATS.</small>}</div>
             </div>}
           </section>
