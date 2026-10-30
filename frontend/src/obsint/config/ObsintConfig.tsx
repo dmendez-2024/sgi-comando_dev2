@@ -1,8 +1,9 @@
 import {useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode} from 'react';
 import {AlertTriangle, ArrowLeft, BrushCleaning, CarFront, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ClipboardList, Factory, Package, Pencil, Plus, Power, Save, Search, Send, ShieldCheck, Trash2, UserRound, UsersRound, X} from 'lucide-react';
-import {errorText, obsintConfigApi, type ObsintCameraOption, type ObsintCategory, type ObsintConsignaConfig, type ObsintConsignaSave, type ObsintConsignmentOption, type ObsintFrequency, type ObsintProtocol, type ObsintSlot} from '../obsintApi';
+import {errorText, obsintConfigApi, type ObsintCameraOption, type ObsintCategory, type ObsintConsignaConfig, type ObsintConsignaSave, type ObsintConsignmentOption, type ObsintFrequency, type ObsintProtocol} from '../obsintApi';
 import {CATEGORIES, categoryLabel, DAYS, protocolStatusLabel} from '../obsint';
 import {ObsintMonitoringPanel} from './ObsintMonitoringPanel';
+import {ObsintScheduleEditor, slotsFromWeek, weekFromSlots} from './ObsintScheduleEditor';
 import '../obsint.css';
 import './obsint-config.css';
 
@@ -240,10 +241,7 @@ function ConsignaForm({protocolId,initial,cameras,linkable,defaultCategory,onSav
   linkable:ObsintConsignmentOption[];defaultCategory:ObsintCategory;onSaved:(c:ObsintConsignaConfig)=>void;onCancel:()=>void}){
   const [form,setForm]=useState<ObsintConsignaSave>(()=>({consignmentCode:initial?.consignmentCode??null,title:initial?.title??'',description:initial?.description??'',instruction:initial?.instruction??'',category:initial?.category??defaultCategory,frequency:initial?.frequency??'EVERY_SHIFT',
     timeLimitSeconds:initial?.timeLimitSeconds??120,active:initial?.active??true,cameraIds:initial?.cameraIds??[],schedule:initial?.schedule??[]}));
-  const [times,setTimes]=useState<Record<number,{start:string;end:string}>>(()=>Object.fromEntries(DAYS.map((_,i)=>{
-    const saved=initial?.schedule.find(slot=>slot.dayOfWeek===i+1);
-    return [i+1,{start:saved?.start??'',end:saved?.end??''}];
-  })) as Record<number,{start:string;end:string}>);
+  const [week,setWeek]=useState(()=>weekFromSlots(initial?initial.schedule:null));
   const [saving,setSaving]=useState(false);
   const [error,setError]=useState('');
   const [categoryAbove,setCategoryAbove]=useState(false);
@@ -255,7 +253,6 @@ function ConsignaForm({protocolId,initial,cameras,linkable,defaultCategory,onSav
     return()=>{document.removeEventListener('pointerdown',closeOutside);document.removeEventListener('keydown',closeOnEscape)};
   },[]);
   const set=<K extends keyof ObsintConsignaSave>(key:K,value:ObsintConsignaSave[K])=>setForm(prev=>({...prev,[key]:value}));
-  const setTime=(day:number,key:'start'|'end',value:string)=>setTimes(prev=>({...prev,[day]:{...prev[day],[key]:value}}));
   const toggleCamera=(id:string)=>set('cameraIds',form.cameraIds.includes(id)?form.cameraIds.filter(x=>x!==id):[...form.cameraIds,id]);
   /** Las tareas nuevas (y las ya vinculadas) salen de una consigna marcada OBSINT en Consignas; las anteriores pueden quedar sin vincular. */
   const linkRequired=!initial||Boolean(initial.consignmentCode);
@@ -268,13 +265,8 @@ function ConsignaForm({protocolId,initial,cameras,linkable,defaultCategory,onSav
 
   async function submit(e:FormEvent){
     e.preventDefault();
-    const slots:ObsintSlot[]=[];
-    for(let i=0;i<DAYS.length;i++){
-      const day=i+1,{start,end}=times[day];
-      if(Boolean(start)!==Boolean(end)){setError(`Complete el horario de inicio y fin del ${DAYS[i]}.`);return}
-      if(start&&end){if(end<=start){setError(`El horario de fin del ${DAYS[i]} debe ser posterior al inicio.`);return}slots.push({dayOfWeek:day,start,end})}
-    }
-    if(!slots.length){setError('Ingrese un horario de inicio y fin en al menos un día.');return}
+    const {slots,error:scheduleError}=slotsFromWeek(week);
+    if(scheduleError){setError(scheduleError);return}
     if(linkRequired&&!form.consignmentCode){setError('Seleccione la consigna de Consignas que verificará el monitorista.');return}
     setSaving(true);setError('');
     const body={...form,schedule:slots};
@@ -309,15 +301,7 @@ function ConsignaForm({protocolId,initial,cameras,linkable,defaultCategory,onSav
       <Field label="Frecuencia" required><select value={form.frequency} onChange={e=>set('frequency',e.target.value as ObsintFrequency)} required>{FREQUENCIES.map(option=><option key={option.value} value={option.value}>{option.label}</option>)}</select></Field>
       <Field label="Tiempo máximo de ejecución" required><select value={form.timeLimitSeconds} onChange={e=>set('timeLimitSeconds',Number(e.target.value))}>{timeLimits.map(s=><option key={s} value={s}>{timeLimitLabel(s)}</option>)}</select></Field>
     </div>
-    <fieldset className="obs-cfg-fieldset"><legend>Horario de ejecución<RequiredMark/></legend>
-      <table className="obs-cfg-schedule edit"><thead><tr><th scope="col">Día</th><th scope="col" className="obs-cfg-time-heading">Horario<br/>inicio</th><th scope="col" className="obs-cfg-time-heading">Horario<br/>fin</th></tr></thead><tbody>
-        {DAYS.map((name,i)=>{const day=i+1;return <tr key={day}>
-          <td>{name}</td>
-          <td><input type="time" aria-label={`Inicio del ${name}`} value={times[day].start} onChange={e=>setTime(day,'start',e.target.value)}/></td>
-          <td><input type="time" aria-label={`Fin del ${name}`} value={times[day].end} onChange={e=>setTime(day,'end',e.target.value)}/></td>
-        </tr>})}
-      </tbody></table>
-    </fieldset>
+    <ObsintScheduleEditor value={week} onChange={setWeek}/>
 
     <fieldset className="obs-cfg-fieldset"><legend>Cámaras asociadas<RequiredMark/> <small>{form.cameraIds.length}/4</small></legend>
       <p className="obs-cfg-camera-hint">Seleccione las cámaras desde los componentes de seguridad configurados.</p>
