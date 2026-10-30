@@ -75,17 +75,17 @@ Pantalla de la diapositiva 10. Se abre desde Configuración del Punto.
 
 - **Cabecera:** contexto del punto y versión del protocolo (`PRO-OBS-0001 v2`, fecha de actualización).
 - **Barra del protocolo:**
-  - Selector de versión (historial) y estado: **Borrador**, **Publicado · inactivo** o **Activo**.
+  - Selector de versión (historial de solo lectura) y estado: **Activa** o **Inactiva**.
+  - **Guardar = activar:** no hay botones Publicar ni Activar. Cada "Guardar y aplicar" o "Eliminar" de una tarea crea la versión siguiente ya activa, y la Consola la usa desde ese momento.
   - Acciones según el estado:
 
     | Estado | Acciones |
     |---|---|
-    | Borrador | Publicar versión, Descartar |
-    | Publicado · inactivo | Activar, Nueva versión |
-    | Activo | Inactivar, Nueva versión |
+    | Activa | Inactivar (OBSINT deja de salir en la Consola para el punto) |
+    | Inactiva (versión anterior) | Volver a esta versión |
 
 - **Izquierda:** categorías de tareas con contador. "Todas las tareas" y las 6 categorías: SSO, Producción industrial, Logística y almacenamiento, Orden y limpieza, Movilidad y tránsito interno, Atención al cliente.
-- **Centro:** tabla de tareas (código OBS‑NNN, nombre, categoría, frecuencia, estado), búsqueda, paginación y "Nueva tarea". Solo se puede editar en el borrador.
+- **Centro:** tabla de tareas (código OBS‑NNN, nombre, categoría, frecuencia, estado), búsqueda, paginación y "Nueva tarea". Se edita sobre la versión activa; al elegir una versión anterior, la tabla queda en solo lectura.
 - **Derecha:** detalle de la tarea, o su formulario:
   - **Consigna:** la consigna de Servicios / Consignas, marcada OBSINT, de la que sale la tarea (ver §3, "OBSINT como puesto"). Obligatoria en tareas nuevas; nombre e instrucción vienen de ahí y se ven en solo lectura.
   - Nombre, categoría, **frecuencia** (cada turno, cada 2 h, cada 4 h, una vez al día) y tiempo máximo de ejecución (30 s, 1, 2, 3, 5 o 10 min).
@@ -123,6 +123,8 @@ Pantalla de la diapositiva 10. Se abre desde Configuración del Punto.
 ### Protocolo OBSINT (versiones, como el módulo Consignas)
 
 - **Un protocolo por punto.** Se edita en **BORRADOR** → al publicarlo pasa a **INACTIVO** y queda inmutable → al activarlo pasa a **ACTIVO**.
+- **Guardar = activar** (lo que usa la pantalla): `POST/PUT/DELETE /points/{pointId}/tasks[/{code}]` hacen en una sola transacción nueva versión (copia de la activa) → cambio → reglas de publicar → ACTIVO. Si algo no cumple, se revierte todo y la versión activa no cambia. Las versiones quedan como historial (quién y cuándo). Un BORRADOR que quedara del flujo anterior se descarta en el próximo guardado. Una versión puede quedar activa sin tareas (si se borra la última): la fila OBSINT del punto sale bloqueada.
+- Los endpoints de borrador, publicar y activar se mantienen por compatibilidad (los usan los tests).
 - La base de datos garantiza como máximo **un ACTIVO y un BORRADOR por punto** (índices únicos parciales). Al activar una versión, la que estaba activa pasa a INACTIVO.
 - **Nueva versión:** crea un borrador con número de versión +1, copiando las consignas (con cámaras y horario) de la última versión. Si ya existe un borrador, se abre ese.
 - **Publicar exige:**
@@ -134,7 +136,7 @@ Pantalla de la diapositiva 10. Se abre desde Configuración del Punto.
 ### OBSINT como "puesto" en Consignas (diapositiva 9)
 
 - En **Servicios / Consignas**, pestaña **Alcance**, cada consigna tiene la casilla **OBSINT**: "el Monitorista OBSINT verifica esta Consigna por cámara". En "Cobertura por Puesto" aparece la tarjeta **OBSINT** junto a los puestos.
-- Se guarda en `consignment.obsint` (V102). Es independiente del alcance de guardias:
+- Se guarda en `consignment.obsint` (V103). Es independiente del alcance de guardias:
   - "Todo el Punto" + OBSINT → la reciben los guardias y el monitorista.
   - "Puestos específicos" sin ningún puesto + OBSINT → **solo el monitorista**. Sin OBSINT sigue exigiendo al menos un puesto.
   - Las consultas de SGI Operador no cambian: una consigna solo OBSINT no le llega a ningún guardia.
@@ -155,7 +157,7 @@ Pantalla de la diapositiva 10. Se abre desde Configuración del Punto.
 
 ### Caso y tareas (Consola)
 
-- **Monitoristas del Punto (pestaña OBSINT, panel "Monitoristas OBSINT"):** la orden llega a **Kaibil** y desde **Servicios → Asignación** se manda a una Compañía; esa es la Compañía del Punto (`point.company_id`) y en OBSINT **no se cambia**. En la pestaña OBSINT solo se eligen **uno o más monitoristas**, entre los empleados activos de esa Compañía con cargo "Monitor" o "Agente de Consola de Monitoreo Senior". Se guarda en `obsint_point_monitor` (V105, una fila por monitorista; reemplazó a `obsint_point_monitoring` de V103/V104). Endpoints: `/api/obsint/monitoring/points/{pointId}` (GET/PUT) y `/monitors` (`ObsintMonitoringResource`), mismos roles que la configuración.
+- **Monitoristas del Punto (pestaña OBSINT, panel "Monitoristas OBSINT"):** la orden llega a **Kaibil** y desde **Servicios → Asignación** se manda a una Compañía; esa es la Compañía del Punto (`point.company_id`) y en OBSINT **no se cambia**. En la pestaña OBSINT solo se eligen **uno o más monitoristas**, entre los empleados activos de esa Compañía con cargo "Monitor" o "Agente de Consola de Monitoreo Senior". Se guarda en `obsint_point_monitor` (V106, una fila por monitorista; reemplazó a `obsint_point_monitoring` de V104/V105). Endpoints: `/api/obsint/monitoring/points/{pointId}` (GET/PUT) y `/monitors` (`ObsintMonitoringResource`), mismos roles que la configuración.
 - **Alcance en la consola** (`ObsintPlatform.visiblePoints`):
   - **MONITOR** (`monitorSees`), siempre que esté de **turno en curso** en un puesto de Monitoreo (Asignaciones, plan publicado o cerrado; cuenta quien cubrió el turno; persona por `persona_id` del token de IDENT o, en UAT, `operator_employee_binding`): ve el Punto si es **uno de sus monitoristas**; y si no se eligió ninguno o ninguno está de turno, lo ve **cualquier monitor de turno de la Compañía del Punto**. Fuera de turno no ve nada; un Punto aún en Kaibil (sin Compañía) no lo ve ningún monitor.
   - **Demás roles:** los Puntos cuya Compañía está en su alcance (misma regla que `requirePoint`): roles de país, todas; Coordinador y Asistente, las asignadas directamente; los demás, las de su zona, región o asignación directa (`user_operational_scope`).
@@ -171,7 +173,7 @@ Pantalla de la diapositiva 10. Se abre desde Configuración del Punto.
   - Fotograma JPEG del video elegido.
   - Máximo 6 por tarea, de hasta 5 MiB, solo JPEG, PNG o WebP (detectados por sus bytes).
   - Se guarda en MinIO, en el bucket de evidencias de Comando, con SHA‑256.
-- **Mensajes al agente (modo prueba):** solo se registran, con `deliveryStatus = TEST`: **no se envían al agente** y no deben salir a producción como reales. V99 agregó `TEST` y pasó a `TEST` los mensajes ya guardados como `SENT`, porque ninguno se envió. `SENT` y `FAILED` quedan para cuando exista el envío real a SGI Operador (SITC).
+- **Mensajes al agente (modo prueba):** solo se registran, con `deliveryStatus = TEST`: **no se envían al agente** y no deben salir a producción como reales. V100 agregó `TEST` y pasó a `TEST` los mensajes ya guardados como `SENT`, porque ninguno se envió. `SENT` y `FAILED` quedan para cuando exista el envío real a SGI Operador (SITC).
 - Cada usuario ve solo sus propios casos.
 
 ### Seguridad
@@ -275,12 +277,12 @@ const obs = await obsintConfigApi.summary(pointId);  // {status, meta:'Protocolo
 | `ObsintReportPdf.java` | Dibuja el PDF con Apache PDFBox (dependencia `org.apache.pdfbox:pdfbox:3.0.3`); logo en `resources/obsint/sgi-comando-logo.png` |
 
 **Base de datos:**
-- `V96__obsint_console.sql`: la primera versión de la consola. **No se modifica.** Era V91 y luego V92: todas las de OBSINT se corrieron porque `sgiComandoDev` tomó V91 (SMC) y V92 a V95 (relevos, SMC, Compañías, inventario).
-- `V97__obsint_config_and_security_components.sql`: transforma V96 al modelo actual (ver §7).
-- `V98__secelec_camera_channel_geo_streaming.sql`: canal, coordenadas y streaming de las cámaras (ver §7).
-- `V99__obsint_agent_message_test_status.sql`: estado `TEST` (modo prueba) para los mensajes al agente (ver §3).
-- `V100__obsint_consigna_description.sql` y `V101__obsint_consigna_frequency.sql`: descripción y frecuencia de cada consigna OBSINT (pantalla de crear tarea).
-- `V102__obsint_consignment_link.sql`: casilla OBSINT en `consignment` y vínculo `obsint_consigna.consignment_code` (ver §3, "OBSINT como puesto").
+- `V97__obsint_console.sql`: la primera versión de la consola. **No se modifica.** Era V91, luego V92 y luego V96: todas las de OBSINT se corrieron porque `sgiComandoDev` tomó V91 (SMC), V92 a V95 (relevos, SMC, Compañías, inventario) y V96 (decisión sobre propuestas de consignas).
+- `V98__obsint_config_and_security_components.sql`: transforma V97 al modelo actual (ver §7).
+- `V99__secelec_camera_channel_geo_streaming.sql`: canal, coordenadas y streaming de las cámaras (ver §7).
+- `V100__obsint_agent_message_test_status.sql`: estado `TEST` (modo prueba) para los mensajes al agente (ver §3).
+- `V101__obsint_consigna_description.sql` y `V102__obsint_consigna_frequency.sql`: descripción y frecuencia de cada consigna OBSINT (pantalla de crear tarea).
+- `V103__obsint_consignment_link.sql`: casilla OBSINT en `consignment` y vínculo `obsint_consigna.consignment_code` (ver §3, "OBSINT como puesto").
 - **Migraciones nuevas: desde V106.** `sgiComandoDev` usa V91 a V95; revisar el último número en `sgiComandoDev` antes de crear una.
 
 **Pruebas**
@@ -323,7 +325,7 @@ const obs = await obsintConfigApi.summary(pointId);  // {status, meta:'Protocolo
 - Integración con Comando: el botón OBSINT en `src/pages/ConsolaMonitor.tsx`, los `export` de `src/api.ts` y la coordinación con quien hace el menú de Servicios.
 
 **Persona B — backend y algo de frontend**
-- Backend completo: `secelec/*` y `obsint/*`, migraciones (V96 no se toca; V97 y siguientes), `sgi.secelec.secret-key` y todas las pruebas.
+- Backend completo: `secelec/*` y `obsint/*`, migraciones (V97 no se toca; V98 y siguientes), `sgi.secelec.secret-key` y todas las pruebas.
 - Frontend de Componentes de Seguridad: `src/secelec/SecurityComponents.tsx` y `secelec.css`.
 - Contrato de la API: `src/secelec/secelecApi.ts` y `src/obsint/obsintApi.ts` (tipos y llamadas).
 
@@ -338,20 +340,20 @@ const obs = await obsintConfigApi.summary(pointId);  // {status, meta:'Protocolo
 
 ---
 
-## 7. Base de datos (V96 a V102)
+## 7. Base de datos (V97 a V103)
 
-V96 creó la consola con un catálogo DEMO global. **V97 la transforma**:
-- **Borra los datos DEMO de V96** (casos, tareas, evidencias, mensajes y consignas). Las fotos de evidencia de esos casos quedan en MinIO, en `evidence/{tenant}/obsint/…`, y pueden borrarse a mano.
+V97 creó la consola con un catálogo DEMO global. **V98 la transforma**:
+- **Borra los datos DEMO de V97** (casos, tareas, evidencias, mensajes y consignas). Las fotos de evidencia de esos casos quedan en MinIO, en `evidence/{tenant}/obsint/…`, y pueden borrarse a mano.
 - Crea `secelec_component`, `obsint_protocol` y `obsint_consigna_schedule`.
 - Agrega a `obsint_consigna` las columnas `protocol_id`, `point_id` y `category`. El código pasa a ser único por protocolo.
 - Rehace `obsint_consigna_camera` para que apunte a `secelec_component`, y cambia la llave de `obsint_evidence.camera_id` a `secelec_component`.
 - Elimina `obsint_camera`.
 
-Probado sobre PostgreSQL 17 de dos formas: aplicando V96 y V97 sobre una base vacía, y aplicando V97 sobre una base que ya tenía datos DEMO de V96.
+Probado sobre PostgreSQL 17 de dos formas: aplicando V97 y V98 sobre una base vacía, y aplicando V98 sobre una base que ya tenía datos DEMO de V97.
 
-**V98** agrega a `secelec_component` las columnas `channel`, `latitude`, `longitude` (`numeric(9,6)`), `streaming_enabled` y `streaming_mode` (COPY / TRANSCODE), con sus CHECK de rango. Las cámaras existentes quedan con canal 1 y streaming activo en modo COPY. En las demás familias las cinco columnas quedan en null.
+**V99** agrega a `secelec_component` las columnas `channel`, `latitude`, `longitude` (`numeric(9,6)`), `streaming_enabled` y `streaming_mode` (COPY / TRANSCODE), con sus CHECK de rango. Las cámaras existentes quedan con canal 1 y streaming activo en modo COPY. En las demás familias las cinco columnas quedan en null.
 
-**V99** agrega el estado `TEST` a los mensajes al agente. **V100** y **V101** agregan `description` y `frequency` (EVERY_SHIFT, EVERY_2_HOURS, EVERY_4_HOURS, DAILY) a `obsint_consigna`. **V102** agrega `consignment.obsint` (la casilla de Consignas) y `obsint_consigna.consignment_code` (vínculo por código).
+**V100** agrega el estado `TEST` a los mensajes al agente. **V101** y **V102** agregan `description` y `frequency` (EVERY_SHIFT, EVERY_2_HOURS, EVERY_4_HOURS, DAILY) a `obsint_consigna`. **V103** agrega `consignment.obsint` (la casilla de Consignas) y `obsint_consigna.consignment_code` (vínculo por código).
 
 Esquema resultante (todas las tablas llevan `instance_country_id`, `created_at` y `updated_at`):
 
@@ -389,6 +391,9 @@ Esquema resultante (todas las tablas llevan `instance_country_id`, `created_at` 
 | GET | `/points/{pointId}/protocols` | Versiones del protocolo, con sus consignas |
 | GET | `/points/{pointId}/cameras` | Cámaras que se pueden asociar |
 | GET | `/points/{pointId}/consignments` | Consignas marcadas OBSINT del protocolo de Consignas activo (`code`, `title`, `instruction`): las que se pueden vincular con `consignmentCode` al crear o editar una tarea |
+| POST | `/points/{pointId}/tasks` | Guardar = activar: agrega una tarea y deja activa la nueva versión (crea la v1 si no hay). Devuelve `{protocol, code}` |
+| PUT | `/points/{pointId}/tasks/{code}` | Guardar = activar: cambia la tarea `code` y deja activa la nueva versión. Devuelve `{protocol, code}` |
+| DELETE | `/points/{pointId}/tasks/{code}` | Guardar = activar: quita la tarea y deja activa la nueva versión. Devuelve el protocolo |
 | POST | `/points/{pointId}/protocols/draft` | Abre el borrador (existente, nueva versión o v1) |
 | DELETE | `/protocols/{id}` | Descarta el borrador |
 | POST | `/protocols/{id}/publish` | Publica (BORRADOR → INACTIVO) |
@@ -488,7 +493,7 @@ Con `consignmentCode`, `title` e `instruction` salen de Consignas. Sin él (tare
   | `ObsintResourceTest` | `@QuarkusTest` | 4 |
   | `SecElecResourceTest` | `@QuarkusTest` | 4 |
 
-  Las `@QuarkusTest` corrieron contra un PostgreSQL 17 y un MinIO temporales, con todas las migraciones V1–V96 aplicadas.
+  Las `@QuarkusTest` corrieron contra un PostgreSQL 17 y un MinIO temporales, con todas las migraciones V1–V106 aplicadas.
   - Las migraciones **no crean** los datos UAT que usan las pruebas de Comando (usuarios `coord`, `dnacional`…, compañía y Punto `40000000-…0001`). Para correrlas en una base vacía se sembraron a mano: cliente, compañía, servicio, Punto, usuarios con la contraseña UAT de V6, y alcances.
   - En una base local ya poblada no hace falta sembrar nada.
 - **Pantallas revisadas en el navegador** con el backend real, usando una página de vista previa provisional que ya se eliminó:

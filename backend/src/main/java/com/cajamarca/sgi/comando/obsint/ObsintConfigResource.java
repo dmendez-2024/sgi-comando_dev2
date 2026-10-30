@@ -18,6 +18,8 @@ import org.jboss.resteasy.reactive.server.ServerExceptionMapper;
  * Configuración OBSINT del Punto (diapositiva 10 de "OBSINT Estructura": "Vincular Consignas – Cámara – Horario").
  * Protocolo versionado igual que Consignas: BORRADOR (editable) → publicar → INACTIVO (inmutable) → activar → ACTIVO.
  * Un solo protocolo por Punto; "nueva versión" copia las consignas del último publicado a un BORRADOR.
+ * La pantalla usa "guardar = activar" (/points/{pointId}/tasks): cada cambio de una tarea crea la versión siguiente ya ACTIVA,
+ * así las versiones quedan como historial sin pasos de Publicar/Activar.
  */
 @Path("/api/obsint/config")
 @Produces(MediaType.APPLICATION_JSON)
@@ -48,6 +50,8 @@ public class ObsintConfigResource {
     public record SaveConsigna(String consignmentCode, String title, String description, String instruction, String category, String frequency, Integer timeLimitSeconds, Boolean active,
                                List<UUID> cameraIds, List<SlotView> schedule) {}
     public record Summary(String status, String meta, Integer activeVersion, int activeConsignas, boolean hasDraft, List<String> warnings) {}
+    /** Resultado de guardar una tarea: la nueva versión activa y el código de la tarea guardada. */
+    public record TaskSaved(ProtocolView protocol, String code) {}
 
     /** Versiones del protocolo del Punto, la más reciente primero. */
     @GET @Path("/points/{pointId}/protocols") @Transactional
@@ -117,13 +121,7 @@ public class ObsintConfigResource {
         requireDraft(p);
         List<ObsintConsigna> items = consignas(p.id);
         if (items.stream().noneMatch(c -> c.active)) throw new ObsintRuleException("El protocolo debe tener al menos una consigna activa.");
-        // Una tarea cuya consigna dejó de estar marcada OBSINT no bloquea: la Consola la salta y el resumen lo advierte.
-        for (ObsintConsigna c : items) {
-            if (!c.active) continue;
-            if (c.cameras.isEmpty()) throw new ObsintRuleException(c.code + ": asocie al menos una cámara.");
-            if (c.cameras.stream().anyMatch(cam -> cam.status == SecElecComponent.Status.INACTIVE)) throw new ObsintRuleException(c.code + ": tiene cámaras inactivas.");
-            if (c.schedule.isEmpty()) throw new ObsintRuleException(c.code + ": defina el horario de al menos un día.");
-        }
+        validate(items);
         p.status = "INACTIVO";
         p.publishedAt = Instant.now();
         p.updatedBy = platform.username();
@@ -153,6 +151,31 @@ public class ObsintConfigResource {
         p.status = "INACTIVO";
         p.updatedBy = platform.username();
         return view(p);
+    }
+
+    /** Agrega una tarea y deja activa la nueva versión. Si el Punto no tiene protocolo, crea la versión 1. */
+    @POST @Path("/points/{pointId}/tasks") @Transactional @Consumes(MediaType.APPLICATION_JSON)
+    public TaskSaved addTask(@PathParam("pointId") UUID pointId, SaveConsigna body) {
+        ObsintProtocol p = nextVersion(pointId);
+        ConsignaView c = createConsigna(p.id, body);
+        return new TaskSaved(activateNow(p), c.code());
+    }
+
+    /** Cambia una tarea (por su código, que se conserva entre versiones) y deja activa la nueva versión. */
+    @PUT @Path("/points/{pointId}/tasks/{code}") @Transactional @Consumes(MediaType.APPLICATION_JSON)
+    public TaskSaved updateTask(@PathParam("pointId") UUID pointId, @PathParam("code") String code, SaveConsigna body) {
+        ObsintProtocol p = nextVersion(pointId);
+        ObsintConsigna c = task(p, code);
+        apply(c, body);
+        return new TaskSaved(activateNow(p), c.code);
+    }
+
+    /** Quita una tarea y deja activa la nueva versión (puede quedar sin tareas: la Consola no muestra nada del Punto). */
+    @DELETE @Path("/points/{pointId}/tasks/{code}") @Transactional
+    public ProtocolView deleteTask(@PathParam("pointId") UUID pointId, @PathParam("code") String code) {
+        ObsintProtocol p = nextVersion(pointId);
+        task(p, code).delete();
+        return activateNow(p);
     }
 
     @POST @Path("/protocols/{id}/consignas") @Transactional @Consumes(MediaType.APPLICATION_JSON)
@@ -196,6 +219,7 @@ public class ObsintConfigResource {
         Optional<ObsintProtocol> active = all.stream().filter(p -> "ACTIVO".equals(p.status)).findFirst();
         if (active.isEmpty()) return new Summary("blocked", hasDraft ? "Borrador sin publicar · sin protocolo activo" : "Sin protocolo OBSINT activo", null, 0, hasDraft, List.of());
         List<ObsintConsigna> items = consignas(active.get().id).stream().filter(c -> c.active).toList();
+        if (items.isEmpty()) return new Summary("blocked", "Protocolo v%d activo sin tareas activas".formatted(active.get().versionNo), active.get().versionNo, 0, hasDraft, List.of());
         List<String> warnings = new ArrayList<>();
         Map<String, ObsintPlatform.LinkedConsignment> linkable = platform.obsintConsignments(pointId);
         for (ObsintConsigna c : items)
@@ -230,7 +254,7 @@ public class ObsintConfigResource {
             c.consignmentCode = null;
             c.title = text(body.title(), "El nombre de la consigna es obligatorio.", 160);
             c.instruction = text(body.instruction(), "La descripción de la consigna es obligatoria.", 1000);
-            // Sin descripción se usa la instrucción, igual que V100 con las consignas anteriores.
+            // Sin descripción se usa la instrucción, igual que V101 con las consignas anteriores.
             c.description = body.description() == null || body.description().isBlank() ? c.instruction : text(body.description(), "", 1000);
         }
         if (body.category() == null || !CATEGORIES.contains(body.category())) throw new BadRequestException("Categoría inválida.");
@@ -265,6 +289,44 @@ public class ObsintConfigResource {
         }
         c.schedule.clear();
         c.schedule.addAll(slots);
+    }
+
+    /** Reglas para que una versión pueda usarse en la Consola. */
+    private static void validate(List<ObsintConsigna> items) {
+        // Una tarea cuya consigna dejó de estar marcada OBSINT no bloquea: la Consola la salta y el resumen lo advierte.
+        for (ObsintConsigna c : items) {
+            if (!c.active) continue;
+            if (c.cameras.isEmpty()) throw new ObsintRuleException(c.code + ": asocie al menos una cámara.");
+            if (c.cameras.stream().anyMatch(cam -> cam.status == SecElecComponent.Status.INACTIVE)) throw new ObsintRuleException(c.code + ": tiene cámaras inactivas.");
+            if (c.schedule.isEmpty()) throw new ObsintRuleException(c.code + ": defina el horario de al menos un día.");
+        }
+    }
+
+    /** Versión siguiente (copia de la activa, o de la última) donde se aplica un cambio de "guardar = activar". */
+    private ObsintProtocol nextVersion(UUID pointId) {
+        platform.requirePoint(pointId);
+        // Un borrador del flujo Publicar → Activar ya no se puede abrir en la pantalla: se descarta y se parte de la activa.
+        for (ObsintProtocol old : versions(pointId)) {
+            if (!"BORRADOR".equals(old.status)) continue;
+            ObsintConsigna.delete("protocolId", old.id);
+            old.delete();
+        }
+        em.flush();
+        return protocol(draft(pointId).id());
+    }
+
+    /** Publica y activa en el mismo paso; si algo no cumple las reglas, la transacción se revierte y la versión activa sigue igual. */
+    private ProtocolView activateNow(ObsintProtocol p) {
+        em.flush();
+        validate(consignas(p.id));
+        p.status = "INACTIVO";
+        p.publishedAt = Instant.now();
+        return activate(p.id);
+    }
+
+    private ObsintConsigna task(ObsintProtocol p, String code) {
+        return ObsintConsigna.<ObsintConsigna>find("protocolId=?1 and code=?2", p.id, code).firstResultOptional()
+            .orElseThrow(() -> new NotFoundException("Tarea " + code + " no encontrada en la versión activa"));
     }
 
     private void copy(ObsintConsigna old, UUID protocolId) {

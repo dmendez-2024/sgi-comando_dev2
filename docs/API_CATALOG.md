@@ -1,5 +1,11 @@
 # SGI: Comando — API / Interface Catalog v4.1
 
+## Revisión de consignas propuestas desde SGI Operador — OPR-CNS-REVIEW-001
+
+- `POST /api/consignment-review-requests/{requestId}/approve`: para `COORDINADOR_COMPANIA` y `ASISTENTE_COORDINACION`. Incorpora la propuesta a un protocolo del mismo punto. Si la versión elegida no es `BORRADOR`, crea o reutiliza el borrador de la serie. Conserva el original y registra protocolo, consigna, usuario, fecha y comentario de revisión.
+- `POST /api/consignment-review-requests/{requestId}/discard`: para los mismos roles. Exige motivo, conserva la solicitud en histórico y no altera protocolos.
+- Ambas operaciones son transaccionales, bloquean la solicitud durante la decisión y solo aceptan solicitudes `PENDING`.
+
 ## Foto de un reporte operativo (SGI Operador) — OPR-RPT-PHOTO-001
 
 Cambio aditivo dentro de `SGI_OPR_SGI_COM_0002_IF02` (`POST /api/v1/operator/evidences`): sin interconexión nueva ni cambios de autenticación. Nuevo `targetType` **`OPERATIONAL_REPORT`** para la foto que el agente adjunta a un Incidente, Hallazgo o Vulnerabilidad.

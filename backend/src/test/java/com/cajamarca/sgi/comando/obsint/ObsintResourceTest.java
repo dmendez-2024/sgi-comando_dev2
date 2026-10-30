@@ -79,6 +79,32 @@ class ObsintResourceTest {
         as("coord").delete("/api/secelec/components/" + cam).then().statusCode(409);
     }
 
+    /** "Guardar = activar": cada cambio de una tarea deja ACTIVA una versión nueva; un error no toca la activa. */
+    @Test void savingATaskActivatesANewVersion() {
+        String cam = camera("Cámara guardar activa");
+        String tasks = "/api/obsint/config/points/" + POINT + "/tasks";
+        var added = as("coord").contentType(ContentType.JSON).body(consigna("Guardar activa " + UUID.randomUUID(), List.of(cam), ALL_DAY))
+            .post(tasks).then().statusCode(200).body("protocol.status", is("ACTIVO")).body("code", startsWith("OBS-")).extract();
+        String code = added.path("code");
+        int version = added.path("protocol.versionNo");
+        assertTrue(added.<List<String>>path("protocol.consignas.code").contains(code));
+
+        as("coord").contentType(ContentType.JSON).body(consigna("Editada", List.of(cam), List.of(Map.of("dayOfWeek", 1, "start", "08:00", "end", "18:00"))))
+            .put(tasks + "/" + code).then().statusCode(200).body("protocol.status", is("ACTIVO")).body("protocol.versionNo", is(version + 1))
+            .body("protocol.consignas.find{it.code=='" + code + "'}.title", is("Editada"));
+        as("coord").get("/api/obsint/config/points/" + POINT + "/protocols").then().statusCode(200)
+            .body("find{it.versionNo==" + version + "}.status", is("INACTIVO")).body("findAll{it.status=='ACTIVO'}.size()", is(1));
+
+        as("coord").contentType(ContentType.JSON).body(consigna("Sin horario", List.of(cam), List.of()))
+            .put(tasks + "/" + code).then().statusCode(409).body("message", containsString("horario"));
+        as("coord").get("/api/obsint/config/points/" + POINT + "/protocols").then()
+            .body("find{it.status=='ACTIVO'}.versionNo", is(version + 1)).body("findAll{it.status=='BORRADOR'}.size()", is(0));
+
+        as("coord").delete(tasks + "/" + code).then().statusCode(200).body("status", is("ACTIVO"))
+            .body("versionNo", is(version + 2)).body("consignas.code", not(hasItem(code)));
+        as("coord").contentType(ContentType.JSON).body(consigna("No existe", List.of(cam), ALL_DAY)).put(tasks + "/" + code).then().statusCode(404);
+    }
+
     @Test void consoleCaseWithConfiguredConsignas() throws Exception {
         String code = activeProtocolWithConsigna();
         String caseId = as("dnacional").post("/api/obsint/cases").then().statusCode(200).body("status", is("IN_PROGRESS")).extract().path("id");
