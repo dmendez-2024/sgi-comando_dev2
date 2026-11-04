@@ -406,7 +406,7 @@ export default function ConsignasExecution(){
     {inspected?.reviewRequest&&decision&&<div className="cns-decision-backdrop" onClick={()=>!decisionBusy&&setDecision(null)}>
       <section className="cns-decision-modal" role="dialog" aria-modal="true" aria-labelledby="cns-decision-title" onClick={e=>e.stopPropagation()}>
         <header><div><h3 id="cns-decision-title">{decision==='APPROVE'?'Aprobar e incorporar consigna':'Rechazar consigna'}</h3><span>{inspected.code} · {inspected.point} · {inspected.post}</span></div><button disabled={decisionBusy} onClick={()=>setDecision(null)} aria-label="Cerrar"><X size={18}/></button></header>
-        <div className="cns-decision-body">
+        <div className={`cns-decision-body ${decision==='APPROVE'?'approval':'rejection'}`}>
           {decision==='APPROVE'?<>
             <div className="cns-decision-info"><AlertCircle size={17}/><span>La consigna se incorporará a una versión borrador. Si selecciona un protocolo publicado o activo, se creará automáticamente una nueva versión sin alterar el histórico.</span></div>
             <label><span>Título revisado</span><input maxLength={200} value={reviewTitle} onChange={e=>setReviewTitle(e.target.value)}/></label>
