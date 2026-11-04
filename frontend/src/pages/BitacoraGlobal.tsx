@@ -1,6 +1,6 @@
 import {useEffect, useMemo, useState, type ReactNode} from 'react';
 import {
-  Building2, Briefcase, CalendarDays, CarFront, Clock3, Container, Download, Eye, FileSearch2,
+  Building2, Briefcase, CalendarDays, CarFront, Clock3, Container, Upload, Eye, FileSearch2,
   FilterX, MapPin, Search, ShieldCheck, UserRound, X, ChevronRight
 } from 'lucide-react';
 import {api, getUser} from '../api';
@@ -187,7 +187,7 @@ export default function BitacoraGlobal(){
         <div className="bit-global-search-actions nov-actions">
           <button className="primary"><Search size={16}/>Buscar</button>
           <button onClick={clear}><FilterX size={16}/>Limpiar filtros</button>
-          <button className="export" onClick={exportCsv}><Download size={16}/>Exportar</button>
+          <button className="export" onClick={exportCsv}><Upload size={16}/>Exportar</button>
         </div>
 
         <div className="bit-global-results-card nov-results-card">

@@ -1,6 +1,6 @@
 import {useCallback, useEffect, useMemo, useState, type ReactNode} from 'react';
 import {
-  AlertTriangle, ClipboardList, Clock3, Download,
+  AlertTriangle, ClipboardList, Clock3, Upload,
   FileText, FilterX, RefreshCw, Search, ShieldCheck,
   CarFront, AlertCircle, X, ChevronRight, CheckCircle2, Ban
 } from 'lucide-react';
@@ -360,7 +360,7 @@ export default function ConsignasExecution(){
         {dateError && <div className="cns-validation-error"><AlertTriangle size={16}/><span>{dateError}</span></div>}
         {actionNotice&&<div className="cns-action-notice"><CheckCircle2 size={16}/><span>{actionNotice}</span><button onClick={()=>setActionNotice('')} aria-label="Cerrar mensaje"><X size={14}/></button></div>}
         {loadWarnings.map(message=><div className="cns-validation-error" key={message}><AlertTriangle size={16}/><span>{message}</span></div>)}
-        <div className="cns-search-actions nov-actions"><button className="primary" disabled={!!dateError} onClick={()=>void loadReviewRequests()}><Search size={16}/>Buscar</button><button onClick={clear}><FilterX size={16}/>Limpiar filtros</button><div className="cns-rules-note"><AlertCircle size={15}/><span>Fechas obligatorias · rango máximo de 1 año</span></div><button className="export" onClick={exportCsv} disabled={!!dateError || !rows.length}><Download size={16}/>Exportar</button></div>
+        <div className="cns-search-actions nov-actions"><button className="primary" disabled={!!dateError} onClick={()=>void loadReviewRequests()}><Search size={16}/>Buscar</button><button onClick={clear}><FilterX size={16}/>Limpiar filtros</button><div className="cns-rules-note"><AlertCircle size={15}/><span>Fechas obligatorias · rango máximo de 1 año</span></div><button className="export" onClick={exportCsv} disabled={!!dateError || !rows.length}><Upload size={16}/>Exportar</button></div>
 
         <div className="cns-results-card nov-results-card"><div className="cns-results-head nov-results-head"><h3>Ejecuciones ({rows.length})</h3><div>Ordenar por: <strong>Fecha más reciente</strong></div></div><div className="cns-table-wrap nov-table-wrap"><table className="cns-table nov-table"><thead><tr><th>Tipo</th><th>Código</th><th>Nombre / Descripción</th><th>Cliente</th><th>Punto / Puesto</th><th>Responsable</th><th>Ventana / Hora</th><th>Estado de ejecución</th><th>Resultado / Progreso</th><th></th></tr></thead><tbody>{rows.map(row=>{
           const pct=Math.round((row.progressCurrent/Math.max(row.progressTotal,1))*100);
