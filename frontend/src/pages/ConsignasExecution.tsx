@@ -316,7 +316,7 @@ export default function ConsignasExecution(){
   async function discardReview(){
     if(!inspected?.reviewRequest||!reviewComment.trim())return;setDecisionBusy(true);setDecisionError('');
     try{const result=await api.discardConsignmentReview(inspected.reviewRequest.id,reviewComment);setActionNotice(result.message);closeInspector();await loadReviewRequests();}
-    catch(e){setDecisionError(apiMessage(e,'No fue posible descartar la propuesta.'));}finally{setDecisionBusy(false)}
+    catch(e){setDecisionError(apiMessage(e,'No fue posible rechazar la consigna.'));}finally{setDecisionBusy(false)}
   }
   function clear(){setFilters(EMPTY_FILTERS)}
   function setClient(value:string){setFilters(prev=>({...prev,client:value,point:'',post:''}))}
@@ -399,13 +399,13 @@ export default function ConsignasExecution(){
           <ReferenceImageGallery eventId={inspected.evidenceEventId}/>
           <section className="cns-timeline"><div className="cns-timeline-head"><h4>{inspected.type==='RELIEF'?'Hitos del relevo':'Últimos eventos'}</h4></div>{inspected.timeline.map(event=><article key={event.id}><i className={event.state.toLowerCase()}/><div><span>{formatDateTime(event.at)}</span><strong>{event.title}</strong><small>{event.detail}</small></div></article>)}</section>
         </div>
-        <footer>{canReview&&inspected.reviewRequest&&<><button type="button" className="discard" onClick={beginDiscard}><Ban size={15}/>Descartar propuesta</button><button type="button" className="approve" onClick={()=>void beginApprove()}><CheckCircle2 size={15}/>Aprobar e incorporar</button></>}<button type="button" className="close" onClick={closeInspector}><X size={15}/>Cerrar</button></footer>
+        <footer>{canReview&&inspected.reviewRequest&&<><button type="button" className="discard" onClick={beginDiscard}><Ban size={15}/>Rechazar consigna</button><button type="button" className="approve" onClick={()=>void beginApprove()}><CheckCircle2 size={15}/>Aprobar e incorporar</button></>}<button type="button" className="close" onClick={closeInspector}><X size={15}/>Cerrar</button></footer>
       </aside>
     </div>}
 
     {inspected?.reviewRequest&&decision&&<div className="cns-decision-backdrop" onClick={()=>!decisionBusy&&setDecision(null)}>
       <section className="cns-decision-modal" role="dialog" aria-modal="true" aria-labelledby="cns-decision-title" onClick={e=>e.stopPropagation()}>
-        <header><div><h3 id="cns-decision-title">{decision==='APPROVE'?'Aprobar e incorporar propuesta':'Descartar propuesta'}</h3><span>{inspected.code} · {inspected.point} · {inspected.post}</span></div><button disabled={decisionBusy} onClick={()=>setDecision(null)} aria-label="Cerrar"><X size={18}/></button></header>
+        <header><div><h3 id="cns-decision-title">{decision==='APPROVE'?'Aprobar e incorporar consigna':'Rechazar consigna'}</h3><span>{inspected.code} · {inspected.point} · {inspected.post}</span></div><button disabled={decisionBusy} onClick={()=>setDecision(null)} aria-label="Cerrar"><X size={18}/></button></header>
         <div className="cns-decision-body">
           {decision==='APPROVE'?<>
             <div className="cns-decision-info"><AlertCircle size={17}/><span>La consigna se incorporará a una versión borrador. Si selecciona un protocolo publicado o activo, se creará automáticamente una nueva versión sin alterar el histórico.</span></div>
@@ -415,11 +415,11 @@ export default function ConsignasExecution(){
             <label><span>Comentario de revisión (opcional)</span><textarea maxLength={500} value={reviewComment} onChange={e=>setReviewComment(e.target.value)}/></label>
           </>:<>
             <div className="cns-decision-warning"><AlertTriangle size={17}/><span>La propuesta se conservará en el historial y no modificará ningún protocolo.</span></div>
-            <label><span>Motivo del descarte</span><textarea autoFocus maxLength={500} value={reviewComment} onChange={e=>setReviewComment(e.target.value)} placeholder="Explique por qué no se incorporará la propuesta."/></label>
+            <label><span>Motivo del rechazo</span><textarea autoFocus maxLength={500} value={reviewComment} onChange={e=>setReviewComment(e.target.value)} placeholder="Explique por qué no se incorporará la consigna."/></label>
           </>}
           {decisionError&&<div className="nov-modal-error"><AlertTriangle size={16}/>{decisionError}</div>}
         </div>
-        <footer><button disabled={decisionBusy} onClick={()=>setDecision(null)}>Cancelar</button>{decision==='APPROVE'?<button className="approve" disabled={decisionBusy||!targetProtocolId||!reviewTitle.trim()||!reviewInstruction.trim()} onClick={()=>void approveReview()}><CheckCircle2 size={15}/>{decisionBusy?'Procesando…':'Aprobar e incorporar'}</button>:<button className="discard" disabled={decisionBusy||!reviewComment.trim()} onClick={()=>void discardReview()}><Ban size={15}/>{decisionBusy?'Procesando…':'Confirmar descarte'}</button>}</footer>
+        <footer><button disabled={decisionBusy} onClick={()=>setDecision(null)}>Cancelar</button>{decision==='APPROVE'?<button className="approve" disabled={decisionBusy||!targetProtocolId||!reviewTitle.trim()||!reviewInstruction.trim()} onClick={()=>void approveReview()}><CheckCircle2 size={15}/>{decisionBusy?'Procesando…':'Aprobar e incorporar'}</button>:<button className="discard" disabled={decisionBusy||!reviewComment.trim()} onClick={()=>void discardReview()}><Ban size={15}/>{decisionBusy?'Procesando…':'Confirmar rechazo'}</button>}</footer>
       </section>
     </div>}
   </div>
