@@ -103,7 +103,7 @@ export default function ObsintConsole({onBack}:{onBack?:()=>void}){
       <div className="obs-kpis">
         <Kpi icon={<FolderOpen size={20}/>} tone="blue" label="Caso" value={task.caseCode}/>
         <Kpi icon={<Users size={20}/>} tone="purple" label="Grupo" value={<span className="obs-kpi-stack"><span>Grupo {task.position}</span><span>{task.cameras.length} {task.cameras.length===1?'cámara':'cámaras'}</span></span>}/>
-        <Kpi icon={<ListChecks size={20}/>} tone="blue" label="Tarea" value={<>{task.position} de {task.totalTasks} <Dots total={task.totalTasks} current={task.position}/></>}/>
+        <Kpi icon={<ListChecks size={20}/>} tone="blue" label="Tarea" value={<span className="obs-kpi-task"><span>{task.position} de {task.totalTasks}</span><Dots total={task.totalTasks} current={task.position}/></span>}/>
         <Kpi icon={<Clock3 size={20}/>} tone="green" label="Tiempo restante" value={<span className={`obs-timer ${timerTone}`}>{formatSeconds(countdown.seconds)}</span>}/>
         <Kpi icon={<CalendarDays size={20}/>} tone="blue" label="Fecha y hora" value={<span className="obs-kpi-stack obs-kpi-date"><span>{today}</span><span>{clock}</span></span>}/>
         <Kpi icon={<UserRound size={20}/>} tone="blue" label="Operador" value={task.operator}/>

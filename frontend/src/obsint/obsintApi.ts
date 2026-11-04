@@ -28,7 +28,7 @@ export type ObsintSlot={dayOfWeek:number;start:string;end:string};
 export type ObsintFrequency='EVERY_SHIFT'|'EVERY_2_HOURS'|'EVERY_4_HOURS'|'DAILY';
 /** consignmentCode: consigna de Consignas (marcada OBSINT) de la que sale la tarea; null en tareas anteriores al vínculo. */
 export type ObsintConsignaConfig={id:string;code:string;consignmentCode:string|null;title:string;description:string;instruction:string;category:ObsintCategory;frequency:ObsintFrequency;timeLimitSeconds:number;position:number;active:boolean;cameraIds:string[];schedule:ObsintSlot[]};
-export type ObsintConsignaSave=Omit<ObsintConsignaConfig,'id'|'code'|'position'>;
+export type ObsintConsignaSave=Omit<ObsintConsignaConfig,'id'|'code'|'position'|'frequency'>;
 export type ObsintProtocol={id:string;pointId:string;code:string;versionNo:number;status:ObsintProtocolStatus;publishedAt:string|null;activatedAt:string|null;updatedBy:string;updatedAt:string;consignas:ObsintConsignaConfig[]};
 /** Consigna del protocolo de Consignas activo del Punto marcada con el "puesto" OBSINT. */
 export type ObsintConsignmentOption={code:string;title:string;instruction:string};

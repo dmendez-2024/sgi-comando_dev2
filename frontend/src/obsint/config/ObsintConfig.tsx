@@ -1,6 +1,6 @@
 import {useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode} from 'react';
 import {AlertTriangle, ArrowLeft, BrushCleaning, CarFront, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ClipboardList, Factory, Package, Pencil, Plus, Power, Save, Search, Send, ShieldCheck, Trash2, UserRound, UsersRound, X} from 'lucide-react';
-import {errorText, obsintConfigApi, type ObsintCameraOption, type ObsintCategory, type ObsintConsignaConfig, type ObsintConsignaSave, type ObsintConsignmentOption, type ObsintFrequency, type ObsintProtocol} from '../obsintApi';
+import {errorText, obsintConfigApi, type ObsintCameraOption, type ObsintCategory, type ObsintConsignaConfig, type ObsintConsignaSave, type ObsintConsignmentOption, type ObsintProtocol} from '../obsintApi';
 import {CATEGORIES, categoryLabel, DAYS, protocolStatusLabel} from '../obsint';
 import {ObsintMonitoringPanel} from './ObsintMonitoringPanel';
 import {ObsintScheduleEditor, slotsFromWeek, weekFromSlots} from './ObsintScheduleEditor';
@@ -15,13 +15,6 @@ const timeLimitLabel=(s:number)=>s<60?`${s} segundos`:`${s/60} ${s===60?'minuto'
 const formatDate=(value:string|null)=>value?new Intl.DateTimeFormat('es-EC',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}).format(new Date(value)):'—';
 const CATEGORY_ICONS={SSO:CarFront,PRODUCTION:Factory,LOGISTICS:Package,CLEANING:BrushCleaning,MOBILITY:CarFront,CUSTOMER_SERVICE:UsersRound};
 function CategoryIcon({category,size=18}:{category:ObsintCategory;size?:number}){const Icon=CATEGORY_ICONS[category];return <Icon size={size} className={`obs-cfg-category-icon ${category.toLowerCase()}`}/>}
-const FREQUENCIES:{value:ObsintFrequency;label:string}[]=[
-  {value:'EVERY_SHIFT',label:'En cada turno'},
-  {value:'EVERY_2_HOURS',label:'Cada 2 horas'},
-  {value:'EVERY_4_HOURS',label:'Cada 4 horas'},
-  {value:'DAILY',label:'Una vez al día'},
-];
-const frequencyLabel=(frequency:ObsintFrequency)=>FREQUENCIES.find(option=>option.value===frequency)?.label??'En cada turno';
 const PAGE_SIZES=[10,20,50];
 
 /**
@@ -180,9 +173,9 @@ export default function ObsintConfig({point,onBack}:{point:ObsintPointContext;on
           <button type="button" className="obs-cfg-primary" disabled={busy} onClick={()=>void openEditor('new')}><Plus size={16}/>Nueva tarea</button></header>
         <label className="obs-cfg-search"><Search size={16}/><input value={query} onChange={e=>{setQuery(e.target.value);setPage(1)}} placeholder="Buscar tarea por nombre, código o descripción…"/></label>
         <table className="obs-cfg-table">
-          <thead><tr><th>Código</th><th>Nombre de la tarea</th><th>Categoría</th><th>Frecuencia</th><th>Estado</th><th>Acciones</th></tr></thead>
+          <thead><tr><th>Código</th><th>Nombre de la tarea</th><th>Categoría</th><th>Estado</th><th>Acciones</th></tr></thead>
           <tbody>{visible.length?pageRows.map(c=><tr key={c.id} className={c.id===selectedId?'selected':''} onClick={()=>{setSelectedId(c.id);setEditing(null)}}>
-            <td><span className="obs-cfg-code"><CategoryIcon category={c.category}/><b>{c.code}</b></span></td><td>{c.title}</td><td>{categoryLabel(c.category)}</td><td>{frequencyLabel(c.frequency)}</td>
+            <td><span className="obs-cfg-code"><CategoryIcon category={c.category}/><b>{c.code}</b></span></td><td>{c.title}</td><td>{categoryLabel(c.category)}</td>
             <td><span className={`obs-cfg-pill ${c.active?'activo':'inactivo'}`}>{c.active?'Activa':'Inactiva'}</span></td>
             <td className="obs-cfg-row-actions">
               <span>
@@ -190,7 +183,7 @@ export default function ObsintConfig({point,onBack}:{point:ObsintPointContext;on
               <button type="button" aria-label={`Eliminar ${c.code} del borrador`} title="Eliminar del borrador" className="danger" disabled={busy} onClick={e=>{e.stopPropagation();void removeConsigna(c)}}><Trash2 size={15}/></button>
               </span>
             </td>
-          </tr>):<tr><td colSpan={6} className="obs-cfg-empty">{consignas.length?'Ninguna tarea coincide con el filtro.':'Agregue la primera tarea con "Nueva tarea".'}</td></tr>}</tbody>
+          </tr>):<tr><td colSpan={5} className="obs-cfg-empty">{consignas.length?'Ninguna tarea coincide con el filtro.':'Agregue la primera tarea con "Nueva tarea".'}</td></tr>}</tbody>
         </table>
         <div className="obs-cfg-pagination"><span>Mostrando {visible.length?(currentPage-1)*pageSize+1:0} a {Math.min(currentPage*pageSize,visible.length)} de {visible.length} tareas</span>
           <div><button type="button" aria-label="Página anterior" disabled={currentPage===1} onClick={()=>setPage(currentPage-1)}><ChevronLeft size={16}/></button>
@@ -222,7 +215,6 @@ function ConsignaDetail({c,cameras,onEdit}:{c:ObsintConsignaConfig;cameras:Obsin
         <div className="obs-cfg-read-field"><span>Nombre de la tarea</span><div>{c.title}</div></div>
         <div className="obs-cfg-read-field"><span>Categoría</span><div><CategoryIcon category={c.category} size={15}/>{categoryLabel(c.category)}</div></div>
         <div className="obs-cfg-read-field obs-cfg-description"><span>Descripción</span><div>{c.description||c.instruction}</div></div>
-        <div className="obs-cfg-read-field"><span>Frecuencia</span><div>{frequencyLabel(c.frequency)}</div></div>
         <div className="obs-cfg-read-field"><span>Tiempo máximo de ejecución</span><div>{timeLimitLabel(c.timeLimitSeconds)}</div></div>
       </div>
       <div className="obs-cfg-detail-schedule"><h4>Horario de ejecución</h4><table className="obs-cfg-schedule"><thead><tr><th scope="col">Día</th><th scope="col" className="obs-cfg-time-heading">Horario<br/>inicio</th><th scope="col" className="obs-cfg-time-heading">Horario<br/>fin</th></tr></thead><tbody>
@@ -239,7 +231,7 @@ function ConsignaDetail({c,cameras,onEdit}:{c:ObsintConsignaConfig;cameras:Obsin
 
 function ConsignaForm({protocolId,initial,cameras,linkable,defaultCategory,onSaved,onCancel}:{protocolId:string;initial:ObsintConsignaConfig|null;cameras:ObsintCameraOption[];
   linkable:ObsintConsignmentOption[];defaultCategory:ObsintCategory;onSaved:(c:ObsintConsignaConfig)=>void;onCancel:()=>void}){
-  const [form,setForm]=useState<ObsintConsignaSave>(()=>({consignmentCode:initial?.consignmentCode??null,title:initial?.title??'',description:initial?.description??'',instruction:initial?.instruction??'',category:initial?.category??defaultCategory,frequency:initial?.frequency??'EVERY_SHIFT',
+  const [form,setForm]=useState<ObsintConsignaSave>(()=>({consignmentCode:initial?.consignmentCode??null,title:initial?.title??'',description:initial?.description??'',instruction:initial?.instruction??'',category:initial?.category??defaultCategory,
     timeLimitSeconds:initial?.timeLimitSeconds??120,active:initial?.active??true,cameraIds:initial?.cameraIds??[],schedule:initial?.schedule??[]}));
   const [week,setWeek]=useState(()=>weekFromSlots(initial?initial.schedule:null));
   const [saving,setSaving]=useState(false);
@@ -298,7 +290,6 @@ function ConsignaForm({protocolId,initial,cameras,linkable,defaultCategory,onSav
          </details>
        </div>
       <Field label="Descripción" required><textarea className="obs-cfg-description-input" value={form.description} onChange={e=>set('description',e.target.value)} required maxLength={1000} rows={4} placeholder="Describa lo que se debe observar en el punto."/></Field>
-      <Field label="Frecuencia" required><select value={form.frequency} onChange={e=>set('frequency',e.target.value as ObsintFrequency)} required>{FREQUENCIES.map(option=><option key={option.value} value={option.value}>{option.label}</option>)}</select></Field>
       <Field label="Tiempo máximo de ejecución" required><select value={form.timeLimitSeconds} onChange={e=>set('timeLimitSeconds',Number(e.target.value))}>{timeLimits.map(s=><option key={s} value={s}>{timeLimitLabel(s)}</option>)}</select></Field>
     </div>
     <ObsintScheduleEditor value={week} onChange={setWeek}/>

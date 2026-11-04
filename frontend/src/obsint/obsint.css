@@ -24,6 +24,8 @@
 .obs-kpis article strong{display:flex;align-items:center;gap:8px;min-width:0;font-size:15px;color:#16233b;white-space:normal;overflow-wrap:anywhere;line-height:1.2}
 .obs-kpi-stack{display:flex;flex-direction:column;gap:2px;min-width:0}
 .obs-kpi-stack>span{display:block}
+.obs-kpi-task{display:flex;flex-direction:column;align-items:flex-start;gap:5px;min-width:0}
+.obs-kpi-task>span:first-child{white-space:nowrap}
 .obs-kpi-date{font-size:13px;font-variant-numeric:tabular-nums}
 .obs-dots{display:inline-flex;gap:5px;align-items:center}
 .obs-dots i{width:8px;height:8px;border-radius:50%;background:#d5dce6}

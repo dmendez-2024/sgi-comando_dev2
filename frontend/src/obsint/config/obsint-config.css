@@ -65,9 +65,9 @@
 .obs-cfg-table{width:100%;max-width:100%;table-layout:fixed;border-collapse:collapse;font-size:11px;line-height:1.35}
 .obs-cfg-table th{padding:8px 4px;text-align:left;font-size:9px;font-weight:800;letter-spacing:.02em;text-transform:uppercase;color:#7e8796;border-bottom:1px solid #e3e8ee;overflow-wrap:anywhere}
 .obs-cfg-table td{padding:9px 4px;border-bottom:1px solid #eef1f5;overflow-wrap:anywhere;vertical-align:middle}
-.obs-cfg-table th:nth-child(1){width:16%}.obs-cfg-table th:nth-child(2){width:22%}.obs-cfg-table th:nth-child(3){width:22%}.obs-cfg-table th:nth-child(4){width:16%}.obs-cfg-table th:nth-child(5){width:11%}.obs-cfg-table th:nth-child(6){width:13%}
-.obs-cfg-table th:nth-child(4),.obs-cfg-table th:nth-child(6){white-space:nowrap;overflow-wrap:normal}
-.obs-cfg-table th:nth-child(6){text-align:center}
+.obs-cfg-table th:nth-child(1){width:17%}.obs-cfg-table th:nth-child(2){width:31%}.obs-cfg-table th:nth-child(3){width:27%}.obs-cfg-table th:nth-child(4){width:12%}.obs-cfg-table th:nth-child(5){width:13%}
+.obs-cfg-table th:nth-child(4),.obs-cfg-table th:nth-child(5){white-space:nowrap;overflow-wrap:normal}
+.obs-cfg-table th:nth-child(5){text-align:center}
 .obs-cfg-table td:first-child,.obs-cfg-table td:last-child{white-space:nowrap}
 .obs-cfg-table .obs-cfg-pill{font-size:10px;padding:3px 6px}
 .obs-cfg-list>header{align-items:center}
