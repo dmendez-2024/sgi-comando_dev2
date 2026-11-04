@@ -1,6 +1,7 @@
 package com.cajamarca.sgi.comando.consignments;
 
 import com.cajamarca.sgi.comando.common.TenantContext;
+import com.cajamarca.sgi.comando.common.ProtocolLibraryExport;
 import com.cajamarca.sgi.comando.operations.PointEntity;
 import com.cajamarca.sgi.comando.operations.PostEntity;
 import com.cajamarca.sgi.comando.outbox.OutboxEvent;
@@ -42,6 +43,9 @@ public class ConsignmentResource {
  public record ProtocolDto(UUID id,UUID seriesId,UUID basedOnProtocolId,UUID pointId,String code,String name,String description,String status,int versionNo,Instant publishedAt,Instant activatedAt,String updatedBy,List<ConsignmentDto> consignments){}
  public record CreateProtocolRequest(UUID pointId,String name){}
  public record SaveProtocolRequest(String name,String description){}
+ public record ExportRequest(String scope){}
+ public record ImportRequest(UUID postId){}
+ public record LibraryEntryDto(UUID id,String scope,String code,String name,String description,int versionNo,int itemCount,int detailCount,String exportedBy,Instant exportedAt,boolean alreadyExported){}
  public record CreateConsignmentRequest(String title){}
  public record SaveConsignmentRequest(String title,String instruction,String priority,String scopeType,List<UUID> postIds,Boolean obsint,String validityType,Instant validityFrom,Instant validityUntil,String applicationType,String applicationDaysJson,String applicationTimeFrom,String applicationTimeTo,Boolean acknowledgmentRequired,Boolean confirmationRequired,Boolean evidenceRequired,Boolean gpsRequired,Boolean observationRequired,String expectedLocationMode,UUID atsPackageId,Double atsX,Double atsY,Double expectedLatitude,Double expectedLongitude,Integer expectedRadiusM){}
  public record CreateEvidenceRequest(String name,String description,String evidenceType,Boolean required){}
@@ -71,6 +75,76 @@ public class ConsignmentResource {
  @Path("/protocols/{id}/history")
  @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION","SUPERVISOR_SEGURIDAD","AGENTE_SEGURIDAD","CLIENTE"})
  public List<ProtocolDto> history(@PathParam("id") UUID id){ConsignmentProtocol p=protocol(id);authorize(p);return ConsignmentProtocol.<ConsignmentProtocol>list("instanceCountryId=?1 and seriesId=?2 order by versionNo desc",tenant.instanceCountryId(),p.seriesId).stream().map(this::dto).toList();}
+
+ @GET
+ @Path("/protocol-library")
+ @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
+ public List<LibraryEntryDto> library(@QueryParam("postId") UUID postId){
+   PostEntity destination=post(postId);PointEntity destinationPoint=point(destination.pointId);scope.requireCompanyForCompanyRoles(destinationPoint.companyId);
+   return ProtocolLibraryExport.<ProtocolLibraryExport>list("instanceCountryId=?1 and module='CONSIGNMENT' order by createdAt desc",tenant.instanceCountryId())
+       .stream().filter(row->libraryVisible(row,destinationPoint.companyId)).map(row->libraryDto(row,protocol(row.sourceProtocolId),true)).toList();
+ }
+
+ @GET
+ @Path("/protocols/{protocolId}/exports")
+ @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
+ public List<LibraryEntryDto> exports(@PathParam("protocolId") UUID protocolId){
+   ConsignmentProtocol source=protocol(protocolId);authorize(source);PointEntity sourcePoint=point(source.pointId);
+   return ProtocolLibraryExport.<ProtocolLibraryExport>list("instanceCountryId=?1 and module='CONSIGNMENT' and sourceProtocolId=?2 order by createdAt",tenant.instanceCountryId(),source.id)
+       .stream().filter(row->"COUNTRY".equals(row.scope)||Objects.equals(row.companyId,sourcePoint.companyId)).map(row->libraryDto(row,source,true)).toList();
+ }
+
+ @POST
+ @Path("/protocols/{protocolId}/exports")
+ @Consumes(MediaType.APPLICATION_JSON)
+ @Transactional
+ @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
+ public LibraryEntryDto exportProtocol(@PathParam("protocolId") UUID protocolId,ExportRequest request){
+   ConsignmentProtocol source=protocol(protocolId);authorize(source);
+   if("BORRADOR".equals(source.status))throw new ClientErrorException("Publique el protocolo antes de exportarlo.",409);
+   if(request==null||request.scope()==null)throw new BadRequestException("Seleccione la biblioteca de destino.");
+   String targetScope=request.scope().trim().toUpperCase(Locale.ROOT);
+   if(!Set.of("COMPANY","COUNTRY").contains(targetScope))throw new BadRequestException("Biblioteca inválida.");
+   PointEntity sourcePoint=point(source.pointId);UUID companyId="COMPANY".equals(targetScope)?sourcePoint.companyId:null;
+   if("COMPANY".equals(targetScope)&&companyId==null)throw new BadRequestException("El Punto requiere una Compañía para exportar.");
+   if("COUNTRY".equals(targetScope)&&!canExportCountryStandard())throw new ForbiddenException("Solo Dirección Zonal o superior puede exportar Estándares Cajamarca.");
+   ProtocolLibraryExport existing="COMPANY".equals(targetScope)
+       ?ProtocolLibraryExport.find("instanceCountryId=?1 and module='CONSIGNMENT' and sourceProtocolId=?2 and scope='COMPANY' and companyId=?3",tenant.instanceCountryId(),source.id,companyId).firstResult()
+       :ProtocolLibraryExport.find("instanceCountryId=?1 and module='CONSIGNMENT' and sourceProtocolId=?2 and scope='COUNTRY'",tenant.instanceCountryId(),source.id).firstResult();
+   if(existing!=null)return libraryDto(existing,source,true);
+   ProtocolLibraryExport row=new ProtocolLibraryExport();row.module="CONSIGNMENT";row.instanceCountryId=tenant.instanceCountryId();row.sourceProtocolId=source.id;row.scope=targetScope;row.companyId=companyId;row.exportedByUsername=user();row.persist();return libraryDto(row,source,false);
+ }
+
+ @POST
+ @Path("/protocol-library/{exportId}/import")
+ @Consumes(MediaType.APPLICATION_JSON)
+ @Transactional
+ @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
+ public ProtocolDto importProtocol(@PathParam("exportId") UUID exportId,ImportRequest request){
+   if(request==null||request.postId()==null)throw new BadRequestException("Seleccione un Puesto destino.");
+   PostEntity destination=post(request.postId());PointEntity destinationPoint=point(destination.pointId);scope.requireCompanyForCompanyRoles(destinationPoint.companyId);
+   ProtocolLibraryExport entry=ProtocolLibraryExport.find("id=?1 and instanceCountryId=?2 and module='CONSIGNMENT'",exportId,tenant.instanceCountryId()).firstResult();
+   if(entry==null||!libraryVisible(entry,destinationPoint.companyId))throw new NotFoundException("Modelo no disponible para este Puesto.");
+   ConsignmentProtocol source=protocol(entry.sourceProtocolId);
+   if("BORRADOR".equals(source.status))throw new ClientErrorException("El modelo de origen debe estar publicado.",409);
+   boolean samePoint=source.pointId.equals(destination.pointId);
+   ConsignmentProtocol target=new ConsignmentProtocol();target.id=UUID.randomUUID();target.instanceCountryId=tenant.instanceCountryId();target.seriesId=target.id;
+   target.basedOnProtocolId=source.id;target.pointId=destination.pointId;target.code=nextProtocolCode();target.name=source.name;target.description=source.description;
+   target.status="BORRADOR";target.versionNo=1;target.updatedByUsername=user();target.persist();
+   for(Consignment old:consignments(source.id)){
+     Consignment copy=cloneConsignment(old,target.id);copy.pointId=destination.pointId;
+     if("POSTS".equals(copy.scopeType))setScope(copy,List.of(destination.id));
+     if(!samePoint){copy.atsPackageId=null;copy.atsX=null;copy.atsY=null;copy.expectedLatitude=null;copy.expectedLongitude=null;}
+   }
+   return dto(target);
+ }
+
+ private LibraryEntryDto libraryDto(ProtocolLibraryExport entry,ConsignmentProtocol source,boolean alreadyExported){
+   List<Consignment> items=consignments(source.id);int evidenceCount=items.stream().mapToInt(item->evidences(item.id).size()).sum();
+   return new LibraryEntryDto(entry.id,entry.scope,source.code,source.name,source.description,source.versionNo,items.size(),evidenceCount,entry.exportedByUsername,entry.createdAt,alreadyExported);
+ }
+ private boolean libraryVisible(ProtocolLibraryExport entry,UUID companyId){return "COUNTRY".equals(entry.scope)||("COMPANY".equals(entry.scope)&&companyId!=null&&companyId.equals(entry.companyId));}
+ private boolean canExportCountryStandard(){return java.util.stream.Stream.of("PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL").anyMatch(identity::hasRole);}
 
  @POST
  @Path("/protocols")

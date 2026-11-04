@@ -2558,3 +2558,24 @@ button.rel-material-image:focus-visible{outline:3px solid rgba(45,103,216,.3);ou
 @media(max-width:900px){.operational-filter-grid.operational-filter-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important}.operational-filter-spacer{display:none}}
 @media(max-width:560px){.operational-filter-grid.operational-filter-grid{grid-template-columns:1fr!important}}
 @media(max-width:700px){.searchable-select-menu{width:max(100%,220px)}}
+/* Bitácora: exportar una versión publicada a la biblioteca. */
+.bitacora-config-page .bit-detail-header>div:last-child{flex-wrap:wrap}
+.bit-export-modal{width:min(480px,calc(100vw - 32px));max-height:calc(100vh - 40px);overflow:auto;background:#fff;border-radius:12px;box-shadow:0 18px 50px rgba(20,31,45,.2)}
+.bit-export-modal>header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:16px 18px;border-bottom:1px solid #e4e9ef}
+.bit-export-modal h3{margin:0;color:#20334b;font-size:17px}.bit-export-modal>header span{display:block;margin-top:5px;color:#6b7c90;font-size:11px;overflow-wrap:anywhere}
+.bit-export-modal>header button{display:grid;place-items:center;width:32px;height:32px;flex:none;border:1px solid #dce3eb;border-radius:8px;background:#fff;color:#52657d;cursor:pointer}
+.bit-export-body{display:grid;gap:12px;padding:16px 18px}.bit-export-body p{margin:0;color:#40546d;font-size:12px;line-height:1.45}.bit-export-body>small{color:#6b7c90;font-size:10px;line-height:1.4}
+.bit-export-options{display:grid;gap:8px}.bit-export-options label{display:flex;align-items:flex-start;gap:10px;padding:12px;border:1px solid #dce5ef;border-radius:9px;cursor:pointer}.bit-export-options label:has(input:checked){border-color:#2d67d8;background:#f2f7ff}.bit-export-options input{margin-top:3px;accent-color:#2d67d8}.bit-export-options span{display:grid;gap:3px;min-width:0}.bit-export-options strong{font-size:12px;color:#23364f}.bit-export-options small{font-size:10px;color:#697c93;line-height:1.4}.bit-export-options em{font-size:10px;color:#187a46;font-style:normal;font-weight:700}
+.bit-export-modal>footer{display:flex;justify-content:flex-end;gap:8px;padding:12px 18px;border-top:1px solid #e4e9ef}.bit-export-modal>footer button{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:36px;padding:0 12px;border:1px solid #d9e1e9;border-radius:8px;background:#fff;color:#40566f;font-size:11px;font-weight:800;cursor:pointer}.bit-export-modal>footer button.primary{background:#2d67d8;border-color:#2d67d8;color:#fff}.bit-export-modal button:disabled{opacity:.55;cursor:not-allowed}
+
+/* Bitácora: selección de un modelo publicado para crear un protocolo en borrador. */
+.bit-import-modal{width:min(640px,calc(100vw - 32px))}
+.bit-import-filters{display:grid;grid-template-columns:minmax(160px,.8fr) minmax(0,1.2fr);gap:8px}
+.bit-import-filters select,.bit-import-filters label{min-width:0;height:36px;box-sizing:border-box;border:1px solid #dce5ef;border-radius:8px;background:#fff;color:#23364f;font-size:12px}
+.bit-import-filters select{padding:0 9px}.bit-import-filters label{display:flex;align-items:center;gap:6px;padding:0 9px}.bit-import-filters input{min-width:0;width:100%;border:0;outline:0;color:inherit;font:inherit}
+.bit-import-models{display:grid;gap:7px;max-height:min(360px,45vh);overflow:auto}.bit-import-models button{display:grid;gap:3px;text-align:left;width:100%;padding:10px 12px;border:1px solid #dce5ef;border-radius:9px;background:#fff;cursor:pointer}.bit-import-models button.selected{border-color:#2d67d8;background:#f2f7ff}.bit-import-models strong{font-size:12px;color:#20334b}.bit-import-models span,.bit-import-models small{font-size:10px;color:#65788f;line-height:1.4}
+.bit-import-preview{display:grid;gap:4px;padding:11px 12px;border-radius:9px;background:#eef5ff;color:#2d4d73;font-size:11px}.bit-import-preview p{margin:0;line-height:1.4}.bit-import-preview small{font-size:10px;line-height:1.4}.bit-import-error{padding:9px;border-radius:8px;background:#fff0f0;color:#a62532!important}
+@media(max-width:560px){.bit-import-filters{grid-template-columns:minmax(0,1fr)}}
+
+/* Acciones de biblioteca de protocolos en las tres configuraciones. */
+.patrol-config-page .bit-detail-header>div:last-child,.consignas-config-page .bit-detail-header>div:last-child{flex-wrap:wrap}
