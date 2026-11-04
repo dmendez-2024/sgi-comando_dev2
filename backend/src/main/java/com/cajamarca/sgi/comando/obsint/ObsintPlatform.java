@@ -156,6 +156,12 @@ public class ObsintPlatform {
     /** Coordinación de una Compañía: los monitoristas de otras Compañías se les muestran como "Confidencial" (SEN-04). */
     public static final Set<String> COMPANY_ROLES = Set.of("COORDINADOR_COMPANIA", "ASISTENTE_COORDINACION");
 
+    /** SEN-03: solo los monitoristas ejecutan casos en la consola (iniciar, responder, evidencia, mensajes). */
+    public boolean monitor() { return identity.hasRole(MONITOR_ROLE); }
+    public void requireMonitor() {
+        if (!monitor()) throw new jakarta.ws.rs.ForbiddenException("Solo los monitoristas pueden ejecutar casos OBSINT.");
+    }
+
     public boolean highRole() { return identity.getRoles().stream().anyMatch(HIGH_ROLES::contains); }
     public boolean companyRole() { return !highRole() && identity.getRoles().stream().anyMatch(COMPANY_ROLES::contains); }
 

@@ -56,9 +56,10 @@ class ObsintServiceOrderTest {
     }
 
     @Test void consoleAccessFollowsTheOrder() {
-        // Con todos los Puntos del tenant sin orden (en la base de pruebas solo el de prueba la tiene) no hay acceso.
-        as("presidente").get("/api/obsint/access").then().statusCode(200).body("enabled", is(false));
+        // Con todos los Puntos del tenant sin orden (en la base de pruebas solo los del servicio de prueba la tienen) no hay acceso.
+        ObsintMonitorShift.monitorUserOnShift();
+        as("monitor").get("/api/obsint/access").then().statusCode(200).body("enabled", is(false));
         obsintOrder(true);
-        as("presidente").get("/api/obsint/access").then().statusCode(200).body("enabled", is(true));
+        as("monitor").get("/api/obsint/access").then().statusCode(200).body("enabled", is(true));
     }
 }
