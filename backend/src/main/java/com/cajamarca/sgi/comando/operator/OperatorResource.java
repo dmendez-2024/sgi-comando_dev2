@@ -650,7 +650,7 @@ public class OperatorResource {
                 .setParameter("id",planId).setParameter("tenant",tenant.instanceCountryId()).setParameter("post",c.post.id).setParameter("patrol",patrolId).executeUpdate();
         } else planId=UUID.fromString(plans.get(0).toString());
         String action=event.path("action").asText("").trim().toUpperCase(Locale.ROOT);
-        List<?> old=em.createNativeQuery("select id,started_at,finished_at,result from patrol_execution where id=:id and instance_country_id=:tenant")
+        List<?> old=em.createNativeQuery("select id,started_at,finished_at,result,assignment_id,employee_id from patrol_execution where id=:id and instance_country_id=:tenant")
             .setParameter("id",executionId).setParameter("tenant",tenant.instanceCountryId()).getResultList();
         if("START".equals(action)) {
             if(!old.isEmpty()) return executionState((Object[])old.get(0));
@@ -662,7 +662,7 @@ public class OperatorResource {
               """).setParameter("tenant",tenant.instanceCountryId()).setParameter("employee",employee).setParameter("assignment",assignmentId)
                 .setParameter("patrol",patrolId).setParameter("post",c.post.id).getResultList();
             if(!active.isEmpty()) return executionState((Object[])active.get(0));
-            Instant started=Instant.now();
+            Instant started=parsePatrolExecutedAt(event);
             if(fieldCheckpointsAllowed && (started.isBefore(c.shift.startsAt) || started.isAfter(c.shift.endsAt))) throw new BadRequestException("La patrulla no programada solo puede iniciarse dentro del turno asignado");
             if(!fieldCheckpointsAllowed && (started.isBefore(c.shift.startsAt.minusSeconds(43200)) || started.isAfter(c.shift.endsAt.plusSeconds(43200)))) throw new BadRequestException("Inicio de patrulla fuera de la ventana UAT del turno");
             em.createNativeQuery("insert into patrol_execution(id,instance_country_id,patrol_plan_id,assignment_id,employee_id,started_at,finished_at,result,created_at,updated_at) values(:id,:tenant,:plan,:assignment,:employee,:started,null,null,current_timestamp,current_timestamp)")
@@ -672,7 +672,13 @@ public class OperatorResource {
         boolean finishing="FINISH".equals(action);
         if(!finishing && !old.isEmpty()) return executionState((Object[])old.get(0));
         if(finishing && old.isEmpty()) throw new NotFoundException("La ejecución de patrulla no fue iniciada");
-        Instant started=finishing?Instant.parse(((Object[])old.get(0))[1].toString()):time(event,"startedAt"), finished=Instant.now();
+        if(finishing) {
+            Object[] current=(Object[])old.get(0);
+            if(!assignmentId.toString().equals(String.valueOf(current[4])) || !employee.toString().equals(String.valueOf(current[5]))) throw new ForbiddenException();
+            // Reintento de la cola sin conexión: la patrulla ya quedó finalizada, se devuelve su estado en vez de un error.
+            if(current[2]!=null) return executionState(current);
+        }
+        Instant started=finishing?Instant.parse(((Object[])old.get(0))[1].toString()):time(event,"startedAt"), finished=finishing?parsePatrolExecutedAt(event):Instant.now();
         if(!finishing) finished=time(event,"finishedAt");
         if(finished.isBefore(started)) throw new BadRequestException("Fechas de patrulla inválidas");
         if(fieldCheckpointsAllowed && (started.isBefore(c.shift.startsAt) || finished.isAfter(c.shift.endsAt))) throw new BadRequestException("La patrulla no programada debe ejecutarse dentro del turno asignado");
@@ -731,6 +737,15 @@ public class OperatorResource {
         }
         ObjectNode response=mapper.createObjectNode().put("executionId",executionId.toString()).put("status","RECEIVED").put("result",finalResult);
         response.put("persistedCheckpointCount",seen.size()).put("persistedFieldCheckpointCount",fieldCheckpoints.size()); return response;
+    }
+    /** Hora real del START o FINISH en el teléfono. Sin executedAt (versiones anteriores de la app) se usa la hora de recepción. */
+    private Instant parsePatrolExecutedAt(JsonNode event) {
+        String value=event.path("executedAt").asText("").trim();
+        if(value.isEmpty()) return Instant.now();
+        Instant executedAt;
+        try { executedAt=Instant.parse(value); } catch(DateTimeException e) { throw new BadRequestException("La fecha de ejecución de la patrulla es inválida"); }
+        if(executedAt.isAfter(Instant.now().plusSeconds(300))) throw new BadRequestException("La fecha de ejecución de la patrulla está en el futuro");
+        return executedAt;
     }
     private ObjectNode executionState(Object[] row) {
         ObjectNode state=mapper.createObjectNode().put("executionId",row[0].toString()).put("startedAt",row[1].toString());
@@ -952,6 +967,8 @@ public class OperatorResource {
         if(pkg==null || pkg.planImage==null || pkg.planImage.length==0) throw new NotFoundException("El punto no tiene un plano ATS vigente");
         return Response.ok(pkg.planImage,pkg.planContentType)
             .header(HttpHeaders.CACHE_CONTROL,"no-store")
+            // La app compara este id con checkpoint.atsPackageId del runtime para no dibujar hitos marcados sobre otra revisión del plano.
+            .header("X-ATS-Package-Id",pkg.id.toString())
             .header("X-ATS-Revision",pkg.revisionNo)
             .header("X-ATS-Level",pkg.planLevelName==null?"":pkg.planLevelName)
             .build();
