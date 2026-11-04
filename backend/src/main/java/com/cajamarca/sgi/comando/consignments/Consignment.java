@@ -14,6 +14,8 @@ public class Consignment extends BaseEntity {
  @Column(nullable=false) public String priority;
  @Column(nullable=false) public String status;
  @Column(name="scope_type",nullable=false) public String scopeType;
+ /** "Puesto" OBSINT: la consigna también (o solo, con POSTS sin Puestos) la verifica el Monitorista OBSINT por cámara. */
+ @Column(nullable=false) public boolean obsint;
  @Column(name="validity_type",nullable=false) public String validityType;
  @Column(name="validity_from") public Instant validityFrom;
  @Column(name="validity_until") public Instant validityUntil;

@@ -23,6 +23,7 @@ public class OperationsResource {
   public record ClientOptionDto(UUID id, String code, String name) {}
 
   @GET @Path("/clients")
+  @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION","SUPERVISOR_SEGURIDAD","AGENTE_SEGURIDAD","CLIENTE","MONITOR"})
   public List<ClientOptionDto> clients(){
     return ClientEntity.<ClientEntity>list("instanceCountryId=?1 order by name", tenant.instanceCountryId())
         .stream().map(client -> new ClientOptionDto(client.id, client.code, client.name)).toList();

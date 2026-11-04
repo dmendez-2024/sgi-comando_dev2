@@ -60,7 +60,7 @@ public class ConsignmentReviewResource {
         var created=consignments.createConsignment(draft.id,new ConsignmentResource.CreateConsignmentRequest(title));
         var saved=consignments.saveConsignment(created.id(),new ConsignmentResource.SaveConsignmentRequest(
             title,instruction,priority(review.priority()),scopeType(review.scope()),
-            "Puesto".equals(review.scope())?List.of(review.postId()):List.of(),
+            "Puesto".equals(review.scope())?List.of(review.postId()):List.of(),false,
             validityType(review.characterType()),validityFrom(review),validityUntil(review),
             applicationType(review.schedule()),daysJson(review.scheduleDays()),review.startTime(),review.endTime(),
             false,true,false,false,false,"NONE",null,null,null,null,null,null));

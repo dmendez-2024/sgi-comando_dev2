@@ -1,7 +1,7 @@
 import {identClaims,identEnabled,identRoles,identToken,notifySessionEnded,renewIdentToken} from './security/identAuth';
 const API = import.meta.env.VITE_API_URL || '/dev.comando';
 // const API=import.meta.env.VITE_API_URL ?? 'http://localhost:8080';
-export type UatUser='presidente'|'ggeneral'|'dlatam'|'don'|'dnacional'|'dzonal'|'jregional'|'coord'|'asistente'|'supervisor'|'agente'|'cliente';
+export type UatUser='presidente'|'ggeneral'|'dlatam'|'don'|'dnacional'|'dzonal'|'jregional'|'coord'|'asistente'|'supervisor'|'agente'|'cliente'|'monitor';
 let currentUser:UatUser=(localStorage.getItem('sgi-uat-user') as UatUser)||'coord';
 const PASSWORD='CajamarcaUAT!2026';
 const contextCache=new Map<UatUser,Promise<any>>();
@@ -9,17 +9,19 @@ export const setUser=(u:UatUser)=>{currentUser=u;contextCache.clear();localStora
 /** Perfil de pantalla segun el Rol que entrega IDENT (Cargo); sin IDENT, el usuario UAT elegido en el selector. */
 const PROFILE_BY_ROLE:[string,UatUser][]=[['GERENCIA_GENERAL','ggeneral'],['PRESIDENTE','presidente'],['DIRECTOR_OPERACIONES_LATAM','dlatam'],['DIRECTOR_OPERACIONES_NACIONAL','don'],
  ['DIRECTOR_NACIONAL','dnacional'],['DIRECTOR_ZONAL','dzonal'],['JEFE_REGIONAL','jregional'],['COORDINADOR_COMPANIA','coord'],
- ['ASISTENTE_COORDINACION','asistente'],['SUPERVISOR_SEGURIDAD','supervisor'],['AGENTE_SEGURIDAD','agente'],['CLIENTE','cliente']];
+ ['ASISTENTE_COORDINACION','asistente'],['SUPERVISOR_SEGURIDAD','supervisor'],['AGENTE_SEGURIDAD','agente'],['MONITOR','monitor'],['CLIENTE','cliente']];
+/** Monitorista (rol MONITOR): solo trabaja en la Consola (con OBSINT, sin sus Reportes). */
+export const isMonitor=()=>getUser()==='monitor';
 export const getUser=():UatUser=>{
  if(!identEnabled())return currentUser;
  const roles=identRoles(); return PROFILE_BY_ROLE.find(([r])=>roles.includes(r))?.[1]??'cliente';
 };
 export class ApiError extends Error{status:number;body:string;constructor(status:number,body:string){super(`${status} ${body}`);this.status=status;this.body=body}}
-async function request<T>(path:string,init?:RequestInit,user?:UatUser):Promise<T>{
+export async function request<T>(path:string,init?:RequestInit,user?:UatUser):Promise<T>{
  const res=await fetchWithRenew(path,init,user,true); if(!res.ok){reloginIfExpired(res.status,user);const body=await res.text();throw new ApiError(res.status,body)} return res.status===204?undefined as T:res.json();
 }
 
-async function binaryRequest(path:string,init?:RequestInit,user?:UatUser):Promise<Blob>{
+export async function binaryRequest(path:string,init?:RequestInit,user?:UatUser):Promise<Blob>{
  const res=await fetchWithRenew(path,init,user,false); if(!res.ok){reloginIfExpired(res.status,user);const body=await res.text();throw new ApiError(res.status,body)} return res.blob();
 }
 /** fetch con el token actual; ante 401 con IDENT renueva el token sin recargar y reintenta una vez. */
