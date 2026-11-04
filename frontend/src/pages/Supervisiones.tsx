@@ -2,6 +2,7 @@ import {useCallback, useEffect, useMemo, useState, type ReactNode} from 'react';
 import {AlertTriangle, Camera, ChevronLeft, ChevronRight, CircleAlert, ClipboardCheck, FilterX, Search, ShieldCheck, X} from 'lucide-react';
 import {api} from '../api';
 import {OperationalDrawer} from '../components/OperationalDrawer';
+import SearchableSelect from '../components/SearchableSelect';
 
 type Level='LOW'|'MEDIUM'|'HIGH'|'VERY_HIGH';
 type Row={id:string;capturedAt:string;companyId:string;companyName:string|null;pointId:string;pointName:string;clientName:string;postId:string;postCode:string;postName:string;
@@ -67,11 +68,11 @@ export default function Supervisiones(){
 
     <section className="nov-main-card">
       <div className="nov-filter-grid">
-        <Field label="Compañía"><select value={filters.companyId} onChange={e=>setFilters(prev=>({...prev,companyId:e.target.value,pointId:'',postId:''}))}><option value="">Todas</option>{options.companies.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></Field>
-        <Field label="Punto"><select value={filters.pointId} onChange={e=>setFilters(prev=>({...prev,pointId:e.target.value,postId:''}))}><option value="">Todos</option>{points.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></Field>
-        <Field label="Puesto"><select value={filters.postId} onChange={e=>set('postId',e.target.value)} disabled={!filters.pointId}><option value="">{filters.pointId?'Todos':'Seleccione punto primero'}</option>{posts.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></Field>
-        <Field label="Supervisor"><select value={filters.supervisorEmployeeId} onChange={e=>set('supervisorEmployeeId',e.target.value)}><option value="">Todos</option>{options.supervisors.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></Field>
-        <Field label="Agente"><select value={filters.agentEmployeeId} onChange={e=>set('agentEmployeeId',e.target.value)}><option value="">Todos</option>{options.agents.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></Field>
+        <Field label="Compañía"><SearchableSelect ariaLabel="Compañía" value={filters.companyId} onChange={value=>setFilters(prev=>({...prev,companyId:value,pointId:'',postId:''}))} searchPlaceholder="Buscar compañía…" options={[{value:'',label:'Todas'},...options.companies.map(x=>({value:x.id,label:x.name}))]}/></Field>
+        <Field label="Punto"><SearchableSelect ariaLabel="Punto" value={filters.pointId} onChange={value=>setFilters(prev=>({...prev,pointId:value,postId:''}))} searchPlaceholder="Buscar punto…" options={[{value:'',label:'Todos'},...points.map(x=>({value:x.id,label:x.name}))]}/></Field>
+        <Field label="Puesto"><SearchableSelect ariaLabel="Puesto" value={filters.postId} onChange={value=>set('postId',value)} disabled={!filters.pointId} searchPlaceholder="Buscar puesto…" options={[{value:'',label:filters.pointId?'Todos':'Seleccione punto primero'},...posts.map(x=>({value:x.id,label:x.name}))]}/></Field>
+        <Field label="Supervisor"><SearchableSelect ariaLabel="Supervisor" value={filters.supervisorEmployeeId} onChange={value=>set('supervisorEmployeeId',value)} searchPlaceholder="Buscar supervisor…" options={[{value:'',label:'Todos'},...options.supervisors.map(x=>({value:x.id,label:x.name}))]}/></Field>
+        <Field label="Agente"><SearchableSelect ariaLabel="Agente" value={filters.agentEmployeeId} onChange={value=>set('agentEmployeeId',value)} searchPlaceholder="Buscar agente…" options={[{value:'',label:'Todos'},...options.agents.map(x=>({value:x.id,label:x.name}))]}/></Field>
       </div>
       <div className="nov-filter-grid">
         <Field label="Fecha inicio"><input type="date" value={filters.from} onChange={e=>set('from',e.target.value)}/></Field>

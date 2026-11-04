@@ -1,5 +1,17 @@
 # SGI: Comando — Changelog
 
+## SGI_COM — Plano ATS del Operador: id del paquete vigente — 2026-11-04
+- PERMITIDO (SITC-NOM-001 §6.1). `GET /api/v1/operator/patrol-map` agrega el header `X-ATS-Package-Id` con el id del paquete ATS vigente del Punto.
+- Motivo: el runtime ya envía por Hito `atsX`/`atsY` (0–1 relativos a la imagen) y `atsPackageId`, pero el Operador no podía saber si el plano descargado era la misma revisión sobre la que se marcó el Hito. Con este header descarta los pines de otra revisión, igual que la web (`Services.tsx`).
+- Archivos: `OperatorResource.patrolMap`. Sin migración. Sin interconexiones nuevas/modificadas/retiradas (0/0/0): header adicional en el mismo endpoint, compatible con la versión actual de SGI Operador. Rollback: versión anterior de `OperatorResource.java`.
+
+## SGI_COM — Patrullas: hora real del teléfono y FINISH reenviable — 2026-11-04
+- PERMITIDO (bug de sincronización sin conexión, SITC-NOM-001 §6.1). `POST /api/v1/operator/patrol-executions` acepta `executedAt` opcional (ISO-8601) en START y FINISH y lo guarda como `started_at` / `finished_at`. Sin `executedAt` se usa la hora de recepción (compatibilidad con la versión actual de SGI Operador). Se rechaza una fecha inválida o más de 5 minutos en el futuro.
+- Las validaciones de turno usan la hora real: un FINISH sincronizado después del turno ya no se rechaza si la patrulla terminó dentro del turno.
+- Un FINISH repetido de una patrulla ya finalizada devuelve su estado (`COMPLETED`) en vez de 409, para los reintentos de la cola sin conexión. Se verifica que la ejecución pertenezca a la asignación y al empleado.
+- Archivos: `OperatorResource.submitPatrol`, `parsePatrolExecutedAt`; test nuevo `PatrolStartFinishTest`. Sin migración; la hora de recepción sigue en `created_at` / `updated_at`.
+- Sin interconexiones nuevas/modificadas/retiradas (0/0/0): mismo endpoint, campo opcional. Requiere que SGI Operador envíe `executedAt` para aprovecharlo. Rollback: versión anterior de `OperatorResource.java`.
+
 ## SGI_COM — Decisión de consignas propuestas desde SGI Operador — 2026-10-29
 - Coordinación de Compañía y Asistencia de Coordinación pueden aprobar o descartar propuestas pendientes desde su detalle.
 - La aprobación permite corregir título e instrucción y seleccionar un protocolo del mismo punto; la incorporación siempre ocurre sobre una versión borrador para preservar la inmutabilidad de versiones publicadas.

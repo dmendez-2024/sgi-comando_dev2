@@ -1,10 +1,12 @@
 import {useEffect, useMemo, useState, type ReactNode} from 'react';
 import {
-  Building2, Briefcase, CalendarDays, CarFront, Clock3, Container, Download, Eye, FileSearch2,
+  Building2, Briefcase, CalendarDays, CarFront, Clock3, Container, Upload, Eye, FileSearch2,
   FilterX, MapPin, Search, ShieldCheck, UserRound, X, ChevronRight
 } from 'lucide-react';
 import {api, getUser} from '../api';
 import {PhotoEvidenceGallery, ReferenceImageGallery} from '../components/PhotoEvidenceGallery';
+import SearchableSelect from '../components/SearchableSelect';
+import FilterAccordion from '../components/FilterAccordion';
 
 type RecordType='PERSON'|'VEHICLE'|'CONTAINER';
 type RecordStatus='AUTHORIZED'|'REGISTERED'|'RELEASED'|'UNDER_REVIEW'|'RETAINED';
@@ -169,26 +171,28 @@ export default function BitacoraGlobal(){
           </div>
         </div>
 
-        <label className="bit-global-main-search nov-main-search"><Search size={18}/><input value={filters.query} onChange={e=>set('query',e.target.value)} placeholder="Buscar por nombre, apellido, identificación, placa, contenedor…"/></label>
+        <FilterAccordion id="bit-global-search-filters">
+          <label className="bit-global-main-search nov-main-search"><Search size={18}/><input value={filters.query} onChange={e=>set('query',e.target.value)} placeholder="Buscar por nombre, apellido, identificación, placa, contenedor…"/></label>
 
-        <div className="bit-global-filter-grid nov-filter-grid">
-          <Field label="Nombres"><input value={filters.firstName} onChange={e=>set('firstName',e.target.value)} placeholder="Ej. Juan"/></Field>
-          <Field label="Apellidos"><input value={filters.lastName} onChange={e=>set('lastName',e.target.value)} placeholder="Ej. Pérez"/></Field>
-          <Field label="Identificación"><input value={filters.identifier} onChange={e=>set('identifier',e.target.value)} placeholder="CI / Placa / Contenedor"/></Field>
-          <Field label="Ciudad"><select value={filters.city} onChange={e=>set('city',e.target.value)}><option value="">Todas</option>{cityOptions.map(c=><option key={c} value={c}>{c}</option>)}</select></Field>
-          <Field label="Cliente"><select value={filters.client} onChange={e=>set('client',e.target.value)}><option value="">Todos</option>{clientOptions.map(c=><option key={c} value={c}>{c}</option>)}</select></Field>
-          <Field label="Compañía"><select value={filters.company} onChange={e=>set('company',e.target.value)}><option value="ALL">Todas</option>{companyOptions.map(c=><option key={c} value={c}>{c}</option>)}</select></Field>
-          <Field label="Punto"><input value={filters.point} onChange={e=>set('point',e.target.value)} placeholder="Ej. Acceso Principal"/></Field>
-          <Field label="Fecha desde"><input type="date" value={filters.dateFrom} onChange={e=>set('dateFrom',e.target.value)}/></Field>
-          <Field label="Fecha hasta"><input type="date" value={filters.dateTo} onChange={e=>set('dateTo',e.target.value)}/></Field>
-          <Field label="Estado / Resultado"><select value={filters.status} onChange={e=>set('status',e.target.value as Filters['status'])}><option value="ALL">Todos</option><option value="AUTHORIZED">Autorizado</option><option value="REGISTERED">Registrado</option><option value="RELEASED">Liberado</option><option value="UNDER_REVIEW">En revisión</option><option value="RETAINED">Retenido</option></select></Field>
-        </div>
+          <div className="bit-global-filter-grid nov-filter-grid operational-filter-grid">
+            <Field label="Ciudad"><SearchableSelect ariaLabel="Ciudad" value={filters.city} onChange={value=>set('city',value)} searchPlaceholder="Buscar ciudad…" options={[{value:'',label:'Todas'},...cityOptions.map(c=>({value:c,label:c}))]}/></Field>
+            <Field label="Compañía"><SearchableSelect ariaLabel="Compañía" value={filters.company} onChange={value=>set('company',value)} searchPlaceholder="Buscar compañía…" options={[{value:'ALL',label:'Todas'},...companyOptions.map(c=>({value:c,label:c}))]}/></Field>
+            <Field label="Cliente"><SearchableSelect ariaLabel="Cliente" value={filters.client} onChange={value=>set('client',value)} searchPlaceholder="Buscar cliente…" options={[{value:'',label:'Todos'},...clientOptions.map(c=>({value:c,label:c}))]}/></Field>
+            <Field label="Punto"><input value={filters.point} onChange={e=>set('point',e.target.value)} placeholder="Ej. Acceso Principal"/></Field>
+            <Field label="Estado / Resultado"><select value={filters.status} onChange={e=>set('status',e.target.value as Filters['status'])}><option value="ALL">Todos</option><option value="AUTHORIZED">Autorizado</option><option value="REGISTERED">Registrado</option><option value="RELEASED">Liberado</option><option value="UNDER_REVIEW">En revisión</option><option value="RETAINED">Retenido</option></select></Field>
+            <Field label="Nombres"><input value={filters.firstName} onChange={e=>set('firstName',e.target.value)} placeholder="Ej. Juan"/></Field>
+            <Field label="Apellidos"><input value={filters.lastName} onChange={e=>set('lastName',e.target.value)} placeholder="Ej. Pérez"/></Field>
+            <Field label="Identificación"><input value={filters.identifier} onChange={e=>set('identifier',e.target.value)} placeholder="CI / Placa / Contenedor"/></Field>
+            <Field label="Fecha desde"><input type="date" value={filters.dateFrom} onChange={e=>set('dateFrom',e.target.value)}/></Field>
+            <Field label="Fecha hasta"><input type="date" value={filters.dateTo} onChange={e=>set('dateTo',e.target.value)}/></Field>
+          </div>
 
-        <div className="bit-global-search-actions nov-actions">
-          <button className="primary"><Search size={16}/>Buscar</button>
-          <button onClick={clear}><FilterX size={16}/>Limpiar filtros</button>
-          <button className="export" onClick={exportCsv}><Download size={16}/>Exportar</button>
-        </div>
+          <div className="bit-global-search-actions nov-actions">
+            <button className="primary"><Search size={16}/>Buscar</button>
+            <button onClick={clear}><FilterX size={16}/>Limpiar filtros</button>
+            <button className="export" onClick={exportCsv}><Upload size={16}/>Exportar</button>
+          </div>
+        </FilterAccordion>
 
         <div className="bit-global-results-card nov-results-card">
           <div className="bit-global-results-head nov-results-head">

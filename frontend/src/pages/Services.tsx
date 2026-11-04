@@ -54,6 +54,7 @@ import ObsintConfig from '../obsint/config/ObsintConfig';
 import {obsintConfigApi} from '../obsint/obsintApi';
 import MatchThresholdField from '../components/MatchThresholdField';
 import RadiusField from '../components/RadiusField';
+import SearchableSelect from '../components/SearchableSelect';
 
 type State='ACTIVE'|'INACTIVE'|'TO_CONFIGURE'|'PENDING_ASSIGNMENT';
 type Row={
@@ -105,7 +106,7 @@ type AtsPackageDto={
 
 type PostSkillSet={attendance:number;accessControl:number;patrol:number;judgement:number;tactical:number;bearing:number;leadership:number;customerService:number};
 type PostOperationalConfig={postId:string;postCode?:string;postName?:string;postType:'CAA'|'PAT'|'VIG'|'MIX';description:string;alias?:string|null;visualTitle?:string|null;standardImageId?:string|null;standardImageName?:string|null;atsLocationKey:string;atsLocationLabel:string;atsPackageId?:string|null;atsLocationX?:number|null;atsLocationY?:number|null;skills:PostSkillSet;adjustmentJustification?:string|null;configStatus:'DRAFT'|'CONFIGURED';updatedBy?:string|null;stationVisintEnabled?:boolean;stationMatchThreshold?:number|null;latitude?:number|null;longitude?:number|null;radiusM?:number|null};
-type PostStandardPhoto={id:string;position:number;originalName:string;contentType:string;url:string};
+type PostStandardPhoto={id:string;position:number;originalName:string;contentType:string;title:string|null;detail:string|null;url:string};
 type PostVisualRule={thresholdValue:number|null;referenceImageCount:number|null;effectiveReferenceImageCount:number;savedImageCount:number;historicalPresentationMonths:number|null;updatedBy?:string|null;updatedAt?:string|null};
 type PostVisualRuleHistory={thresholdValue:number|null;referenceImageCount:number|null;historicalPresentationMonths:number|null;legacyHistoricalPresentation:string|null;changedBy:string;changedAt:string};
 type CommercialPost={id:string;pointId:string;code:string;name:string;format:string;fhe:number;tier:string;rotationCode?:string|null;cycleLengthDays?:number|null};
@@ -448,7 +449,7 @@ function AtsPage({point,onBack}:{point:PointRow;onBack:()=>void}){
         <small>Importación y vinculación operacional · el archivo .ats se conserva íntegro y SGI materializa su plano para la configuración del Punto.</small>
       </div>
       <div className="ats-header-actions">
-        <button className="ser-action ghost" onClick={()=>inputRef.current?.click()} disabled={uploading}><Upload size={15}/>{uploading?'Importando…':current?'Reemplazar archivo':'Importar archivo'}</button>
+        <button className="ser-action ghost" onClick={()=>inputRef.current?.click()} disabled={uploading}><Download size={15}/>{uploading?'Importando…':current?'Reemplazar archivo':'Importar archivo'}</button>
         <button className="ser-action ghost" onClick={scrollToHistory} disabled={!history.length} aria-controls="ats-history-section"><History size={15}/>Ver historial</button>
         <button className="ser-action primary" onClick={()=>void validateLinks()} disabled={!current||validating}><ShieldCheck size={15}/>{validating?'Validando…':'Validar vínculos'}</button>
       </div>
@@ -470,7 +471,7 @@ function AtsPage({point,onBack}:{point:PointRow;onBack:()=>void}){
       <div className="ats-upload-empty-icon"><MapIcon size={28}/></div>
       <h3>Este Punto todavía no tiene un archivo .ats</h3>
       <p>Importa la publicación ATS del Punto. SGI validará el paquete, leerá su manifiesto y cargará automáticamente el plano incluido.</p>
-      <button className="ser-action primary" onClick={()=>inputRef.current?.click()} disabled={uploading}><Upload size={15}/>{uploading?'Importando…':'Seleccionar archivo .ats'}</button>
+      <button className="ser-action primary" onClick={()=>inputRef.current?.click()} disabled={uploading}><Download size={15}/>{uploading?'Importando…':'Seleccionar archivo .ats'}</button>
       <small>Formatos de plano admitidos dentro del paquete: PNG, JPEG y WebP · tamaño máximo del archivo .ats: 20 MB.</small>
     </section>:current&&<>
       <div className="ser-kpis ats-kpis">
@@ -727,6 +728,18 @@ function PostsPage({point,onBack}:{point:PointRow;onBack:()=>void}){
       setNotice('Foto estándar guardada.');
     }catch(error){setPageError(errorMessage(error))}finally{setPhotoBusy(false);if(photoInputRef.current)photoInputRef.current.value=''}
   };
+  const savePhotoMetadata=async(photo:PostStandardPhoto)=>{
+    if(!draft)return;
+    const title=photo.title?.trim()??'',detail=photo.detail?.trim()??'';
+    if(!title||!detail){setPageError('Ingresa título y detalle para la foto estándar.');return}
+    if(title.length>120||detail.length>500){setPageError('El título admite 120 caracteres y el detalle 500.');return}
+    setPhotoBusy(true);setPageError('');setNotice('');
+    try{
+      const saved=await api.updatePostStandardImageMetadata(draft.postId,photo.id,{title,detail});
+      setPhotos(current=>current.map(item=>item.id===photo.id?{...item,title:saved.title,detail:saved.detail}:item));
+      setNotice(`Datos de la foto ${photo.position} guardados.`);
+    }catch(error){setPageError(errorMessage(error))}finally{setPhotoBusy(false)}
+  };
   const removePhoto=async(imageId:string)=>{
     if(!draft)return;
     setPhotoBusy(true);setPageError('');
@@ -866,7 +879,7 @@ function PostsPage({point,onBack}:{point:PointRow;onBack:()=>void}){
                 <input ref={photoInputRef} type="file" accept="image/jpeg,image/png,image/webp" hidden onChange={event=>{const file=event.target.files?.[0];if(file)void uploadPhoto(file)}}/>
                 {photoLoading&&<small>Cargando fotos estándar…</small>}
                 <div className="posts-photo-gallery">
-                  {photos.map(photo=><figure key={photo.id}><img src={photo.url} alt={`Foto estándar ${photo.position} del puesto`} title={photo.originalName}/><figcaption><span>{photo.position}</span><button type="button" aria-label={`Eliminar foto ${photo.position}`} title="Eliminar foto" onClick={()=>void removePhoto(photo.id)} disabled={photoBusy}><Trash2 size={14}/></button></figcaption></figure>)}
+                  {photos.map(photo=><div className="posts-photo-item" key={photo.id}><figure><img src={photo.url} alt={photo.title||`Foto estándar ${photo.position} del puesto`} title={photo.title||photo.originalName}/><figcaption><span>{photo.position}</span><button type="button" aria-label={`Eliminar foto ${photo.position}`} title="Eliminar foto" onClick={()=>void removePhoto(photo.id)} disabled={photoBusy}><Trash2 size={14}/></button></figcaption></figure><div className="posts-photo-fields"><label><span>Título de la foto {photo.position}</span><input value={photo.title??''} maxLength={120} onChange={event=>setPhotos(current=>current.map(item=>item.id===photo.id?{...item,title:event.target.value}:item))} placeholder="Ej. Acceso principal"/></label><label><span>Detalle</span><textarea value={photo.detail??''} maxLength={500} onChange={event=>setPhotos(current=>current.map(item=>item.id===photo.id?{...item,detail:event.target.value}:item))} placeholder="Describe lo que debe verse en esta foto…"/></label></div><button type="button" className="posts-photo-save" disabled={photoBusy||!photo.title?.trim()||!photo.detail?.trim()} onClick={()=>void savePhotoMetadata(photo)}><Save size={13}/>Guardar foto</button></div>)}
                   {photos.length<3&&<button type="button" className="posts-photo-add" onClick={()=>photoInputRef.current?.click()} disabled={photoBusy||photoLoading}><Camera size={20}/><strong>{photoBusy?'Procesando…':'Agregar foto estándar'}</strong><small>{photos.length} de 3 · puede agregar {3-photos.length}</small></button>}
                 </div>
                 <label><span>Notas del estándar</span><textarea value={draft.visualTitle??''} maxLength={300} onChange={event=>setDraft({...draft,visualTitle:event.target.value})} placeholder="Describe las referencias que deben verse en las fotos…"/></label>
@@ -1178,8 +1191,8 @@ export default function Services(){
 
     <div className="ser-filterbar">
       <label className="ser-search"><span className="sr-only">Buscar</span><Search size={16}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar cliente o punto…"/></label>
-      <label><span>Compañía</span><select value={company} onChange={e=>setCompany(e.target.value)}><option value="">Todas las compañías</option>{companies.map((item:string)=><option key={item}>{item}</option>)}</select></label>
-      <label><span>Cliente</span><select value={client} onChange={e=>setClient(e.target.value)}><option value="">Todos los clientes</option>{clients.map((item:ClientOption)=><option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+      <label><span>Compañía</span><SearchableSelect ariaLabel="Compañía" value={company} onChange={setCompany} searchPlaceholder="Buscar compañía…" options={[{value:'',label:'Todas las compañías'},...companies.map((item:string)=>({value:item,label:item}))]}/></label>
+      <label><span>Cliente</span><SearchableSelect ariaLabel="Cliente" value={client} onChange={setClient} searchPlaceholder="Buscar cliente…" options={[{value:'',label:'Todos los clientes'},...clients.map((item:ClientOption)=>({value:item.id,label:item.name}))]}/></label>
       <label><span>Estado</span><select value={state} onChange={e=>setState(e.target.value)}><option value="">Todos los estados</option><option value="ACTIVE">Activo</option><option value="TO_CONFIGURE">Por Configurar</option><option value="PENDING_ASSIGNMENT">Pendiente de asignación</option><option value="INACTIVE">Inactivo</option></select></label>
       <button className="ser-clear" onClick={clearFilters}><RefreshCcw size={15}/>Limpiar filtros</button>
     </div>
@@ -1187,7 +1200,7 @@ export default function Services(){
     {error&&<div className="ser-error"><AlertTriangle size={16}/><span>{error}</span><button onClick={()=>void reload()}>Reintentar</button></div>}
 
     <section className="ser-table-card">
-      <header><div><h3>Servicios <b>({filtered.length})</b></h3><span>Vista a nivel de Cliente · Punto</span></div><button onClick={exportCsv} disabled={!filtered.length}><Download size={15}/>Exportar</button></header>
+      <header><div><h3>Servicios <b>({filtered.length})</b></h3><span>Vista a nivel de Cliente · Punto</span></div><button onClick={exportCsv} disabled={!filtered.length}><Upload size={15}/>Exportar</button></header>
       <div className="ser-table-wrap">
         <table className="ser-table ser-point-table">
           <thead><tr><th>Compañía</th><th>Servicio</th><th>Cliente</th><th>Punto</th><th>Puestos</th><th>ID Promedio</th><th>IC Promedio</th><th>Novedades</th><th>Estado</th><th>Operación</th><th>Gestión</th></tr></thead>
@@ -1220,7 +1233,7 @@ export default function Services(){
         <div className="ser-assignment-summary"><span className="ser-assignment-icon"><Building2 size={22}/></span><div><small>Servicio</small><strong>{assignmentPoint.serviceName}</strong><span>{assignmentPoint.clientName} · {assignmentPoint.pointName} · {assignmentPoint.posts.length} puesto{assignmentPoint.posts.length===1?'':'s'}</span></div></div>
         <div className="ser-assignment-form">
           <label><span>Origen operacional</span><div className="ser-readonly-field">Kaibil · Pendiente de asignación</div></label>
-          <label><span>Compañía destino</span><select value={assignmentCompanyId} onChange={e=>setAssignmentCompanyId(e.target.value)} disabled={assignmentLoading}><option value="">Seleccione una Compañía…</option>{assignmentOptions.map(option=><option key={option.companyId} value={option.companyId}>{option.name}</option>)}</select></label>
+          <label><span>Compañía destino</span><SearchableSelect ariaLabel="Compañía destino" value={assignmentCompanyId} onChange={setAssignmentCompanyId} disabled={assignmentLoading} searchPlaceholder="Buscar compañía…" options={[{value:'',label:'Seleccione una Compañía…'},...assignmentOptions.map(option=>({value:option.companyId,label:option.name}))]}/></label>
           <label className="wide"><span>Observaciones <em>Opcional</em></span><textarea maxLength={1000} value={assignmentObservations} onChange={e=>setAssignmentObservations(e.target.value)} placeholder="Agregue contexto para la asignación operacional…"/><small>{assignmentObservations.length} / 1000</small></label>
         </div>
         <div className="ser-assignment-info"><Info size={17}/><div><strong>{assignmentPoint.returnedToCoordination?'Reasignación operacional':'Asignación inicial'}</strong><span>{assignmentPoint.returnedToCoordination?'La configuración previa del Servicio viajará con el Punto a la nueva Compañía. No se requiere aceptación del Coordinador de Compañía destino.':'Kaibil funciona como bandeja de Coordinación; no opera Servicios de clientes. Al confirmar, el Servicio pasará a la Compañía seleccionada y recién entonces podrá configurarse operacionalmente.'}</span></div></div>

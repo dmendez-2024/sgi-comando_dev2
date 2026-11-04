@@ -2,6 +2,7 @@ package com.cajamarca.sgi.comando.patrols;
 
 import com.cajamarca.sgi.comando.ats.AtsPointPackage;
 import com.cajamarca.sgi.comando.common.TenantContext;
+import com.cajamarca.sgi.comando.common.ProtocolLibraryExport;
 import com.cajamarca.sgi.comando.operations.PointEntity;
 import com.cajamarca.sgi.comando.operations.PostEntity;
 import com.cajamarca.sgi.comando.storage.*;
@@ -44,6 +45,9 @@ public class PatrolResource {
     public record CreateProtocolRequest(UUID postId,String name) {}
     public record SaveProtocolRequest(String name,String description,List<UUID> applicablePostIds) {}
     public record SaveScopeRequest(List<UUID> applicablePostIds) {}
+    public record ExportRequest(String scope) {}
+    public record ImportRequest(UUID postId) {}
+    public record LibraryEntryDto(UUID id,String scope,String code,String name,String description,int versionNo,int itemCount,int detailCount,String exportedBy,Instant exportedAt,boolean alreadyExported) {}
     public record CreatePatrolRequest(String name,String structureType,String scheduleType) {}
     public record SavePatrolRequest(String name,String description,String structureType,String scheduleType,String sequenceType,String windowStart,String windowEnd,Integer repetitions) {}
     public record CreateCheckpointRequest(String name,String description,String originMode,UUID atsPackageId,Double atsX,Double atsY,Double latitude,Double longitude,Double gpsAccuracyM,String controlType,Boolean requiresEvidence) {}
@@ -78,6 +82,89 @@ public class PatrolResource {
         List<PatrolProtocol> rows=PatrolProtocol.list("instanceCountryId=?1 and seriesId=?2 order by versionNo desc",tenant.instanceCountryId(),p.seriesId);
         return rows.stream().map(this::dto).toList();
     }
+
+    @GET
+    @Path("/protocol-library")
+    @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
+    public List<LibraryEntryDto> library(@QueryParam("postId") UUID postId){
+        PostEntity destination=post(postId);PointEntity destinationPoint=point(destination.pointId);scope.requireCompany(destinationPoint.companyId);
+        return ProtocolLibraryExport.<ProtocolLibraryExport>list("instanceCountryId=?1 and module='PATROL' order by createdAt desc",tenant.instanceCountryId())
+            .stream().filter(row->libraryVisible(row,destinationPoint.companyId)).map(row->libraryDto(row,protocol(row.sourceProtocolId),true)).toList();
+    }
+
+    @GET
+    @Path("/protocols/{protocolId}/exports")
+    @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
+    public List<LibraryEntryDto> exports(@PathParam("protocolId") UUID protocolId){
+        PatrolProtocol source=protocol(protocolId);authorize(source);
+        PointEntity sourcePoint=point(post(source.postId).pointId);
+        return ProtocolLibraryExport.<ProtocolLibraryExport>list("instanceCountryId=?1 and module='PATROL' and sourceProtocolId=?2 order by createdAt",tenant.instanceCountryId(),source.id)
+            .stream().filter(row->"COUNTRY".equals(row.scope)||Objects.equals(row.companyId,sourcePoint.companyId)).map(row->libraryDto(row,source,true)).toList();
+    }
+
+    @POST
+    @Path("/protocols/{protocolId}/exports")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Transactional
+    @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
+    public LibraryEntryDto exportProtocol(@PathParam("protocolId") UUID protocolId,ExportRequest request){
+        PatrolProtocol source=protocol(protocolId);authorize(source);
+        if("BORRADOR".equals(source.status))throw new ClientErrorException("Publique el protocolo antes de exportarlo.",409);
+        if(request==null||request.scope()==null)throw new BadRequestException("Seleccione la biblioteca de destino.");
+        String targetScope=request.scope().trim().toUpperCase(Locale.ROOT);
+        if(!Set.of("COMPANY","COUNTRY").contains(targetScope))throw new BadRequestException("Biblioteca inválida.");
+        PointEntity sourcePoint=point(post(source.postId).pointId);
+        UUID companyId="COMPANY".equals(targetScope)?sourcePoint.companyId:null;
+        if("COMPANY".equals(targetScope)&&companyId==null)throw new BadRequestException("El Punto requiere una Compañía para exportar.");
+        if("COUNTRY".equals(targetScope)&&!canExportCountryStandard())throw new ForbiddenException("Solo Dirección Zonal o superior puede exportar Estándares Cajamarca.");
+        ProtocolLibraryExport existing="COMPANY".equals(targetScope)
+            ?ProtocolLibraryExport.find("instanceCountryId=?1 and module='PATROL' and sourceProtocolId=?2 and scope='COMPANY' and companyId=?3",tenant.instanceCountryId(),source.id,companyId).firstResult()
+            :ProtocolLibraryExport.find("instanceCountryId=?1 and module='PATROL' and sourceProtocolId=?2 and scope='COUNTRY'",tenant.instanceCountryId(),source.id).firstResult();
+        if(existing!=null)return libraryDto(existing,source,true);
+        ProtocolLibraryExport row=new ProtocolLibraryExport();row.module="PATROL";row.instanceCountryId=tenant.instanceCountryId();row.sourceProtocolId=source.id;row.scope=targetScope;row.companyId=companyId;row.exportedByUsername=user();row.persist();
+        return libraryDto(row,source,false);
+    }
+
+    @POST
+    @Path("/protocol-library/{exportId}/import")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Transactional
+    @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
+    public ProtocolDto importProtocol(@PathParam("exportId") UUID exportId,ImportRequest request){
+        if(request==null||request.postId()==null)throw new BadRequestException("Seleccione un Puesto destino.");
+        PostEntity destination=post(request.postId());PointEntity destinationPoint=point(destination.pointId);scope.requireCompany(destinationPoint.companyId);
+        ProtocolLibraryExport entry=ProtocolLibraryExport.find("id=?1 and instanceCountryId=?2 and module='PATROL'",exportId,tenant.instanceCountryId()).firstResult();
+        if(entry==null||!libraryVisible(entry,destinationPoint.companyId))throw new NotFoundException("Modelo no disponible para este Puesto.");
+        PatrolProtocol source=protocol(entry.sourceProtocolId);
+        if("BORRADOR".equals(source.status))throw new ClientErrorException("El modelo de origen debe estar publicado.",409);
+        boolean samePoint=post(source.postId).pointId.equals(destination.pointId);
+        PatrolProtocol target=new PatrolProtocol();target.id=UUID.randomUUID();target.instanceCountryId=tenant.instanceCountryId();target.seriesId=target.id;
+        target.basedOnProtocolId=source.id;target.postId=destination.id;target.code=nextProtocolCode();target.name=source.name;target.description=source.description;
+        target.status="BORRADOR";target.versionNo=1;target.updatedByUsername=user();target.persist();setScope(target,List.of(destination.id));
+        for(PatrolDefinition old:patrols(source.id)){
+            PatrolDefinition copy=clonePatrolDefinition(old,target.id,destination.pointId);
+            for(PatrolCheckpoint oldCheckpoint:checkpoints(old.id)){
+                PatrolCheckpoint checkpoint=cloneCheckpoint(oldCheckpoint,copy.id);
+                if(!samePoint){checkpoint.atsPackageId=null;checkpoint.atsX=null;checkpoint.atsY=null;checkpoint.latitude=null;checkpoint.longitude=null;checkpoint.gpsAccuracyM=null;checkpoint.locationCapturedAt=null;checkpoint.locationCapturedBy=null;}
+            }
+        }
+        return dto(target);
+    }
+
+    private PatrolDefinition clonePatrolDefinition(PatrolDefinition old,UUID protocolId,UUID pointId){
+        PatrolDefinition copy=new PatrolDefinition();copy.id=UUID.randomUUID();copy.instanceCountryId=tenant.instanceCountryId();copy.pointId=pointId;copy.protocolId=protocolId;
+        copy.code=old.code;copy.name=old.name;copy.description=old.description;copy.structureType=old.structureType;copy.scheduleType=old.scheduleType;
+        copy.sequenceType=old.sequenceType;copy.windowStart=old.windowStart;copy.windowEnd=old.windowEnd;copy.repetitions=old.repetitions;
+        copy.versionNo=old.versionNo;copy.legacyVersion=copy.versionNo;copy.status="BORRADOR";copy.updatedByUsername=user();copy.persist();return copy;
+    }
+
+    private LibraryEntryDto libraryDto(ProtocolLibraryExport entry,PatrolProtocol source,boolean alreadyExported){
+        List<PatrolDefinition> definitions=patrols(source.id);
+        int checkpoints=definitions.stream().mapToInt(p->checkpoints(p.id).size()).sum();
+        return new LibraryEntryDto(entry.id,entry.scope,source.code,source.name,source.description,source.versionNo,definitions.size(),checkpoints,entry.exportedByUsername,entry.createdAt,alreadyExported);
+    }
+    private boolean libraryVisible(ProtocolLibraryExport entry,UUID companyId){return "COUNTRY".equals(entry.scope)||("COMPANY".equals(entry.scope)&&companyId!=null&&companyId.equals(entry.companyId));}
+    private boolean canExportCountryStandard(){return java.util.stream.Stream.of("PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL").anyMatch(identity::hasRole);}
 
     @POST
     @Path("/protocols")

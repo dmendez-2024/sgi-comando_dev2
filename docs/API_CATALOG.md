@@ -268,9 +268,9 @@ Synchronize the mobile operator runtime context/configuration required for the a
 
 - `SGI_OPR_SGI_COM_0001_IF01` — `GET` `/api/v1/operator/runtime` — Assignment, Point/Post, protocols, consignments, patrols, bitacora, próximas acciones y mensajes pendientes
 - `SGI_OPR_SGI_COM_0001_IF15` — `GET` `/api/v1/operator/incident-taxonomy?category={category}` — taxonomía canónica de subcategorías de incidentes administrada por SGI Comando
-- `POST /api/v1/operator/patrol-executions` — inicio/finalización de Patrullas; las no programadas de secuencia flexible admiten hitos creados en campo con fotografía y GPS opcional.
+- `POST /api/v1/operator/patrol-executions` — inicio/finalización de Patrullas; las no programadas de secuencia flexible admiten hitos creados en campo con fotografía y GPS opcional. START y FINISH aceptan `executedAt` opcional (hora real en el teléfono; sin él se usa la hora de recepción). Un FINISH repetido de una patrulla ya finalizada devuelve su estado en vez de 409.
 - `GET /api/v1/operator/patrol-executions` — consulta interna SGI Comando UI/backend del historial real de ejecuciones de Patrulla; aplica tenant, identidad del Operador y alcance RBAC por Compañía. No crea una nueva interconexión externa.
-- `GET /api/v1/operator/patrol-map?assignmentId={assignmentId}` — entrega autenticada del plano ATS vigente del Punto asignado, sin caché, manteniendo el aislamiento por instancia-país.
+- `GET /api/v1/operator/patrol-map?assignmentId={assignmentId}` — entrega autenticada del plano ATS vigente del Punto asignado, sin caché, manteniendo el aislamiento por instancia-país. Headers: `X-ATS-Package-Id` (id del paquete ATS vigente), `X-ATS-Revision`, `X-ATS-Level`. Para dibujar los Hitos sobre el plano, el Operador usa `atsX`/`atsY` de cada hito del runtime (valores 0–1 relativos al ancho/alto de la imagen) solo si su `atsPackageId` es igual a `X-ATS-Package-Id`.
 - `POST /api/v1/operator/logbook-records` — recepción idempotente de registros de Bitácora desde SGI Operador.
 - `GET /api/v1/operator/logbook-records` — consulta interna para visualizar en SGI Comando los registros reales, filtrados por tenant, identidad y alcance RBAC.
 - `GET /api/v1/operator/relief-evidence/{eventId}/{purpose}?assignmentId={assignmentId}` — lectura autenticada de evidencia de relevo previamente recibida.
