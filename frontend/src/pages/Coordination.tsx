@@ -6,6 +6,7 @@ import {
   Power, RefreshCw, Route, Save, Search, ShieldCheck, Users, X
 } from 'lucide-react';
 import {api} from '../api';
+import SearchableSelect from '../components/SearchableSelect';
 
 type Company={id:string;code:string;name:string;companyType:string;kaibil:boolean};
 type Shift={code:string;label:string;start:string;end:string};
@@ -208,7 +209,7 @@ export default function Coordination(){
     {mode==='LIST'?<>
       <div className="coord-titlebar"><div><div className="ser-title-row"><h2>Coordinación</h2><span>Puestos internos de Monitoreo y Supervisión por Compañía</span></div><small>Administre Puestos de Coordinación, horarios y Rutas de Supervisión.</small></div><button className="coord-primary" onClick={newPost}><Plus size={16}/>Crear Puesto de Coordinación</button></div>
 
-      <div className="coord-context panel"><div><span>Compañía</span><select value={companyId} onChange={e=>setCompanyId(e.target.value)}>{companies.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></div><div><span>Tipo</span><strong>{company?.kaibil?'Kaibil · Coordinación':'Compañía operativa'}</strong></div><div><span>Puestos de Coordinación</span><strong>{metrics.total}</strong></div><div><span>Rutas activas</span><strong>{metrics.routes}</strong></div></div>
+      <div className="coord-context panel"><div><span>Compañía</span><SearchableSelect ariaLabel="Compañía" value={companyId} onChange={setCompanyId} searchPlaceholder="Buscar compañía…" options={companies.map(c=>({value:c.id,label:c.name}))}/></div><div><span>Tipo</span><strong>{company?.kaibil?'Kaibil · Coordinación':'Compañía operativa'}</strong></div><div><span>Puestos de Coordinación</span><strong>{metrics.total}</strong></div><div><span>Rutas activas</span><strong>{metrics.routes}</strong></div></div>
 
       <div className="coord-kpis"><article><span className="blue"><ClipboardList/></span><div><small>Puestos de Coordinación</small><strong>{metrics.total}</strong><em>configurados</em></div></article><article><span className="blue"><Monitor/></span><div><small>Monitoreo</small><strong>{metrics.monitoring}</strong><em>puestos</em></div></article><article><span className="green"><Users/></span><div><small>Supervisión</small><strong>{metrics.supervision}</strong><em>puestos</em></div></article><article><span className="blue"><Route/></span><div><small>Rutas activas</small><strong>{metrics.routes}</strong><em>vigentes</em></div></article><article><span className="amber"><AlertTriangle/></span><div><small>Alertas</small><strong>{coverage?.uncoveredPoints??0}</strong><em>sin cobertura</em></div></article></div>
 

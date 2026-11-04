@@ -6,6 +6,8 @@ import {
 } from 'lucide-react';
 import {api, getUser, type UatUser} from '../api';
 import {PhotoEvidenceGallery, ReferenceImageGallery, ReliefInventoryCards, type ReliefInventoryItem} from '../components/PhotoEvidenceGallery';
+import SearchableSelect from '../components/SearchableSelect';
+import FilterAccordion from '../components/FilterAccordion';
 
 type ExecutionType='RELIEF'|'PATROL'|'ADHOC';
 type ExecutionStatus='IN_PROGRESS'|'COMPLETED'|'OVERDUE'|'PENDING'|'CRITICAL';
@@ -342,25 +344,25 @@ export default function ConsignasExecution(){
     <div className="cns-layout">
       <section className="cns-main-card nov-main-card">
         <div className="cns-card-head"><div className="cns-title"><Search size={20}/><h3>Búsqueda de consignas</h3></div><div className="cns-tabs"><button className={filters.type==='ALL'?'active':''} onClick={()=>set('type','ALL')}>Todos</button><button className={filters.type==='RELIEF'?'active':''} onClick={()=>set('type','RELIEF')}><RefreshCw size={14}/>Relevos</button><button className={filters.type==='PATROL'?'active':''} onClick={()=>set('type','PATROL')}><CarFront size={14}/>Patrullas</button><button className={filters.type==='ADHOC'?'active':''} onClick={()=>set('type','ADHOC')}><FileText size={14}/>Consignas ad-hoc</button></div></div>
-        <div className="cns-search-row">
+        <FilterAccordion id="cns-search-filters">
           <label className="cns-main-search nov-main-search"><Search size={18}/><input value={filters.query} onChange={e=>set('query',e.target.value)} placeholder="Buscar por código, nombre, cliente, punto, responsable…"/></label>
-          <Field label="Ciudad"><select value={filters.city} onChange={e=>set('city',e.target.value)}><option value="">Todas</option>{cities.map(x=><option key={x}>{x}</option>)}</select></Field>
-        </div>
-        <div className="cns-filter-grid nov-filter-grid">
-          <Field label="Compañía"><select value={filters.company} onChange={e=>setCompany(e.target.value)}><option value="ALL">Todas</option>{companies.map(x=><option key={x}>{x}</option>)}</select></Field>
-          <Field label="Cliente"><select value={filters.client} onChange={e=>setClient(e.target.value)}><option value="">Todos</option>{clients.map(x=><option key={x}>{x}</option>)}</select></Field>
-          <Field label="Punto"><select value={filters.point} onChange={e=>setPoint(e.target.value)} disabled={!filters.client}><option value="">{filters.client?'Todos':'Seleccione un cliente primero'}</option>{points.map(x=><option key={x}>{x}</option>)}</select></Field>
-          <Field label="Puesto"><select value={filters.post} onChange={e=>set('post',e.target.value)} disabled={!filters.point}><option value="">{filters.point?'Todos':'Seleccione un punto primero'}</option>{posts.map(x=><option key={x}>{x}</option>)}</select></Field>
-          <Field label="Tipo de consigna"><select value={filters.type} onChange={e=>set('type',e.target.value as Filters['type'])}><option value="ALL">Todos</option><option value="RELIEF">Relevos</option><option value="PATROL">Patrullas</option><option value="ADHOC">Consignas ad-hoc</option></select></Field>
-          <Field label="Estado"><select value={filters.status} onChange={e=>set('status',e.target.value as Filters['status'])}><option value="ALL">Todos</option><option value="IN_PROGRESS">En curso</option><option value="COMPLETED">Completada</option><option value="OVERDUE">Vencida</option><option value="PENDING">Pendiente</option><option value="CRITICAL">Crítica</option></select></Field>
-          <Field label="Responsable"><select value={filters.responsible} onChange={e=>set('responsible',e.target.value)} disabled={filters.company==='ALL'}><option value="">{filters.company!=='ALL'?'Todos':'Seleccione una compañía primero'}</option>{responsibles.map(x=><option key={x}>{x}</option>)}</select></Field>
-          <Field label="Fecha inicio"><input type="date" value={filters.dateFrom} onChange={e=>set('dateFrom',e.target.value)}/></Field>
-          <Field label="Fecha fin"><input type="date" value={filters.dateTo} onChange={e=>set('dateTo',e.target.value)}/></Field>
-        </div>
-        {dateError && <div className="cns-validation-error"><AlertTriangle size={16}/><span>{dateError}</span></div>}
-        {actionNotice&&<div className="cns-action-notice"><CheckCircle2 size={16}/><span>{actionNotice}</span><button onClick={()=>setActionNotice('')} aria-label="Cerrar mensaje"><X size={14}/></button></div>}
-        {loadWarnings.map(message=><div className="cns-validation-error" key={message}><AlertTriangle size={16}/><span>{message}</span></div>)}
-        <div className="cns-search-actions nov-actions"><button className="primary" disabled={!!dateError} onClick={()=>void loadReviewRequests()}><Search size={16}/>Buscar</button><button onClick={clear}><FilterX size={16}/>Limpiar filtros</button><div className="cns-rules-note"><AlertCircle size={15}/><span>Fechas obligatorias · rango máximo de 1 año</span></div><button className="export" onClick={exportCsv} disabled={!!dateError || !rows.length}><Upload size={16}/>Exportar</button></div>
+          <div className="cns-filter-grid nov-filter-grid operational-filter-grid">
+            <Field label="Ciudad"><SearchableSelect ariaLabel="Ciudad" value={filters.city} onChange={value=>set('city',value)} searchPlaceholder="Buscar ciudad…" options={[{value:'',label:'Todas'},...cities.map(x=>({value:x,label:x}))]}/></Field>
+            <Field label="Compañía"><SearchableSelect ariaLabel="Compañía" value={filters.company} onChange={setCompany} searchPlaceholder="Buscar compañía…" options={[{value:'ALL',label:'Todas'},...companies.map(x=>({value:x,label:x}))]}/></Field>
+            <Field label="Cliente"><SearchableSelect ariaLabel="Cliente" value={filters.client} onChange={setClient} searchPlaceholder="Buscar cliente…" options={[{value:'',label:'Todos'},...clients.map(x=>({value:x,label:x}))]}/></Field>
+            <Field label="Punto"><SearchableSelect ariaLabel="Punto" value={filters.point} onChange={setPoint} disabled={!filters.client} searchPlaceholder="Buscar punto…" options={[{value:'',label:filters.client?'Todos':'Seleccione un cliente primero'},...points.map(x=>({value:x,label:x}))]}/></Field>
+            <Field label="Puesto"><SearchableSelect ariaLabel="Puesto" value={filters.post} onChange={value=>set('post',value)} disabled={!filters.point} searchPlaceholder="Buscar puesto…" options={[{value:'',label:filters.point?'Todos':'Seleccione un punto primero'},...posts.map(x=>({value:x,label:x}))]}/></Field>
+            <Field label="Tipo de consigna"><select value={filters.type} onChange={e=>set('type',e.target.value as Filters['type'])}><option value="ALL">Todos</option><option value="RELIEF">Relevos</option><option value="PATROL">Patrullas</option><option value="ADHOC">Consignas ad-hoc</option></select></Field>
+            <Field label="Estado"><select value={filters.status} onChange={e=>set('status',e.target.value as Filters['status'])}><option value="ALL">Todos</option><option value="IN_PROGRESS">En curso</option><option value="COMPLETED">Completada</option><option value="OVERDUE">Vencida</option><option value="PENDING">Pendiente</option><option value="CRITICAL">Crítica</option></select></Field>
+            <Field label="Responsable"><SearchableSelect ariaLabel="Responsable" value={filters.responsible} onChange={value=>set('responsible',value)} disabled={filters.company==='ALL'} searchPlaceholder="Buscar responsable…" options={[{value:'',label:filters.company!=='ALL'?'Todos':'Seleccione una compañía primero'},...responsibles.map(x=>({value:x,label:x}))]}/></Field>
+            <Field label="Fecha inicio"><input type="date" value={filters.dateFrom} onChange={e=>set('dateFrom',e.target.value)}/></Field>
+            <Field label="Fecha fin"><input type="date" value={filters.dateTo} onChange={e=>set('dateTo',e.target.value)}/></Field>
+          </div>
+          {dateError && <div className="cns-validation-error"><AlertTriangle size={16}/><span>{dateError}</span></div>}
+          {actionNotice&&<div className="cns-action-notice"><CheckCircle2 size={16}/><span>{actionNotice}</span><button onClick={()=>setActionNotice('')} aria-label="Cerrar mensaje"><X size={14}/></button></div>}
+          {loadWarnings.map(message=><div className="cns-validation-error" key={message}><AlertTriangle size={16}/><span>{message}</span></div>)}
+          <div className="cns-search-actions nov-actions"><button className="primary" disabled={!!dateError} onClick={()=>void loadReviewRequests()}><Search size={16}/>Buscar</button><button onClick={clear}><FilterX size={16}/>Limpiar filtros</button><div className="cns-rules-note"><AlertCircle size={15}/><span>Fechas obligatorias · rango máximo de 1 año</span></div><button className="export" onClick={exportCsv} disabled={!!dateError || !rows.length}><Upload size={16}/>Exportar</button></div>
+        </FilterAccordion>
 
         <div className="cns-results-card nov-results-card"><div className="cns-results-head nov-results-head"><h3>Ejecuciones ({rows.length})</h3><div>Ordenar por: <strong>Fecha más reciente</strong></div></div><div className="cns-table-wrap nov-table-wrap"><table className="cns-table nov-table"><thead><tr><th>Tipo</th><th>Código</th><th>Nombre / Descripción</th><th>Cliente</th><th>Punto / Puesto</th><th>Responsable</th><th>Ventana / Hora</th><th>Estado de ejecución</th><th>Resultado / Progreso</th><th></th></tr></thead><tbody>{rows.map(row=>{
           const pct=Math.round((row.progressCurrent/Math.max(row.progressTotal,1))*100);
@@ -409,7 +411,7 @@ export default function ConsignasExecution(){
             <div className="cns-decision-info"><AlertCircle size={17}/><span>La consigna se incorporará a una versión borrador. Si selecciona un protocolo publicado o activo, se creará automáticamente una nueva versión sin alterar el histórico.</span></div>
             <label><span>Título revisado</span><input maxLength={200} value={reviewTitle} onChange={e=>setReviewTitle(e.target.value)}/></label>
             <label><span>Instrucción revisada</span><textarea maxLength={2000} value={reviewInstruction} onChange={e=>setReviewInstruction(e.target.value)}/></label>
-            <label><span>Protocolo del punto</span><select value={targetProtocolId} onChange={e=>setTargetProtocolId(e.target.value)}><option value="">Seleccione un protocolo</option>{protocols.map((p:any)=><option key={p.id} value={p.id}>{p.code} · {p.name} · v{p.versionNo} · {p.status} · {p.consignments?.length??0}/20</option>)}</select><small>Solo se muestran protocolos del mismo punto. El puesto se conserva como alcance de la consigna.</small></label>
+            <label><span>Protocolo del punto</span><SearchableSelect ariaLabel="Protocolo del punto" value={targetProtocolId} onChange={setTargetProtocolId} searchPlaceholder="Buscar protocolo…" options={[{value:'',label:'Seleccione un protocolo'},...protocols.map((p:any)=>({value:p.id,label:`${p.code} · ${p.name} · v${p.versionNo} · ${p.status} · ${p.consignments?.length??0}/20`}))]}/><small>Solo se muestran protocolos del mismo punto. El puesto se conserva como alcance de la consigna.</small></label>
             <label><span>Comentario de revisión (opcional)</span><textarea maxLength={500} value={reviewComment} onChange={e=>setReviewComment(e.target.value)}/></label>
           </>:<>
             <div className="cns-decision-warning"><AlertTriangle size={17}/><span>La propuesta se conservará en el historial y no modificará ningún protocolo.</span></div>
