@@ -2520,3 +2520,62 @@ button.rel-material-image:focus-visible{outline:3px solid rgba(45,103,216,.3);ou
   .consignas-config-page .bit-evidence-summary{grid-template-columns:minmax(0,1fr)}
   .consignas-config-page .con-evidence-editor .con-date-row{grid-template-columns:minmax(0,1fr)}
 }
+/* Combos de alta cardinalidad: búsqueda reutilizable para catálogos operacionales. */
+.searchable-select{position:relative;width:100%;min-width:0;font:inherit;color:inherit}
+.searchable-select.open{z-index:130}
+.searchable-select-trigger{width:100%;min-width:0;min-height:38px;border:1px solid #d7e0ee;border-radius:8px;background:#fff;color:#24314d;padding:0 10px;display:flex;align-items:center;justify-content:space-between;gap:8px;font:inherit;font-size:12px;text-align:left;cursor:pointer}
+.searchable-select-trigger>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-transform:none;letter-spacing:normal;font-size:inherit;color:inherit;font-weight:inherit}
+.searchable-select-trigger>span.placeholder{color:#8b97a8}
+.searchable-select-trigger svg{flex:0 0 auto;color:#68778d;transition:transform .15s ease}
+.searchable-select.open .searchable-select-trigger{border-color:#5d86dc;box-shadow:0 0 0 3px rgba(45,103,216,.12)}
+.searchable-select.open .searchable-select-trigger svg{transform:rotate(180deg)}
+.searchable-select.disabled .searchable-select-trigger{background:#f5f7fb;color:#93a0b4;cursor:not-allowed}
+.searchable-select-menu{position:absolute;z-index:120;top:calc(100% + 5px);left:0;width:max(100%,260px);max-width:min(420px,90vw);padding:7px;background:#fff;border:1px solid #d6dfec;border-radius:10px;box-shadow:0 16px 38px rgba(20,37,67,.2)}
+.searchable-select-menu.align-right{left:auto;right:0}
+.searchable-select-menu.open-up{top:auto;bottom:calc(100% + 5px)}
+.searchable-select-search{height:34px;border:1px solid #dce3ed;border-radius:7px;padding:0 9px;display:flex!important;flex-direction:row!important;align-items:center;gap:7px;background:#f9fbfd;color:#718096}
+.searchable-select-search input{width:100%!important;min-width:0!important;height:auto!important;border:0!important;border-radius:0!important;outline:0!important;background:transparent!important;padding:0!important;box-shadow:none!important;font:inherit!important;font-size:12px!important;color:#26354d!important}
+.searchable-select-options{display:flex;flex-direction:column;gap:2px;max-height:250px;overflow:auto;margin-top:6px}
+.searchable-select-options button{flex:0 0 auto;width:100%;height:auto;min-height:33px;border:0;border-radius:7px;background:transparent;color:#29384f;padding:7px 9px;display:flex;align-items:center;justify-content:space-between;gap:8px;font:inherit;font-size:12px;line-height:1.35;text-align:left;cursor:pointer;overflow:hidden}
+.searchable-select-options button:hover,.searchable-select-options button.selected{background:#edf3ff;color:#2459bd}
+.searchable-select-options button:disabled{opacity:.45;cursor:not-allowed}
+.searchable-select-options button>span{min-width:0;overflow-wrap:anywhere;text-transform:none;letter-spacing:normal;font-size:inherit;line-height:inherit;color:inherit;font-weight:inherit}
+.searchable-select-empty{padding:13px 9px;color:#7d8999;font-size:11px;text-align:center}
+.cns-field .searchable-select-trigger,.nov-field .searchable-select-trigger{height:42px;border-radius:10px;font-size:13px;padding:0 12px}
+.ser-filterbar .searchable-select-trigger{height:38px;font-size:11px}
+.assignment-searchable-select{flex:0 0 180px;width:180px;max-width:180px}
+.assignment-searchable-select.company{flex-basis:150px;width:150px;max-width:150px}
+.assignment-searchable-select .searchable-select-trigger{height:40px;border-color:#dfe4ea;border-radius:9px;font-size:12px}
+.assignments-asi-v066 .assignment-toolbar-actions{overflow:visible;flex-wrap:wrap}
+.coord-context .searchable-select-trigger{min-height:24px;border:0;background:transparent;padding:0;font-size:12px;font-weight:800;color:#1d2e45}
+.coord-context .searchable-select-menu span,.coord-context .searchable-select-menu input{text-transform:none;letter-spacing:normal}
+.dash-v6-searchable{flex:1;min-width:0}
+.dash-v6-searchable .searchable-select-trigger{min-height:28px;border:0;background:transparent;padding:0;font-size:11px;color:#263f60;box-shadow:none}
+.dash-v6-company>svg:first-child{width:13px;height:13px}
+.csl-filter-accordion.open .csl-filter-panel-inner{overflow:visible}
+.operational-filter-grid.operational-filter-grid{display:grid!important;grid-template-columns:repeat(5,minmax(0,1fr))!important;gap:13px!important;margin-top:14px}
+.operational-filter-spacer{min-width:0;min-height:1px}
+@media(max-width:900px){.operational-filter-grid.operational-filter-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important}.operational-filter-spacer{display:none}}
+@media(max-width:560px){.operational-filter-grid.operational-filter-grid{grid-template-columns:1fr!important}}
+@media(max-width:700px){.searchable-select-menu{width:max(100%,220px)}}
+/* Bitácora: exportar una versión publicada a la biblioteca. */
+.bitacora-config-page .bit-detail-header>div:last-child{flex-wrap:wrap}
+.bit-export-modal{width:min(480px,calc(100vw - 32px));max-height:calc(100vh - 40px);overflow:auto;background:#fff;border-radius:12px;box-shadow:0 18px 50px rgba(20,31,45,.2)}
+.bit-export-modal>header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:16px 18px;border-bottom:1px solid #e4e9ef}
+.bit-export-modal h3{margin:0;color:#20334b;font-size:17px}.bit-export-modal>header span{display:block;margin-top:5px;color:#6b7c90;font-size:11px;overflow-wrap:anywhere}
+.bit-export-modal>header button{display:grid;place-items:center;width:32px;height:32px;flex:none;border:1px solid #dce3eb;border-radius:8px;background:#fff;color:#52657d;cursor:pointer}
+.bit-export-body{display:grid;gap:12px;padding:16px 18px}.bit-export-body p{margin:0;color:#40546d;font-size:12px;line-height:1.45}.bit-export-body>small{color:#6b7c90;font-size:10px;line-height:1.4}
+.bit-export-options{display:grid;gap:8px}.bit-export-options label{display:flex;align-items:flex-start;gap:10px;padding:12px;border:1px solid #dce5ef;border-radius:9px;cursor:pointer}.bit-export-options label:has(input:checked){border-color:#2d67d8;background:#f2f7ff}.bit-export-options input{margin-top:3px;accent-color:#2d67d8}.bit-export-options span{display:grid;gap:3px;min-width:0}.bit-export-options strong{font-size:12px;color:#23364f}.bit-export-options small{font-size:10px;color:#697c93;line-height:1.4}.bit-export-options em{font-size:10px;color:#187a46;font-style:normal;font-weight:700}
+.bit-export-modal>footer{display:flex;justify-content:flex-end;gap:8px;padding:12px 18px;border-top:1px solid #e4e9ef}.bit-export-modal>footer button{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:36px;padding:0 12px;border:1px solid #d9e1e9;border-radius:8px;background:#fff;color:#40566f;font-size:11px;font-weight:800;cursor:pointer}.bit-export-modal>footer button.primary{background:#2d67d8;border-color:#2d67d8;color:#fff}.bit-export-modal button:disabled{opacity:.55;cursor:not-allowed}
+
+/* Bitácora: selección de un modelo publicado para crear un protocolo en borrador. */
+.bit-import-modal{width:min(640px,calc(100vw - 32px))}
+.bit-import-filters{display:grid;grid-template-columns:minmax(160px,.8fr) minmax(0,1.2fr);gap:8px}
+.bit-import-filters select,.bit-import-filters label{min-width:0;height:36px;box-sizing:border-box;border:1px solid #dce5ef;border-radius:8px;background:#fff;color:#23364f;font-size:12px}
+.bit-import-filters select{padding:0 9px}.bit-import-filters label{display:flex;align-items:center;gap:6px;padding:0 9px}.bit-import-filters input{min-width:0;width:100%;border:0;outline:0;color:inherit;font:inherit}
+.bit-import-models{display:grid;gap:7px;max-height:min(360px,45vh);overflow:auto}.bit-import-models button{display:grid;gap:3px;text-align:left;width:100%;padding:10px 12px;border:1px solid #dce5ef;border-radius:9px;background:#fff;cursor:pointer}.bit-import-models button.selected{border-color:#2d67d8;background:#f2f7ff}.bit-import-models strong{font-size:12px;color:#20334b}.bit-import-models span,.bit-import-models small{font-size:10px;color:#65788f;line-height:1.4}
+.bit-import-preview{display:grid;gap:4px;padding:11px 12px;border-radius:9px;background:#eef5ff;color:#2d4d73;font-size:11px}.bit-import-preview p{margin:0;line-height:1.4}.bit-import-preview small{font-size:10px;line-height:1.4}.bit-import-error{padding:9px;border-radius:8px;background:#fff0f0;color:#a62532!important}
+@media(max-width:560px){.bit-import-filters{grid-template-columns:minmax(0,1fr)}}
+
+/* Acciones de biblioteca de protocolos en las tres configuraciones. */
+.patrol-config-page .bit-detail-header>div:last-child,.consignas-config-page .bit-detail-header>div:last-child{flex-wrap:wrap}

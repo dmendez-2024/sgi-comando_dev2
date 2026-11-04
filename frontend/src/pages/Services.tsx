@@ -54,6 +54,7 @@ import ObsintConfig from '../obsint/config/ObsintConfig';
 import {obsintConfigApi} from '../obsint/obsintApi';
 import MatchThresholdField from '../components/MatchThresholdField';
 import RadiusField from '../components/RadiusField';
+import SearchableSelect from '../components/SearchableSelect';
 
 type State='ACTIVE'|'INACTIVE'|'TO_CONFIGURE'|'PENDING_ASSIGNMENT';
 type Row={
@@ -1190,8 +1191,8 @@ export default function Services(){
 
     <div className="ser-filterbar">
       <label className="ser-search"><span className="sr-only">Buscar</span><Search size={16}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar cliente o punto…"/></label>
-      <label><span>Compañía</span><select value={company} onChange={e=>setCompany(e.target.value)}><option value="">Todas las compañías</option>{companies.map((item:string)=><option key={item}>{item}</option>)}</select></label>
-      <label><span>Cliente</span><select value={client} onChange={e=>setClient(e.target.value)}><option value="">Todos los clientes</option>{clients.map((item:ClientOption)=><option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+      <label><span>Compañía</span><SearchableSelect ariaLabel="Compañía" value={company} onChange={setCompany} searchPlaceholder="Buscar compañía…" options={[{value:'',label:'Todas las compañías'},...companies.map((item:string)=>({value:item,label:item}))]}/></label>
+      <label><span>Cliente</span><SearchableSelect ariaLabel="Cliente" value={client} onChange={setClient} searchPlaceholder="Buscar cliente…" options={[{value:'',label:'Todos los clientes'},...clients.map((item:ClientOption)=>({value:item.id,label:item.name}))]}/></label>
       <label><span>Estado</span><select value={state} onChange={e=>setState(e.target.value)}><option value="">Todos los estados</option><option value="ACTIVE">Activo</option><option value="TO_CONFIGURE">Por Configurar</option><option value="PENDING_ASSIGNMENT">Pendiente de asignación</option><option value="INACTIVE">Inactivo</option></select></label>
       <button className="ser-clear" onClick={clearFilters}><RefreshCcw size={15}/>Limpiar filtros</button>
     </div>
@@ -1232,7 +1233,7 @@ export default function Services(){
         <div className="ser-assignment-summary"><span className="ser-assignment-icon"><Building2 size={22}/></span><div><small>Servicio</small><strong>{assignmentPoint.serviceName}</strong><span>{assignmentPoint.clientName} · {assignmentPoint.pointName} · {assignmentPoint.posts.length} puesto{assignmentPoint.posts.length===1?'':'s'}</span></div></div>
         <div className="ser-assignment-form">
           <label><span>Origen operacional</span><div className="ser-readonly-field">Kaibil · Pendiente de asignación</div></label>
-          <label><span>Compañía destino</span><select value={assignmentCompanyId} onChange={e=>setAssignmentCompanyId(e.target.value)} disabled={assignmentLoading}><option value="">Seleccione una Compañía…</option>{assignmentOptions.map(option=><option key={option.companyId} value={option.companyId}>{option.name}</option>)}</select></label>
+          <label><span>Compañía destino</span><SearchableSelect ariaLabel="Compañía destino" value={assignmentCompanyId} onChange={setAssignmentCompanyId} disabled={assignmentLoading} searchPlaceholder="Buscar compañía…" options={[{value:'',label:'Seleccione una Compañía…'},...assignmentOptions.map(option=>({value:option.companyId,label:option.name}))]}/></label>
           <label className="wide"><span>Observaciones <em>Opcional</em></span><textarea maxLength={1000} value={assignmentObservations} onChange={e=>setAssignmentObservations(e.target.value)} placeholder="Agregue contexto para la asignación operacional…"/><small>{assignmentObservations.length} / 1000</small></label>
         </div>
         <div className="ser-assignment-info"><Info size={17}/><div><strong>{assignmentPoint.returnedToCoordination?'Reasignación operacional':'Asignación inicial'}</strong><span>{assignmentPoint.returnedToCoordination?'La configuración previa del Servicio viajará con el Punto a la nueva Compañía. No se requiere aceptación del Coordinador de Compañía destino.':'Kaibil funciona como bandeja de Coordinación; no opera Servicios de clientes. Al confirmar, el Servicio pasará a la Compañía seleccionada y recién entonces podrá configurarse operacionalmente.'}</span></div></div>

@@ -7,6 +7,8 @@ import {
 import {api, getUser, type UatUser} from '../api';
 import {OperationalDrawer} from '../components/OperationalDrawer';
 import {PhotoEvidenceGallery} from '../components/PhotoEvidenceGallery';
+import SearchableSelect from '../components/SearchableSelect';
+import FilterAccordion from '../components/FilterAccordion';
 
 type NoveltyType='FINDING'|'VULNERABILITY'|'INCIDENT';
 type NoveltyStatus='PENDING'|'APPROVED'|'DISCARDED';
@@ -304,26 +306,26 @@ export default function NovedadesExecution(){
         <button className={filters.type==='VULNERABILITY'?'active':''} onClick={()=>set('type','VULNERABILITY')}>Vulnerabilidades ({scoped.filter(x=>x.type==='VULNERABILITY').length})</button>
         <button className={filters.type==='INCIDENT'?'active':''} onClick={()=>set('type','INCIDENT')}>Incidentes ({scoped.filter(x=>x.type==='INCIDENT').length})</button>
       </div>
-      <label className="nov-main-search"><Search size={18}/><input value={filters.query} onChange={e=>set('query',e.target.value)} placeholder="Buscar por código, descripción o palabra clave…"/></label>
+      <FilterAccordion id="nov-search-filters">
+        <label className="nov-main-search"><Search size={18}/><input value={filters.query} onChange={e=>set('query',e.target.value)} placeholder="Buscar por código, descripción o palabra clave…"/></label>
 
-      <div className="nov-filter-grid">
-        <Field label="Ciudad"><select value={filters.city} onChange={e=>set('city',e.target.value)}><option value="">Todas</option>{cities.map(x=><option key={x}>{x}</option>)}</select></Field>
-        <Field label="Compañía"><select value={filters.company} onChange={e=>setCompany(e.target.value)}><option value="ALL">Todas</option>{companies.map(x=><option key={x}>{x}</option>)}</select></Field>
-        <Field label="Cliente"><select value={filters.client} onChange={e=>setClient(e.target.value)}><option value="">Todos</option>{clients.map(x=><option key={x}>{x}</option>)}</select></Field>
-        <Field label="Punto"><select value={filters.point} onChange={e=>setPoint(e.target.value)} disabled={!filters.client}><option value="">{filters.client?'Todos':'Seleccione cliente primero'}</option>{points.map(x=><option key={x}>{x}</option>)}</select></Field>
-        <Field label="Puesto"><select value={filters.post} onChange={e=>set('post',e.target.value)} disabled={!filters.point}><option value="">{filters.point?'Todos':'Seleccione punto primero'}</option>{posts.map(x=><option key={x}>{x}</option>)}</select></Field>
-      </div>
-      <div className="nov-filter-grid">
-        <Field label="Tipo de novedad"><select value={filters.type} onChange={e=>set('type',e.target.value as Filters['type'])}><option value="ALL">Todos</option><option value="FINDING">Hallazgos</option><option value="VULNERABILITY">Vulnerabilidades</option><option value="INCIDENT">Incidentes</option></select></Field>
-        <Field label="Estado"><select value={filters.status} onChange={e=>set('status',e.target.value as Filters['status'])}><option value="ALL">Todos</option><option value="PENDING">Pendiente</option><option value="APPROVED">Aprobada</option><option value="DISCARDED">Descartada</option></select></Field>
-        <Field label="Reportado por"><select value={filters.reporter} onChange={e=>set('reporter',e.target.value)} disabled={filters.company==='ALL'}><option value="">{filters.company!=='ALL'?'Todos':'Seleccione compañía primero'}</option>{reporters.map(x=><option key={x}>{x}</option>)}</select></Field>
-        <Field label="Fecha inicio"><input type="date" value={filters.dateFrom} onChange={e=>set('dateFrom',e.target.value)}/></Field>
-        <Field label="Fecha fin"><input type="date" value={filters.dateTo} onChange={e=>set('dateTo',e.target.value)}/></Field>
-      </div>
-      <div className="nov-rule-note"><CircleAlert size={15}/><span>Para filtrar por Punto primero seleccione un Cliente; para Puesto seleccione un Punto; para Reportado por seleccione una Compañía. Las fechas son obligatorias y el rango máximo es 1 año.</span></div>
-      {dateError&&<div className="nov-validation"><AlertTriangle size={16}/>{dateError}</div>}
-      {loadError&&<div className="nov-validation"><AlertTriangle size={16}/>{loadError}</div>}
-      <div className="nov-actions"><button className="primary" disabled={!!dateError} onClick={()=>void loadRecords()}><Search size={16}/>Buscar</button><button onClick={clearFilters}><FilterX size={16}/>Limpiar filtros</button><button className="export" onClick={exportCsv} disabled={!!dateError||!rows.length}><Upload size={16}/>Exportar</button></div>
+        <div className="nov-filter-grid operational-filter-grid">
+          <Field label="Ciudad"><SearchableSelect ariaLabel="Ciudad" value={filters.city} onChange={value=>set('city',value)} searchPlaceholder="Buscar ciudad…" options={[{value:'',label:'Todas'},...cities.map(x=>({value:x,label:x}))]}/></Field>
+          <Field label="Compañía"><SearchableSelect ariaLabel="Compañía" value={filters.company} onChange={setCompany} searchPlaceholder="Buscar compañía…" options={[{value:'ALL',label:'Todas'},...companies.map(x=>({value:x,label:x}))]}/></Field>
+          <Field label="Cliente"><SearchableSelect ariaLabel="Cliente" value={filters.client} onChange={setClient} searchPlaceholder="Buscar cliente…" options={[{value:'',label:'Todos'},...clients.map(x=>({value:x,label:x}))]}/></Field>
+          <Field label="Punto"><SearchableSelect ariaLabel="Punto" value={filters.point} onChange={setPoint} disabled={!filters.client} searchPlaceholder="Buscar punto…" options={[{value:'',label:filters.client?'Todos':'Seleccione cliente primero'},...points.map(x=>({value:x,label:x}))]}/></Field>
+          <Field label="Puesto"><SearchableSelect ariaLabel="Puesto" value={filters.post} onChange={value=>set('post',value)} disabled={!filters.point} searchPlaceholder="Buscar puesto…" options={[{value:'',label:filters.point?'Todos':'Seleccione punto primero'},...posts.map(x=>({value:x,label:x}))]}/></Field>
+          <Field label="Tipo de novedad"><select value={filters.type} onChange={e=>set('type',e.target.value as Filters['type'])}><option value="ALL">Todos</option><option value="FINDING">Hallazgos</option><option value="VULNERABILITY">Vulnerabilidades</option><option value="INCIDENT">Incidentes</option></select></Field>
+          <Field label="Estado"><select value={filters.status} onChange={e=>set('status',e.target.value as Filters['status'])}><option value="ALL">Todos</option><option value="PENDING">Pendiente</option><option value="APPROVED">Aprobada</option><option value="DISCARDED">Descartada</option></select></Field>
+          <Field label="Reportado por"><SearchableSelect ariaLabel="Reportado por" value={filters.reporter} onChange={value=>set('reporter',value)} disabled={filters.company==='ALL'} searchPlaceholder="Buscar persona…" options={[{value:'',label:filters.company!=='ALL'?'Todos':'Seleccione compañía primero'},...reporters.map(x=>({value:x,label:x}))]}/></Field>
+          <Field label="Fecha inicio"><input type="date" value={filters.dateFrom} onChange={e=>set('dateFrom',e.target.value)}/></Field>
+          <Field label="Fecha fin"><input type="date" value={filters.dateTo} onChange={e=>set('dateTo',e.target.value)}/></Field>
+        </div>
+        <div className="nov-rule-note"><CircleAlert size={15}/><span>Para filtrar por Punto primero seleccione un Cliente; para Puesto seleccione un Punto; para Reportado por seleccione una Compañía. Las fechas son obligatorias y el rango máximo es 1 año.</span></div>
+        {dateError&&<div className="nov-validation"><AlertTriangle size={16}/>{dateError}</div>}
+        {loadError&&<div className="nov-validation"><AlertTriangle size={16}/>{loadError}</div>}
+        <div className="nov-actions"><button className="primary" disabled={!!dateError} onClick={()=>void loadRecords()}><Search size={16}/>Buscar</button><button onClick={clearFilters}><FilterX size={16}/>Limpiar filtros</button><button className="export" onClick={exportCsv} disabled={!!dateError||!rows.length}><Upload size={16}/>Exportar</button></div>
+      </FilterAccordion>
 
       <div className="nov-results-card">
         <div className="nov-results-head"><h3>Novedades ({rows.length})</h3><span>Ordenado por <strong>Fecha más reciente</strong></span></div>
