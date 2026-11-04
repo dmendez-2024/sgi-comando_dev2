@@ -105,7 +105,7 @@ type AtsPackageDto={
 
 type PostSkillSet={attendance:number;accessControl:number;patrol:number;judgement:number;tactical:number;bearing:number;leadership:number;customerService:number};
 type PostOperationalConfig={postId:string;postCode?:string;postName?:string;postType:'CAA'|'PAT'|'VIG'|'MIX';description:string;alias?:string|null;visualTitle?:string|null;standardImageId?:string|null;standardImageName?:string|null;atsLocationKey:string;atsLocationLabel:string;atsPackageId?:string|null;atsLocationX?:number|null;atsLocationY?:number|null;skills:PostSkillSet;adjustmentJustification?:string|null;configStatus:'DRAFT'|'CONFIGURED';updatedBy?:string|null;stationVisintEnabled?:boolean;stationMatchThreshold?:number|null;latitude?:number|null;longitude?:number|null;radiusM?:number|null};
-type PostStandardPhoto={id:string;position:number;originalName:string;contentType:string;url:string};
+type PostStandardPhoto={id:string;position:number;originalName:string;contentType:string;title:string|null;detail:string|null;url:string};
 type PostVisualRule={thresholdValue:number|null;referenceImageCount:number|null;effectiveReferenceImageCount:number;savedImageCount:number;historicalPresentationMonths:number|null;updatedBy?:string|null;updatedAt?:string|null};
 type PostVisualRuleHistory={thresholdValue:number|null;referenceImageCount:number|null;historicalPresentationMonths:number|null;legacyHistoricalPresentation:string|null;changedBy:string;changedAt:string};
 type CommercialPost={id:string;pointId:string;code:string;name:string;format:string;fhe:number;tier:string;rotationCode?:string|null;cycleLengthDays?:number|null};
@@ -448,7 +448,7 @@ function AtsPage({point,onBack}:{point:PointRow;onBack:()=>void}){
         <small>Importación y vinculación operacional · el archivo .ats se conserva íntegro y SGI materializa su plano para la configuración del Punto.</small>
       </div>
       <div className="ats-header-actions">
-        <button className="ser-action ghost" onClick={()=>inputRef.current?.click()} disabled={uploading}><Upload size={15}/>{uploading?'Importando…':current?'Reemplazar archivo':'Importar archivo'}</button>
+        <button className="ser-action ghost" onClick={()=>inputRef.current?.click()} disabled={uploading}><Download size={15}/>{uploading?'Importando…':current?'Reemplazar archivo':'Importar archivo'}</button>
         <button className="ser-action ghost" onClick={scrollToHistory} disabled={!history.length} aria-controls="ats-history-section"><History size={15}/>Ver historial</button>
         <button className="ser-action primary" onClick={()=>void validateLinks()} disabled={!current||validating}><ShieldCheck size={15}/>{validating?'Validando…':'Validar vínculos'}</button>
       </div>
@@ -470,7 +470,7 @@ function AtsPage({point,onBack}:{point:PointRow;onBack:()=>void}){
       <div className="ats-upload-empty-icon"><MapIcon size={28}/></div>
       <h3>Este Punto todavía no tiene un archivo .ats</h3>
       <p>Importa la publicación ATS del Punto. SGI validará el paquete, leerá su manifiesto y cargará automáticamente el plano incluido.</p>
-      <button className="ser-action primary" onClick={()=>inputRef.current?.click()} disabled={uploading}><Upload size={15}/>{uploading?'Importando…':'Seleccionar archivo .ats'}</button>
+      <button className="ser-action primary" onClick={()=>inputRef.current?.click()} disabled={uploading}><Download size={15}/>{uploading?'Importando…':'Seleccionar archivo .ats'}</button>
       <small>Formatos de plano admitidos dentro del paquete: PNG, JPEG y WebP · tamaño máximo del archivo .ats: 20 MB.</small>
     </section>:current&&<>
       <div className="ser-kpis ats-kpis">
@@ -727,6 +727,18 @@ function PostsPage({point,onBack}:{point:PointRow;onBack:()=>void}){
       setNotice('Foto estándar guardada.');
     }catch(error){setPageError(errorMessage(error))}finally{setPhotoBusy(false);if(photoInputRef.current)photoInputRef.current.value=''}
   };
+  const savePhotoMetadata=async(photo:PostStandardPhoto)=>{
+    if(!draft)return;
+    const title=photo.title?.trim()??'',detail=photo.detail?.trim()??'';
+    if(!title||!detail){setPageError('Ingresa título y detalle para la foto estándar.');return}
+    if(title.length>120||detail.length>500){setPageError('El título admite 120 caracteres y el detalle 500.');return}
+    setPhotoBusy(true);setPageError('');setNotice('');
+    try{
+      const saved=await api.updatePostStandardImageMetadata(draft.postId,photo.id,{title,detail});
+      setPhotos(current=>current.map(item=>item.id===photo.id?{...item,title:saved.title,detail:saved.detail}:item));
+      setNotice(`Datos de la foto ${photo.position} guardados.`);
+    }catch(error){setPageError(errorMessage(error))}finally{setPhotoBusy(false)}
+  };
   const removePhoto=async(imageId:string)=>{
     if(!draft)return;
     setPhotoBusy(true);setPageError('');
@@ -866,7 +878,7 @@ function PostsPage({point,onBack}:{point:PointRow;onBack:()=>void}){
                 <input ref={photoInputRef} type="file" accept="image/jpeg,image/png,image/webp" hidden onChange={event=>{const file=event.target.files?.[0];if(file)void uploadPhoto(file)}}/>
                 {photoLoading&&<small>Cargando fotos estándar…</small>}
                 <div className="posts-photo-gallery">
-                  {photos.map(photo=><figure key={photo.id}><img src={photo.url} alt={`Foto estándar ${photo.position} del puesto`} title={photo.originalName}/><figcaption><span>{photo.position}</span><button type="button" aria-label={`Eliminar foto ${photo.position}`} title="Eliminar foto" onClick={()=>void removePhoto(photo.id)} disabled={photoBusy}><Trash2 size={14}/></button></figcaption></figure>)}
+                  {photos.map(photo=><div className="posts-photo-item" key={photo.id}><figure><img src={photo.url} alt={photo.title||`Foto estándar ${photo.position} del puesto`} title={photo.title||photo.originalName}/><figcaption><span>{photo.position}</span><button type="button" aria-label={`Eliminar foto ${photo.position}`} title="Eliminar foto" onClick={()=>void removePhoto(photo.id)} disabled={photoBusy}><Trash2 size={14}/></button></figcaption></figure><div className="posts-photo-fields"><label><span>Título de la foto {photo.position}</span><input value={photo.title??''} maxLength={120} onChange={event=>setPhotos(current=>current.map(item=>item.id===photo.id?{...item,title:event.target.value}:item))} placeholder="Ej. Acceso principal"/></label><label><span>Detalle</span><textarea value={photo.detail??''} maxLength={500} onChange={event=>setPhotos(current=>current.map(item=>item.id===photo.id?{...item,detail:event.target.value}:item))} placeholder="Describe lo que debe verse en esta foto…"/></label></div><button type="button" className="posts-photo-save" disabled={photoBusy||!photo.title?.trim()||!photo.detail?.trim()} onClick={()=>void savePhotoMetadata(photo)}><Save size={13}/>Guardar foto</button></div>)}
                   {photos.length<3&&<button type="button" className="posts-photo-add" onClick={()=>photoInputRef.current?.click()} disabled={photoBusy||photoLoading}><Camera size={20}/><strong>{photoBusy?'Procesando…':'Agregar foto estándar'}</strong><small>{photos.length} de 3 · puede agregar {3-photos.length}</small></button>}
                 </div>
                 <label><span>Notas del estándar</span><textarea value={draft.visualTitle??''} maxLength={300} onChange={event=>setDraft({...draft,visualTitle:event.target.value})} placeholder="Describe las referencias que deben verse en las fotos…"/></label>
@@ -1187,7 +1199,7 @@ export default function Services(){
     {error&&<div className="ser-error"><AlertTriangle size={16}/><span>{error}</span><button onClick={()=>void reload()}>Reintentar</button></div>}
 
     <section className="ser-table-card">
-      <header><div><h3>Servicios <b>({filtered.length})</b></h3><span>Vista a nivel de Cliente · Punto</span></div><button onClick={exportCsv} disabled={!filtered.length}><Download size={15}/>Exportar</button></header>
+      <header><div><h3>Servicios <b>({filtered.length})</b></h3><span>Vista a nivel de Cliente · Punto</span></div><button onClick={exportCsv} disabled={!filtered.length}><Upload size={15}/>Exportar</button></header>
       <div className="ser-table-wrap">
         <table className="ser-table ser-point-table">
           <thead><tr><th>Compañía</th><th>Servicio</th><th>Cliente</th><th>Punto</th><th>Puestos</th><th>ID Promedio</th><th>IC Promedio</th><th>Novedades</th><th>Estado</th><th>Operación</th><th>Gestión</th></tr></thead>

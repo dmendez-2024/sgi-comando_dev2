@@ -1,7 +1,7 @@
 import {useCallback, useEffect, useMemo, useState, type ReactNode} from 'react';
 import {
   AlertTriangle, Building2, CalendarDays, CheckCircle2, ChevronRight, CircleAlert,
-  Download, Eye, FilterX, MapPin, Search, ShieldCheck, Trash2,
+  Upload, Eye, FilterX, MapPin, Search, ShieldCheck, Trash2,
   UserRound, X, Pencil, Save, Clock3, Navigation, ClipboardCheck
 } from 'lucide-react';
 import {api, getUser, type UatUser} from '../api';
@@ -323,7 +323,7 @@ export default function NovedadesExecution(){
       <div className="nov-rule-note"><CircleAlert size={15}/><span>Para filtrar por Punto primero seleccione un Cliente; para Puesto seleccione un Punto; para Reportado por seleccione una Compañía. Las fechas son obligatorias y el rango máximo es 1 año.</span></div>
       {dateError&&<div className="nov-validation"><AlertTriangle size={16}/>{dateError}</div>}
       {loadError&&<div className="nov-validation"><AlertTriangle size={16}/>{loadError}</div>}
-      <div className="nov-actions"><button className="primary" disabled={!!dateError} onClick={()=>void loadRecords()}><Search size={16}/>Buscar</button><button onClick={clearFilters}><FilterX size={16}/>Limpiar filtros</button><button className="export" onClick={exportCsv} disabled={!!dateError||!rows.length}><Download size={16}/>Exportar</button></div>
+      <div className="nov-actions"><button className="primary" disabled={!!dateError} onClick={()=>void loadRecords()}><Search size={16}/>Buscar</button><button onClick={clearFilters}><FilterX size={16}/>Limpiar filtros</button><button className="export" onClick={exportCsv} disabled={!!dateError||!rows.length}><Upload size={16}/>Exportar</button></div>
 
       <div className="nov-results-card">
         <div className="nov-results-head"><h3>Novedades ({rows.length})</h3><span>Ordenado por <strong>Fecha más reciente</strong></span></div>

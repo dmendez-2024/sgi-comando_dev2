@@ -1,7 +1,7 @@
 import {useEffect, useMemo, useState, type ReactNode} from 'react';
 import {
   AlertTriangle, ArrowLeft, BellRing, Building2, CalendarDays, ClipboardList, Clock3,
-  Download, FileWarning, FilterX, MapPin, Monitor,
+  Upload, FileWarning, FilterX, MapPin, Monitor,
   RefreshCw, Save, Search, ShieldAlert, ShieldCheck, UserRound, Zap, CircleAlert, ChevronRight, Filter, ChevronDown, Plus, X
 } from 'lucide-react';
 import ObsintConsole, {ObsintButton} from '../obsint/ObsintConsole';
@@ -368,7 +368,7 @@ export default function ConsolaMonitor(){
               </div>
               <div className="csl-rules-note"><CircleAlert size={15}/><span>Fechas obligatorias. Rango máximo: 1 año. Punto depende de Cliente; Puesto depende de Punto; Responsable depende de Compañía.</span></div>
               {dateError && <div className="csl-validation-error"><AlertTriangle size={16}/><span>{dateError}</span></div>}
-              <div className="csl-search-actions"><button className="primary" onClick={search} disabled={!!dateError}><Search size={16}/>Buscar</button><button onClick={clear}><FilterX size={16}/>Limpiar filtros</button><button className="export" onClick={exportCsv} disabled={!!dateError || !rows.length}><Download size={16}/>Exportar</button></div>
+              <div className="csl-search-actions"><button className="primary" onClick={search} disabled={!!dateError}><Search size={16}/>Buscar</button><button onClick={clear}><FilterX size={16}/>Limpiar filtros</button><button className="export" onClick={exportCsv} disabled={!!dateError || !rows.length}><Upload size={16}/>Exportar</button></div>
             </div>
           </div>
         </div>
