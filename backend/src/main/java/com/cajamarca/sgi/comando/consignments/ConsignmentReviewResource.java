@@ -44,7 +44,7 @@ public class ConsignmentReviewResource {
     public DecisionResponse approve(@PathParam("id") UUID id,ApproveRequest body){
         if(body==null||body.protocolId()==null)throw new BadRequestException("Seleccione el protocolo al que se incorporará la consigna.");
         Review review=locked(id);authorize(review.pointId());
-        if("DISCARDED".equals(review.status()))throw new ClientErrorException("La propuesta ya fue descartada y no puede aprobarse.",409);
+        if("DISCARDED".equals(review.status()))throw new ClientErrorException("La consigna ya fue rechazada y no puede aprobarse.",409);
         if("APPROVED".equals(review.status()))return approvedResponse(review,"La propuesta ya había sido aprobada.");
 
         ConsignmentProtocol selected=ConsignmentProtocol.find("id=?1 and instanceCountryId=?2",body.protocolId(),tenant.instanceCountryId()).firstResult();
@@ -83,10 +83,10 @@ public class ConsignmentReviewResource {
     @Transactional
     public DecisionResponse discard(@PathParam("id") UUID id,DiscardRequest body){
         String reason=body==null?null:body.reason();
-        if(reason==null||reason.isBlank())throw new BadRequestException("Indique el motivo para descartar la propuesta.");
+        if(reason==null||reason.isBlank())throw new BadRequestException("Indique el motivo para rechazar la consigna.");
         Review review=locked(id);authorize(review.pointId());
-        if("APPROVED".equals(review.status()))throw new ClientErrorException("La propuesta ya fue aprobada y no puede descartarse.",409);
-        if("DISCARDED".equals(review.status()))return new DecisionResponse(id,"DISCARDED",null,null,null,null,"La propuesta ya había sido descartada.");
+        if("APPROVED".equals(review.status()))throw new ClientErrorException("La consigna ya fue aprobada y no puede rechazarse.",409);
+        if("DISCARDED".equals(review.status()))return new DecisionResponse(id,"DISCARDED",null,null,null,null,"La consigna ya había sido rechazada.");
         int updated=em.createNativeQuery("""
             update operator_consignment_review_request
                set status='DISCARDED',reviewed_at=current_timestamp,reviewed_by=:by,review_comment=:comment,updated_at=current_timestamp
@@ -94,7 +94,7 @@ public class ConsignmentReviewResource {
             """).setParameter("by",user()).setParameter("comment",limited(reason,500))
             .setParameter("id",id).setParameter("tenant",tenant.instanceCountryId()).executeUpdate();
         if(updated!=1)throw new ClientErrorException("La propuesta fue procesada por otro usuario. Actualice la consulta.",409);
-        return new DecisionResponse(id,"DISCARDED",null,null,null,null,"Propuesta descartada. Se conserva en el historial.");
+        return new DecisionResponse(id,"DISCARDED",null,null,null,null,"Consigna rechazada. Se conserva en el historial.");
     }
 
     private Review locked(UUID id){
