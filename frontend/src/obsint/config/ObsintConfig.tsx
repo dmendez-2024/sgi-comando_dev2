@@ -1,6 +1,6 @@
 import {useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode} from 'react';
-import {AlertTriangle, ArrowLeft, BrushCleaning, CarFront, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ClipboardList, Factory, Package, Pencil, Plus, Power, Save, Search, Send, ShieldCheck, Trash2, UserRound, UsersRound, X} from 'lucide-react';
-import {errorText, obsintConfigApi, type ObsintCameraOption, type ObsintCategory, type ObsintConsignaConfig, type ObsintConsignaSave, type ObsintConsignmentOption, type ObsintProtocol} from '../obsintApi';
+import {AlertTriangle, ArrowLeft, BrushCleaning, CarFront, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ClipboardList, Factory, History, Package, Pencil, Plus, Power, Save, Search, ShieldCheck, Trash2, UserRound, UsersRound, X} from 'lucide-react';
+import {errorText, obsintConfigApi, type ObsintCameraOption, type ObsintCategory, type ObsintConsignaConfig, type ObsintConsignaSave, type ObsintConsignmentOption, type ObsintProtocol, type ObsintTaskSaved} from '../obsintApi';
 import {CATEGORIES, categoryLabel, DAYS, protocolStatusLabel} from '../obsint';
 import {ObsintMonitoringPanel} from './ObsintMonitoringPanel';
 import {ObsintScheduleEditor, slotsFromWeek, weekFromSlots} from './ObsintScheduleEditor';
@@ -19,7 +19,7 @@ const PAGE_SIZES=[10,20,50];
 
 /**
  * Configuración OBSINT del Punto: "Vincular Consignas – Cámara – Horario" (diapositiva 10 de "OBSINT Estructura").
- * Protocolo versionado como Consignas: se edita un Borrador, se publica (queda inmutable) y se activa; la Consola usa el activo.
+ * Cada cambio guardado crea y activa una versión; las versiones anteriores quedan disponibles para consulta.
  * Se abre desde Configuración del Punto: <ObsintConfig point={…} onBack={…}/>.
  */
 export default function ObsintConfig({point,onBack}:{point:ObsintPointContext;onBack:()=>void}){
@@ -43,7 +43,7 @@ export default function ObsintConfig({point,onBack}:{point:ObsintPointContext;on
       const [list,cams,options]=await Promise.all([obsintConfigApi.protocols(point.pointId),obsintConfigApi.cameras(point.pointId),obsintConfigApi.consignments(point.pointId)]);
       setProtocols(list);setCameras(cams);setLinkable(options);setError('');
       const keep=preferId??versionId;
-      const current=list.find(p=>p.id===keep)??list.find(p=>p.status==='ACTIVO')??list.find(p=>p.status==='BORRADOR')??list[0];
+      const current=list.find(p=>p.id===keep)??list.find(p=>p.status==='ACTIVO')??list.find(p=>p.status!=='BORRADOR')??list[0];
       setVersionId(current?.id??'');
       setSelectedId(previous=>current?.consignas.some(c=>c.id===previous)?previous:current?.consignas[0]?.id??'');
     }catch(e){setError(`No se pudo cargar la configuración OBSINT. ${errorText(e)}`)}
@@ -63,8 +63,9 @@ export default function ObsintConfig({point,onBack}:{point:ObsintPointContext;on
   },[]);
 
   const protocol=protocols.find(p=>p.id===versionId)??null;
-  const draft=protocols.find(p=>p.status==='BORRADOR')??null;
-  const editable=protocol?.status==='BORRADOR';
+  // Guardar = activar: se edita sobre la versión activa (o la última, si se inactivó); las demás versiones son historial de solo lectura.
+  const base=protocols.find(p=>p.status==='ACTIVO')??protocols.find(p=>p.status!=='BORRADOR')??null;
+  const editable=!protocol||protocol.id===base?.id;
   const consignas=protocol?.consignas??[];
   const visible=useMemo(()=>{const q=query.trim().toLowerCase();
     return consignas.filter(c=>(category==='ALL'||c.category===category)&&(!q||`${c.code} ${c.title} ${c.instruction}`.toLowerCase().includes(q)))},[consignas,category,query]);
@@ -80,32 +81,20 @@ export default function ObsintConfig({point,onBack}:{point:ObsintPointContext;on
     finally{setBusy(false)}
   }
   async function removeConsigna(c:ObsintConsignaConfig){
-    if(!window.confirm(`¿Eliminar ${c.code} · ${c.title} del borrador?`))return;
+    if(!window.confirm(`¿Eliminar ${c.code} · ${c.title}? El cambio se aplica de inmediato en la Consola.`))return;
     setBusy(true);setError('');
     try{
-      const draftProtocol=editable?protocol:await obsintConfigApi.draft(point.pointId);
-      if(!draftProtocol)return;
-      const target=draftProtocol.consignas.find(x=>x.code===c.code);
-      if(!target)throw new Error('La tarea no está en el borrador.');
-      await obsintConfigApi.deleteConsigna(target.id);
-      setSelectedId('');setEditing(null);await load(draftProtocol.id);setNotice('Tarea eliminada del borrador.');
+      const result=await obsintConfigApi.deleteTask(point.pointId,c.code);
+      setSelectedId('');setEditing(null);await load(result.id);setNotice(`Tarea eliminada · versión v${result.versionNo} activa.`);
     }catch(e){setError(errorText(e))}finally{setBusy(false)}
   }
-  async function openEditor(c:ObsintConsignaConfig|'new'){
-    setBusy(true);setError('');
-    try{
-      const draftProtocol=editable?protocol:await obsintConfigApi.draft(point.pointId);
-      if(!draftProtocol)return;
-      const target=c==='new'?'new':draftProtocol.consignas.find(x=>x.code===c.code);
-      if(!target)throw new Error('La tarea no está en el borrador.');
-      await load(draftProtocol.id);
-      setSelectedId(target==='new'?'':target.id);setEditing(target);
-      if(!editable)setNotice('Trabajando en el borrador; la versión activa sigue publicada.');
-    }catch(e){setError(errorText(e))}finally{setBusy(false)}
+  function openEditor(c:ObsintConsignaConfig|'new'){
+    setError('');setSelectedId(c==='new'?'':c.id);setEditing(c);
   }
-  function saved(c:ObsintConsignaConfig){
-    setProtocols(prev=>prev.map(p=>p.id!==versionId?p:{...p,consignas:p.consignas.some(x=>x.id===c.id)?p.consignas.map(x=>x.id===c.id?c:x):[...p.consignas,c]}));
-    setSelectedId(c.id);setEditing(null);setNotice('Consigna guardada.');
+  async function saved({protocol:result,code}:ObsintTaskSaved){
+    setEditing(null);await load(result.id);
+    setSelectedId(result.consignas.find(c=>c.code===code)?.id??'');
+    setNotice(`Tarea guardada · versión v${result.versionNo} activa en la Consola.`);
   }
 
   return <div className="obs-page obs-cfg">
@@ -128,17 +117,12 @@ export default function ObsintConfig({point,onBack}:{point:ObsintPointContext;on
                 {protocols.map(p=><option key={p.id} value={p.id}>v{p.versionNo} · {protocolStatusLabel(p.status)}</option>)}
               </select></label>
               <span className={`obs-cfg-pill ${protocol.status.toLowerCase()}`}>{protocolStatusLabel(protocol.status)}</span>
-              <small>{protocol.status==='BORRADOR'?'Borrador editable. Al publicar, la versión queda inmutable.'
-                :protocol.status==='ACTIVO'?`Activo desde ${formatDate(protocol.activatedAt)}. La Consola OBSINT usa esta versión.`
-                :`Publicado ${formatDate(protocol.publishedAt)}. No está en uso.`}</small>
+              <small>{protocol.status==='ACTIVO'?`Activa desde ${formatDate(protocol.activatedAt)}. La Consola OBSINT usa esta versión; cada cambio guardado crea la siguiente.`
+                :protocol.status==='BORRADOR'?'Borrador anterior sin publicar. Se descarta al guardar el próximo cambio.'
+                :`Versión anterior (${formatDate(protocol.activatedAt??protocol.publishedAt)}). Solo lectura.`}</small>
               <div className="obs-cfg-actions">
-                {protocol.status==='BORRADOR'&&<>
-                  <button type="button" className="ghost" disabled={busy} onClick={()=>{if(window.confirm('¿Descartar el borrador?'))void run(()=>obsintConfigApi.discard(protocol.id),'Borrador descartado.')}}><Trash2 size={15}/>Descartar</button>
-                  <button type="button" className="obs-cfg-primary" disabled={busy} onClick={()=>void run(()=>obsintConfigApi.publish(protocol.id),'Versión publicada. Actívela para usarla en la Consola.')}><Send size={15}/>Publicar versión</button>
-                </>}
-                {protocol.status==='INACTIVO'&&<button type="button" className="obs-cfg-primary" disabled={busy} onClick={()=>void run(()=>obsintConfigApi.activate(protocol.id),'Versión activada.')}><CheckCircle2 size={15}/>Activar</button>}
-                {protocol.status==='ACTIVO'&&<button type="button" className="ghost" disabled={busy} onClick={()=>void run(()=>obsintConfigApi.deactivate(protocol.id),'Versión inactivada.')}><Power size={15}/>Inactivar</button>}
-                {protocol.status!=='BORRADOR'&&<button type="button" className="ghost" disabled={busy} onClick={()=>void run(()=>obsintConfigApi.draft(point.pointId),draft?'Abriendo el borrador.':'Nueva versión en borrador.')}><Pencil size={15}/>{draft?'Ir al borrador':'Nueva versión'}</button>}
+                {protocol.status==='INACTIVO'&&<button type="button" className="ghost" disabled={busy} onClick={()=>{if(window.confirm(`¿Volver a la versión v${protocol.versionNo}? La Consola usará sus tareas desde ahora.`))void run(()=>obsintConfigApi.activate(protocol.id),`Versión v${protocol.versionNo} activa.`)}}><History size={15}/>Volver a esta versión</button>}
+                {protocol.status==='ACTIVO'&&<button type="button" className="ghost" disabled={busy} onClick={()=>{if(window.confirm('¿Inactivar OBSINT en este punto? La Consola dejará de mostrar sus tareas.'))void run(()=>obsintConfigApi.deactivate(protocol.id),'OBSINT inactivo en este punto.')}}><Power size={15}/>Inactivar</button>}
               </div>
             </>}
           </div>
@@ -149,18 +133,16 @@ export default function ObsintConfig({point,onBack}:{point:ObsintPointContext;on
     <ObsintMonitoringPanel pointId={point.pointId}/>
     {error&&<div className="obs-error">{error}</div>}
 
-    {!protocol&&<section className="obs-card obs-cfg-start" aria-labelledby="obs-cfg-start-title">
+    {!protocol&&(loading||error)&&<section className="obs-card obs-cfg-start" aria-labelledby="obs-cfg-start-title">
       <span className="obs-cfg-start-icon"><ClipboardList size={30}/></span>
-      <h3 id="obs-cfg-start-title">{loading?'Cargando consignas OBSINT…':error?'No se pudo cargar la configuración':'Aún no hay un protocolo OBSINT'}</h3>
+      <h3 id="obs-cfg-start-title">{loading?'Cargando consignas OBSINT…':'No se pudo cargar la configuración'}</h3>
       {!loading&&<>
-        <p>{error?'Revise la conexión y vuelva a cargar la configuración de este punto.':'Cree el protocolo de este punto para empezar a agregar tareas, asociar cámaras y definir horarios.'}</p>
-        {error
-          ?<button type="button" className="ghost" disabled={busy} onClick={()=>void load()}>Reintentar</button>
-          :<button type="button" className="obs-cfg-primary" disabled={busy} onClick={()=>void run(()=>obsintConfigApi.draft(point.pointId),'Borrador creado.')}><Plus size={16}/>{busy?'Creando protocolo…':'Crear protocolo OBSINT'}</button>}
+        <p>Revise la conexión y vuelva a cargar la configuración de este punto.</p>
+        <button type="button" className="ghost" disabled={busy} onClick={()=>void load()}>Reintentar</button>
       </>}
     </section>}
 
-    {protocol&&<div className="obs-cfg-layout">
+    {!loading&&(protocol||!error)&&<div className="obs-cfg-layout">
       <section className="obs-card obs-cfg-categories">
         <header><h3>Categorías de tareas</h3><span>Filtre las tareas por categoría</span></header>
         <button type="button" className={category==='ALL'?'active':''} onClick={()=>{setCategory('ALL');setPage(1)}}><UserRound size={18} className="obs-cfg-category-icon all"/><span>Todas las tareas</span><b>{consignas.length}</b></button>
@@ -170,7 +152,7 @@ export default function ObsintConfig({point,onBack}:{point:ObsintPointContext;on
 
       <section className="obs-card obs-cfg-list">
         <header><div><h3>Tareas OBSINT ({consignas.length})</h3><span>Tareas de observación configuradas para este servicio.</span></div>
-          <button type="button" className="obs-cfg-primary" disabled={busy} onClick={()=>void openEditor('new')}><Plus size={16}/>Nueva tarea</button></header>
+          <button type="button" className="obs-cfg-primary" disabled={busy||!editable} title={editable?undefined:'Está viendo una versión anterior; elija la versión activa para editar.'} onClick={()=>openEditor('new')}><Plus size={16}/>Nueva tarea</button></header>
         <label className="obs-cfg-search"><Search size={16}/><input value={query} onChange={e=>{setQuery(e.target.value);setPage(1)}} placeholder="Buscar tarea por nombre, código o descripción…"/></label>
         <table className="obs-cfg-table">
           <thead><tr><th>Código</th><th>Nombre de la tarea</th><th>Categoría</th><th>Estado</th><th>Acciones</th></tr></thead>
@@ -178,10 +160,10 @@ export default function ObsintConfig({point,onBack}:{point:ObsintPointContext;on
             <td><span className="obs-cfg-code"><CategoryIcon category={c.category}/><b>{c.code}</b></span></td><td>{c.title}</td><td>{categoryLabel(c.category)}</td>
             <td><span className={`obs-cfg-pill ${c.active?'activo':'inactivo'}`}>{c.active?'Activa':'Inactiva'}</span></td>
             <td className="obs-cfg-row-actions">
-              <span>
-              <button type="button" aria-label={`Editar ${c.code} en borrador`} title="Editar en borrador" disabled={busy} onClick={e=>{e.stopPropagation();void openEditor(c)}}><Pencil size={15}/></button>
-              <button type="button" aria-label={`Eliminar ${c.code} del borrador`} title="Eliminar del borrador" className="danger" disabled={busy} onClick={e=>{e.stopPropagation();void removeConsigna(c)}}><Trash2 size={15}/></button>
-              </span>
+              {editable&&<span>
+              <button type="button" aria-label={`Editar ${c.code}`} title="Editar" disabled={busy} onClick={e=>{e.stopPropagation();openEditor(c)}}><Pencil size={15}/></button>
+              <button type="button" aria-label={`Eliminar ${c.code}`} title="Eliminar" className="danger" disabled={busy} onClick={e=>{e.stopPropagation();void removeConsigna(c)}}><Trash2 size={15}/></button>
+              </span>}
             </td>
           </tr>):<tr><td colSpan={5} className="obs-cfg-empty">{consignas.length?'Ninguna tarea coincide con el filtro.':'Agregue la primera tarea con "Nueva tarea".'}</td></tr>}</tbody>
         </table>
@@ -193,10 +175,10 @@ export default function ObsintConfig({point,onBack}:{point:ObsintPointContext;on
 
       <section className="obs-card obs-cfg-detail">
         {editing
-          ?<ConsignaForm key={editing==='new'?'new':editing.id} protocolId={protocol.id} initial={editing==='new'?null:editing} cameras={cameras}
+          ?<ConsignaForm key={editing==='new'?'new':editing.id} pointId={point.pointId} initial={editing==='new'?null:editing} cameras={cameras}
               linkable={linkable.filter(o=>!consignas.some(c=>c.consignmentCode===o.code&&(editing==='new'||c.id!==editing.id)))}
               defaultCategory={category==='ALL'?'SSO':category} onSaved={saved} onCancel={()=>setEditing(null)}/>
-          :selected?<ConsignaDetail c={selected} cameras={cameras} onEdit={()=>void openEditor(selected)}/>
+          :selected?<ConsignaDetail c={selected} cameras={cameras} onEdit={editable?()=>openEditor(selected):undefined}/>
           :<div className="obs-cfg-empty-detail"><ClipboardList size={30}/>Seleccione una tarea para ver su detalle{editable?' o cree una nueva':''}.</div>}
       </section>
     </div>}
@@ -204,9 +186,9 @@ export default function ObsintConfig({point,onBack}:{point:ObsintPointContext;on
   </div>;
 }
 
-function ConsignaDetail({c,cameras,onEdit}:{c:ObsintConsignaConfig;cameras:ObsintCameraOption[];onEdit:()=>void}){
+function ConsignaDetail({c,cameras,onEdit}:{c:ObsintConsignaConfig;cameras:ObsintCameraOption[];onEdit?:()=>void}){
   return <>
-    <header><div><h3>Detalle de la tarea</h3><span>Vista y edición de la información de la tarea seleccionada.</span></div><button type="button" className="ghost" onClick={onEdit}><Pencil size={15}/>Editar en borrador</button></header>
+    <header><div><h3>Detalle de la tarea</h3><span>Vista y edición de la información de la tarea seleccionada.</span></div>{onEdit&&<button type="button" className="ghost" onClick={onEdit}><Pencil size={15}/>Editar</button>}</header>
     <div className="obs-cfg-detail-head"><span className="obs-cfg-task-icon"><UserRound size={16}/></span><b>{c.title}</b><span className={`obs-cfg-pill ${c.active?'activo':'inactivo'}`}>{c.active?'Activa':'Inactiva'}</span></div>
     <div className="obs-cfg-detail-grid">
       <div className="obs-cfg-detail-fields">
@@ -229,8 +211,8 @@ function ConsignaDetail({c,cameras,onEdit}:{c:ObsintConsignaConfig;cameras:Obsin
   </>;
 }
 
-function ConsignaForm({protocolId,initial,cameras,linkable,defaultCategory,onSaved,onCancel}:{protocolId:string;initial:ObsintConsignaConfig|null;cameras:ObsintCameraOption[];
-  linkable:ObsintConsignmentOption[];defaultCategory:ObsintCategory;onSaved:(c:ObsintConsignaConfig)=>void;onCancel:()=>void}){
+function ConsignaForm({pointId,initial,cameras,linkable,defaultCategory,onSaved,onCancel}:{pointId:string;initial:ObsintConsignaConfig|null;cameras:ObsintCameraOption[];
+  linkable:ObsintConsignmentOption[];defaultCategory:ObsintCategory;onSaved:(result:ObsintTaskSaved)=>void|Promise<void>;onCancel:()=>void}){
   const [form,setForm]=useState<ObsintConsignaSave>(()=>({consignmentCode:initial?.consignmentCode??null,title:initial?.title??'',description:initial?.description??'',instruction:initial?.instruction??'',category:initial?.category??defaultCategory,
     timeLimitSeconds:initial?.timeLimitSeconds??120,active:initial?.active??true,cameraIds:initial?.cameraIds??[],schedule:initial?.schedule??[]}));
   const [week,setWeek]=useState(()=>weekFromSlots(initial?initial.schedule:null));
@@ -262,7 +244,8 @@ function ConsignaForm({protocolId,initial,cameras,linkable,defaultCategory,onSav
     if(linkRequired&&!form.consignmentCode){setError('Seleccione la consigna de Consignas que verificará el monitorista.');return}
     setSaving(true);setError('');
     const body={...form,schedule:slots};
-    try{onSaved(initial?await obsintConfigApi.updateConsigna(initial.id,body):await obsintConfigApi.createConsigna(protocolId,body))}
+    // Guardar = activar: la Consola usa el cambio desde ya (si algo no cumple, el backend lo rechaza y la versión activa no cambia).
+    try{await onSaved(initial?await obsintConfigApi.updateTask(pointId,initial.code,body):await obsintConfigApi.addTask(pointId,body))}
     catch(err){setError(errorText(err))}
     finally{setSaving(false)}
   }
@@ -307,7 +290,7 @@ function ConsignaForm({protocolId,initial,cameras,linkable,defaultCategory,onSav
       placeholder="Indique al monitorista qué debe observar, registrar y reportar."/></Field>
 
     {error&&<div className="obs-error">{error}</div>}
-    <div className="obs-cfg-form-actions"><button type="submit" className="obs-cfg-primary" disabled={saving}><Save size={15}/>{saving?'Guardando…':'Guardar cambios'}</button><button type="button" className="ghost" onClick={onCancel}>Cancelar</button></div>
+    <div className="obs-cfg-form-actions"><button type="submit" className="obs-cfg-primary" disabled={saving}><Save size={15}/>{saving?'Guardando…':'Guardar y aplicar'}</button><button type="button" className="ghost" onClick={onCancel}>Cancelar</button></div>
   </form>;
 }
 

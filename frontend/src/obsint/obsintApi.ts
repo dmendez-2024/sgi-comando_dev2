@@ -76,6 +76,10 @@ export const obsintConfigApi={
   publish:(protocolId:string)=>request<ObsintProtocol>(`${protocol(protocolId)}/publish`,{method:'POST'}),
   activate:(protocolId:string)=>request<ObsintProtocol>(`${protocol(protocolId)}/activate`,{method:'POST'}),
   deactivate:(protocolId:string)=>request<ObsintProtocol>(`${protocol(protocolId)}/deactivate`,{method:'POST'}),
+  /** Guardar = activar: cada cambio de una tarea deja activa una versión nueva del protocolo (la tarea se identifica por su código). */
+  addTask:(pointId:string,body:ObsintConsignaSave)=>request<ObsintTaskSaved>(`${point(pointId)}/tasks`,{method:'POST',body:JSON.stringify(body)}),
+  updateTask:(pointId:string,code:string,body:ObsintConsignaSave)=>request<ObsintTaskSaved>(`${point(pointId)}/tasks/${encodeURIComponent(code)}`,{method:'PUT',body:JSON.stringify(body)}),
+  deleteTask:(pointId:string,code:string)=>request<ObsintProtocol>(`${point(pointId)}/tasks/${encodeURIComponent(code)}`,{method:'DELETE'}),
   createConsigna:(protocolId:string,body:ObsintConsignaSave)=>request<ObsintConsignaConfig>(`${protocol(protocolId)}/consignas`,{method:'POST',body:JSON.stringify(body)}),
   updateConsigna:(consignaId:string,body:ObsintConsignaSave)=>request<ObsintConsignaConfig>(`${config}/consignas/${encodeURIComponent(consignaId)}`,{method:'PUT',body:JSON.stringify(body)}),
   deleteConsigna:(consignaId:string)=>request<void>(`${config}/consignas/${encodeURIComponent(consignaId)}`,{method:'DELETE'}),
@@ -84,6 +88,8 @@ export const obsintConfigApi={
   monitors:(pointId:string)=>request<ObsintMonitorOption[]>(`${monitoringUrl(pointId)}/monitors`),
   saveMonitoring:(pointId:string,body:ObsintMonitoringSave)=>request<ObsintMonitoring>(monitoringUrl(pointId),{method:'PUT',body:JSON.stringify(body)}),
 };
+
+export type ObsintTaskSaved={protocol:ObsintProtocol;code:string};
 
 export type ObsintMonitorOption={employeeId:string;name:string;cargo:string|null};
 /** monitors vacío: lo atiende cualquier monitor de turno de la Compañía del Punto (la asignada en Servicios). */

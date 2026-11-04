@@ -55,33 +55,33 @@ class ObsintReportResourceTest {
         as("presidente").get("/api/obsint/reports?from=2026-10-28&to=2026-10-01").then().statusCode(400);
 
         String code = activeProtocolWithConsigna();
-        finishRunningCase("coord");
-        String caseId = as("coord").post("/api/obsint/cases").then().statusCode(200).extract().path("id");
+        finishRunningCase("monitor");
+        String caseId = as("monitor").post("/api/obsint/cases").then().statusCode(200).extract().path("id");
         String ending = "final-" + UUID.randomUUID();
         String justification = "Se observa un vehículo estacionado en la zona prohibida durante la ronda. ".repeat(3) + ending;
         String failedTask = null;
-        List<String> taskIds = as("coord").get("/api/obsint/cases/" + caseId).then().statusCode(200).extract().path("tasks.id");
+        List<String> taskIds = as("monitor").get("/api/obsint/cases/" + caseId).then().statusCode(200).extract().path("tasks.id");
         for (String id : taskIds) {
-            var task = as("coord").post("/api/obsint/tasks/" + id + "/start").then().statusCode(200).extract();
+            var task = as("monitor").post("/api/obsint/tasks/" + id + "/start").then().statusCode(200).extract();
             boolean mine = code.equals(task.path("consignaCode"));
             if (mine) {
                 failedTask = id;
                 String cameraId = task.path("cameras[0].id");
-                as("coord").contentType(ContentType.MULTIPART).multiPart("file", JPG.toFile(), "image/jpeg")
+                as("monitor").contentType(ContentType.MULTIPART).multiPart("file", JPG.toFile(), "image/jpeg")
                     .multiPart("cameraId", cameraId).multiPart("videoTimeSeconds", "3.5")
                     .post("/api/obsint/tasks/" + id + "/evidence").then().statusCode(200);
             }
-            as("coord").contentType(ContentType.JSON).body(Map.of("decision", mine ? "NO" : "YES", "justification", mine ? justification : "Revisada."))
+            as("monitor").contentType(ContentType.JSON).body(Map.of("decision", mine ? "NO" : "YES", "justification", mine ? justification : "Revisada."))
                 .put("/api/obsint/tasks/" + id + "/answer").then().statusCode(200);
         }
         assertNotNull(failedTask, "el caso incluye la consigna nueva");
 
         // Frecuencia: recién respondida ("cada turno"), no vuelve en el siguiente caso.
-        var next = as("coord").post("/api/obsint/cases").then().extract();
+        var next = as("monitor").post("/api/obsint/cases").then().extract();
         if (next.statusCode() == 200) {
-            List<String> ids = as("coord").get("/api/obsint/cases/" + next.path("id")).then().statusCode(200).extract().path("tasks.id");
-            for (String id : ids) assertNotEquals(code, as("coord").get("/api/obsint/tasks/" + id).then().extract().path("consignaCode"));
-            finishRunningCase("coord");
+            List<String> ids = as("monitor").get("/api/obsint/cases/" + next.path("id")).then().statusCode(200).extract().path("tasks.id");
+            for (String id : ids) assertNotEquals(code, as("monitor").get("/api/obsint/tasks/" + id).then().extract().path("consignaCode"));
+            finishRunningCase("monitor");
         } else assertEquals(409, next.statusCode());
 
         String today = LocalDate.now(ObsintPlatform.ZONE).toString();

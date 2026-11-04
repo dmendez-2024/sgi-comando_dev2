@@ -30,7 +30,7 @@ public class ObsintResource {
     /** Igual que el resto de Comando: el motivo del rechazo viaja como {"message": …} para que la pantalla lo muestre. */
     @ServerExceptionMapper
     public Response error(WebApplicationException e) {
-        return Response.status(e.getResponse().getStatus()).entity(java.util.Map.of("message", e.getMessage())).type(MediaType.APPLICATION_JSON).build();
+        return ObsintPlatform.errorResponse(e);
     }
 
     public record CameraView(UUID id, String code, String name, String location, String streamUrl, boolean live) {
@@ -65,6 +65,17 @@ public class ObsintResource {
         static MessageView of(ObsintAgentMessage m) { return new MessageView(m.id, m.operator, m.text, m.sentAt, m.deliveryStatus); }
     }
 
+    /**
+     * Si el usuario puede usar la consola: es monitorista (solo ellos ejecutan casos, SEN-03) y tiene al menos un Punto
+     * con orden de servicio OBSINT (SEN-01). La pantalla oculta el botón OBSINT si no.
+     */
+    public record AccessView(boolean enabled) {}
+
+    @GET @Path("/access") @Transactional
+    public AccessView access() {
+        return new AccessView(platform.monitor() && !platform.visiblePoints(platform.allEnabledPoints()).isEmpty());
+    }
+
     /** Caso en curso del monitorista; 204 si no tiene ninguno. */
     @GET @Path("/cases/current") @Transactional
     public Response current() {
@@ -73,7 +84,7 @@ public class ObsintResource {
 
     /** Abre un caso con las consignas activas (o devuelve el que ya está en curso). El tiempo corre al iniciar cada tarea. */
     @POST @Path("/cases") @Transactional
-    public CaseView open() { return CaseView.of(service.open()); }
+    public CaseView open() { platform.requireMonitor(); return CaseView.of(service.open()); }
 
     @GET @Path("/cases/{caseId}") @Transactional
     public CaseView get(@PathParam("caseId") UUID caseId) { return CaseView.of(service.get(caseId)); }
@@ -83,11 +94,12 @@ public class ObsintResource {
 
     /** Arranca el tiempo de la tarea. Es idempotente: llamarlo de nuevo devuelve el mismo deadline. */
     @POST @Path("/tasks/{taskId}/start") @Transactional
-    public TaskView start(@PathParam("taskId") UUID taskId) { return TaskView.of(service.start(taskId), service.now()); }
+    public TaskView start(@PathParam("taskId") UUID taskId) { platform.requireMonitor(); return TaskView.of(service.start(taskId), service.now()); }
 
     /** Registra la respuesta y devuelve el caso con la siguiente tarea actual (o COMPLETED). */
     @PUT @Path("/tasks/{taskId}/answer") @Transactional @Consumes(MediaType.APPLICATION_JSON)
     public CaseView answer(@PathParam("taskId") UUID taskId, AnswerRequest body) {
+        platform.requireMonitor();
         if (body == null) throw new BadRequestException("Respuesta vacía.");
         return CaseView.of(service.answer(taskId, body.decision(), body.justification()));
     }
@@ -101,12 +113,14 @@ public class ObsintResource {
     @POST @Path("/tasks/{taskId}/evidence") @Consumes(MediaType.MULTIPART_FORM_DATA)
     public EvidenceView addEvidence(@PathParam("taskId") UUID taskId, @RestForm("file") FileUpload file,
                                     @RestForm("cameraId") UUID cameraId, @RestForm("videoTimeSeconds") double videoTimeSeconds) throws IOException {
+        platform.requireMonitor();
         if (file == null || cameraId == null) throw new BadRequestException("Imagen y cámara son obligatorias.");
         return EvidenceView.of(service.addEvidence(taskId, cameraId, videoTimeSeconds, Files.readAllBytes(file.uploadedFile())));
     }
 
     @DELETE @Path("/tasks/{taskId}/evidence/{evidenceId}")
     public void deleteEvidence(@PathParam("taskId") UUID taskId, @PathParam("evidenceId") UUID evidenceId) {
+        platform.requireMonitor();
         service.deleteEvidence(taskId, evidenceId);
     }
 
@@ -124,6 +138,7 @@ public class ObsintResource {
 
     @POST @Path("/tasks/{taskId}/messages") @Consumes(MediaType.APPLICATION_JSON)
     public MessageView send(@PathParam("taskId") UUID taskId, MessageRequest body) {
+        platform.requireMonitor();
         return MessageView.of(service.send(taskId, body == null ? null : body.text()));
     }
 }

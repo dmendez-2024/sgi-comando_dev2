@@ -15,7 +15,7 @@ export const CATEGORIES:{value:ObsintCategory;label:string}[]=[
 ];
 export const categoryLabel=(value:ObsintCategory)=>CATEGORIES.find(c=>c.value===value)?.label??value;
 export const DAYS=['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domingo'];
-export const protocolStatusLabel=(s:ObsintProtocolStatus)=>({BORRADOR:'Borrador',INACTIVO:'Publicado · inactivo',ACTIVO:'Activo'}[s]);
+export const protocolStatusLabel=(s:ObsintProtocolStatus)=>({BORRADOR:'Borrador sin publicar',INACTIVO:'Inactiva',ACTIVO:'Activa'}[s]);
 
 export const decisionLabel=(d:ObsintDecision)=>({YES:'Sí',NO:'No',UNCERTAIN:'Incierto'}[d]);
 

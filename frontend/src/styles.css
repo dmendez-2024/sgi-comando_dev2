@@ -951,12 +951,12 @@
 .posts-config-form{display:grid;grid-template-columns:180px minmax(0,1fr);gap:10px;padding:10px}
 .posts-config-form label{display:flex;flex-direction:column;gap:5px}.posts-config-form select,.posts-config-form textarea,.posts-justification textarea{border:1px solid #d8e1eb;border-radius:8px;background:#fff;color:#24364c;font:inherit;font-size:10px;padding:8px 9px;outline:0}.posts-config-form select{height:36px}.posts-config-form textarea{min-height:86px;resize:vertical;line-height:1.4}.posts-description{grid-column:1/2}.posts-config-status{grid-column:1/2;display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:34px}.posts-config-status b{border-radius:999px;padding:5px 9px;font-size:9px}.posts-config-status b.complete{background:#e8f8ee;color:#16824a}.posts-config-status b.pending{background:#fff4df;color:#a86808}
 .posts-map-field{grid-column:2;grid-row:1/4;min-width:0}.posts-map-title{display:flex;align-items:flex-start;justify-content:space-between;gap:7px;margin-bottom:7px}.posts-map-title strong{display:block;font-size:10px;color:#22364f}.posts-map-title span{display:block;margin-top:2px;font-size:8px;color:#76849a}.posts-map-title svg{color:#2d67d8}
-.posts-commercial,.posts-sgi-config{padding:24px 28px 28px}
-.posts-commercial>header,.posts-sgi-config>header{min-height:82px;margin-bottom:12px;padding:18px 16px;background:#f7f9fb}
+.posts-commercial{padding:24px 28px 28px}.posts-sgi-config{padding:14px 18px 18px}
+.posts-commercial>header{min-height:82px;margin-bottom:12px;padding:18px 16px;background:#f7f9fb}.posts-sgi-config>header{height:auto;min-height:44px;margin-bottom:8px;padding:10px 14px;background:#f7f9fb}
 .posts-commercial .posts-readonly-grid{gap:8px;padding:0 8px}
-.posts-sgi-config .posts-config-form{width:100%;max-width:980px;margin:0 auto;grid-template-columns:minmax(190px,28%) minmax(0,1fr);column-gap:0;row-gap:24px;padding:0 8px}
+.posts-sgi-config .posts-config-form{width:100%;max-width:none;margin:0;grid-template-columns:minmax(0,1fr) minmax(0,1fr);column-gap:18px;row-gap:12px;padding:0 8px}
 .posts-sgi-config .posts-config-form>label,.posts-sgi-config .posts-config-status{padding-right:20px}
-.posts-sgi-config .posts-map-field{padding-left:24px}
+.posts-sgi-config .posts-map-field{padding-left:0}
 .posts-invalid-field>textarea{border-color:#d84b58;box-shadow:0 0 0 2px rgba(216,75,88,.10)}
 .posts-invalid-field .posts-map-title strong{color:#b62f3d}
 .posts-invalid-field .post-map-real-surface,.posts-invalid-field .post-map-empty{border-color:#d84b58;box-shadow:0 0 0 2px rgba(216,75,88,.10)}
@@ -2338,6 +2338,9 @@ button.nov-evidence-photo:hover{border-color:#9db8e6;box-shadow:0 4px 14px rgba(
 .cns-page.nov-page .cns-table td>button{display:inline-flex;align-items:center;gap:4px;cursor:pointer}
 .cns-page.nov-page .cns-inspector{width:min(760px,96vw)}
 .cns-page.nov-page .cns-inspector>footer{justify-content:flex-end}
+.cns-action-notice{display:flex;align-items:center;gap:8px;margin:10px 20px 0;padding:10px 12px;border:1px solid #bce5cf;border-radius:10px;background:#effaf4;color:#176c45;font-size:12px;font-weight:700}.cns-action-notice span{flex:1}.cns-action-notice button{border:0;background:transparent;color:inherit;display:grid;place-items:center;cursor:pointer}
+.cns-decision-backdrop{position:fixed;inset:0;z-index:1100;background:rgba(15,23,42,.48);display:grid;place-items:center;padding:20px}.cns-decision-modal{width:min(650px,96vw);max-height:92vh;background:#fff;border-radius:16px;box-shadow:0 24px 70px rgba(15,23,42,.3);display:flex;flex-direction:column;overflow:hidden}.cns-decision-modal>header{display:flex;justify-content:space-between;gap:14px;padding:18px 20px;border-bottom:1px solid #e5eaf1}.cns-decision-modal>header h3{margin:0;color:#172640;font-size:19px}.cns-decision-modal>header span{display:block;margin-top:5px;color:#738096;font-size:12px}.cns-decision-modal>header button{width:34px;height:34px;border:0;border-radius:9px;background:#f4f6f9;color:#526078;display:grid;place-items:center}.cns-decision-body{padding:18px 20px;overflow:auto;display:flex;flex-direction:column;gap:14px}.cns-decision-body>label{display:flex;flex-direction:column;gap:6px}.cns-decision-body>label>span{font-size:12px;font-weight:800;color:#394963}.cns-decision-body input,.cns-decision-body select,.cns-decision-body textarea{width:100%;border:1px solid #d7e0ee;border-radius:10px;background:#fff;color:#24314d;font-size:13px;padding:10px 11px}.cns-decision-body select{height:42px;padding:0 11px}.cns-decision-body textarea{min-height:86px;resize:vertical}.cns-decision-body label small{color:#738096;font-size:11px}.cns-decision-info,.cns-decision-warning{display:flex;align-items:flex-start;gap:9px;padding:11px 12px;border-radius:10px;font-size:12px;line-height:1.45}.cns-decision-info{background:#eef5ff;border:1px solid #cfe0fa;color:#26548d}.cns-decision-warning{background:#fff7e8;border:1px solid #f3d8a2;color:#8b5a05}.cns-decision-info svg,.cns-decision-warning svg{flex:none;margin-top:1px}.cns-decision-modal>footer{display:flex;justify-content:flex-end;gap:10px;padding:14px 20px;border-top:1px solid #e5eaf1}.cns-decision-modal>footer button{height:42px;border:1px solid #d7e0ee;border-radius:10px;background:#fff;color:#3f4d67;padding:0 16px;font-weight:800;display:flex;align-items:center;gap:7px}.cns-decision-modal>footer .approve{background:#15a463;border-color:#15a463;color:#fff}.cns-decision-modal>footer .discard{background:#fff1f1;border-color:#efb6b6;color:#c7333f}.cns-decision-modal button:disabled{opacity:.55;cursor:not-allowed}
+@media(max-width:760px){.cns-decision-backdrop{padding:0}.cns-decision-modal{width:100vw;max-height:100vh;height:100vh;border-radius:0}.cns-decision-modal>footer{flex-wrap:wrap}.cns-decision-modal>footer button{flex:1;justify-content:center}}
 @container cns-content (max-width:720px){.cns-page.nov-page .cns-filter-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @container cns-content (max-width:440px){.cns-page.nov-page .cns-search-row,.cns-page.nov-page .cns-filter-grid{grid-template-columns:1fr}}
 
@@ -2446,3 +2449,52 @@ button.nov-evidence-photo:hover{border-color:#9db8e6;box-shadow:0 4px 14px rgba(
 
 .assignments-asi-v066 .assignment-publish-row{grid-column:1/-1;display:flex;flex-wrap:wrap;justify-content:flex-end;align-items:center;gap:8px;min-width:0;margin-bottom:12px}
 .assignments-asi-v066 .assignment-publish-row .publish-button{white-space:nowrap;font-size:12px}
+
+/* ASI: ambos lados del encabezado del Punto comparten la altura del contenido. */
+.assignments-asi-v066 .spreadsheet-point>.point-band{height:auto;min-height:46px;align-items:stretch}
+
+/* ASI: una asignación ocupa la misma altura visual que el recuadro Histórico. */
+.assignments-asi-v066 .assignment-card-compact{min-height:54px;max-height:none}
+.assignments-asi-v066 .assignment-card-compact .remove-assignment{top:6px;right:6px}
+
+/* Consignas · detalle de relevo: sección propia de Materiales (imagen, nombre, estado y observación), como en SGI Operador. */
+.rel-materials{padding:14px 0 0;border-top:1px solid #e7edf6}
+.rel-materials-head{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:12px}
+.rel-materials-head h4{margin:0;font-size:14px;color:#16233b}
+.rel-materials-head span{font-size:11px;font-weight:700;color:#526078;background:#eef2f7;border-radius:999px;padding:4px 10px}
+/* Misma cuadrícula que .nov-photo-grid: cada tarjeta mide lo mismo que una foto de evidencia. */
+.rel-materials-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px;align-items:start}
+.rel-material-card{display:flex;flex-direction:column;border:1px solid #d5e1ef;border-radius:10px;background:#fff;overflow:hidden;box-shadow:0 2px 10px rgba(20,28,40,.04)}
+.rel-material-image{width:100%;height:110px;border:0;border-bottom:1px solid #e1e8f2;background:#f4f7fb;padding:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;color:#8a97ab}
+.rel-material-image img{width:100%;height:100%;object-fit:cover;display:block}
+.rel-material-image small{font-size:11px;font-weight:700}
+button.rel-material-image{cursor:zoom-in}
+button.rel-material-image:hover img{opacity:.92}
+button.rel-material-image:focus-visible{outline:3px solid rgba(45,103,216,.3);outline-offset:-3px}
+.rel-material-image.pending{background:linear-gradient(90deg,#eef3f9 25%,#f8fbff 50%,#eef3f9 75%);background-size:200% 100%;animation:nov-photo-pending 1.2s linear infinite}
+.rel-material-body{display:flex;flex-direction:column;align-items:flex-start;gap:7px;padding:9px 9px 10px}
+.rel-material-title{width:100%;display:flex;flex-direction:column;gap:2px}
+.rel-material-title strong{font-size:12px;color:#16233b;overflow-wrap:anywhere}
+.rel-material-title code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10px;font-weight:700;color:#526078;overflow-wrap:anywhere}
+.rel-material-status{display:inline-flex;align-items:center;gap:5px;padding:3px 10px 3px 8px;border:1px solid currentColor;border-radius:999px;background:#f7f9fc;font-size:11px;font-weight:800}
+.rel-material-status.good{color:#187648}
+.rel-material-status.issue{color:#b7791f}
+.rel-material-status.bad{color:#aa2430}
+.rel-material-status.none{color:#7a8699}
+.rel-material-observation{width:100%;padding-top:8px;border-top:1px dashed #e1e8f2}
+.rel-material-observation b{display:block;font-size:10px;letter-spacing:.04em;text-transform:uppercase;color:#6f7d92}
+.rel-material-observation p{margin:3px 0 0;font-size:12px;line-height:1.45;color:#24314d;overflow-wrap:anywhere}
+@media(max-width:1000px){.rel-materials-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:760px){.rel-materials-grid{grid-template-columns:1fr}}
+@media(prefers-reduced-motion:reduce){.rel-material-image.pending{animation:none}}
+
+/* Etiquetas uniformes únicamente dentro de columnas de tablas/listados.
+   El ancho exacto lo calcula UniformColumnBadges a partir del contenido real. */
+.uniform-column-badge{box-sizing:border-box;display:inline-flex;align-items:center;justify-content:flex-start;text-align:left;white-space:nowrap;flex-shrink:0}
+
+/* Territorio y Compañías usan filas CSS Grid independientes. Estas variables
+   mantienen alineada también la pista de la columna cuando el texto crece. */
+.ter-structure-card .ter-grid-head,
+.ter-structure-card .ter-row{grid-template-columns:minmax(420px,2.5fr) minmax(180px,1fr) 90px 110px 100px max(105px,var(--ter-status-column-width,105px)) 75px}
+.com-card .com-table-head,
+.com-card .com-row{grid-template-columns:minmax(280px,2.1fr) minmax(120px,.8fr) minmax(max(190px,var(--com-region-badge-width,190px)),1.4fr) 110px 105px max(100px,var(--com-status-column-width,100px)) 72px 90px}

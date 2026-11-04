@@ -60,7 +60,7 @@ public class ObsintReportResource {
 
     @ServerExceptionMapper
     public Response error(WebApplicationException e) {
-        return Response.status(e.getResponse().getStatus()).entity(Map.of("message", e.getMessage())).type(MediaType.APPLICATION_JSON).build();
+        return ObsintPlatform.errorResponse(e);
     }
 
     private static LocalDate date(String value) {

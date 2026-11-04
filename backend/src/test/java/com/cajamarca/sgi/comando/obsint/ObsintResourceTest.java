@@ -56,7 +56,8 @@ class ObsintResourceTest {
 
         String consignaId = as("coord").contentType(ContentType.JSON).body(consigna("Sin horario", List.of(cam), List.of()))
             .post("/api/obsint/config/protocols/" + draft + "/consignas").then().statusCode(200)
-            .body("code", startsWith("OBS-")).body("cameraIds", hasItem(cam)).extract().path("id");
+            // SEN-06: la pantalla ya no envía la frecuencia; el backend usa "En cada turno".
+            .body("code", startsWith("OBS-")).body("cameraIds", hasItem(cam)).body("frequency", is("EVERY_SHIFT")).extract().path("id");
         as("coord").post("/api/obsint/config/protocols/" + draft + "/publish").then().statusCode(409).body("message", containsString("horario"));
 
         as("coord").contentType(ContentType.JSON).body(consigna("Con horario", List.of(cam), List.of(Map.of("dayOfWeek", 1, "start", "08:00", "end", "18:00"))))
@@ -79,51 +80,90 @@ class ObsintResourceTest {
         as("coord").delete("/api/secelec/components/" + cam).then().statusCode(409);
     }
 
+    /** "Guardar = activar": cada cambio de una tarea deja ACTIVA una versión nueva; un error no toca la activa. */
+    @Test void savingATaskActivatesANewVersion() {
+        String cam = camera("Cámara guardar activa");
+        String tasks = "/api/obsint/config/points/" + POINT + "/tasks";
+        var added = as("coord").contentType(ContentType.JSON).body(consigna("Guardar activa " + UUID.randomUUID(), List.of(cam), ALL_DAY))
+            .post(tasks).then().statusCode(200).body("protocol.status", is("ACTIVO")).body("code", startsWith("OBS-")).extract();
+        String code = added.path("code");
+        int version = added.path("protocol.versionNo");
+        assertTrue(added.<List<String>>path("protocol.consignas.code").contains(code));
+
+        as("coord").contentType(ContentType.JSON).body(consigna("Editada", List.of(cam), List.of(Map.of("dayOfWeek", 1, "start", "08:00", "end", "18:00"))))
+            .put(tasks + "/" + code).then().statusCode(200).body("protocol.status", is("ACTIVO")).body("protocol.versionNo", is(version + 1))
+            .body("protocol.consignas.find{it.code=='" + code + "'}.title", is("Editada"));
+        as("coord").get("/api/obsint/config/points/" + POINT + "/protocols").then().statusCode(200)
+            .body("find{it.versionNo==" + version + "}.status", is("INACTIVO")).body("findAll{it.status=='ACTIVO'}.size()", is(1));
+
+        as("coord").contentType(ContentType.JSON).body(consigna("Sin horario", List.of(cam), List.of()))
+            .put(tasks + "/" + code).then().statusCode(409).body("message", containsString("horario"));
+        as("coord").get("/api/obsint/config/points/" + POINT + "/protocols").then()
+            .body("find{it.status=='ACTIVO'}.versionNo", is(version + 1)).body("findAll{it.status=='BORRADOR'}.size()", is(0));
+
+        as("coord").delete(tasks + "/" + code).then().statusCode(200).body("status", is("ACTIVO"))
+            .body("versionNo", is(version + 2)).body("consignas.code", not(hasItem(code)));
+        as("coord").contentType(ContentType.JSON).body(consigna("No existe", List.of(cam), ALL_DAY)).put(tasks + "/" + code).then().statusCode(404);
+    }
+
     @Test void consoleCaseWithConfiguredConsignas() throws Exception {
         String code = activeProtocolWithConsigna();
-        String caseId = as("dnacional").post("/api/obsint/cases").then().statusCode(200).body("status", is("IN_PROGRESS")).extract().path("id");
-        assertEquals(caseId, as("dnacional").post("/api/obsint/cases").then().statusCode(200).extract().path("id"), "un caso a la vez");
+        finishRunningCase("monitor");
+        String caseId = as("monitor").post("/api/obsint/cases").then().statusCode(200).body("status", is("IN_PROGRESS")).extract().path("id");
+        assertEquals(caseId, as("monitor").post("/api/obsint/cases").then().statusCode(200).extract().path("id"), "un caso a la vez");
 
-        List<String> taskIds = as("dnacional").get("/api/obsint/cases/" + caseId).then().statusCode(200).extract().path("tasks.id");
-        if (taskIds.size() > 1) as("dnacional").post("/api/obsint/tasks/" + taskIds.get(1) + "/start").then().statusCode(409).body("message", containsString("orden"));
+        List<String> taskIds = as("monitor").get("/api/obsint/cases/" + caseId).then().statusCode(200).extract().path("tasks.id");
+        if (taskIds.size() > 1) as("monitor").post("/api/obsint/tasks/" + taskIds.get(1) + "/start").then().statusCode(409).body("message", containsString("orden"));
 
         List<String> codes = new ArrayList<>();
         for (String id : taskIds) {
-            var task = as("dnacional").post("/api/obsint/tasks/" + id + "/start").then().statusCode(200)
+            var task = as("monitor").post("/api/obsint/tasks/" + id + "/start").then().statusCode(200)
                 .body("status", is("IN_PROGRESS")).body("deadline", notNullValue()).extract();
             codes.add(task.path("consignaCode"));
             String cameraId = task.path("cameras[0].id");
             if (id.equals(taskIds.get(0))) {
-                String evidenceId = as("dnacional").contentType(ContentType.MULTIPART).multiPart("file", JPG.toFile(), "image/jpeg")
+                String evidenceId = as("monitor").contentType(ContentType.MULTIPART).multiPart("file", JPG.toFile(), "image/jpeg")
                     .multiPart("cameraId", cameraId).multiPart("videoTimeSeconds", "12.5")
                     .post("/api/obsint/tasks/" + id + "/evidence").then().statusCode(200).extract().path("id");
-                assertArrayEquals(Files.readAllBytes(JPG), as("dnacional").get("/api/obsint/tasks/" + id + "/evidence/" + evidenceId + "/content")
+                assertArrayEquals(Files.readAllBytes(JPG), as("monitor").get("/api/obsint/tasks/" + id + "/evidence/" + evidenceId + "/content")
                     .then().statusCode(200).extract().asByteArray());
-                as("dnacional").contentType(ContentType.MULTIPART).multiPart("file", NOT_IMAGE.toFile(), "image/jpeg").multiPart("cameraId", cameraId)
+                as("monitor").contentType(ContentType.MULTIPART).multiPart("file", NOT_IMAGE.toFile(), "image/jpeg").multiPart("cameraId", cameraId)
                     .post("/api/obsint/tasks/" + id + "/evidence").then().statusCode(400);
-                as("dnacional").contentType(ContentType.JSON).body(Map.of("text", "Revise la garita norte"))
+                as("monitor").contentType(ContentType.JSON).body(Map.of("text", "Revise la garita norte"))
                     .post("/api/obsint/tasks/" + id + "/messages").then().statusCode(200).body("deliveryStatus", is("TEST"));
-                as("dnacional").contentType(ContentType.JSON).body(Map.of("decision", "NO", "justification", " "))
+                as("monitor").contentType(ContentType.JSON).body(Map.of("decision", "NO", "justification", " "))
                     .put("/api/obsint/tasks/" + id + "/answer").then().statusCode(409).body("message", containsString("justificación"));
             }
-            as("dnacional").contentType(ContentType.JSON).body(Map.of("decision", "YES", "justification", "Sin novedad"))
+            as("monitor").contentType(ContentType.JSON).body(Map.of("decision", "YES", "justification", "Sin novedad"))
                 .put("/api/obsint/tasks/" + id + "/answer").then().statusCode(200);
         }
         assertTrue(codes.contains(code), "el caso incluye la consigna del protocolo activo");
-        as("dnacional").get("/api/obsint/cases/" + caseId).then().statusCode(200).body("status", is("COMPLETED"));
-        as("dnacional").get("/api/obsint/cases/current").then().statusCode(204);
+        as("monitor").get("/api/obsint/cases/" + caseId).then().statusCode(200).body("status", is("COMPLETED"));
+        as("monitor").get("/api/obsint/cases/current").then().statusCode(204);
     }
 
     @Test void anotherUserCannotSeeTheCase() {
         activeProtocolWithConsigna();
-        String caseId = as("presidente").post("/api/obsint/cases").then().statusCode(200).extract().path("id");
-        String taskId = as("presidente").get("/api/obsint/cases/" + caseId).then().extract().path("tasks[0].id");
+        finishRunningCase("monitor");
+        String caseId = as("monitor").post("/api/obsint/cases").then().statusCode(200).extract().path("id");
+        String taskId = as("monitor").get("/api/obsint/cases/" + caseId).then().extract().path("tasks[0].id");
         as("jregional").get("/api/obsint/cases/" + caseId).then().statusCode(404);
-        as("jregional").post("/api/obsint/tasks/" + taskId + "/start").then().statusCode(404);
+        as("jregional").post("/api/obsint/tasks/" + taskId + "/start").then().statusCode(403);
+    }
+
+    /** SEN-03: solo los monitoristas ejecutan casos; los demás cargos no inician casos ni ven el botón de la consola. */
+    @Test void onlyMonitorsRunCases() {
+        activeProtocolWithConsigna();
+        for (String user : List.of("presidente", "dnacional", "coord"))
+            as(user).post("/api/obsint/cases").then().statusCode(403).body("message", containsString("monitoristas"));
+        as("presidente").get("/api/obsint/access").then().statusCode(200).body("enabled", is(false));
+        ObsintMonitorShift.monitorUserOnShift();
+        as("monitor").get("/api/obsint/access").then().statusCode(200).body("enabled", is(true));
     }
 
     /** Termina el caso en curso del usuario (de otra prueba o de la base), porque "Iniciar caso" devuelve el que está en curso. */
     static void finishRunningCase(String user) {
+        if ("monitor".equals(user)) ObsintMonitorShift.monitorUserOnShift();
         var current = as(user).get("/api/obsint/cases/current").then().extract();
         if (current.statusCode() != 200) return;
         List<String> ids = current.path("tasks.id");
@@ -136,18 +176,16 @@ class ObsintResourceTest {
         }
     }
 
-    /** El monitorista solo recibe consignas de los Puntos de las Compañías de su alcance. */
+    /** El monitorista solo recibe consignas de los Puntos de las Compañías de su turno. */
     @Test void caseOnlyIncludesPointsOfUserCompanies() {
         String code = activeProtocolWithConsigna();
-        finishRunningCase("coord");
-        // coord tiene asignada la Compañía del Punto: el caso incluye la consigna.
-        String caseId = as("coord").post("/api/obsint/cases").then().statusCode(200).extract().path("id");
-        List<String> taskIds = as("coord").get("/api/obsint/cases/" + caseId).then().statusCode(200).extract().path("tasks.id");
-        List<String> codes = taskIds.stream().map(id -> as("coord").get("/api/obsint/tasks/" + id).then().statusCode(200)
+        finishRunningCase("monitor");
+        // monitor está de turno en la Compañía del Punto: el caso incluye la consigna.
+        String caseId = as("monitor").post("/api/obsint/cases").then().statusCode(200).extract().path("id");
+        List<String> taskIds = as("monitor").get("/api/obsint/cases/" + caseId).then().statusCode(200).extract().path("tasks.id");
+        List<String> codes = taskIds.stream().map(id -> as("monitor").get("/api/obsint/tasks/" + id).then().statusCode(200)
             .extract().<String>path("consignaCode")).toList();
         assertTrue(codes.contains(code), "la consigna del Punto de su Compañía");
-        // asistente es rol de Compañía sin Compañías asignadas: no ve ningún Punto.
-        as("asistente").post("/api/obsint/cases").then().statusCode(409).body("message", containsString("alcance"));
     }
 
     @Test void clientHasNoAccess() {

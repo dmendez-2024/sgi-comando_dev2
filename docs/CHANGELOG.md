@@ -1,5 +1,12 @@
 # SGI: Comando — Changelog
 
+## SGI_COM — Decisión de consignas propuestas desde SGI Operador — 2026-10-29
+- Coordinación de Compañía y Asistencia de Coordinación pueden aprobar o descartar propuestas pendientes desde su detalle.
+- La aprobación permite corregir título e instrucción y seleccionar un protocolo del mismo punto; la incorporación siempre ocurre sobre una versión borrador para preservar la inmutabilidad de versiones publicadas.
+- Se agregó trazabilidad entre solicitud, protocolo destino y consigna creada, además de usuario, fecha y comentario de revisión.
+- El descarte exige motivo y conserva la solicitud en histórico.
+- Controles: alcance por compañía, máximo de 20 consignas, decisión concurrente e idempotencia.
+
 ## SGI_COM — Sesión IDENT sin perder formularios — 2026-10-23
 Responsable: Maria Burgos.
 - PERMITIDO (bug UX, SITC-NOM-001 §6.1). La renovación silenciosa ya existía (3e056e1); se completa:

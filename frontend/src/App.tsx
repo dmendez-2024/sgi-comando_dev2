@@ -18,6 +18,7 @@ import NovedadesExecution from './pages/NovedadesExecution';
 import Supervisiones from './pages/Supervisiones';
 import Placeholder from './pages/Placeholder';
 import AgentSimulator from './pages/AgentSimulator';
+import UniformColumnBadges from './components/UniformColumnBadges';
 
 export default function App() {
   // El monitorista (rol MONITOR) entra directo a la Consola; el resto, al Dashboard.
@@ -81,6 +82,7 @@ export default function App() {
 
   return (
     <div className="app">
+      <UniformColumnBadges />
       <Sidebar active={monitor ? 'Consola' : active} onChange={setActive} uatTools={uatTools} monitorOnly={monitor} />
       <main>
         <Header title={title} coreContext={coreContext} onUserChange={() => {setCoreLoaded(false);setActive(home());setUserRevision((x) => x + 1)}} />
