@@ -30,7 +30,7 @@ public class ObsintResource {
     /** Igual que el resto de Comando: el motivo del rechazo viaja como {"message": …} para que la pantalla lo muestre. */
     @ServerExceptionMapper
     public Response error(WebApplicationException e) {
-        return Response.status(e.getResponse().getStatus()).entity(java.util.Map.of("message", e.getMessage())).type(MediaType.APPLICATION_JSON).build();
+        return ObsintPlatform.errorResponse(e);
     }
 
     public record CameraView(UUID id, String code, String name, String location, String streamUrl, boolean live) {
@@ -66,6 +66,12 @@ public class ObsintResource {
     }
 
     /** Caso en curso del monitorista; 204 si no tiene ninguno. */
+    /** SEN-01: si el usuario tiene al menos un Punto con orden de servicio OBSINT; la pantalla oculta el botón OBSINT si no. */
+    public record AccessView(boolean enabled) {}
+
+    @GET @Path("/access") @Transactional
+    public AccessView access() { return new AccessView(!platform.visiblePoints(platform.allEnabledPoints()).isEmpty()); }
+
     @GET @Path("/cases/current") @Transactional
     public Response current() {
         return service.current().map(c -> Response.ok(CaseView.of(c)).build()).orElseGet(() -> Response.noContent().build());

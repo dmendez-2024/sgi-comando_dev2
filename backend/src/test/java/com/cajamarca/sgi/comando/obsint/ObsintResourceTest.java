@@ -56,7 +56,8 @@ class ObsintResourceTest {
 
         String consignaId = as("coord").contentType(ContentType.JSON).body(consigna("Sin horario", List.of(cam), List.of()))
             .post("/api/obsint/config/protocols/" + draft + "/consignas").then().statusCode(200)
-            .body("code", startsWith("OBS-")).body("cameraIds", hasItem(cam)).extract().path("id");
+            // SEN-06: la pantalla ya no envía la frecuencia; el backend usa "En cada turno".
+            .body("code", startsWith("OBS-")).body("cameraIds", hasItem(cam)).body("frequency", is("EVERY_SHIFT")).extract().path("id");
         as("coord").post("/api/obsint/config/protocols/" + draft + "/publish").then().statusCode(409).body("message", containsString("horario"));
 
         as("coord").contentType(ContentType.JSON).body(consigna("Con horario", List.of(cam), List.of(Map.of("dayOfWeek", 1, "start", "08:00", "end", "18:00"))))

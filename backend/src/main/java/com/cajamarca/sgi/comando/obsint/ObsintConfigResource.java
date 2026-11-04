@@ -49,7 +49,8 @@ public class ObsintConfigResource {
     public record ConsignmentOption(String code, String title, String instruction) {}
     public record SaveConsigna(String consignmentCode, String title, String description, String instruction, String category, String frequency, Integer timeLimitSeconds, Boolean active,
                                List<UUID> cameraIds, List<SlotView> schedule) {}
-    public record Summary(String status, String meta, Integer activeVersion, int activeConsignas, boolean hasDraft, List<String> warnings) {}
+    /** enabled=false: el Punto no tiene orden de servicio OBSINT (SEN-01); la fila se muestra deshabilitada. */
+    public record Summary(boolean enabled, String status, String meta, Integer activeVersion, int activeConsignas, boolean hasDraft, List<String> warnings) {}
     /** Resultado de guardar una tarea: la nueva versión activa y el código de la tarea guardada. */
     public record TaskSaved(ProtocolView protocol, String code) {}
 
@@ -213,13 +214,15 @@ public class ObsintConfigResource {
     /** Estado para la fila "OBSINT" de Configuración del Punto. */
     @GET @Path("/points/{pointId}/summary") @Transactional
     public Summary summary(@PathParam("pointId") UUID pointId) {
-        platform.requirePoint(pointId);
+        platform.requirePointAccess(pointId);
+        if (!platform.obsintEnabled(pointId))
+            return new Summary(false, "blocked", "Requiere orden de servicio OBSINT", null, 0, false, List.of());
         List<ObsintProtocol> all = versions(pointId);
         boolean hasDraft = all.stream().anyMatch(p -> "BORRADOR".equals(p.status));
         Optional<ObsintProtocol> active = all.stream().filter(p -> "ACTIVO".equals(p.status)).findFirst();
-        if (active.isEmpty()) return new Summary("blocked", hasDraft ? "Borrador sin publicar · sin protocolo activo" : "Sin protocolo OBSINT activo", null, 0, hasDraft, List.of());
+        if (active.isEmpty()) return new Summary(true, "blocked", hasDraft ? "Borrador sin publicar · sin protocolo activo" : "Sin protocolo OBSINT activo", null, 0, hasDraft, List.of());
         List<ObsintConsigna> items = consignas(active.get().id).stream().filter(c -> c.active).toList();
-        if (items.isEmpty()) return new Summary("blocked", "Protocolo v%d activo sin tareas activas".formatted(active.get().versionNo), active.get().versionNo, 0, hasDraft, List.of());
+        if (items.isEmpty()) return new Summary(true, "blocked", "Protocolo v%d activo sin tareas activas".formatted(active.get().versionNo), active.get().versionNo, 0, hasDraft, List.of());
         List<String> warnings = new ArrayList<>();
         Map<String, ObsintPlatform.LinkedConsignment> linkable = platform.obsintConsignments(pointId);
         for (ObsintConsigna c : items)
@@ -228,13 +231,13 @@ public class ObsintConfigResource {
         for (ObsintConsigna c : items)
             c.cameras.stream().filter(cam -> cam.status != SecElecComponent.Status.ACTIVE)
                 .forEach(cam -> warnings.add(c.code + ": la cámara " + cam.code + (cam.status == SecElecComponent.Status.INACTIVE ? " está inactiva" : " tiene observaciones")));
-        return new Summary(warnings.isEmpty() ? "complete" : "warning",
+        return new Summary(true, warnings.isEmpty() ? "complete" : "warning",
             "Protocolo v%d activo · %d consignas".formatted(active.get().versionNo, items.size()), active.get().versionNo, items.size(), hasDraft, warnings);
     }
 
     @ServerExceptionMapper
     public Response error(WebApplicationException e) {
-        return Response.status(e.getResponse().getStatus()).entity(Map.of("message", e.getMessage())).type(MediaType.APPLICATION_JSON).build();
+        return ObsintPlatform.errorResponse(e);
     }
 
     private void apply(ObsintConsigna c, SaveConsigna body) {

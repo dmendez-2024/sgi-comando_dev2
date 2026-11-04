@@ -47,12 +47,58 @@ public class ObsintPlatform {
     public UUID instanceCountryId() { return tenant.instanceCountryId(); }
     public String username() { return scope.username(); }
 
-    /** El Punto existe en el tenant y el usuario puede gestionar su Compañía (misma regla que Consignas). */
+    /**
+     * El Punto existe en el tenant, el usuario puede gestionar su Compañía (misma regla que Consignas)
+     * y su servicio es una orden de servicio OBSINT (SEN-01).
+     */
     public void requirePoint(UUID pointId) {
+        requirePointAccess(pointId);
+        if (!obsintEnabled(pointId)) throw new ObsintDisabledException();
+    }
+
+    /** Solo acceso al Punto, sin exigir la orden de servicio OBSINT (lo usa el resumen, que informa si está habilitado). */
+    public void requirePointAccess(UUID pointId) {
         if (pointId == null) throw new BadRequestException("pointId obligatorio");
         PointEntity point = PointEntity.find("id=?1 and instanceCountryId=?2", pointId, tenant.instanceCountryId()).firstResult();
         if (point == null) throw new NotFoundException("Punto no encontrado");
         scope.requireCompanyForCompanyRoles(point.companyId);
+    }
+
+    /** SEN-01: el servicio del Punto está marcado como orden de servicio OBSINT (service.obsint). */
+    public boolean obsintEnabled(UUID pointId) {
+        return !enabledPoints(List.of(pointId)).isEmpty();
+    }
+
+    /** De esos Puntos, los que tienen orden de servicio OBSINT. */
+    public Set<UUID> enabledPoints(Collection<UUID> pointIds) {
+        if (pointIds.isEmpty()) return Set.of();
+        @SuppressWarnings("unchecked")
+        List<Object> rows = em.createNativeQuery("""
+            select p.id from point p join service s on s.id=p.service_id
+            where p.instance_country_id=:tenant and p.id in (:points) and s.obsint""")
+            .setParameter("tenant", tenant.instanceCountryId()).setParameter("points", pointIds).getResultList();
+        return rows.stream().map(ObsintPlatform::uuid).collect(Collectors.toSet());
+    }
+
+    /** Todos los Puntos del tenant con orden de servicio OBSINT. */
+    public Set<UUID> allEnabledPoints() {
+        @SuppressWarnings("unchecked")
+        List<Object> rows = em.createNativeQuery("""
+            select p.id from point p join service s on s.id=p.service_id where p.instance_country_id=:tenant and s.obsint""")
+            .setParameter("tenant", tenant.instanceCountryId()).getResultList();
+        return rows.stream().map(ObsintPlatform::uuid).collect(Collectors.toSet());
+    }
+
+    /**
+     * Respuesta de error común de OBSINT: {"message": …} y, si el Punto no tiene orden de servicio OBSINT,
+     * además {"code": "OBSINT_SIN_ORDEN"} para que la pantalla muestre el aviso.
+     */
+    public static jakarta.ws.rs.core.Response errorResponse(jakarta.ws.rs.WebApplicationException e) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        if (e instanceof ObsintDisabledException) body.put("code", ObsintDisabledException.CODE);
+        body.put("message", e.getMessage());
+        return jakarta.ws.rs.core.Response.status(e.getResponse().getStatus()).entity(body)
+            .type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
     }
 
     /** Consigna de Consignas marcada con el "puesto" OBSINT, tal como está vigente hoy en el Punto. */
@@ -104,6 +150,26 @@ public class ObsintPlatform {
         return out;
     }
 
+    /** Cargos de nivel Kaibil: ven y asignan monitoristas de todas las Compañías de su alcance (SEN-02). */
+    public static final Set<String> HIGH_ROLES = Set.of("PRESIDENTE", "GERENCIA_GENERAL", "DIRECTOR_OPERACIONES_LATAM",
+        "DIRECTOR_OPERACIONES_NACIONAL", "DIRECTOR_NACIONAL", "DIRECTOR_ZONAL", "JEFE_REGIONAL");
+    /** Coordinación de una Compañía: los monitoristas de otras Compañías se les muestran como "Confidencial" (SEN-04). */
+    public static final Set<String> COMPANY_ROLES = Set.of("COORDINADOR_COMPANIA", "ASISTENTE_COORDINACION");
+
+    public boolean highRole() { return identity.getRoles().stream().anyMatch(HIGH_ROLES::contains); }
+    public boolean companyRole() { return !highRole() && identity.getRoles().stream().anyMatch(COMPANY_ROLES::contains); }
+
+    /** Compañías cuyos monitores se pueden elegir para un Punto: cargos altos, las de su alcance; los demás, solo la del Punto. */
+    public Set<UUID> monitorCompanies(UUID pointCompanyId) {
+        Set<UUID> out = new HashSet<>();
+        if (pointCompanyId != null) out.add(pointCompanyId);
+        if (highRole()) out.addAll(scope.allowedCompanyIds());
+        return out;
+    }
+
+    /** Compañías propias del usuario, para la bandera visual "Confidencial" (SEN-04/05). */
+    public Set<UUID> ownCompanies() { return scope.allowedCompanyIdsForCompanyRoles(); }
+
     public Monitoring monitoring(UUID pointId) {
         PointEntity point = PointEntity.find("id=?1 and instanceCountryId=?2", pointId, tenant.instanceCountryId()).firstResult();
         if (point == null) throw new NotFoundException("Punto no encontrado");
@@ -125,6 +191,7 @@ public class ObsintPlatform {
      * MONITOR: según el monitoreo OBSINT del Punto (ver monitorSees). Demás roles: los de las Compañías de su alcance (misma regla que requirePoint).
      */
     public Set<UUID> visiblePoints(Collection<UUID> pointIds) {
+        pointIds = enabledPoints(pointIds);  // SEN-01: sin orden de servicio OBSINT el Punto no entra a la consola
         if (pointIds.isEmpty()) return Set.of();
         List<PointEntity> points = PointEntity.list("instanceCountryId=?1 and id in ?2", tenant.instanceCountryId(), pointIds);
         Set<UUID> out = new HashSet<>();
