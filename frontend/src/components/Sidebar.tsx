@@ -17,7 +17,7 @@ const operations:NavGroup={
     {name:'Consignas',icon:ClipboardList},
     {name:'Simulador Agente (UAT)',icon:Smartphone}, // TEMPORAL (demo UAT)
     {name:'Novedades',icon:ShieldCheck},
-    // {name:'Supervisiones',icon:UserCheck}, // Oculta temporalmente
+    {name:'Supervisiones',icon:UserCheck},
     {name:'Requerimientos',icon:MessageSquareText},
     {name:'Comunicación',icon:Radio},
   ]
