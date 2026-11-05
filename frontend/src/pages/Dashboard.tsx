@@ -17,12 +17,16 @@ type Province={code:string;name:string;status?:string;geometryJson?:string;coreS
 type DashboardMetrics={calculatedAt:string;idAverage:number|null;icAverage:number|null;idSamples:number;icSamples:number;lateReliefs:number;recordedReliefs:number;reliefsOverThreeHours:number;previousLateReliefs:number};
 type Suitability={pointsBelowIdMinimum:number;idEvaluatedPoints:number;idGapPct:number|null;pointsBelowFullCompatibility:number;icEvaluatedPoints:number;icGapPct:number|null};
 type ConsignmentAttention={pointId:string;clientName:string;pointName:string;date:string;nonCompliant:number};
-type ConsignmentCompliance={nonCompliant:number;activeConsignments:number;nonCompliancePct:number|null;attention?:ConsignmentAttention[]};
-type SupervisionRouteCompliance={missedVisits:number;expectedVisits:number;nonCompliancePct:number|null};
+type ConsignmentCompliance={nonCompliant:number;activeConsignments:number;expectedExecutions:number;nonCompliancePct:number|null;attention?:ConsignmentAttention[]};
+type SupervisionRouteCompliance={nonCompliantRoutes:number;evaluatedRoutes:number;nonCompliancePct:number|null};
 type MissedReliefs={missedShifts:number;assignedShifts:number};
 type CriticalIncidents={reportedCriticalIncidents:number};
+type ConsoleIncident={id:string;code:string;title:string;status:string;client:string;point:string;pointId?:string;companyId?:string;updatedAt:string};
+type OperatorReport={reportId:string;title:string;type:string;severity:string;status:string;pointId:string;pointName:string;occurredAt:string};
+type ConsignmentReview={id:string;title:string;status:string;clientName:string;pointName:string;pointId:string;submittedAt:string};
+type AttentionItem={id:string;target:'Consola'|'Consignas';source:string;title:string;client:string;point:string;at:string;status:string;pointId:string;companyId?:string};
 type RiskTrendPoint={date:string;scheduledPoints:number;uncoveredPoints:number;riskIndex:number|null};
-type DashboardData={companies:Company[];rows:ServiceRow[];coverage:Coverage|null;metrics:DashboardMetrics|null;suitability:Suitability|null;consignments:ConsignmentCompliance|null;supervisionRoute:SupervisionRouteCompliance|null;missedReliefs:MissedReliefs|null;criticalIncidents:CriticalIncidents|null;locations:PointLocation[];provinces:Province[];errors:string[]};
+type DashboardData={companies:Company[];rows:ServiceRow[];coverage:Coverage|null;metrics:DashboardMetrics|null;suitability:Suitability|null;consignments:ConsignmentCompliance|null;supervisionRoute:SupervisionRouteCompliance|null;missedReliefs:MissedReliefs|null;criticalIncidents:CriticalIncidents|null;consoleIncidents:ConsoleIncident[];operatorReports:OperatorReport[];consignmentReviews:ConsignmentReview[];locations:PointLocation[];provinces:Province[];errors:string[]};
 type DashboardField=Exclude<keyof DashboardData,'errors'>;
 type DashboardRequest={field:DashboardField;request:()=>Promise<unknown>;message:string;valid?:(value:any)=>boolean};
 const metricFields:DashboardField[]=['coverage','metrics','suitability','consignments','supervisionRoute','missedReliefs','criticalIncidents'];
@@ -32,8 +36,8 @@ function hasMetrics(value:unknown):value is DashboardMetrics{return typeof value
 function hasCoverage(value:unknown):value is Coverage{return typeof value==='object'&&value!==null&&hasNumber((value as Partial<Coverage>).uncoveredPoints)&&hasNumber((value as Partial<Coverage>).previousUncoveredPoints)}
 function comparison(current:number,previous:number){if(previous===0)return current===0?'0%':`+${current}`;const change=Math.round((current-previous)*1000/previous)/10;return `${change>0?'+':''}${Number(change.toFixed(1))}%`}
 function hasSuitability(value:unknown):value is Suitability{return typeof value==='object'&&value!==null&&hasNumber((value as Partial<Suitability>).pointsBelowIdMinimum)&&hasNumber((value as Partial<Suitability>).idEvaluatedPoints)&&hasNumber((value as Partial<Suitability>).pointsBelowFullCompatibility)&&hasNumber((value as Partial<Suitability>).icEvaluatedPoints)}
-function hasConsignmentCompliance(value:unknown):value is ConsignmentCompliance{return typeof value==='object'&&value!==null&&hasNumber((value as Partial<ConsignmentCompliance>).nonCompliant)&&hasNumber((value as Partial<ConsignmentCompliance>).activeConsignments)}
-function hasSupervisionRouteCompliance(value:unknown):value is SupervisionRouteCompliance{return typeof value==='object'&&value!==null&&hasNumber((value as Partial<SupervisionRouteCompliance>).missedVisits)&&hasNumber((value as Partial<SupervisionRouteCompliance>).expectedVisits)}
+function hasConsignmentCompliance(value:unknown):value is ConsignmentCompliance{return typeof value==='object'&&value!==null&&hasNumber((value as Partial<ConsignmentCompliance>).nonCompliant)&&hasNumber((value as Partial<ConsignmentCompliance>).expectedExecutions)}
+function hasSupervisionRouteCompliance(value:unknown):value is SupervisionRouteCompliance{return typeof value==='object'&&value!==null&&hasNumber((value as Partial<SupervisionRouteCompliance>).nonCompliantRoutes)&&hasNumber((value as Partial<SupervisionRouteCompliance>).evaluatedRoutes)}
 function hasMissedReliefs(value:unknown):value is MissedReliefs{return typeof value==='object'&&value!==null&&hasNumber((value as Partial<MissedReliefs>).missedShifts)&&hasNumber((value as Partial<MissedReliefs>).assignedShifts)}
 function hasCriticalIncidents(value:unknown):value is CriticalIncidents{return typeof value==='object'&&value!==null&&hasNumber((value as Partial<CriticalIncidents>).reportedCriticalIncidents)}
 function metricPercent(value:number|null|undefined){return hasNumber(value)?`${Number(value.toFixed(1))}%`:'0'}
@@ -118,7 +122,7 @@ const dashboardTitleByUser:Record<UatUser,string>={
   supervisor:'Dashboard de Supervisión',agente:'Dashboard de Puesto',cliente:'Dashboard Cliente',monitor:'Consola',
 };
 
-export default function Dashboard(){
+export default function Dashboard({onOpenAttention}:{onOpenAttention?:(target:'Consola'|'Consignas',id:string)=>void}){
   const [showAllAttention,setShowAllAttention]=useState(false);
   const [weekStart,setWeekStart]=useState(()=>weekStartIso());
   const [period,setPeriod]=useState<'7d'|'30d'|'6m'>('30d');
@@ -129,7 +133,7 @@ export default function Dashboard(){
   const [activeCard,setActiveCard]=useState<(typeof cardCatalog)[number]['id']>('coverageGap');
   const [pending,setPending]=useState<Set<DashboardField>>(()=>new Set(metricFields));
   const [loadErrors,setLoadErrors]=useState<Partial<Record<DashboardField,string>>>({});
-  const [data,setData]=useState<DashboardData>({companies:[],rows:[],coverage:null,metrics:null,suitability:null,consignments:null,supervisionRoute:null,missedReliefs:null,criticalIncidents:null,locations:[],provinces:[],errors:[]});
+  const [data,setData]=useState<DashboardData>({companies:[],rows:[],coverage:null,metrics:null,suitability:null,consignments:null,supervisionRoute:null,missedReliefs:null,criticalIncidents:null,consoleIncidents:[],operatorReports:[],consignmentReviews:[],locations:[],provinces:[],errors:[]});
 
 
   const startRequests=useCallback((requests:DashboardRequest[])=>{
@@ -162,7 +166,10 @@ export default function Dashboard(){
       {field:'companies',request:()=>api.companies(0,100).then(value=>value.items??[]),message:'No se pudieron cargar las compañías.'},
       {field:'rows',request:()=>overview().then(value=>value.rows??[]),message:'No se pudo cargar el resumen de Servicios.'},
       {field:'provinces',request:()=>api.territory().then(value=>value.provinces??[]),message:'No se pudo cargar el catálogo territorial.'},
-      {field:'locations',request:()=>api.dashboardPointLocations(),message:'No se pudieron cargar las ubicaciones de los puntos.'}
+      {field:'locations',request:()=>api.dashboardPointLocations(),message:'No se pudieron cargar las ubicaciones de los puntos.'},
+      {field:'consoleIncidents',request:()=>api.incidents(),message:'No se pudieron consultar las acciones de Consola.'},
+      {field:'operatorReports',request:()=>api.operationalReports(),message:'No se pudieron consultar los reportes de Operador.'},
+      {field:'consignmentReviews',request:()=>api.consignmentReviewRequests('PENDING'),message:'No se pudieron consultar las revisiones de Consignas.'}
     ]);
   },[startRequests]);
 
@@ -181,7 +188,7 @@ export default function Dashboard(){
       {field:'consignments',request:()=>api.dashboardConsignmentCompliance(weekStart,companyId,clientId,period),valid:hasConsignmentCompliance,message:'No se pudo cargar el incumplimiento de consignas.'}
     ]);
   },[startRequests,weekStart,companyId,clientId,period]);
-  const attentionLoading=pending.has('consignments');
+  const attentionLoading=pending.has('consoleIncidents')||pending.has('operatorReports')||pending.has('consignmentReviews');
   const errors=Object.values(loadErrors);
 
   const clients=useMemo(()=>{
@@ -196,7 +203,22 @@ export default function Dashboard(){
   const companyOptions=useMemo(()=>data.companies.filter(company=>!clientId||filteredRows.some(row=>row.companyId===company.id)),[data.companies,filteredRows,clientId]);
   const uncoveredPoints=data.coverage?.uncoveredPoints??null;
   const coveragePct=data.coverage?.coveragePct??null;
-  const attentionRows=(data.consignments?.attention??[]).filter(row=>row.nonCompliant>0);
+  const attentionRows=useMemo(()=>{
+    const incidents:AttentionItem[]=data.consoleIncidents.filter(row=>!['DRAFT','BORRADOR'].includes(row.status.toUpperCase())).map(row=>({id:`incident:${row.id}`,target:'Consola',source:'Consola',title:row.title||row.code,client:row.client,point:row.point,pointId:row.pointId||'',companyId:row.companyId,at:row.updatedAt,status:'Por revisar'}));
+    const reports:AttentionItem[]=data.operatorReports.filter(row=>!['DRAFT','BORRADOR','CLOSED','RESOLVED','DISCARDED'].includes(row.status.toUpperCase())).map(row=>({id:`operator:${row.reportId}`,target:'Consola',source:'Consola',title:row.title,client:'',point:row.pointName,pointId:row.pointId,at:row.occurredAt,status:'Por revisar'}));
+    const reviews:AttentionItem[]=data.consignmentReviews.filter(row=>row.status==='PENDING').map(row=>({id:`opr-review-${row.id}`,target:'Consignas',source:'Consignas',title:row.title,client:row.clientName,point:row.pointName,pointId:row.pointId,at:row.submittedAt,status:'Por aprobar'}));
+    const end=shiftDate(weekStart,6),today=dateAtLocalNoon(new Date());if(end>today)end.setTime(today.getTime());
+    const start=new Date(end);if(period==='7d')start.setDate(start.getDate()-6);else if(period==='30d')start.setDate(start.getDate()-29);else{start.setMonth(start.getMonth()-6);start.setDate(start.getDate()+1)}
+    const from=start.toISOString().slice(0,10),to=end.toISOString().slice(0,10);
+    return [...incidents,...reports,...reviews].filter(row=>{
+      if(!row.at)return false;
+      const date=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Guayaquil',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(row.at));
+      if(date<from||date>to)return false;
+      if(companyId&&row.companyId!==companyId&&!pointIds.has(row.pointId))return false;
+      if(clientId&&!pointIds.has(row.pointId))return false;
+      return true;
+    }).sort((a,b)=>b.at.localeCompare(a.at));
+  },[data.consoleIncidents,data.operatorReports,data.consignmentReviews,weekStart,period,companyId,clientId,pointIds]);
   const provinceCounts=useMemo<DashboardProvinceCount[]>(()=>{
     const provinceByName=new Map<string,Province>();
     data.provinces.forEach(province=>{provinceByName.set(normalize(province.name),province);provinceByName.set(normalize(province.code),province)});
@@ -220,18 +242,16 @@ export default function Dashboard(){
     nonIdealCompat:{value:metricPercent(data.suitability?.icGapPct),note:data.suitability?.icEvaluatedPoints?`${data.suitability.pointsBelowFullCompatibility} de ${data.suitability.icEvaluatedPoints} puntos`:'Sin IC evaluado',available:hasNumber(data.suitability?.icGapPct)},
     faltos:{value:data.missedReliefs?.assignedShifts?data.missedReliefs.missedShifts.toLocaleString('es-EC'):'0',note:data.missedReliefs?.assignedShifts?`${data.missedReliefs.missedShifts} de ${data.missedReliefs.assignedShifts} relevos`:'Sin turnos terminados',available:!!data.missedReliefs?.assignedShifts},
     lateRelief:{value:data.metrics?data.metrics.lateReliefs.toLocaleString('es-EC'):'0',note:data.metrics?`${data.metrics.reliefsOverThreeHours} >3 h · ${data.metrics.recordedReliefs} registrados`:'Sin relevos',available:data.metrics!=null},
-    consignas:{value:metricPercent(data.consignments?.nonCompliancePct),note:data.consignments?.activeConsignments?`${data.consignments.nonCompliant} de ${data.consignments.activeConsignments} activas`:'Sin consignas activas',available:hasNumber(data.consignments?.nonCompliancePct)},
-    critical:{value:data.criticalIncidents?data.criticalIncidents.reportedCriticalIncidents.toLocaleString('es-EC'):'0',note:'Críticos reportados',available:data.criticalIncidents!=null},
-    route:{value:metricPercent(data.supervisionRoute?.nonCompliancePct),note:data.supervisionRoute?.expectedVisits?`${data.supervisionRoute.missedVisits} de ${data.supervisionRoute.expectedVisits} visitas`:'Sin visitas previstas',available:hasNumber(data.supervisionRoute?.nonCompliancePct)},
+    consignas:{value:metricPercent(data.consignments?.nonCompliancePct),note:data.consignments?.expectedExecutions?`${data.consignments.nonCompliant} de ${data.consignments.expectedExecutions} ejecuciones`:'Sin ejecuciones previstas',available:hasNumber(data.consignments?.nonCompliancePct)},
+    critical:{value:data.criticalIncidents?data.criticalIncidents.reportedCriticalIncidents.toLocaleString('es-EC'):'0',note:'Críticos sin cierre',available:data.criticalIncidents!=null},
+    route:{value:metricPercent(data.supervisionRoute?.nonCompliancePct),note:data.supervisionRoute?.evaluatedRoutes?`${data.supervisionRoute.nonCompliantRoutes} de ${data.supervisionRoute.evaluatedRoutes} rutas`:'Sin rutas previstas',available:hasNumber(data.supervisionRoute?.nonCompliancePct)},
     factor:{value:'0',note:'Sin dotación',available:false},
     rotation:{value:'0',note:'Sin bajas',available:false},
     cx:{value:'0',note:'Sin evaluaciones',available:false},
-    risk:{value:'0',note:'Índice de riesgo: 0',available:true}
+    risk:{value:'—',note:'Sin regla de cálculo aprobada',available:false}
   };
   const coverageSpark=data.coverage?[data.coverage.previousUncoveredPoints,data.coverage.uncoveredPoints]:[];
   const coverageTrend=data.coverage?[{date:shiftDate(weekStart,-7).toISOString().slice(0,10),scheduledPoints:data.coverage.previousEvaluatedPoints,uncoveredPoints:data.coverage.previousUncoveredPoints,riskIndex:0},{date:weekStart,scheduledPoints:data.coverage.evaluatedPoints,uncoveredPoints:data.coverage.uncoveredPoints,riskIndex:0}]:null;
-  const riskSpark=[0,0];
-  const riskTrend:RiskTrendPoint[]=[{date:weekStart,scheduledPoints:0,uncoveredPoints:0,riskIndex:0},{date:shiftDate(weekStart,6).toISOString().slice(0,10),scheduledPoints:0,uncoveredPoints:0,riskIndex:0}];
   const activeCardConfig=cardCatalog.find(card=>card.id===activeCard)!;
   const activeCardTitle=`${activeCardConfig.label}${'sub' in activeCardConfig?` — ${activeCardConfig.sub}`:''}`;
   const dateOptions=useMemo(()=>[-4,-3,-2,-1,0,1,2,3,4].map(offset=>{
@@ -251,26 +271,26 @@ export default function Dashboard(){
     </div>
 
     <div className="dash-v6-kpis" aria-label="Indicadores operativos">
-      {cardCatalog.map(card=>{const metric=metricValues[card.id];const field:DashboardField|null=({coverageGap:'coverage',nonIdealPerformance:'suitability',nonIdealCompat:'suitability',faltos:'missedReliefs',lateRelief:'metrics',consignas:'consignments',critical:'criticalIncidents',route:'supervisionRoute',factor:null,rotation:null,cx:null,risk:null} as const)[card.id];const cardLoading=field!==null&&pending.has(field);const spark=card.id==='coverageGap'?coverageSpark:card.id==='risk'?riskSpark:[];return <button type="button" key={card.id} data-kpi={card.id} title={`Clic para visualizar ${card.label.toLocaleLowerCase('es')}. ${metric.note}`} aria-pressed={activeCard===card.id} onClick={()=>setActiveCard(card.id)} className={`dash-v6-kpi kpi tone-${card.tone} ${activeCard===card.id?'selected':''} ${metric.available?'':'unavailable'}`}>
+      {cardCatalog.map(card=>{const metric=metricValues[card.id];const field:DashboardField|null=({coverageGap:'coverage',nonIdealPerformance:'suitability',nonIdealCompat:'suitability',faltos:'missedReliefs',lateRelief:'metrics',consignas:'consignments',critical:'criticalIncidents',route:'supervisionRoute',factor:null,rotation:null,cx:null,risk:null} as const)[card.id];const cardLoading=field!==null&&pending.has(field);const spark=card.id==='coverageGap'?coverageSpark:[];return <button type="button" key={card.id} data-kpi={card.id} title={`Clic para visualizar ${card.label.toLocaleLowerCase('es')}. ${metric.note}`} aria-pressed={activeCard===card.id} onClick={()=>setActiveCard(card.id)} className={`dash-v6-kpi kpi tone-${card.tone} ${activeCard===card.id?'selected':''} ${metric.available?'':'unavailable'}`}>
         <span className="dash-v6-kpi-mark kicon" aria-hidden="true">{card.glyph}</span>
-        <span className="dash-v6-kpi-copy kcontent"><span className="dash-v6-kpi-heading"><strong className="ktitle">{card.id==='coverageGap'?<>Puntos sin<br/>cobertura</>:card.label}</strong>{'sub' in card&&<span className="dash-v6-kpi-sub ksub">{card.sub}</span>}</span>{card.id==='factor'?<span className="dash-v6-factor factor"><span>FHT:</span><b>0</b><span>Disponible:</span><b>0</b><span>Exceso:</span><b>0</b></span>:<span className="dash-v6-kpi-value-row value-row"><b className="kvalue">{cardLoading?'…':metric.value}</b>{!cardLoading&&<CardSparkline values={spark} color={({red:"#ff243e",green:"#00bf7d",blue:"#1687ff",orange:"#ff7b00",purple:"#8a38ff",yellow:"#f4a100"})[card.tone]}/>}</span>}{card.id!=='critical'&&<small className="dash-v6-kpi-delta delta dash-v6-kpi-comparison" title={card.id==='coverageGap'?'Puntos sin cobertura: semana seleccionada frente a la semana anterior.':card.id==='lateRelief'?'Relevos tardíos: rango seleccionado frente al rango anterior de igual duración.':'Comparación histórica no disponible.'}>{card.id==='coverageGap'&&data.coverage?comparison(data.coverage.uncoveredPoints,data.coverage.previousUncoveredPoints):card.id==='lateRelief'&&data.metrics?comparison(data.metrics.lateReliefs,data.metrics.previousLateReliefs):'0%'} <span>vs. {card.id==='coverageGap'?'semana anterior':'período anterior'}</span></small>}</span>
+        <span className="dash-v6-kpi-copy kcontent"><span className="dash-v6-kpi-heading"><strong className="ktitle">{card.id==='coverageGap'?<>Puntos sin<br/>cobertura</>:card.label}</strong>{'sub' in card&&<span className="dash-v6-kpi-sub ksub">{card.sub}</span>}</span>{card.id==='factor'?<span className="dash-v6-factor factor"><span>FHT:</span><b>0</b><span>Disponible:</span><b>0</b><span>Exceso:</span><b>0</b></span>:<span className="dash-v6-kpi-value-row value-row"><b className="kvalue">{cardLoading?'…':metric.value}</b>{!cardLoading&&card.id!=='risk'&&<CardSparkline values={spark} color={({red:"#ff243e",green:"#00bf7d",blue:"#1687ff",orange:"#ff7b00",purple:"#8a38ff",yellow:"#f4a100"})[card.tone]}/>}</span>}{card.id!=='critical'&&card.id!=='risk'&&<small className="dash-v6-kpi-delta delta dash-v6-kpi-comparison" title={card.id==='coverageGap'?'Puntos sin cobertura: semana seleccionada frente a la semana anterior.':card.id==='lateRelief'?'Relevos tardíos: rango seleccionado frente al rango anterior de igual duración.':'Comparación histórica no disponible.'}>{card.id==='coverageGap'&&data.coverage?comparison(data.coverage.uncoveredPoints,data.coverage.previousUncoveredPoints):card.id==='lateRelief'&&data.metrics?comparison(data.metrics.lateReliefs,data.metrics.previousLateReliefs):'0%'} <span>vs. {card.id==='coverageGap'?'semana anterior':'período anterior'}</span></small>}</span>
       </button>})}
     </div>
 
     <div className="dash-v6-lower">
       <section className="dash-v6-panel dash-v6-attention">
-        <div className="dash-v6-panel-title dash-v6-attention-title"><span className="attention-icon" aria-hidden="true">▲</span><h3>Atención requerida</h3><b aria-label="Puntos con consignas incumplidas">{attentionLoading?'…':attentionRows.length}</b>{attentionRows.length>10&&<button type="button" className="dash-v6-attention-toggle" aria-expanded={showAllAttention} onClick={()=>setShowAllAttention(value=>!value)}>{showAllAttention?'Ver menos':'Ver todos'} →</button>}</div>
-        <div className="dash-v6-table-wrap"><table aria-label="Atención requerida"><thead><tr><th scope="col">#</th><th scope="col">Cliente</th><th scope="col">Punto</th><th scope="col">Fecha</th><th scope="col">Riesgo</th><th scope="col">Incumplimiento de<br/>Consignas</th><th scope="col">Estado</th></tr></thead><tbody>
-          {!attentionLoading&&(showAllAttention?attentionRows:attentionRows.slice(0,10)).map((row,index)=><tr key={row.pointId}><td>{index+1}</td><td>{row.clientName||'—'}</td><td>{row.pointName||'—'}</td><td>{new Intl.DateTimeFormat('es-EC',{day:'2-digit',month:'2-digit',year:'numeric'}).format(shiftDate(row.date,0))}</td><td title="No hay una regla confirmada de riesgo por incumplimiento de consigna.">—</td><td>{row.nonCompliant}</td><td><span className="dash-v6-state state-pending_assignment">Incumplida</span></td></tr>)}
-          {!attentionLoading&&attentionRows.length===0&&<tr><td colSpan={7} className="dash-v6-empty">{!data.consignments?'No se pudieron consultar los incumplimientos de consignas.':data.consignments.nonCompliant>0?'El detalle de los incumplimientos requiere actualizar el backend.':'No hay incumplimientos de consignas en el período y el alcance seleccionados.'}</td></tr>}
-          {attentionLoading&&<tr><td colSpan={7} className="dash-v6-empty">Cargando datos operativos…</td></tr>}
+        <div className="dash-v6-panel-title dash-v6-attention-title"><span className="attention-icon" aria-hidden="true">▲</span><h3>Atención requerida</h3><b aria-label="Acciones pendientes">{attentionLoading?'…':attentionRows.length}</b>{attentionRows.length>10&&<button type="button" className="dash-v6-attention-toggle" aria-expanded={showAllAttention} onClick={()=>setShowAllAttention(value=>!value)}>{showAllAttention?'Ver menos':'Ver todos'} →</button>}</div>
+        <div className="dash-v6-table-wrap"><table aria-label="Atención requerida"><thead><tr><th scope="col">#</th><th scope="col">Origen</th><th scope="col">Caso pendiente</th><th scope="col">Cliente / Punto</th><th scope="col">Fecha</th><th scope="col">Estado</th><th scope="col">Detalle</th></tr></thead><tbody>
+          {!attentionLoading&&(showAllAttention?attentionRows:attentionRows.slice(0,10)).map((row,index)=><tr key={row.id}><td>{index+1}</td><td>{row.source}</td><td>{row.title}</td><td>{[row.client,row.point].filter(Boolean).join(' · ')||'—'}</td><td>{new Intl.DateTimeFormat('es-EC',{day:'2-digit',month:'2-digit',year:'numeric',timeZone:'America/Guayaquil'}).format(new Date(row.at))}</td><td><span className="dash-v6-state state-pending_assignment">{row.status}</span></td><td><button type="button" className="dash-v6-detail-link" onClick={()=>onOpenAttention?.(row.target,row.id)}>Ver</button></td></tr>)}
+          {!attentionLoading&&attentionRows.length===0&&<tr><td colSpan={7} className="dash-v6-empty">No hay acciones pendientes de Consola o Consignas en el período y alcance seleccionados.</td></tr>}
+          {attentionLoading&&<tr><td colSpan={7} className="dash-v6-empty">Cargando acciones pendientes…</td></tr>}
         </tbody></table></div>
       </section>
 
       <div className="dash-v6-side-stack">
         <section className="dash-v6-panel dash-v6-trend">
-          <div className="dash-v6-panel-title"><span className="blue-icon"><Activity size={18}/></span><div><h3>Tendencia — {activeCardTitle}</h3><small>{activeCard==='coverageGap'?'Semana seleccionada y anterior':activeCard==='risk'?'Índice fijo en 0':'Histórico S/D'}</small></div></div>
-          {activeCard==='coverageGap'?(pending.has('coverage')?<div className="dash-v6-no-history">Cargando cobertura operacional…</div>:coverageTrend&&(data.coverage!.evaluatedPoints>0||data.coverage!.previousEvaluatedPoints>0)?<RiskTrendChart points={coverageTrend} mode="uncovered"/>:<div className="dash-v6-no-history">Sin turnos terminados en ambas semanas.</div>):activeCard==='risk'?<RiskTrendChart points={riskTrend} mode="risk"/>:<div className="dash-v6-no-history"><Activity size={24}/><strong>S/D</strong><span>Sin histórico para este indicador.</span></div>}
+          <div className="dash-v6-panel-title"><span className="blue-icon"><Activity size={18}/></span><div><h3>Tendencia — {activeCardTitle}</h3><small>{activeCard==='coverageGap'?'Semana seleccionada y anterior':'Histórico S/D'}</small></div></div>
+          {activeCard==='coverageGap'?(pending.has('coverage')?<div className="dash-v6-no-history">Cargando cobertura operacional…</div>:coverageTrend&&(data.coverage!.evaluatedPoints>0||data.coverage!.previousEvaluatedPoints>0)?<RiskTrendChart points={coverageTrend} mode="uncovered"/>:<div className="dash-v6-no-history">Sin turnos terminados en ambas semanas.</div>):<div className="dash-v6-no-history"><Activity size={24}/><strong>S/D</strong><span>Sin histórico para este indicador.</span></div>}
         </section>
         <section className="dash-v6-panel dash-v6-geography">
           <div className="dash-v6-panel-title"><span className="blue-icon"><MapPin size={18}/></span><div><h3>Mapa operacional por provincia</h3><small>{pointIds.size} punto{pointIds.size===1?'':'s'} en el alcance seleccionado</small></div></div>
@@ -278,6 +298,6 @@ export default function Dashboard(){
         </section>
       </div>
     </div>
-    <div className="dash-v6-footnote"><FileText size={14}/><span>Cobertura, relevos y riesgo usan datos registrados del alcance seleccionado. Los indicadores sin datos o sin regla de cálculo muestran 0 por defecto.</span></div>
+    <div className="dash-v6-footnote"><FileText size={14}/><span>Cobertura y relevos usan datos registrados del alcance seleccionado. Los indicadores sin datos muestran 0; el índice de riesgo queda sin valor hasta definir su regla.</span></div>
   </div>;
 }

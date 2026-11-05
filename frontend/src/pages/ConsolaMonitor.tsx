@@ -139,7 +139,7 @@ const operatorReportToConsoleItem=(record:OperatorReport,location?:LocationOptio
   recommendedAction:'Validar el reporte recibido desde SGI Operador.'
 });
 
-export default function ConsolaMonitor(){
+export default function ConsolaMonitor({initialCaseId=''}:{initialCaseId?:string}){
   const user=getUser();
   const scope=scopeByUser[user];
   const [filters,setFilters]=useState<Filters>(EMPTY_FILTERS);
@@ -201,6 +201,7 @@ export default function ConsolaMonitor(){
   //const allRows=useMemo(()=>[...operatorRows,...DATA,...incidentRows],[operatorRows,incidentRows]);
   const allRows=useMemo(()=>[...operatorRows,...incidentRows],[operatorRows,incidentRows]);
   const scoped=useMemo(()=>allRows.filter(x=>withinScope(x,scope)),[allRows,scope]);
+  useEffect(()=>{if(initialCaseId&&scoped.some(row=>row.id===initialCaseId))setDetailId(initialCaseId)},[initialCaseId,scoped]);
   const cities=useMemo(()=>unique(scoped.map(x=>x.city)),[scoped]);
   const companies=useMemo(()=>unique(scoped.map(x=>x.company)),[scoped]);
   const clients=useMemo(()=>unique(scoped.map(x=>x.client)),[scoped]);
@@ -227,7 +228,7 @@ export default function ConsolaMonitor(){
     }).sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt));
   },[scoped,filters,dateError]);
 
-  const inspected=detailId?rows.find(x=>x.id===detailId)??null:null;
+  const inspected=detailId?scoped.find(x=>x.id===detailId)??null:null;
   const editingIncident=editingIncidentId?incidents.find(x=>x.id===editingIncidentId)??null:null;
   const metrics=useMemo(()=>({
     attention: scoped.filter(x=>['PENDING','OVERDUE','NEW','CRITICAL','ESCALATED'].includes(x.status)).length,

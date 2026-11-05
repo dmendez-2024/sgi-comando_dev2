@@ -17,7 +17,7 @@ export default function Header({title,coreContext,onUserChange,onMenuToggle,navO
       <button className="notification-button" aria-label="Notificaciones"><Bell size={19}/><span className="notification-dot">0</span></button>
       {identEnabled()
         ?<>
-          <div className="userbox"><span>{identEmail()}</span><strong style={{whiteSpace:'nowrap'}}>{labels[getUser()]}</strong></div>
+          <div className="userbox ident-userbox"><span>{identEmail()}</span><strong>{labels[getUser()]}</strong></div>
           {plataformas>1&&<button className="secondary-button" style={{whiteSpace:'nowrap'}} onClick={identPortal}>← Plataformas</button>}
           <button className="secondary-button" style={{whiteSpace:'nowrap'}} onClick={identSignOut}>Cerrar sesión</button>
         </>
