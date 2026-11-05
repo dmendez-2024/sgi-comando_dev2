@@ -22,13 +22,14 @@ import {
   ShieldCheck,
   Sparkles,
   Trash2,
+  Download,
   Upload,
   Users,
   X,
 } from 'lucide-react';
 import StandardGallery,{type StandardImageRef,uploadStandardImages,uploadSummary} from '../components/StandardGallery';
 import MatchThresholdField from '../components/MatchThresholdField';
-import {ApiError,api} from '../api';
+import {ApiError,api,getUser} from '../api';
 
 type PointPost={postId:string;postCode:string;postName:string;tier:string;state:string};
 type PointContext={pointId:string;pointName:string;pointCode:string;clientName:string;companyName:string;serviceName:string;serviceCode:string;posts:PointPost[]};
@@ -56,6 +57,9 @@ type FieldDraft={
   id?:string;section:FieldSection;sortOrder:number;name:string;description:string;fieldType:FieldType;required:boolean;evidenceRequired:boolean;captureMode:CaptureMode;customField:boolean;standardImageNotes:string;standardImages?:StandardImageRef[];matchThreshold?:number|null;
 };
 type ConfirmState={title:string;message:string;confirmLabel:string;tone:'danger'|'warning';run:()=>Promise<void>};
+type ExportScope='COMPANY'|'COUNTRY';
+type ProtocolExport={id:string;sourceProtocolId:string;scope:ExportScope;companyId?:string|null;versionNo:number;exportedBy:string;exportedAt:string;alreadyExported:boolean};
+type LibraryModel={id:string;scope:ExportScope;code:string;name:string;objectType:Protocol['objectType'];applicationType:Protocol['applicationType'];description:string;versionNo:number;accreditationCount:number;fieldCount:number;exportedBy:string;exportedAt:string};
 
 const TABS:{key:DetailTab;label:string;short:string}[]=[
   {key:'DEFINICION',label:'Definición',short:'1'},
@@ -129,6 +133,19 @@ export default function BitacoraConfig({point,onBack}:{point:PointContext;onBack
   const [confirmState,setConfirmState]=useState<ConfirmState|null>(null);
   const [confirmBusy,setConfirmBusy]=useState(false);
   const [scopeBusy,setScopeBusy]=useState(false);
+  const [exportOpen,setExportOpen]=useState(false);
+  const [exportScope,setExportScope]=useState<ExportScope>('COMPANY');
+  const [protocolExports,setProtocolExports]=useState<ProtocolExport[]>([]);
+  const [exportLoading,setExportLoading]=useState(false);
+  const [exportBusy,setExportBusy]=useState(false);
+  const [importOpen,setImportOpen]=useState(false);
+  const [libraryModels,setLibraryModels]=useState<LibraryModel[]>([]);
+  const [importScope,setImportScope]=useState<'ALL'|ExportScope>('ALL');
+  const [importQuery,setImportQuery]=useState('');
+  const [selectedModelId,setSelectedModelId]=useState('');
+  const [importLoading,setImportLoading]=useState(false);
+  const [importBusy,setImportBusy]=useState(false);
+  const [importError,setImportError]=useState('');
 
   useEffect(()=>{
     const frame=requestAnimationFrame(()=>{
@@ -175,7 +192,12 @@ export default function BitacoraConfig({point,onBack}:{point:PointContext;onBack
   const selectedPost=point.posts.find(post=>post.postId===selectedPostId)??point.posts[0]??null;
   const selectedProtocols=useMemo(()=>[...protocols].sort((a,b)=>{const aApplies=appliesToPost(a,selectedPostId)?0:1;const bApplies=appliesToPost(b,selectedPostId)?0:1;return aApplies-bApplies||a.code.localeCompare(b.code)}),[protocols,selectedPostId]);
   const selectedAccreditation=draft?.accreditations.find(acc=>acc.id===selectedAccreditationId)??draft?.accreditations[0]??null;
+  const selectedModel=libraryModels.find(model=>model.id===selectedModelId)??null;
+  const filteredModels=libraryModels.filter(model=>(importScope==='ALL'||model.scope===importScope)&&`${model.code} ${model.name} ${model.description}`.toLocaleLowerCase('es').includes(importQuery.trim().toLocaleLowerCase('es')));
   const isDraft=draft?.status==='BORRADOR';
+  const userRole=getUser();
+  const canExport=['presidente','ggeneral','dlatam','don','dnacional','dzonal','jregional','coord','asistente'].includes(userRole);
+  const canExportCountry=['presidente','ggeneral','dlatam','don','dnacional','dzonal'].includes(userRole);
   const postCounts=useMemo(()=>{
     const map=new Map<string,{count:number;activo:number;borrador:number}>();
     point.posts.forEach(post=>map.set(post.postId,{count:0,activo:0,borrador:0}));
@@ -280,6 +302,44 @@ export default function BitacoraConfig({point,onBack}:{point:PointContext;onBack
     setConfirmState({title:'Inactivar protocolo en este Puesto',message:`El Protocolo dejará de estar activo en ${label}. La versión publicada y su historial no se eliminan.`,confirmLabel:'Inactivar en este Puesto',tone:'warning',run:async()=>{await applyPublishedScope(draft.id,next,label,false)}});
   };
   const showHistory=async()=>{if(!draft)return;try{setVersionHistory(await api.bitacoraProtocolHistory(draft.id) as Protocol[])}catch(e){setError(errorText(e))}};
+  const openExport=async()=>{
+    if(!draft||isDraft)return;
+    setError('');setExportScope('COMPANY');setProtocolExports([]);setExportOpen(true);setExportLoading(true);
+    try{setProtocolExports(await api.bitacoraProtocolExports(draft.id) as ProtocolExport[])}
+    catch(e){setExportOpen(false);setError(errorText(e))}
+    finally{setExportLoading(false)}
+  };
+  const openImport=async()=>{
+    if(!selectedPostId)return;
+    setError('');setImportError('');setImportScope('ALL');setImportQuery('');setSelectedModelId('');
+    setLibraryModels([]);setImportOpen(true);setImportLoading(true);
+    try{setLibraryModels(await api.bitacoraProtocolLibrary(selectedPostId) as LibraryModel[])}
+    catch(e){setImportError(errorText(e))}
+    finally{setImportLoading(false)}
+  };
+  const importProtocol=async()=>{
+    if(!selectedPostId||!selectedModel)return;
+    setImportBusy(true);setImportError('');setError('');setNotice('');
+    try{
+      const imported=await api.importBitacoraProtocol(selectedModel.id,selectedPostId) as Protocol;
+      setImportOpen(false);
+      await load(imported.id,imported.accreditations[0]?.id);
+      setTab('DEFINICION');setNotice(`${imported.code} creado en borrador desde ${selectedModel.scope==='COMPANY'?'Modelos de Compañía':'Estándares Cajamarca'}. Revise el alcance y publique cuando esté listo.`);
+    }catch(e){setImportError(errorText(e))}
+    finally{setImportBusy(false)}
+  };
+  const exportProtocol=async()=>{
+    if(!draft||isDraft)return;
+    setError('');setExportBusy(true);
+    try{
+      const result=await api.exportBitacoraProtocol(draft.id,exportScope) as ProtocolExport;
+      setExportOpen(false);
+      setNotice(result.alreadyExported
+        ? `La versión ${draft.versionNo} ya estaba exportada a ${exportScope==='COMPANY'?'Modelos de Compañía':'Estándares Cajamarca'}.`
+        : `Versión ${draft.versionNo} exportada a ${exportScope==='COMPANY'?'Modelos de Compañía':'Estándares Cajamarca'}.`);
+    }catch(e){setError(errorText(e))}
+    finally{setExportBusy(false)}
+  };
 
   function newField(section:FieldSection):FieldDraft{
     const next=(selectedAccreditation?.fields.filter(field=>field.section===section).reduce((max,field)=>Math.max(max,field.sortOrder),0)??0)+1;
@@ -336,11 +396,11 @@ export default function BitacoraConfig({point,onBack}:{point:PointContext;onBack
     <div className={`bit-main-grid${postsCollapsed?' posts-collapsed':''}`}>
       <section className="ser-table-card bit-posts-card"><header><div><h3>Puestos del Punto</h3><span>{postsCollapsed&&selectedPost?`Seleccionado: ${selectedPost.postCode} · ${selectedPost.postName}`:'Seleccione un Puesto para configurar sus protocolos'}</span></div><button type="button" className="bit-posts-toggle" aria-expanded={!postsCollapsed} aria-controls="bit-post-list-content" aria-label={postsCollapsed?'Expandir panel Puestos del Punto':'Contraer panel Puestos del Punto'} title={postsCollapsed?'Expandir panel':'Contraer panel'} onClick={()=>setPostsCollapsed(value=>!value)}>{postsCollapsed?<ChevronRight size={16}/>:<ChevronLeft size={16}/>}</button></header><div id="bit-post-list-content" hidden={postsCollapsed}><div className="bit-search"><Search size={15}/><input value={postQuery} onChange={event=>setPostQuery(event.target.value)} placeholder="Buscar puesto por código o nombre…"/></div><div className="bit-post-list">{visiblePosts.map(post=>{const counts=postCounts.get(post.postId)??{count:0,activo:0,borrador:0};return <button key={post.postId} className={selectedPostId===post.postId?'selected':''} onClick={()=>selectPost(post.postId)}><span className="bit-post-icon"><ShieldCheck size={17}/></span><div><strong>{post.postCode}</strong><span>{post.postName}</span><small>{counts.count} protocolo{counts.count===1?'':'s'} · {counts.count?'Configurado':'Pendiente'}</small></div><span className={`bit-status-dot ${counts.count?'good':'warn'}`}/><ChevronRight size={15}/></button>})}</div></div></section>
 
-      <section className="ser-table-card bit-protocols-card"><header><div><h3>Protocolos del Punto</h3><span>{selectedPost?`${selectedPost.postCode} · ${selectedPost.postName}`:'Seleccione un Puesto'}</span></div></header><div className="bit-protocol-actions"><button className="primary" onClick={()=>void createProtocol()} disabled={!selectedPostId}><Plus size={15}/>Crear protocolo</button><button disabled><Upload size={15}/>Importar protocolo</button></div><div className="bit-protocol-table-wrap"><table className="bit-protocol-table"><thead><tr><th>Código</th><th>Protocolo</th><th>Objeto</th><th>Acredit.</th><th>Estado</th></tr></thead><tbody>{loading?<tr><td colSpan={5}>Cargando protocolos…</td></tr>:selectedProtocols.length?selectedProtocols.map(protocol=>{const contextualStatus=statusForPost(protocol,selectedPostId);const applies=appliesToPost(protocol,selectedPostId);return <tr key={protocol.id} className={selectedProtocolId===protocol.id?'selected':''} onClick={()=>selectProtocol(protocol)}><td>{protocol.code}</td><td><strong>{protocol.name}</strong><small>{appLabel(protocol.applicationType)} · {scopeSummary(protocol,point.posts)}</small></td><td>{protocol.objectType}</td><td>{protocol.accreditations.length}</td><td><span className={`bit-protocol-state ${contextualStatus.toLowerCase()}`}>{statusLabel(contextualStatus)}</span>{!applies&&<small className="bit-contextual-note">No aplica al puesto</small>}</td></tr>}):<tr><td className="bit-empty-cell" colSpan={5}>Este Punto todavía no tiene protocolos.</td></tr>}</tbody></table></div></section>
+      <section className="ser-table-card bit-protocols-card"><header><div><h3>Protocolos del Punto</h3><span>{selectedPost?`${selectedPost.postCode} · ${selectedPost.postName}`:'Seleccione un Puesto'}</span></div></header><div className="bit-protocol-actions"><button className="primary" onClick={()=>void createProtocol()} disabled={!selectedPostId}><Plus size={15}/>Crear protocolo</button><button type="button" onClick={()=>void openImport()} disabled={!selectedPostId||!canExport}><Download size={15}/>Importar protocolo</button></div><div className="bit-protocol-table-wrap"><table className="bit-protocol-table"><thead><tr><th>Código</th><th>Protocolo</th><th>Objeto</th><th>Acredit.</th><th>Estado</th></tr></thead><tbody>{loading?<tr><td colSpan={5}>Cargando protocolos…</td></tr>:selectedProtocols.length?selectedProtocols.map(protocol=>{const contextualStatus=statusForPost(protocol,selectedPostId);const applies=appliesToPost(protocol,selectedPostId);return <tr key={protocol.id} className={selectedProtocolId===protocol.id?'selected':''} onClick={()=>selectProtocol(protocol)}><td>{protocol.code}</td><td><strong>{protocol.name}</strong><small>{appLabel(protocol.applicationType)} · {scopeSummary(protocol,point.posts)}</small></td><td>{protocol.objectType}</td><td>{protocol.accreditations.length}</td><td><span className={`bit-protocol-state ${contextualStatus.toLowerCase()}`}>{statusLabel(contextualStatus)}</span>{!applies&&<small className="bit-contextual-note">No aplica al puesto</small>}</td></tr>}):<tr><td className="bit-empty-cell" colSpan={5}>Este Punto todavía no tiene protocolos.</td></tr>}</tbody></table></div></section>
 
       <section className="ser-table-card bit-detail-card">
         {!draft?<div className="bit-detail-empty"><FileText size={28}/><strong>Seleccione o cree un protocolo</strong><span>Luego podrá definir una o más acreditaciones dentro de él.</span></div>:<>
-          <header className="bit-detail-header"><div><h3>{draft.code} · {draft.name}</h3><span>{draft.objectType} · {appLabel(draft.applicationType)} · v{draft.versionNo} · {statusLabel(draft.status)}{!isDraft?` · ${applicablePosts(draft).length}/${point.posts.length} Puestos activos`:''}</span></div><div><button onClick={()=>void showHistory()}><History size={14}/>Historial</button>{isDraft?<><button onClick={()=>void saveProtocol()} disabled={savingProtocol}><Save size={14}/>{savingProtocol?'Guardando…':'Guardar borrador'}</button><button className="primary" onClick={()=>void publishProtocol()} disabled={savingProtocol}><ShieldCheck size={14}/>Publicar versión</button></>:<button onClick={()=>void forkProtocol()} disabled={savingProtocol}><Plus size={14}/>Crear nueva versión</button>}</div></header>
+          <header className="bit-detail-header"><div><h3>{draft.code} · {draft.name}</h3><span>{draft.objectType} · {appLabel(draft.applicationType)} · v{draft.versionNo} · {statusLabel(draft.status)}{!isDraft?` · ${applicablePosts(draft).length}/${point.posts.length} Puestos activos`:''}</span></div><div><button onClick={()=>void showHistory()}><History size={14}/>Historial</button>{!isDraft&&canExport&&<button type="button" onClick={()=>void openExport()}><Upload size={14}/>Exportar protocolo</button>}{isDraft?<><button onClick={()=>void saveProtocol()} disabled={savingProtocol}><Save size={14}/>{savingProtocol?'Guardando…':'Guardar borrador'}</button><button className="primary" onClick={()=>void publishProtocol()} disabled={savingProtocol}><ShieldCheck size={14}/>Publicar versión</button></>:<button onClick={()=>void forkProtocol()} disabled={savingProtocol}><Plus size={14}/>Crear nueva versión</button>}</div></header>
           {!appliesToPost(draft,selectedPostId)&&<div className="bit-selection-warning"><Info size={15}/><span>Este Protocolo está inactivo en el Puesto seleccionado. Puede activarlo marcando ese Puesto desde Definición.</span></div>}
           <div className="bit-accreditation-strip"><div className="bit-accreditation-label"><KeyRound size={15}/><div><strong>Acreditaciones ({draft.accreditations.length}/10)</strong><span>Máximo 10 por Protocolo. Si necesita más, cree un nuevo Protocolo.</span></div></div><div className="bit-accreditation-options">{draft.accreditations.map(acc=><button key={acc.id} className={selectedAccreditation?.id===acc.id?'active':''} onClick={()=>selectAccreditation(acc.id)}><b>{acc.code}</b><span>{acc.name}</span></button>)}{isDraft&&<button className="add" onClick={()=>void createAccreditation()} disabled={draft.accreditations.length>=10} title={draft.accreditations.length>=10?'Máximo 10 acreditaciones por Protocolo':''}><Plus size={14}/>Nueva acreditación</button>}</div></div>
           <div className="bit-step-tabs-rail"><div className="bit-step-tabs" ref={stepTabsRef}>{TABS.map(item=><button key={item.key} className={tab===item.key?'active':''} onClick={()=>setTab(item.key)}><b>{item.short}</b>{item.label}</button>)}</div></div>{!isDraft&&<div className="bit-version-lock"><ShieldCheck size={14}/><span>Versión publicada e inmutable en contenido. La activación por Puesto sí puede modificarse desde Definición sin crear una nueva versión.</span></div>}
@@ -359,6 +419,8 @@ export default function BitacoraConfig({point,onBack}:{point:PointContext;onBack
       </section>
     </div>
 
+    {importOpen&&<div className="pat-modal-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget&&!importBusy)setImportOpen(false)}}><section className="bit-export-modal bit-import-modal" role="dialog" aria-modal="true" aria-labelledby="bit-import-title"><header><div><h3 id="bit-import-title">Importar protocolo</h3><span>Puesto destino: {selectedPost?.postCode} · {selectedPost?.postName} · {point.companyName}</span></div><button type="button" aria-label="Cerrar" disabled={importBusy} onClick={()=>setImportOpen(false)}><X size={18}/></button></header><div className="bit-export-body"><p>Seleccione una versión publicada. Se creará un protocolo nuevo en borrador para este puesto.</p><div className="bit-import-filters"><select value={importScope} onChange={e=>setImportScope(e.target.value as 'ALL'|ExportScope)} aria-label="Biblioteca"><option value="ALL">Todas las bibliotecas</option><option value="COMPANY">Modelos de Compañía</option><option value="COUNTRY">Estándares Cajamarca</option></select><label><Search size={14}/><input value={importQuery} onChange={e=>setImportQuery(e.target.value)} placeholder="Buscar protocolo…" aria-label="Buscar protocolo"/></label></div>{importError&&<p className="bit-import-error" role="alert">{importError}</p>}{importLoading?<p>Cargando modelos…</p>:filteredModels.length?<div className="bit-import-models">{filteredModels.map(model=><button type="button" key={model.id} className={selectedModelId===model.id?'selected':''} onClick={()=>setSelectedModelId(model.id)}><strong>{model.name}</strong><span>{model.code} · v{model.versionNo} · {model.scope==='COMPANY'?'Modelo de Compañía':'Estándar Cajamarca'}</span><small>{model.objectType} · {appLabel(model.applicationType)} · {model.accreditationCount} acreditación(es) · {model.fieldCount} campos</small></button>)}</div>:<p>No hay modelos publicados disponibles para este puesto y filtro.</p>}{selectedModel&&<div className="bit-import-preview"><strong>Modelo seleccionado</strong><span>{selectedModel.name} · v{selectedModel.versionNo}</span>{selectedModel.description&&<p>{selectedModel.description}</p>}<small>El nuevo protocolo tendrá código propio, una nueva serie y copia de los campos y fotos estándar. El original permanece sin cambios.</small></div>}</div><footer><button type="button" disabled={importBusy} onClick={()=>setImportOpen(false)}>Cancelar</button><button type="button" className="primary" disabled={importBusy||importLoading||!selectedModel} onClick={()=>void importProtocol()}><Download size={14}/>{importBusy?'Importando…':'Importar protocolo'}</button></footer></section></div>}
+    {exportOpen&&draft&&<div className="pat-modal-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget&&!exportBusy)setExportOpen(false)}}><section className="bit-export-modal" role="dialog" aria-modal="true" aria-labelledby="bit-export-title"><header><div><h3 id="bit-export-title">Exportar protocolo</h3><span>{draft.code} · {draft.name} · versión {draft.versionNo}</span></div><button type="button" aria-label="Cerrar" disabled={exportBusy} onClick={()=>setExportOpen(false)}><X size={18}/></button></header><div className="bit-export-body"><p>Seleccione la biblioteca en la que quedará registrada esta versión publicada.</p><div className="bit-export-options"><label><input type="radio" name="bit-export-scope" checked={exportScope==='COMPANY'} onChange={()=>setExportScope('COMPANY')}/><span><strong>Modelos de Compañía</strong><small>Disponible para puestos de {point.companyName}.</small>{protocolExports.some(row=>row.scope==='COMPANY')&&<em>Ya exportada</em>}</span></label>{canExportCountry&&<label><input type="radio" name="bit-export-scope" checked={exportScope==='COUNTRY'} onChange={()=>setExportScope('COUNTRY')}/><span><strong>Estándares Cajamarca</strong><small>Disponible para la instancia país.</small>{protocolExports.some(row=>row.scope==='COUNTRY')&&<em>Ya exportada</em>}</span></label>}</div><small>La versión de origen conserva su contenido e historial. Después puede importarla como nuevo borrador desde el Puesto destino.</small></div><footer><button type="button" disabled={exportBusy} onClick={()=>setExportOpen(false)}>Cancelar</button><button type="button" className="primary" disabled={exportBusy||exportLoading||protocolExports.some(row=>row.scope===exportScope)} onClick={()=>void exportProtocol()}><Upload size={14}/>{exportBusy?'Exportando…':'Exportar protocolo'}</button></footer></section></div>}
     {versionHistory&&<div className="pat-modal-backdrop" onClick={()=>setVersionHistory(null)}><section className="pat-history-modal" onClick={e=>e.stopPropagation()}><header><div><h3>Historial · {draft?.code}</h3><span>Snapshots publicados del Protocolo de Bitácora.</span></div><button onClick={()=>setVersionHistory(null)}><X size={18}/></button></header><div>{versionHistory.map(v=><article key={v.id}><div><strong>v{v.versionNo}</strong><span className={`bit-protocol-state ${v.status.toLowerCase()}`}>{statusLabel(v.status)}</span></div><div><b>{v.name}</b><small>{v.accreditations.length} acreditaciones</small></div><small>{v.lastPublishedAt?new Date(v.lastPublishedAt).toLocaleString('es-EC'):'Borrador no publicado'}</small></article>)}</div></section></div>}
     {fieldDraft&&<FieldDrawer draft={fieldDraft} setDraft={setFieldDraft} imageUrl={fieldImageUrl} pendingImage={pendingImage} onImagesSelected={files=>void addStandardImages(files)} onRemoveImage={id=>void removeStandardImage(id)} onCancel={closeField} onSave={()=>void saveField()} saving={savingField}/>} 
     {confirmState&&<ConfirmDialog state={confirmState} busy={confirmBusy} onCancel={()=>!confirmBusy&&setConfirmState(null)} onConfirm={()=>void runConfirm()}/>}

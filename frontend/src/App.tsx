@@ -19,6 +19,7 @@ import Supervisiones from './pages/Supervisiones';
 import Placeholder from './pages/Placeholder';
 import AgentSimulator from './pages/AgentSimulator';
 import UniformColumnBadges from './components/UniformColumnBadges';
+import './responsive.css';
 
 export default function App() {
   // El monitorista (rol MONITOR) entra directo a la Consola; el resto, al Dashboard.
@@ -27,6 +28,7 @@ export default function App() {
   // "Atras" del navegador con la sesion abierta: se queda en SGI y vuelve al inicio.
   useEffect(() => { installBackGuard(() => setActive(home())); }, []);
   const [userRevision, setUserRevision] = useState(0);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [uatTools, setUatTools] = useState(false);
   useEffect(() => { api.features().then(f => setUatTools(f.uatTools)).catch(() => setUatTools(false)); }, [userRevision]);
   const [contextReload, setContextReload] = useState(0);
@@ -48,6 +50,21 @@ export default function App() {
   }, [userRevision,contextReload]);
 
   const monitor = isMonitor();
+  const navigate = (next:string) => { setActive(next); setMobileNavOpen(false); };
+
+  useEffect(() => {
+    document.body.classList.toggle('mobile-nav-open', mobileNavOpen);
+    const closeOnEscape = (event:KeyboardEvent) => { if (event.key === 'Escape') setMobileNavOpen(false); };
+    const closeOnDesktop = () => { if (window.innerWidth > 700) setMobileNavOpen(false); };
+    window.addEventListener('keydown', closeOnEscape);
+    window.addEventListener('resize', closeOnDesktop);
+    return () => {
+      document.body.classList.remove('mobile-nav-open');
+      window.removeEventListener('keydown', closeOnEscape);
+      window.removeEventListener('resize', closeOnDesktop);
+    };
+  }, [mobileNavOpen]);
+
   const page = monitor
     ? <ConsolaMonitor />
     : active === 'Dashboard'
@@ -83,9 +100,10 @@ export default function App() {
   return (
     <div className="app">
       <UniformColumnBadges />
-      <Sidebar active={monitor ? 'Consola' : active} onChange={setActive} uatTools={uatTools} monitorOnly={monitor} />
+      <Sidebar active={monitor ? 'Consola' : active} onChange={navigate} uatTools={uatTools} monitorOnly={monitor} open={mobileNavOpen} onClose={() => setMobileNavOpen(false)} />
+      <button className={`mobile-nav-backdrop ${mobileNavOpen ? 'open' : ''}`} type="button" aria-label="Cerrar menú de navegación" onClick={() => setMobileNavOpen(false)} />
       <main>
-        <Header title={title} coreContext={coreContext} onUserChange={() => {setCoreLoaded(false);setActive(home());setUserRevision((x) => x + 1)}} />
+        <Header title={title} coreContext={coreContext} navOpen={mobileNavOpen} onMenuToggle={() => setMobileNavOpen(value => !value)} onUserChange={() => {setCoreLoaded(false);setActive(home());setUserRevision((x) => x + 1)}} />
         {coreError&&<div className="core-bootstrap-message"><span>{coreError}</span><button onClick={()=>{setCoreLoaded(false);setContextReload(value=>value+1)}}>Reintentar conexión</button></div>}
         {coreContext?.coreSyncStatus==='STALE'&&<div className="core-bootstrap-message stale">Mostrando el último catálogo CORE sincronizado ({coreContext.territorialDatasetVersion}). {coreContext.coreSyncMessage||''}</div>}
         <section key={`${active}-${userRevision}-${coreContext?.coreCatalogSyncedAt||coreError}`}>{coreLoaded?page:<div className="core-bootstrap-message">Cargando contexto del país y catálogos de CORE…</div>}</section>

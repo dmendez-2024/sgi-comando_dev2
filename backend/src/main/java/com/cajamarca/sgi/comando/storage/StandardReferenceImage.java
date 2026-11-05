@@ -21,6 +21,8 @@ public class StandardReferenceImage extends PanacheEntityBase {
     @Column(name="target_id", nullable=false) public UUID targetId;
     @Column(name="position", nullable=false) public int position;
     @Column(name="original_name", length=255) public String originalName;
+    @Column(name="title", length=120) public String title;
+    @Column(name="detail", length=500) public String detail;
     @Column(name="content_type", nullable=false, length=100) public String contentType;
     @Column(name="object_key", nullable=false, length=300) public String objectKey;
     @Column(name="sha256", nullable=false, length=64) public String sha256;

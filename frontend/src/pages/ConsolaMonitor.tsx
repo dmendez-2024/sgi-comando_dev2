@@ -1,8 +1,8 @@
 import {useEffect, useMemo, useState, type ReactNode} from 'react';
 import {
   AlertTriangle, ArrowLeft, BellRing, Building2, CalendarDays, ClipboardList, Clock3,
-  Download, FileWarning, FilterX, MapPin, Monitor,
-  RefreshCw, Save, Search, ShieldAlert, ShieldCheck, UserRound, Zap, CircleAlert, ChevronRight, Filter, ChevronDown, Plus, X
+  Upload, FileWarning, FilterX, MapPin, Monitor,
+  RefreshCw, Save, Search, ShieldAlert, ShieldCheck, UserRound, Zap, CircleAlert, ChevronRight, Plus, X
 } from 'lucide-react';
 import ObsintConsole, {ObsintButton} from '../obsint/ObsintConsole';
 import {obsintApi} from '../obsint/obsintApi';
@@ -10,6 +10,8 @@ import {api, getUser, type UatUser} from '../api';
 import IncidentNotificationPanel, {type IncidentRecord, type LocationOption, type IncidentSeverity} from '../components/IncidentNotificationPanel';
 import {OperationalDrawer} from '../components/OperationalDrawer';
 import {PhotoEvidenceGallery} from '../components/PhotoEvidenceGallery';
+import SearchableSelect from '../components/SearchableSelect';
+import FilterAccordion from '../components/FilterAccordion';
 
 type ItemCategory='CONSIGNAS'|'NOVEDADES'|'ALARMAS';
 type ItemStatus='PENDING'|'IN_PROGRESS'|'OVERDUE'|'COMPLETED'|'APPROVED'|'DISCARDED'|'NEW'|'ACKNOWLEDGED'|'ESCALATED'|'RESOLVED'|'CRITICAL'|'DRAFT'|'FINALIZED';
@@ -142,7 +144,6 @@ export default function ConsolaMonitor(){
   const [filters,setFilters]=useState<Filters>(EMPTY_FILTERS);
   const [selectedId,setSelectedId]=useState('');
   const [detailId,setDetailId]=useState('');
-  const [filtersOpen,setFiltersOpen]=useState(false);
   const [incidents,setIncidents]=useState<IncidentRecord[]>([]);
   const [incidentsError,setIncidentsError]=useState('');
   const [incidentsRefresh,setIncidentsRefresh]=useState(0);
@@ -349,38 +350,25 @@ export default function ConsolaMonitor(){
             </div>
           </div>
         </div>
-        <div className={`csl-filter-accordion ${filtersOpen?'open':''}`}>
-          <button
-            type="button"
-            className="csl-filter-toggle"
-            aria-expanded={filtersOpen}
-            aria-controls="csl-search-filters"
-            onClick={()=>setFiltersOpen(open=>!open)}
-          >
-            <span><Filter size={18}/>Filtros de búsqueda</span>
-            <ChevronDown size={18} className="csl-filter-chevron" aria-hidden="true"/>
-          </button>
-          <div id="csl-search-filters" className="csl-filter-panel" aria-hidden={!filtersOpen}>
-            <div className="csl-filter-panel-inner">
-              <label className="csl-main-search nov-main-search"><Search size={18}/><input value={filters.query} onChange={e=>set('query',e.target.value)} placeholder="Buscar por código, título, cliente, punto, puesto o responsable…"/></label>
+        <FilterAccordion id="csl-search-filters">
+          <label className="csl-main-search nov-main-search"><Search size={18}/><input value={filters.query} onChange={e=>set('query',e.target.value)} placeholder="Buscar por código, título, cliente, punto, puesto o responsable…"/></label>
 
-              <div className="csl-filter-grid">
-                <Field label="Ciudad"><select value={filters.city} onChange={e=>set('city',e.target.value)}><option value="">Todas</option>{cities.map(x=><option key={x}>{x}</option>)}</select></Field>
-                <Field label="Compañía"><select value={filters.company} onChange={e=>setCompany(e.target.value)}><option value="ALL">Todas</option>{companies.map(x=><option key={x}>{x}</option>)}</select></Field>
-                <Field label="Cliente"><select value={filters.client} onChange={e=>setClient(e.target.value)}><option value="">Todos</option>{clients.map(x=><option key={x}>{x}</option>)}</select></Field>
-                <Field label="Punto"><select value={filters.point} onChange={e=>setPoint(e.target.value)} disabled={!filters.client}><option value="">{filters.client?'Todos':'Seleccione un cliente primero'}</option>{points.map(x=><option key={x}>{x}</option>)}</select></Field>
-                <Field label="Puesto"><select value={filters.post} onChange={e=>set('post',e.target.value)} disabled={!filters.point}><option value="">{filters.point?'Todos':'Seleccione un punto primero'}</option>{posts.map(x=><option key={x}>{x}</option>)}</select></Field>
-                <Field label="Estado"><select value={filters.status} onChange={e=>set('status',e.target.value as Filters['status'])}><option value="ALL">Todos</option><option value="PENDING">Pendiente</option><option value="IN_PROGRESS">En curso</option><option value="OVERDUE">Vencida</option><option value="COMPLETED">Completada</option><option value="APPROVED">Aprobada</option><option value="DISCARDED">Descartada</option><option value="NEW">Nueva</option><option value="ACKNOWLEDGED">Reconocida</option><option value="ESCALATED">Escalada</option><option value="RESOLVED">Resuelta</option><option value="CRITICAL">Crítica</option><option value="DRAFT">Borrador</option><option value="FINALIZED">Finalizado</option></select></Field>
-                <Field label="Responsable"><select value={filters.responsible} onChange={e=>set('responsible',e.target.value)} disabled={filters.company==='ALL'}><option value="">{filters.company!=='ALL'?'Todos':'Seleccione una compañía primero'}</option>{responsibles.map(x=><option key={x}>{x}</option>)}</select></Field>
-                <Field label="Fecha inicio"><input type="date" value={filters.dateFrom} onChange={e=>set('dateFrom',e.target.value)}/></Field>
-                <Field label="Fecha fin"><input type="date" value={filters.dateTo} onChange={e=>set('dateTo',e.target.value)}/></Field>
-              </div>
-              <div className="csl-rules-note"><CircleAlert size={15}/><span>Fechas obligatorias. Rango máximo: 1 año. Punto depende de Cliente; Puesto depende de Punto; Responsable depende de Compañía.</span></div>
-              {dateError && <div className="csl-validation-error"><AlertTriangle size={16}/><span>{dateError}</span></div>}
-              <div className="csl-search-actions"><button className="primary" onClick={search} disabled={!!dateError}><Search size={16}/>Buscar</button><button onClick={clear}><FilterX size={16}/>Limpiar filtros</button><button className="export" onClick={exportCsv} disabled={!!dateError || !rows.length}><Download size={16}/>Exportar</button></div>
-            </div>
+          <div className="csl-filter-grid operational-filter-grid">
+            <Field label="Ciudad"><SearchableSelect ariaLabel="Ciudad" value={filters.city} onChange={value=>set('city',value)} searchPlaceholder="Buscar ciudad…" options={[{value:'',label:'Todas'},...cities.map(x=>({value:x,label:x}))]}/></Field>
+            <Field label="Compañía"><SearchableSelect ariaLabel="Compañía" value={filters.company} onChange={setCompany} searchPlaceholder="Buscar compañía…" options={[{value:'ALL',label:'Todas'},...companies.map(x=>({value:x,label:x}))]}/></Field>
+            <Field label="Cliente"><SearchableSelect ariaLabel="Cliente" value={filters.client} onChange={setClient} searchPlaceholder="Buscar cliente…" options={[{value:'',label:'Todos'},...clients.map(x=>({value:x,label:x}))]}/></Field>
+            <Field label="Punto"><SearchableSelect ariaLabel="Punto" value={filters.point} onChange={setPoint} disabled={!filters.client} searchPlaceholder="Buscar punto…" options={[{value:'',label:filters.client?'Todos':'Seleccione un cliente primero'},...points.map(x=>({value:x,label:x}))]}/></Field>
+            <Field label="Puesto"><SearchableSelect ariaLabel="Puesto" value={filters.post} onChange={value=>set('post',value)} disabled={!filters.point} searchPlaceholder="Buscar puesto…" options={[{value:'',label:filters.point?'Todos':'Seleccione un punto primero'},...posts.map(x=>({value:x,label:x}))]}/></Field>
+            <Field label="Estado"><select value={filters.status} onChange={e=>set('status',e.target.value as Filters['status'])}><option value="ALL">Todos</option><option value="PENDING">Pendiente</option><option value="IN_PROGRESS">En curso</option><option value="OVERDUE">Vencida</option><option value="COMPLETED">Completada</option><option value="APPROVED">Aprobada</option><option value="DISCARDED">Descartada</option><option value="NEW">Nueva</option><option value="ACKNOWLEDGED">Reconocida</option><option value="ESCALATED">Escalada</option><option value="RESOLVED">Resuelta</option><option value="CRITICAL">Crítica</option><option value="DRAFT">Borrador</option><option value="FINALIZED">Finalizado</option></select></Field>
+            <Field label="Responsable"><SearchableSelect ariaLabel="Responsable" value={filters.responsible} onChange={value=>set('responsible',value)} disabled={filters.company==='ALL'} searchPlaceholder="Buscar responsable…" options={[{value:'',label:filters.company!=='ALL'?'Todos':'Seleccione una compañía primero'},...responsibles.map(x=>({value:x,label:x}))]}/></Field>
+            <Field label="Fecha inicio"><input type="date" value={filters.dateFrom} onChange={e=>set('dateFrom',e.target.value)}/></Field>
+            <Field label="Fecha fin"><input type="date" value={filters.dateTo} onChange={e=>set('dateTo',e.target.value)}/></Field>
+            <div className="operational-filter-spacer" aria-hidden="true"/>
           </div>
-        </div>
+          <div className="csl-rules-note"><CircleAlert size={15}/><span>Fechas obligatorias. Rango máximo: 1 año. Punto depende de Cliente; Puesto depende de Punto; Responsable depende de Compañía.</span></div>
+          {dateError && <div className="csl-validation-error"><AlertTriangle size={16}/><span>{dateError}</span></div>}
+          <div className="csl-search-actions"><button className="primary" onClick={search} disabled={!!dateError}><Search size={16}/>Buscar</button><button onClick={clear}><FilterX size={16}/>Limpiar filtros</button><button className="export" onClick={exportCsv} disabled={!!dateError || !rows.length}><Upload size={16}/>Exportar</button></div>
+        </FilterAccordion>
 
         <div className="csl-results-card nov-results-card">
           <div className="csl-results-head nov-results-head"><h3>Casos operativos ({rows.length})</h3><div>Ordenado por <strong>Última actualización</strong></div></div>

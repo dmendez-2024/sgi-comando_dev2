@@ -169,6 +169,24 @@ public class PostConfigurationResource {
         return new StandardReferenceImages.Dto(image.id,image.position,image.originalName,image.contentType);
     }
 
+    public record StandardImageMetadata(String title, String detail) {}
+
+    @PUT
+    @Path("/{postId}/standard-image/{imageId}/metadata")
+    @Transactional
+    @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
+    public StandardReferenceImages.Dto updateStandardImageMetadata(@PathParam("postId") UUID postId,@PathParam("imageId") UUID imageId,StandardImageMetadata input){
+        authorizedPost(postId);
+        if(input==null) throw new BadRequestException("Título y detalle obligatorios");
+        String title=input.title()==null?"":input.title().trim();
+        String detail=input.detail()==null?"":input.detail().trim();
+        if(title.isEmpty()||detail.isEmpty()) throw new BadRequestException("Ingresa el título y detalle de la foto");
+        if(title.length()>120||detail.length()>500) throw new BadRequestException("Título máximo 120 caracteres; detalle máximo 500 caracteres");
+        StandardReferenceImage image=references.get(StandardReferenceImage.POST_CONFIG,postId,imageId);
+        image.title=title;image.detail=detail;
+        return new StandardReferenceImages.Dto(image.id,image.position,image.originalName,image.contentType,image.title,image.detail);
+    }
+
     @GET
     @Path("/{postId}/standard-image/{imageId}")
     @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION","SUPERVISOR_SEGURIDAD","AGENTE_SEGURIDAD","CLIENTE"})

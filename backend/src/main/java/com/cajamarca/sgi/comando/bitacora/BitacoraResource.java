@@ -15,6 +15,7 @@ import jakarta.ws.rs.core.HttpHeaders;
 import com.cajamarca.sgi.comando.storage.*;
 import java.time.Instant;
 import java.util.*;
+import java.util.stream.Stream;
 
 @Path("/api/bitacora")
 @Produces(MediaType.APPLICATION_JSON)
@@ -38,6 +39,10 @@ public class BitacoraResource {
     public record CreateProtocolRequest(UUID postId,String name,String objectType,String applicationType) {}
     public record SaveProtocolRequest(String name,String objectType,String applicationType,String description,String status,List<UUID> applicablePostIds) {}
     public record SaveScopeRequest(List<UUID> applicablePostIds) {}
+    public record ExportProtocolRequest(String scope) {}
+    public record ProtocolExportDto(UUID id,UUID sourceProtocolId,String scope,UUID companyId,int versionNo,String exportedBy,Instant exportedAt,boolean alreadyExported) {}
+    public record LibraryModelDto(UUID id,String scope,String code,String name,String objectType,String applicationType,String description,int versionNo,int accreditationCount,int fieldCount,String exportedBy,Instant exportedAt) {}
+    public record ImportProtocolRequest(UUID postId) {}
     public record CreateAccreditationRequest(String name,String description) {}
     public record SaveAccreditationRequest(String name,String description,String identificationLogic,String verificationLogic,boolean authPreapproval,boolean authClient,boolean authSupervisor,boolean whiteListEnabled,boolean blackListEnabled,boolean captureManual,boolean captureQr,boolean captureBarcode,boolean captureNfc,boolean captureAutomatic) {}
     public record SaveFieldRequest(String section,Integer sortOrder,String name,String description,String fieldType,boolean required,boolean evidenceRequired,String captureMode,boolean customField,String standardImageNotes,Double matchThreshold) {}
@@ -60,6 +65,104 @@ public class BitacoraResource {
     @Path("/protocols/{protocolId}/history")
     @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION","SUPERVISOR_SEGURIDAD","AGENTE_SEGURIDAD","CLIENTE"})
     public List<ProtocolDto> history(@PathParam("protocolId") UUID protocolId){LogbookProtocol p=protocol(protocolId);authorize(p);return LogbookProtocol.<LogbookProtocol>list("instanceCountryId=?1 and seriesId=?2 order by versionNo desc",tenant.instanceCountryId(),p.seriesId).stream().map(this::dto).toList();}
+
+    @GET
+    @Path("/protocols/{protocolId}/exports")
+    @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
+    public List<ProtocolExportDto> protocolExports(@PathParam("protocolId") UUID protocolId){
+        LogbookProtocol source=protocol(protocolId);authorize(source);
+        PointEntity sourcePoint=point(post(source.postId).pointId);
+        return LogbookProtocolLibraryExport.<LogbookProtocolLibraryExport>list("instanceCountryId=?1 and sourceProtocolId=?2 order by createdAt",tenant.instanceCountryId(),source.id)
+            .stream().filter(row->"COUNTRY".equals(row.scope)||Objects.equals(row.companyId,sourcePoint.companyId))
+            .map(row->exportDto(row,source,true)).toList();
+    }
+
+    @POST
+    @Path("/protocols/{protocolId}/exports")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Transactional
+    @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
+    public ProtocolExportDto exportProtocol(@PathParam("protocolId") UUID protocolId,ExportProtocolRequest request){
+        LogbookProtocol source=protocol(protocolId);authorize(source);
+        if("BORRADOR".equals(source.status))throw new ClientErrorException("Publique el Protocolo antes de exportarlo.",409);
+        if(request==null||request.scope()==null)throw new BadRequestException("Seleccione el destino de la exportación.");
+        String targetScope=request.scope().trim().toUpperCase(Locale.ROOT);
+        if(!Set.of("COMPANY","COUNTRY").contains(targetScope))throw new BadRequestException("Destino de exportación inválido.");
+        PointEntity sourcePoint=point(post(source.postId).pointId);
+        UUID companyId=null;
+        if("COMPANY".equals(targetScope)){
+            companyId=sourcePoint.companyId;
+            if(companyId==null)throw new BadRequestException("El Punto debe tener una Compañía asignada para exportar un modelo de Compañía.");
+        }else if(!canExportCountryStandard()){
+            throw new ForbiddenException("Solo Dirección Zonal o superior puede exportar Estándares Cajamarca.");
+        }
+        LogbookProtocolLibraryExport existing="COMPANY".equals(targetScope)
+            ? LogbookProtocolLibraryExport.find("instanceCountryId=?1 and sourceProtocolId=?2 and scope=?3 and companyId=?4",tenant.instanceCountryId(),source.id,targetScope,companyId).firstResult()
+            : LogbookProtocolLibraryExport.find("instanceCountryId=?1 and sourceProtocolId=?2 and scope=?3",tenant.instanceCountryId(),source.id,targetScope).firstResult();
+        if(existing!=null)return exportDto(existing,source,true);
+        LogbookProtocolLibraryExport row=new LogbookProtocolLibraryExport();
+        row.instanceCountryId=tenant.instanceCountryId();row.sourceProtocolId=source.id;row.scope=targetScope;row.companyId=companyId;row.exportedByUsername=user();row.persist();
+        return exportDto(row,source,false);
+    }
+
+    private boolean canExportCountryStandard(){
+        return Stream.of("PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL")
+            .anyMatch(identity::hasRole);
+    }
+
+    private ProtocolExportDto exportDto(LogbookProtocolLibraryExport row,LogbookProtocol source,boolean alreadyExported){
+        return new ProtocolExportDto(row.id,row.sourceProtocolId,row.scope,row.companyId,source.versionNo,row.exportedByUsername,row.createdAt,alreadyExported);
+    }
+
+    @GET
+    @Path("/protocol-library")
+    @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
+    public List<LibraryModelDto> library(@QueryParam("postId") UUID postId){
+        PostEntity destination=post(postId);PointEntity destinationPoint=point(destination.pointId);
+        scope.requireCompanyForCompanyRoles(destinationPoint.companyId);
+        return LogbookProtocolLibraryExport.<LogbookProtocolLibraryExport>list("instanceCountryId=?1 order by createdAt desc",tenant.instanceCountryId())
+            .stream().filter(row->libraryVisible(row,destinationPoint.companyId)).map(row->{
+                LogbookProtocol source=protocol(row.sourceProtocolId);
+                if("BORRADOR".equals(source.status))return null;
+                List<LogbookAccreditation> sourceAccreditations=accreditations(source.id);
+                int fieldCount=sourceAccreditations.stream().mapToInt(a->fields(a.id).size()).sum();
+                return new LibraryModelDto(row.id,row.scope,source.code,source.name,source.objectType,source.applicationType,source.description,source.versionNo,sourceAccreditations.size(),fieldCount,row.exportedByUsername,row.createdAt);
+            }).filter(Objects::nonNull).toList();
+    }
+
+    @POST
+    @Path("/protocol-library/{exportId}/import")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Transactional
+    @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
+    public ProtocolDto importProtocol(@PathParam("exportId") UUID exportId,ImportProtocolRequest request){
+        if(request==null||request.postId()==null)throw new BadRequestException("Seleccione un Puesto destino.");
+        PostEntity destination=post(request.postId());PointEntity destinationPoint=point(destination.pointId);
+        scope.requireCompanyForCompanyRoles(destinationPoint.companyId);
+        LogbookProtocolLibraryExport entry=LogbookProtocolLibraryExport.find("id=?1 and instanceCountryId=?2",exportId,tenant.instanceCountryId()).firstResult();
+        if(entry==null||!libraryVisible(entry,destinationPoint.companyId))throw new NotFoundException("Modelo no disponible para este Puesto.");
+        LogbookProtocol source=protocol(entry.sourceProtocolId);
+        if("BORRADOR".equals(source.status))throw new ClientErrorException("El modelo de origen debe estar publicado.",409);
+        LogbookProtocol target=new LogbookProtocol();target.id=UUID.randomUUID();target.instanceCountryId=tenant.instanceCountryId();target.seriesId=target.id;
+        target.basedOnProtocolId=source.id;target.postId=destination.id;target.code=nextProtocolCode();target.name=source.name;
+        target.objectType=source.objectType;target.applicationType=source.applicationType;target.description=source.description;target.status="BORRADOR";target.versionNo=1;
+        target.identificationLogic=source.identificationLogic;target.verificationLogic=source.verificationLogic;
+        target.authPreapproval=source.authPreapproval;target.authClient=source.authClient;target.authSupervisor=source.authSupervisor;
+        target.whiteListEnabled=source.whiteListEnabled;target.blackListEnabled=source.blackListEnabled;
+        target.captureManual=source.captureManual;target.captureQr=source.captureQr;target.captureBarcode=source.captureBarcode;
+        target.captureNfc=source.captureNfc;target.captureAutomatic=source.captureAutomatic;
+        target.sourceModelType=entry.scope;target.sourceModelName=source.name;target.updatedByUsername=user();target.persist();
+        setScope(target,List.of(destination.id));
+        for(LogbookAccreditation old:accreditations(source.id)){
+            LogbookAccreditation copy=cloneAccreditation(old,target.id);
+            for(LogbookProtocolField field:fields(old.id))cloneField(field,target.id,copy.id);
+        }
+        return dto(target);
+    }
+
+    private boolean libraryVisible(LogbookProtocolLibraryExport entry,UUID destinationCompanyId){
+        return "COUNTRY".equals(entry.scope)||("COMPANY".equals(entry.scope)&&destinationCompanyId!=null&&destinationCompanyId.equals(entry.companyId));
+    }
 
     @POST
     @Path("/protocols")

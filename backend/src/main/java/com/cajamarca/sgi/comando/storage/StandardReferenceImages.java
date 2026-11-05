@@ -12,12 +12,14 @@ import java.util.*;
 /** Operaciones sobre las fotos estándar (hasta 5) de cualquier destino: agregar, leer, quitar reordenando y copiar a una nueva versión. */
 @ApplicationScoped
 public class StandardReferenceImages {
-    public record Dto(UUID id, int position, String originalName, String contentType) {}
+    public record Dto(UUID id, int position, String originalName, String contentType, String title, String detail) {
+        public Dto(UUID id, int position, String originalName, String contentType) { this(id, position, originalName, contentType, null, null); }
+    }
 
     @Inject StandardImageStore store;
 
     public List<Dto> dtos(String targetType, UUID targetId) {
-        return StandardReferenceImage.of(targetType, targetId).stream().map(i -> new Dto(i.id, i.position, i.originalName, i.contentType)).toList();
+        return StandardReferenceImage.of(targetType, targetId).stream().map(i -> new Dto(i.id, i.position, i.originalName, i.contentType, i.title, i.detail)).toList();
     }
 
     /** Agrega la foto al final. module: carpeta en MinIO (patrol, consignment, bitacora). */
@@ -58,7 +60,7 @@ public class StandardReferenceImages {
         for (StandardReferenceImage o : StandardReferenceImage.of(targetType, from)) {
             StandardReferenceImage n = new StandardReferenceImage();
             n.id = UUID.randomUUID(); n.instanceCountryId = o.instanceCountryId; n.targetType = targetType; n.targetId = to; n.position = o.position;
-            n.originalName = o.originalName; n.contentType = o.contentType; n.objectKey = o.objectKey; n.sha256 = o.sha256; n.sizeBytes = o.sizeBytes; n.createdAt = o.createdAt;
+            n.originalName = o.originalName; n.title = o.title; n.detail = o.detail; n.contentType = o.contentType; n.objectKey = o.objectKey; n.sha256 = o.sha256; n.sizeBytes = o.sizeBytes; n.createdAt = o.createdAt;
             n.persist();
         }
     }

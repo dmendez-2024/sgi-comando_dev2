@@ -47,16 +47,16 @@ function Group({group,active,onChange}:{group:NavGroup;active:string;onChange:(v
 
 export const SIMULATOR_MENU='Simulador Agente (UAT)';
 
-export default function Sidebar({active,onChange,uatTools,monitorOnly=false}:{active:string;onChange:(v:string)=>void;uatTools:boolean;monitorOnly?:boolean}){
+export default function Sidebar({active,onChange,uatTools,monitorOnly=false,open=false,onClose}:{active:string;onChange:(v:string)=>void;uatTools:boolean;monitorOnly?:boolean;open?:boolean;onClose?:()=>void}){
   // Herramientas UAT (Simulador de Agente) solo visibles con la bandera UAT del backend.
   const ops={...operations,children:operations.children.filter(c=>uatTools||c.name!==SIMULATOR_MENU)};
   // Monitorista (rol MONITOR): su lugar de trabajo es la Consola (incluye el botón OBSINT).
-  if(monitorOnly)return <aside className="sidebar">
-    <div className="brand"><img className="brand-logo" src={`${import.meta.env.BASE_URL}sgi-comando-logo-sidebar.png`} alt="SGI Comando"/></div>
+  if(monitorOnly)return <aside className={`sidebar ${open?'mobile-open':''}`} aria-label="Navegación principal">
+    <div className="brand"><img className="brand-logo" src={`${import.meta.env.BASE_URL}sgi-comando-logo-sidebar.png`} alt="SGI Comando"/><button type="button" className="sidebar-mobile-close" aria-label="Cerrar menú" onClick={onClose}>×</button></div>
     <nav><button onClick={()=>onChange('Consola')} className={active==='Consola'?'active':''}><Bell size={18}/><span>Consola</span></button></nav>
   </aside>;
-  return <aside className="sidebar">
-    <div className="brand"><img className="brand-logo" src={sidebarLogo} alt="SGI Comando"/></div>
+  return <aside className={`sidebar ${open?'mobile-open':''}`} aria-label="Navegación principal">
+    <div className="brand"><img className="brand-logo" src={sidebarLogo} alt="SGI Comando"/><button type="button" className="sidebar-mobile-close" aria-label="Cerrar menú" onClick={onClose}>×</button></div>
     <nav>
       <button onClick={()=>onChange('Dashboard')} className={active==='Dashboard'?'active':''}><Gauge size={18}/><span>Dashboard</span></button>
       <Group group={ops} active={active} onChange={onChange}/>

@@ -2,6 +2,7 @@ import {useEffect,useMemo,useState} from 'react';
 import {AlertTriangle,CheckCircle2,Info} from 'lucide-react';
 import {api,ApiError} from '../api';
 import {buildEvidenceForm,pickPhotos,type PickedPhoto} from '../lib/evidenceUpload';
+import SearchableSelect from '../components/SearchableSelect';
 import AgentReliefSim,{type ReliefContext} from './AgentReliefSim';
 
 type Std={id:string;position:number};
@@ -352,7 +353,7 @@ export default function AgentSimulator(){
     <div className="agent-sim-card agent-sim-bench">
      <div className="agent-sim-step">
       <div className="agent-sim-step-title"><b>1</b>Turno</div>
-      <div className="agent-sim-select"><select aria-label="Turno" value={assignmentId} onChange={e=>setAssignmentId(e.target.value)}>{assignments.map(a=><option key={a.assignmentId} value={a.assignmentId}>{a.postName} · {shiftLabel(a.startsAt)}</option>)}</select></div>
+      <div className="agent-sim-select"><SearchableSelect ariaLabel="Turno" value={assignmentId} onChange={setAssignmentId} searchPlaceholder="Buscar turno…" options={assignments.map(a=>({value:a.assignmentId,label:`${a.postName} · ${shiftLabel(a.startsAt)}`}))}/></div>
      </div>
      <div className="agent-sim-step">
       <div className="agent-sim-step-title"><b>2</b>Tipo de tarea</div>
@@ -361,17 +362,17 @@ export default function AgentSimulator(){
      <div className="agent-sim-step">
       <div className="agent-sim-step-title"><b>3</b>Tarea</div>
       {kind==='PATRULLA'&&<>
-       <label>Patrulla<div className="agent-sim-select"><select value={patrolId} onChange={e=>{setPatrolId(e.target.value);setCheckpointId(patrols.find(p=>p.patrolId===e.target.value)?.checkpoints[0]?.checkpointId??'')}}>{patrols.map(p=><option key={p.patrolId} value={p.patrolId}>{p.protocolCode} · {p.code} {p.name}</option>)}</select></div></label>
-       <label>Hito<div className="agent-sim-select"><select value={checkpointId} onChange={e=>setCheckpointId(e.target.value)}>{patrol?.checkpoints.map(c=><option key={c.checkpointId} value={c.checkpointId}>{c.code} · {c.name}</option>)}</select></div></label>
+       <label>Patrulla<div className="agent-sim-select"><SearchableSelect ariaLabel="Patrulla" value={patrolId} searchPlaceholder="Buscar patrulla…" onChange={value=>{setPatrolId(value);setCheckpointId(patrols.find(p=>p.patrolId===value)?.checkpoints[0]?.checkpointId??'')}} options={patrols.map(p=>({value:p.patrolId,label:`${p.protocolCode} · ${p.code} ${p.name}`}))}/></div></label>
+       <label>Hito<div className="agent-sim-select"><SearchableSelect ariaLabel="Hito" value={checkpointId} onChange={setCheckpointId} searchPlaceholder="Buscar hito…" options={(patrol?.checkpoints??[]).map(c=>({value:c.checkpointId,label:`${c.code} · ${c.name}`}))}/></div></label>
       </>}
       {kind==='CONSIGNA'&&<>
-       <label>Consigna vigente<div className="agent-sim-select"><select value={consignmentId} onChange={e=>{setConsignmentId(e.target.value);setConsignmentEvidenceId(consignments.find(c=>c.consignmentId===e.target.value)?.evidences[0]?.evidenceId??'')}}>{consignments.map(c=><option key={c.consignmentId} value={c.consignmentId}>{c.code} · {c.title}</option>)}</select></div></label>
-       <label>Evidencia (una foto por turno)<div className="agent-sim-select"><select value={consignmentEvidenceId} onChange={e=>setConsignmentEvidenceId(e.target.value)}>{consignment?.evidences.map(ev=><option key={ev.evidenceId} value={ev.evidenceId}>{ev.name}</option>)}</select></div></label>
+       <label>Consigna vigente<div className="agent-sim-select"><SearchableSelect ariaLabel="Consigna vigente" value={consignmentId} searchPlaceholder="Buscar consigna…" onChange={value=>{setConsignmentId(value);setConsignmentEvidenceId(consignments.find(c=>c.consignmentId===value)?.evidences[0]?.evidenceId??'')}} options={consignments.map(c=>({value:c.consignmentId,label:`${c.code} · ${c.title}`}))}/></div></label>
+       <label>Evidencia (una foto por turno)<div className="agent-sim-select"><SearchableSelect ariaLabel="Evidencia" value={consignmentEvidenceId} onChange={setConsignmentEvidenceId} searchPlaceholder="Buscar evidencia…" options={(consignment?.evidences??[]).map(ev=>({value:ev.evidenceId,label:ev.name}))}/></div></label>
       </>}
       {kind==='RELEVO'&&relief&&<div className="agent-sim-entry"><span>{relief.reliefAlreadyRegistered?'Este turno ya tiene un relevo recibido':`Relevo de ${relief.postName}`}</span><code>{relief.stationPhotos.length} fotos del puesto</code></div>}
       {kind==='BITACORA'&&<>
-       <label>Bitácora<div className="agent-sim-select"><select value={logbookId} onChange={e=>{setLogbookId(e.target.value);setFieldId(logbooks.find(l=>l.protocolId===e.target.value)?.fields[0]?.fieldId??'')}}>{logbooks.map(l=><option key={l.protocolId} value={l.protocolId}>{l.code} · {l.name}</option>)}</select></div></label>
-       <label>Campo con foto<div className="agent-sim-select"><select value={fieldId} onChange={e=>setFieldId(e.target.value)}>{logbook?.fields.map(f=><option key={f.fieldId} value={f.fieldId}>{f.name}{f.visintEnabled?' · VISINT':' · sin VISINT'}</option>)}</select></div></label>
+       <label>Bitácora<div className="agent-sim-select"><SearchableSelect ariaLabel="Bitácora" value={logbookId} searchPlaceholder="Buscar bitácora…" onChange={value=>{setLogbookId(value);setFieldId(logbooks.find(l=>l.protocolId===value)?.fields[0]?.fieldId??'')}} options={logbooks.map(l=>({value:l.protocolId,label:`${l.code} · ${l.name}`}))}/></div></label>
+       <label>Campo con foto<div className="agent-sim-select"><SearchableSelect ariaLabel="Campo con foto" value={fieldId} onChange={setFieldId} searchPlaceholder="Buscar campo…" options={(logbook?.fields??[]).map(f=>({value:f.fieldId,label:`${f.name}${f.visintEnabled?' · VISINT':' · sin VISINT'}`}))}/></div></label>
        <div className="agent-sim-entry"><span>Visitante <code>{entryId.slice(0,8)}</code></span><button type="button" onClick={newVisitor}>↻ Nuevo visitante</button></div>
       </>}
       {(kind==='RELEVO'?relief?.postLocation!=null&&!relief.reliefAlreadyRegistered:task?.latitude!=null)&&<label>Ubicación del agente<div className="agent-sim-select"><select aria-label="Ubicación del agente" value={far?'FAR':'AT'} onChange={e=>setFar(e.target.value==='FAR')}><option value="AT">{PLACE_AT[kind]}</option><option value="FAR">{PLACE_FAR[kind]}</option></select></div></label>}
