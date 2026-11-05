@@ -26,7 +26,11 @@ public class DashboardResource {
     @Inject EntityManager em;
 
     public record Metrics(LocalDate weekStart, Instant calculatedAt, Double idAverage, Double icAverage,
-                          long idSamples, long icSamples, long lateReliefs, long recordedReliefs) {}
+                          long idSamples, long icSamples, long lateReliefs, long recordedReliefs,
+                          long reliefsOverThreeHours, long previousLateReliefs) {}
+    public record OperationalCoverage(LocalDate weekStart, long uncoveredPoints, long evaluatedPoints,
+                                      long uncoveredShifts, long evaluatedShifts, Double coveragePct,
+                                      long previousUncoveredPoints, long previousEvaluatedPoints) {}
     public record Suitability(long pointsBelowIdMinimum, long idEvaluatedPoints, Double idGapPct,
                               long pointsBelowFullCompatibility, long icEvaluatedPoints, Double icGapPct) {}
     public record ConsignmentAttention(UUID pointId, String clientName, String pointName,
@@ -141,6 +145,72 @@ public class DashboardResource {
         };
         return new ConsignmentWindow(start.atStartOfDay(OPERATING_ZONE).toInstant(),
             end.plusDays(1).atStartOfDay(OPERATING_ZONE).toInstant());
+    }
+
+    @GET @Path("/operational-coverage")
+    public OperationalCoverage operationalCoverage(@QueryParam("weekStart") String weekStart,
+            @QueryParam("companyId") UUID companyId, @QueryParam("clientId") UUID clientId) {
+        LocalDate week = parseWeek(weekStart);
+        Set<UUID> allowed = scope.allowedCompanyIds();
+        if (companyId != null) { scope.requireCompany(companyId); allowed = Set.of(companyId); }
+        if (allowed.isEmpty()) return new OperationalCoverage(week, 0, 0, 0, 0, null, 0, 0);
+        Instant now = Instant.now();
+        long[] current = coverageCounts(week, allowed, clientId, now);
+        long[] previous = coverageCounts(week.minusWeeks(1), allowed, clientId, now);
+        return new OperationalCoverage(week, current[0], current[1], current[2], current[3],
+            percentage(current[3] - current[2], current[3]), previous[0], previous[1]);
+    }
+
+    private long[] coverageCounts(LocalDate week, Set<UUID> allowed, UUID clientId, Instant now) {
+        String sql = """
+            with evaluated_shifts as (
+                select sh.id, sh.instance_country_id, sh.post_id, sh.starts_at, sh.ends_at, p.id as point_id,
+                       exists (select 1 from relief_event r
+                           where r.instance_country_id=sh.instance_country_id and r.executed_at is not null
+                             and (r.shift_occurrence_id=sh.id or r.shift_occurrence_id is null
+                                 and r.post_id=sh.post_id and r.planned_at=sh.starts_at))
+                       or exists (select 1 from operational_assignment a
+                           join consignment_compliance cc on cc.assignment_id=a.id
+                               and cc.instance_country_id=a.instance_country_id
+                           where a.instance_country_id=sh.instance_country_id and a.shift_occurrence_id=sh.id
+                             and a.status<>'REMOVED' and cc.confirmed_at>=sh.starts_at and cc.confirmed_at<sh.ends_at)
+                       or exists (select 1 from task_execution te
+                           where te.instance_country_id=sh.instance_country_id and te.shift_occurrence_id=sh.id
+                             and te.status='RECEIVED' and te.executed_at>=sh.starts_at and te.executed_at<sh.ends_at)
+                       or exists (select 1 from patrol_execution pe
+                           join operational_assignment a on a.id=pe.assignment_id
+                               and a.instance_country_id=pe.instance_country_id
+                           where a.instance_country_id=sh.instance_country_id and a.shift_occurrence_id=sh.id
+                             and a.status<>'REMOVED' and pe.started_at>=sh.starts_at and pe.started_at<sh.ends_at)
+                       or exists (select 1 from operator_operational_report rep
+                           join operational_assignment a on a.id=rep.assignment_id
+                               and a.instance_country_id=rep.instance_country_id
+                           where a.instance_country_id=sh.instance_country_id and a.shift_occurrence_id=sh.id
+                             and a.status<>'REMOVED' and rep.occurred_at>=sh.starts_at and rep.occurred_at<sh.ends_at)
+                       as has_service
+                from shift_occurrence sh
+                join post po on po.id=sh.post_id and po.instance_country_id=sh.instance_country_id
+                join point p on p.id=po.point_id and p.instance_country_id=po.instance_country_id
+                join service sv on sv.id=p.service_id and sv.instance_country_id=p.instance_country_id
+                where sh.instance_country_id=:tenant and p.company_id in (:companies) and p.status='ACTIVE'
+                  and sh.required=true and sh.starts_at>=:from and sh.starts_at<:to and sh.ends_at<=:now
+                  and (p.operational_transition_until is null or sh.starts_at>=p.operational_transition_until)
+                  and exists (select 1 from assignment_plan ap where ap.instance_country_id=sh.instance_country_id
+                      and ap.company_id=p.company_id and ap.week_start=:week and ap.status in ('PUBLISHED','CLOSED'))
+            """ + (clientId == null ? "" : " and sv.client_id=:client\n") + """
+            ), point_results as (
+                select point_id, bool_or(not has_service) as uncovered from evaluated_shifts group by point_id
+            )
+            select (select count(*) from point_results where uncovered),
+                   (select count(*) from point_results),
+                   (select count(*) from evaluated_shifts where not has_service),
+                   (select count(*) from evaluated_shifts)
+            """;
+        Object[] row = (Object[]) query(sql, allowed, clientId,
+            week.atStartOfDay(OPERATING_ZONE).toInstant(), week.plusDays(7).atStartOfDay(OPERATING_ZONE).toInstant())
+            .setParameter("week", week).setParameter("now", now).getSingleResult();
+        return new long[]{((Number) row[0]).longValue(), ((Number) row[1]).longValue(),
+            ((Number) row[2]).longValue(), ((Number) row[3]).longValue()};
     }
 
     @GET @Path("/supervision-route-compliance")
@@ -300,7 +370,8 @@ public class DashboardResource {
 
     @GET @Path("/metrics")
     public Metrics metrics(@QueryParam("weekStart") String weekStart,
-                           @QueryParam("companyId") UUID companyId, @QueryParam("clientId") UUID clientId) {
+                           @QueryParam("companyId") UUID companyId, @QueryParam("clientId") UUID clientId,
+                           @QueryParam("period") String period) {
         LocalDate week;
         try {
             week = (weekStart == null ? LocalDate.now(OPERATING_ZONE) : LocalDate.parse(weekStart))
@@ -309,7 +380,8 @@ public class DashboardResource {
         Set<UUID> allowed = scope.allowedCompanyIds();
         if (companyId != null) { scope.requireCompany(companyId); allowed = Set.of(companyId); }
         Instant now = Instant.now();
-        if (allowed.isEmpty()) return new Metrics(week, now, null, null, 0, 0, 0, 0);
+        ConsignmentWindow reliefWindow = consignmentWindow(week, period, LocalDate.now(OPERATING_ZONE));
+        if (allowed.isEmpty()) return new Metrics(week, now, null, null, 0, 0, 0, 0, 0, 0);
         Instant from = week.atStartOfDay(OPERATING_ZONE).toInstant();
         Instant to = week.plusDays(7).atStartOfDay(OPERATING_ZONE).toInstant();
         String points = """
@@ -331,14 +403,25 @@ public class DashboardResource {
                 and a.status<>'REMOVED' and s.ends_at>=:from and s.ends_at<:to and s.ends_at<=:now
             """, allowed, clientId, from, to).setParameter("now", now).getSingleResult();
         Object[] reliefs = (Object[]) query(points + """
-            select count(*) filter (where r.executed_at>r.planned_at), count(*)
+            select count(*)
             from relief_event r join post p on p.id=r.post_id and p.instance_country_id=r.instance_country_id
             where r.instance_country_id=:tenant and p.point_id in (select id from scoped_points)
                 and r.planned_at>=:from and r.planned_at<:to and r.executed_at is not null
-            """, allowed, clientId, from, to).getSingleResult();
+                and r.executed_at>r.planned_at+interval '2 hours'
+            """, allowed, clientId,
+            reliefWindow.from().minus(Duration.between(reliefWindow.from(), reliefWindow.to())),
+            reliefWindow.from()).getSingleResult();
+        Object[] currentReliefs = (Object[]) query(points + """
+            select count(*) filter (where r.executed_at>r.planned_at+interval '2 hours'),
+                   count(*), count(*) filter (where r.executed_at>r.planned_at+interval '3 hours')
+            from relief_event r join post p on p.id=r.post_id and p.instance_country_id=r.instance_country_id
+            where r.instance_country_id=:tenant and p.point_id in (select id from scoped_points)
+              and r.planned_at>=:from and r.planned_at<:to and r.executed_at is not null
+            """, allowed, clientId, reliefWindow.from(), reliefWindow.to()).getSingleResult();
         return new Metrics(week, now, value(scores[0]), value(scores[1]),
             ((Number)scores[2]).longValue(), ((Number)scores[3]).longValue(),
-            ((Number)reliefs[0]).longValue(), ((Number)reliefs[1]).longValue());
+            ((Number)currentReliefs[0]).longValue(), ((Number)currentReliefs[1]).longValue(),
+            ((Number)currentReliefs[2]).longValue(), ((Number)reliefs[0]).longValue());
     }
 
     private NativeQuery<?> query(String sql, Set<UUID> companies, UUID clientId, Instant from, Instant to) {

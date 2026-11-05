@@ -43,12 +43,13 @@ public class OperationResource {
     public record CollaboratorRow(UUID employeeId, String fullName, String roleCode, String postName, Instant lastAt, String source) {}
     public record ReplacementCandidate(UUID employeeId, String fullName, String roleCode, int group, String lastPoint, String lastPost) {}
     public record CoverageShift(UUID id, Instant startsAt, Instant endsAt, List<ReplacementCandidate> candidates) {}
-    public record CoverageOptions(CoverageShift currentShift, List<CoverageShift> nextShifts) {}
+    public record CoverageOptions(CoverageShift currentShift, List<CoverageShift> nextShifts, boolean currentShiftAllowed, boolean futureShiftAllowed) {}
     private record CollaboratorActivity(UUID employeeId, UUID postId, Instant lastAt, String source) {}
 
     @Inject TenantContext tenant;
     @Inject OperationalScopeService scope;
     @Inject AssignmentRolePolicy rolePolicy;
+    @Inject IncidentCoverageRolePolicy coverageRolePolicy;
     @Inject EntityManager em;
     @Inject StorageService storage;
     @Inject StandardImageStore standardImages;
@@ -64,7 +65,7 @@ public class OperationResource {
     }
 
     @GET @Path("/points/{pointId}/collaborators")
-    @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION","SUPERVISOR_SEGURIDAD"})
+    @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION","SUPERVISOR_SEGURIDAD","MONITOR"})
     public List<CollaboratorRow> collaborators(@PathParam("pointId") UUID pointId) {
         requirePoint(pointId);
         Instant now = Instant.now(), from = now.minus(Duration.ofDays(14)), upcomingUntil = now.plus(Duration.ofDays(14));
@@ -121,7 +122,7 @@ public class OperationResource {
     }
 
     @GET @Path("/points/{pointId}/coverage-options")
-    @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION","SUPERVISOR_SEGURIDAD"})
+    @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION","SUPERVISOR_SEGURIDAD","MONITOR"})
     public CoverageOptions coverageOptions(@PathParam("pointId") UUID pointId, @QueryParam("postId") UUID postId) {
         requirePoint(pointId);
         if (postId == null) throw new BadRequestException("Seleccione un Puesto para consultar la cobertura");
@@ -133,11 +134,13 @@ public class OperationResource {
                 "instanceCountryId=?1 and postId=?2 and endsAt>?3 and startsAt<?4 order by startsAt",
                 tenant.instanceCountryId(), postId, now, now.plus(Duration.ofDays(30)));
         ShiftOccurrenceEntity current = targetShifts.stream().filter(s -> !s.startsAt.isAfter(now)).findFirst().orElse(null);
-        List<ShiftOccurrenceEntity> next = targetShifts.stream().filter(s -> s.startsAt.isAfter(now)).limit(2).toList();
+        boolean currentShiftAllowed=coverageRolePolicy.canCoverCurrentShift();
+        boolean futureShiftAllowed=coverageRolePolicy.canCoverFutureShift();
+        List<ShiftOccurrenceEntity> next = futureShiftAllowed ? targetShifts.stream().filter(s -> s.startsAt.isAfter(now)).limit(2).toList() : List.of();
         List<ShiftOccurrenceEntity> targets = new ArrayList<>();
-        if (current != null) targets.add(current);
+        if (current != null && currentShiftAllowed) targets.add(current);
         targets.addAll(next);
-        if (targets.isEmpty()) return new CoverageOptions(null, List.of());
+        if (targets.isEmpty()) return new CoverageOptions(null, List.of(), currentShiftAllowed, futureShiftAllowed);
 
         Instant windowStart = targets.stream().map(s -> s.startsAt).min(Instant::compareTo).orElse(now).minus(Duration.ofDays(7));
         Instant windowEnd = targets.stream().map(s -> s.endsAt).max(Instant::compareTo).orElse(now);
@@ -212,7 +215,7 @@ public class OperationResource {
             candidates.sort(Comparator.comparingInt(ReplacementCandidate::group).thenComparing(ReplacementCandidate::fullName));
             options.put(target.id, new CoverageShift(target.id, target.startsAt, target.endsAt, candidates));
         }
-        return new CoverageOptions(current == null ? null : options.get(current.id), next.stream().map(s -> options.get(s.id)).toList());
+        return new CoverageOptions(current == null || !currentShiftAllowed ? null : options.get(current.id), next.stream().map(s -> options.get(s.id)).toList(), currentShiftAllowed, futureShiftAllowed);
     }
 
     @GET @Path("/executions/{id}")
