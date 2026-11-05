@@ -653,6 +653,27 @@
   contain:strict;
 }
 
+/* ASI v0.6.7 — containment and scroll stability for the scheduling grid */
+.assignments-asi-v066 .point-band-sticky{min-width:0;overflow:hidden}
+.assignments-asi-v066 .point-band-sticky>.point-band-meta{
+  display:flex;flex-direction:column;align-items:flex-start;gap:2px;min-width:0;max-width:100%;overflow:hidden
+}
+.assignments-asi-v066 .point-band-title,
+.assignments-asi-v066 .point-band-subtitle{display:block;width:100%;max-width:100%;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.assignments-asi-v066 .point-band-title{white-space:nowrap}
+.assignments-asi-v066 .point-band-subtitle{white-space:nowrap;-webkit-line-clamp:unset;-webkit-box-orient:initial}
+.assignments-asi-v066 .point-band-coverage{flex:0 0 auto;max-width:96px;overflow:hidden;text-overflow:ellipsis}
+.assignments-asi-v066 .post-info-title,
+.assignments-asi-v066 .spreadsheet-shift-label>div,
+.assignments-asi-v066 .assignment-compact-copy{min-width:0;max-width:100%;overflow:hidden}
+.assignments-asi-v066 .post-info-title span{display:-webkit-box;max-width:100%;overflow:hidden;overflow-wrap:anywhere;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.assignments-asi-v066 .compact-post-info .post-metrics{max-width:100%;overflow:hidden}
+.assignments-asi-v066 .assignment-card-compact{width:100%;max-width:100%;min-width:0;overflow:hidden;box-sizing:border-box}
+.assignments-asi-v066 .assignment-compact-copy strong,
+.assignments-asi-v066 .assignment-compact-copy span{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.assignments-asi-v066 .spreadsheet-matrix{scroll-behavior:auto;overflow-anchor:none}
+.assignments-asi-v066 .spreadsheet-point{overflow-anchor:none}
+
 /* ===== SER v0.1 — Servicios / listado maestro a nivel Puesto ===== */
 .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 .services-v01{display:flex;flex-direction:column;gap:14px}
@@ -2219,22 +2240,29 @@ button.nov-evidence-photo:hover{border-color:#9db8e6;box-shadow:0 4px 14px rgba(
 .img-carousel-head{display:flex;justify-content:space-between;align-items:center;gap:16px;height:auto;padding:14px 20px;background:transparent;border:0}
 .img-carousel-head h3{margin:0;font-size:15px;color:#fff}
 .img-carousel-head span{display:block;margin-top:3px;font-size:12px;color:#b6c2d6}
-.img-carousel-tools{display:flex;gap:8px}
+.img-carousel-tools{display:flex;gap:8px;align-items:center}
 .img-carousel-tools a,.img-carousel-tools button,.img-carousel-nav{display:grid;place-items:center;width:40px;height:40px;border:1px solid rgba(255,255,255,.18);border-radius:10px;background:rgba(255,255,255,.08);color:#fff;cursor:pointer;text-decoration:none}
 .img-carousel-tools a:hover,.img-carousel-tools button:hover,.img-carousel-nav:hover{background:rgba(255,255,255,.18)}
+.img-carousel-tools button:disabled{opacity:.4;cursor:not-allowed}
+.img-carousel-tools .img-carousel-zoom-value{width:76px;grid-template-columns:auto auto;gap:5px;padding:0 9px}
+.img-carousel-tools .img-carousel-zoom-value span{margin:0;color:#fff;font-size:11px;font-weight:800}
 .img-carousel-tools a:focus-visible,.img-carousel-tools button:focus-visible,.img-carousel-nav:focus-visible,.img-carousel-thumbs button:focus-visible{outline:3px solid #7aa7ff;outline-offset:2px}
-.img-carousel-stage{position:relative;display:flex;align-items:center;justify-content:center;min-height:0;padding:8px 72px;touch-action:pan-y;user-select:none}
-.img-carousel-stage img{max-width:100%;max-height:100%;object-fit:contain;border-radius:8px;box-shadow:0 18px 50px rgba(0,0,0,.45);background:#fff}
-.img-carousel-nav{position:absolute;top:50%;transform:translateY(-50%);width:48px;height:48px;border-radius:999px}
+.img-carousel-stage{position:relative;display:flex;align-items:center;justify-content:center;min-height:0;padding:8px 72px;overflow:hidden;touch-action:pan-y;user-select:none}
+.img-carousel-stage.zoomed{cursor:grab;touch-action:none}
+.img-carousel-stage.panning{cursor:grabbing}
+.img-carousel-stage img{max-width:100%;max-height:100%;object-fit:contain;border-radius:8px;box-shadow:0 18px 50px rgba(0,0,0,.45);background:#fff;transform-origin:center center;will-change:transform}
+.img-carousel-stage:not(.panning) img{transition:transform .12s ease-out}
+.img-carousel-nav{position:absolute;top:50%;z-index:2;transform:translateY(-50%);width:48px;height:48px;border-radius:999px}
 .img-carousel-nav.prev{left:16px}
 .img-carousel-nav.next{right:16px}
 .img-carousel-error{margin:0;padding:16px 20px;border:1px dashed rgba(255,255,255,.3);border-radius:10px;color:#d3dbea;font-size:13px}
+.img-carousel-zoom-help{position:absolute;z-index:2;bottom:12px;left:50%;transform:translateX(-50%);padding:6px 10px;border-radius:999px;background:rgba(10,15,28,.72);color:#d5def0;font-size:11px;white-space:nowrap;pointer-events:none}
 .img-carousel-thumbs{display:flex;gap:8px;justify-content:center;padding:12px 20px 18px;overflow-x:auto}
 .img-carousel-thumbs button{flex:0 0 auto;width:72px;height:54px;padding:0;border:2px solid transparent;border-radius:8px;overflow:hidden;background:#1d2638;opacity:.6;cursor:pointer}
 .img-carousel-thumbs button.active{border-color:#7aa7ff;opacity:1}
 .img-carousel-thumbs button:hover{opacity:1}
 .img-carousel-thumbs img{width:100%;height:100%;display:block;background:#fff}
-@media(max-width:760px){.img-carousel-head{padding:12px 16px}.img-carousel-stage{padding:4px 16px}.img-carousel-nav{width:40px;height:40px;background:rgba(10,15,28,.6)}.img-carousel-nav.prev{left:8px}.img-carousel-nav.next{right:8px}.img-carousel-thumbs{justify-content:flex-start;padding:10px 16px 14px}.img-carousel-thumbs button{width:60px;height:46px}}
+@media(max-width:760px){.img-carousel{grid-template-rows:auto minmax(0,1fr) auto}.img-carousel-head{align-items:flex-start;padding:10px 12px}.img-carousel-head>div:first-child{min-width:0}.img-carousel-head h3,.img-carousel-head>div:first-child span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.img-carousel-tools{gap:4px;flex-wrap:wrap;justify-content:flex-end}.img-carousel-tools a,.img-carousel-tools button{width:34px;height:34px}.img-carousel-tools .img-carousel-zoom-value{width:64px}.img-carousel-stage{padding:4px 16px}.img-carousel-nav{width:40px;height:40px;background:rgba(10,15,28,.6)}.img-carousel-nav.prev{left:8px}.img-carousel-nav.next{right:8px}.img-carousel-thumbs{justify-content:flex-start;padding:10px 16px 14px}.img-carousel-thumbs button{width:60px;height:46px}.img-carousel-zoom-help{bottom:8px;font-size:10px}}
 .nov-evidence-message{margin:0;padding:12px;border:1px dashed #d2ddeb;border-radius:10px;background:#f8fafc;color:#6a7890;font-size:12px;line-height:1.5}
 /* La galería es un <section>: anula el padding global de section para alinearse con el resto del panel. */
 .nov-photo-block{padding:12px 0 0}
