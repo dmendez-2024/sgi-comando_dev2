@@ -1,6 +1,6 @@
 import {useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode} from 'react';
 import {AlertTriangle, ArrowLeft, BrushCleaning, CarFront, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ClipboardList, Factory, History, Package, Pencil, Plus, Power, Save, Search, ShieldCheck, Trash2, UserRound, UsersRound, X} from 'lucide-react';
-import {errorText, obsintConfigApi, type ObsintCameraOption, type ObsintCategory, type ObsintConsignaConfig, type ObsintConsignaSave, type ObsintConsignmentOption, type ObsintProtocol, type ObsintTaskSaved} from '../obsintApi';
+import {errorText, isObsintNoOrder, obsintConfigApi, type ObsintCameraOption, type ObsintCategory, type ObsintConsignaConfig, type ObsintConsignaSave, type ObsintConsignmentOption, type ObsintProtocol, type ObsintTaskSaved} from '../obsintApi';
 import {CATEGORIES, categoryLabel, DAYS, protocolStatusLabel} from '../obsint';
 import {ObsintMonitoringPanel} from './ObsintMonitoringPanel';
 import {ObsintScheduleEditor, slotsFromWeek, weekFromSlots} from './ObsintScheduleEditor';
@@ -35,18 +35,23 @@ export default function ObsintConfig({point,onBack}:{point:ObsintPointContext;on
   const [editing,setEditing]=useState<ObsintConsignaConfig|'new'|null>(null);
   const [busy,setBusy]=useState(false);
   const [loading,setLoading]=useState(true);
+  const [availability,setAvailability]=useState<'checking'|'enabled'|'disabled'|'error'>('checking');
   const [error,setError]=useState('');
   const [notice,setNotice]=useState('');
 
   async function load(preferId?:string){
+    setLoading(true);setAvailability('checking');
     try{
+      const summary=await obsintConfigApi.summary(point.pointId);
+      if(!summary.enabled){setAvailability('disabled');setError('');return}
       const [list,cams,options]=await Promise.all([obsintConfigApi.protocols(point.pointId),obsintConfigApi.cameras(point.pointId),obsintConfigApi.consignments(point.pointId)]);
-      setProtocols(list);setCameras(cams);setLinkable(options);setError('');
+      setProtocols(list);setCameras(cams);setLinkable(options);setError('');setAvailability('enabled');
       const keep=preferId??versionId;
       const current=list.find(p=>p.id===keep)??list.find(p=>p.status==='ACTIVO')??list.find(p=>p.status!=='BORRADOR')??list[0];
       setVersionId(current?.id??'');
       setSelectedId(previous=>current?.consignas.some(c=>c.id===previous)?previous:current?.consignas[0]?.id??'');
-    }catch(e){setError(`No se pudo cargar la configuración OBSINT. ${errorText(e)}`)}
+    }catch(e){if(isObsintNoOrder(e)){setAvailability('disabled');setError('')}
+      else{setAvailability('error');setError(`No se pudo cargar la configuración OBSINT. ${errorText(e)}`)}}
     finally{setLoading(false)}
   }
   useEffect(()=>{void load()},[point.pointId]);
@@ -96,6 +101,17 @@ export default function ObsintConfig({point,onBack}:{point:ObsintPointContext;on
     setSelectedId(result.consignas.find(c=>c.code===code)?.id??'');
     setNotice(`Tarea guardada · versión v${result.versionNo} activa en la Consola.`);
   }
+
+  if(availability!=='enabled')return <div className="obs-page obs-cfg">
+    <nav className="obs-breadcrumbs"><button type="button" onClick={onBack}><ArrowLeft size={15}/>Volver a Configuración</button><span>/</span><small>Consignas Obsint</small></nav>
+    <div className="obs-cfg-titlebar"><div className="obs-hero"><h2>Consignas Obsint</h2><p>Configuración de tareas de OBSINT por servicio</p></div></div>
+    <section className="obs-card obs-cfg-start" role={availability==='disabled'?'alert':undefined}>
+      <span className="obs-cfg-start-icon"><AlertTriangle size={28}/></span>
+      <h3>{availability==='disabled'?'Requiere orden de servicio OBSINT':availability==='error'?'No se pudo comprobar el acceso a OBSINT':'Comprobando orden de servicio OBSINT…'}</h3>
+      {availability==='error'&&<p>{error}</p>}
+      {availability!=='checking'&&<button type="button" className="ghost" onClick={()=>void load()}>Volver a comprobar</button>}
+    </section>
+  </div>;
 
   return <div className="obs-page obs-cfg">
     <nav className="obs-breadcrumbs"><button type="button" onClick={onBack}><ArrowLeft size={15}/>Volver a Configuración</button><span>/</span><small>Consignas Obsint</small></nav>

@@ -1,6 +1,7 @@
 import {useCallback, useEffect, useRef, useState, type ReactNode} from 'react';
 import {ArrowLeft, CalendarDays, CircleCheck, Clock3, FileText, FolderOpen, ListChecks, Play, RefreshCw, UserRound, Users, Video} from 'lucide-react';
-import {errorText, obsintApi, type ObsintCase, type ObsintTask} from './obsintApi';
+import {errorText, isObsintNoOrder, obsintApi, type ObsintCase, type ObsintTask} from './obsintApi';
+import {isMonitor} from '../api';
 import {ObsintCameraGrid} from './ObsintCameraGrid';
 import {ObsintCommPanel} from './ObsintCommPanel';
 import {Dots, ObsintTaskPanel, type CapturedFrame} from './ObsintTaskPanel';
@@ -22,6 +23,7 @@ export default function ObsintConsole({onBack}:{onBack?:()=>void}){
   const [obsCase,setObsCase]=useState<ObsintCase|null>(null);
   const [task,setTask]=useState<ObsintTask|null>(null);
   const [loading,setLoading]=useState(true);
+  const [access,setAccess]=useState<'checking'|'enabled'|'no-order'|'role'|'error'>('checking');
   const [error,setError]=useState('');
   const [opening,setOpening]=useState(false);
   const [selectedCameraId,setSelectedCameraId]=useState<string|null>(null);
@@ -44,8 +46,13 @@ export default function ObsintConsole({onBack}:{onBack?:()=>void}){
 
   useEffect(()=>{
     let current=true;
-    void obsintApi.currentCase().then(c=>{if(current)setObsCase(c??null)})
-      .catch(e=>{if(current)setError(errorText(e))}).finally(()=>{if(current)setLoading(false)});
+    void obsintApi.access().then(async availability=>{
+      if(!current)return;
+      if(!availability.enabled){setAccess(isMonitor()?'no-order':'role');return}
+      const obsintCase=await obsintApi.currentCase();
+      if(current){setObsCase(obsintCase??null);setAccess('enabled')}
+    }).catch(e=>{if(current){if(isObsintNoOrder(e))setAccess('no-order');else{setError(errorText(e));setAccess('error')}}})
+      .finally(()=>{if(current)setLoading(false)});
     return()=>{current=false};
   },[]);
 
@@ -77,7 +84,7 @@ export default function ObsintConsole({onBack}:{onBack?:()=>void}){
 
   async function openCase(){
     setOpening(true);setError('');setAnswerFeedback(null);
-    try{setObsCase(await obsintApi.openCase())}catch(e){setError(errorText(e))}finally{setOpening(false)}
+    try{setObsCase(await obsintApi.openCase())}catch(e){if(isObsintNoOrder(e))setAccess('no-order');else setError(errorText(e))}finally{setOpening(false)}
   }
 
   const running=task?.status==='IN_PROGRESS';
@@ -96,6 +103,9 @@ export default function ObsintConsole({onBack}:{onBack?:()=>void}){
 
     {error&&<div className="obs-error">{error}</div>}
     {loading?<div className="obs-card obs-message">Cargando consola OBSINT…</div>
+    :access==='no-order'?<div className="obs-card obs-message" role="alert">Requiere orden de servicio OBSINT.</div>
+    :access==='role'?<div className="obs-card obs-message" role="alert">Solo los monitoristas pueden ejecutar casos OBSINT.</div>
+    :access==='error'?<div className="obs-card obs-message">No se pudo comprobar el acceso a OBSINT.</div>
     :!obsCase?<StartCard onStart={openCase} opening={opening}/>
     :obsCase.status==='COMPLETED'?<Summary obsCase={obsCase} onNew={openCase} opening={opening}/>
     :!task?<div className="obs-card obs-message">Cargando tarea…</div>

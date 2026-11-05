@@ -33,7 +33,7 @@ export type ObsintProtocol={id:string;pointId:string;code:string;versionNo:numbe
 /** Consigna del protocolo de Consignas activo del Punto marcada con el "puesto" OBSINT. */
 export type ObsintConsignmentOption={code:string;title:string;instruction:string};
 export type ObsintCameraOption={id:string;code:string;name:string;location:string|null;status:'ACTIVE'|'OBSERVED'};
-export type ObsintSummary={status:'complete'|'warning'|'blocked';meta:string;activeVersion:number|null;activeConsignas:number;hasDraft:boolean;warnings:string[]};
+export type ObsintSummary={enabled:boolean;status:'complete'|'warning'|'blocked';meta:string;activeVersion:number|null;activeConsignas:number;hasDraft:boolean;warnings:string[]};
 
 /**
  * API de la Consola OBSINT (/api/obsint). Del cliente común de SGI solo usa el transporte (token, renovación y errores),
@@ -42,6 +42,7 @@ export type ObsintSummary={status:'complete'|'warning'|'blocked';meta:string;act
 const task=(taskId:string)=>`/api/obsint/tasks/${encodeURIComponent(taskId)}`;
 
 export const obsintApi={
+  access:()=>request<{enabled:boolean}>('/api/obsint/access'),
   currentCase:()=>request<ObsintCase|undefined>('/api/obsint/cases/current'),
   openCase:()=>request<ObsintCase>('/api/obsint/cases',{method:'POST'}),
   task:(taskId:string)=>request<ObsintTask>(task(taskId)),
@@ -91,7 +92,7 @@ export const obsintConfigApi={
 
 export type ObsintTaskSaved={protocol:ObsintProtocol;code:string};
 
-export type ObsintMonitorOption={employeeId:string;name:string;cargo:string|null};
+export type ObsintMonitorOption={employeeId:string;name:string;cargo:string|null;companyId:string|null;companyName:string|null;confidential:boolean};
 /** monitors vacío: lo atiende cualquier monitor de turno de la Compañía del Punto (la asignada en Servicios). */
 export type ObsintMonitoring={companyId:string|null;companyName:string|null;monitors:ObsintMonitorOption[];updatedBy:string|null;updatedAt:string|null};
 export type ObsintMonitoringSave={employeeIds:string[]};
@@ -103,4 +104,8 @@ export const errorText=(error:unknown)=>{
     return error.body||`Error ${error.status}`;
   }
   return error instanceof Error?error.message:String(error);
+};
+export const isObsintNoOrder=(error:unknown)=>{
+  if(!(error instanceof ApiError)||error.status!==403)return false;
+  try{return JSON.parse(error.body)?.code==='OBSINT_SIN_ORDEN'}catch{return false}
 };

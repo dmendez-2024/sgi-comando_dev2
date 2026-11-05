@@ -68,6 +68,7 @@ Pantalla de las diapositivas 7 y 8. Se abre desde Configuración del Punto.
   - termina en **`/whep`** → **WebRTC** en vivo (WHEP, casi tiempo real). Requiere H.264 **sin B-frames**, lo normal en cámaras IP. Ej.: `http://servidor:8889/live/ch1/whep`.
   - cualquier otra → **archivo** (MP4 de pruebas), que se repite y se muestra como "GRABACIÓN".
   - HLS y WebRTC se muestran como "EN VIVO" y admiten captura de evidencia igual que el MP4. El servidor de video debe permitir CORS desde la web de Comando.
+  - El reproductor HLS reconecta tras errores de red o falta de avance del video. La celda muestra «Conectando…», «Sin señal — reintentando» o «Sin acceso a esta cámara» (403); al salir se destruye la sesión HLS. La reproducción HLS real requiere una cámara y MediaMTX disponibles para la prueba de integración.
 
 ### 2.2 Consignas OBSINT (`frontend/src/obsint/config/`)
 
@@ -155,9 +156,15 @@ Pantalla de la diapositiva 10. Se abre desde Configuración del Punto.
 - Hasta 4 cámaras, todas de Videovigilancia, **del mismo punto** y no inactivas.
 - Horario: un tramo por día, la hora de fin mayor que la de inicio. El inicio está incluido y el fin excluido.
 
+### Acceso con orden de servicio OBSINT (SEN-01)
+
+- La fila OBSINT en Configuración del Punto consulta `summary.enabled`. Si es `false`, muestra «Requiere orden de servicio OBSINT» y no permite abrir el módulo. Un estado `blocked` por falta de protocolo no impide abrirlo cuando `enabled` es `true`.
+- El botón OBSINT de la Consola solo aparece cuando `GET /api/obsint/access` devuelve `enabled: true` para el monitorista.
+- Al entrar a la configuración o consola, se vuelve a comprobar el acceso. Si el backend responde `OBSINT_SIN_ORDEN`, se muestra el aviso y se ocultan las acciones OBSINT.
+
 ### Caso y tareas (Consola)
 
-- **Monitoristas del Punto (pestaña OBSINT, panel "Monitoristas OBSINT"):** la orden llega a **Kaibil** y desde **Servicios → Asignación** se manda a una Compañía; esa es la Compañía del Punto (`point.company_id`) y en OBSINT **no se cambia**. En la pestaña OBSINT solo se eligen **uno o más monitoristas**, entre los empleados activos de esa Compañía con cargo "Monitor" o "Agente de Consola de Monitoreo Senior". Se guarda en `obsint_point_monitor` (V106, una fila por monitorista; reemplazó a `obsint_point_monitoring` de V104/V105). Endpoints: `/api/obsint/monitoring/points/{pointId}` (GET/PUT) y `/monitors` (`ObsintMonitoringResource`), mismos roles que la configuración.
+- **Monitoristas del Punto (pestaña OBSINT, panel "Monitoristas OBSINT"):** la orden llega a **Kaibil** y desde **Servicios → Asignación** se manda a una Compañía; esa es la Compañía del Punto (`point.company_id`) y en OBSINT **no se cambia**. Los cargos altos pueden elegir monitoristas activos de otras Compañías de su alcance; el panel muestra su Compañía y permite filtrar. Coordinación solo puede elegir los de su Compañía y ve como **Confidencial** a los de otra Compañía ya asignados, sin poder quitarlos. El backend entrega `companyId`, `companyName` y `confidential`; la pantalla oculta nombre y Compañía cuando esa bandera es verdadera y conserva el `employeeId` al guardar. Se guarda en `obsint_point_monitor` (V106, una fila por monitorista; reemplazó a `obsint_point_monitoring` de V104/V105). Endpoints: `/api/obsint/monitoring/points/{pointId}` (GET/PUT) y `/monitors` (`ObsintMonitoringResource`).
 - **Alcance en la consola** (`ObsintPlatform.visiblePoints`):
   - **MONITOR** (`monitorSees`), siempre que esté de **turno en curso** en un puesto de Monitoreo (Asignaciones, plan publicado o cerrado; cuenta quien cubrió el turno; persona por `persona_id` del token de IDENT o, en UAT, `operator_employee_binding`): ve el Punto si es **uno de sus monitoristas**; y si no se eligió ninguno o ninguno está de turno, lo ve **cualquier monitor de turno de la Compañía del Punto**. Fuera de turno no ve nada; un Punto aún en Kaibil (sin Compañía) no lo ve ningún monitor.
   - **Demás roles:** los Puntos cuya Compañía está en su alcance (misma regla que `requirePoint`): roles de país, todas; Coordinador y Asistente, las asignadas directamente; los demás, las de su zona, región o asignación directa (`user_operational_scope`).

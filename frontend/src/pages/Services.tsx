@@ -913,15 +913,17 @@ function ConfigurationLanding({point,onBack,onOpenModule}:{point:PointRow;onBack
   const snapshot=useMemo(()=>snapshotFor(point),[point]);
   const [expandedGroups,setExpandedGroups]=useState<Set<string>>(()=>new Set(['physical','electronic']));
   const [electronic,setElectronic]=useState<{
-    components:{status:ChecklistStatus;meta:string};obsint:{status:ChecklistStatus;meta:string}
-  }>({components:{status:'unavailable',meta:'Cargando…'},obsint:{status:'unavailable',meta:'Cargando…'}});
+    components:{status:ChecklistStatus;meta:string};obsint:{enabled:boolean;status:ChecklistStatus;meta:string}
+  }>({components:{status:'unavailable',meta:'Cargando…'},obsint:{enabled:false,status:'unavailable',meta:'Cargando…'}});
   useEffect(()=>{
     let active=true;
     void Promise.allSettled([secelecApi.summary(point.pointId),obsintConfigApi.summary(point.pointId)]).then(([components,obsint])=>{
       if(!active)return;
       setElectronic({
         components:components.status==='fulfilled'?{status:components.value.status,meta:components.value.meta}:{status:'unavailable',meta:'No se pudo consultar'},
-        obsint:obsint.status==='fulfilled'?{status:obsint.value.status,meta:obsint.value.meta}:{status:'unavailable',meta:'No se pudo consultar'},
+        obsint:obsint.status==='fulfilled'
+          ?{enabled:obsint.value.enabled,status:obsint.value.status,meta:obsint.value.enabled?obsint.value.meta:'Requiere orden de servicio OBSINT'}
+          :{enabled:false,status:'unavailable',meta:'No se pudo consultar'},
       });
     });
     return()=>{active=false};
@@ -944,7 +946,7 @@ function ConfigurationLanding({point,onBack,onOpenModule}:{point:PointRow;onBack
   const blockerCount=snapshot.blockers+electronicModules.filter(module=>module.status==='blocked').length;
   const warningCount=snapshot.warnings+electronicModules.filter(module=>module.status==='warning').length;
   const electronicRow=(module:typeof electronicModules[number])=>
-    <button type="button" key={module.key} className={`ser-check-row ${module.status}`} onClick={()=>onOpenModule(module.key as ConfigModuleKey)}>
+    <button type="button" key={module.key} className={`ser-check-row ${module.status}`} disabled={module.key==='obsint'&&!electronic.obsint.enabled} onClick={()=>onOpenModule(module.key as ConfigModuleKey)}>
       <span className="ser-check-main"><ChevronRight className="ser-check-chevron" size={15}/><span className="ser-check-icon">{module.icon}</span><b>{module.title}</b></span>
       <span className="ser-check-meta">{module.meta}</span>
       <span className={`ser-status-tag ${module.status}`}>{module.status==='unavailable'?'S/D':statusLabel(module.status)}</span>
@@ -1151,7 +1153,7 @@ export default function Services(){
     return <SecurityComponents point={selectedPoint} onBack={()=>setView('config-landing')}/>;
   }
   if(selectedPoint&&view==='config-obsint'){
-    return <ObsintConfig point={selectedPoint} onBack={()=>setView('config-landing')}/>;
+    return <ObsintConfig key={selectedPoint.pointId} point={selectedPoint} onBack={()=>setView('config-landing')}/>;
   }
   if(selectedPoint&&view==='config-nexus'){
     return <NexusConfig point={selectedPoint} onBack={()=>setView('config-landing')}/>;
@@ -1160,7 +1162,7 @@ export default function Services(){
     return <OperationPage point={selectedPoint} onBack={backToList}/>;
   }
   if(selectedPoint&&view==='config-landing'){
-    return <ConfigurationLanding point={selectedPoint} onBack={backToList} onOpenModule={(module:ConfigModuleKey)=>{if(module==='ats')setView('config-ats');if(module==='puestos')setView('config-posts');if(module==='bitacora')setView('config-bitacora');if(module==='patrullas')setView('config-patrols');if(module==='consignas')setView('config-consignas');if(module==='nexus')setView('config-nexus');if(module==='components')setView('config-components');if(module==='obsint')setView('config-obsint')}}/>;
+    return <ConfigurationLanding key={selectedPoint.pointId} point={selectedPoint} onBack={backToList} onOpenModule={(module:ConfigModuleKey)=>{if(module==='ats')setView('config-ats');if(module==='puestos')setView('config-posts');if(module==='bitacora')setView('config-bitacora');if(module==='patrullas')setView('config-patrols');if(module==='consignas')setView('config-consignas');if(module==='nexus')setView('config-nexus');if(module==='components')setView('config-components');if(module==='obsint')setView('config-obsint')}}/>;
   }
 
   return <div className="services-v01 services-v02">

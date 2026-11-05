@@ -78,7 +78,9 @@
 .obs-feed-controls button{width:30px;height:30px;border-radius:7px;border:0;background:rgba(10,14,22,.72);color:#fff;display:grid;place-items:center;cursor:pointer}
 .obs-feed-controls button:hover{background:rgba(35,100,232,.9)}
 .obs-no-signal{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;color:#9aa6b8}
+.obs-feed-status{position:absolute;inset:0;height:auto;background:rgba(14,20,32,.9);color:#e2e8f0;text-align:center;pointer-events:none}
 .obs-no-signal small{font-size:11px;color:#6b778d}
+.obs-feed-status small{color:#aebbd0}
 .obs-no-cameras{padding:30px;text-align:center;color:#6b778d;border:1px dashed #d6dde7;border-radius:10px}
 .obs-comm{padding:14px}
 .obs-comm-head{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:10px}

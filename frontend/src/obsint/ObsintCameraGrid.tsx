@@ -1,8 +1,8 @@
-import {useEffect, useRef, useState, type MouseEvent} from 'react';
+import {useCallback, useEffect, useRef, useState, type MouseEvent} from 'react';
 import {Crosshair, Maximize2, Pause, Play, Video, VideoOff} from 'lucide-react';
-import {formatDateTime} from './obsint';
+import {formatDateTime, streamSrc} from './obsint';
 import type {ObsintCamera} from './obsintApi';
-import {attachStream, streamKind} from './liveStream';
+import {attachStream, streamKind, type StreamStatus} from './liveStream';
 
 type Props={
   cameras:ObsintCamera[];
@@ -50,19 +50,28 @@ export function ObsintCameraGrid({cameras,selectedId,onSelect,now,registerVideo,
 function Feed({camera,index,now,selected,onSelect,registerVideo,onSettled}:{camera:ObsintCamera;index:number;now:Date;selected:boolean;onSelect:()=>void;
   registerVideo:(cameraId:string,el:HTMLVideoElement|null)=>void;onSettled:(cameraId:string)=>void}){
   const [paused,setPaused]=useState(false);
-  const [failed,setFailed]=useState(!camera.streamUrl);
+  const [status,setStatus]=useState<StreamStatus|'no-signal'>(camera.streamUrl?'connecting':'no-signal');
   const boxRef=useRef<HTMLDivElement|null>(null);
   const videoRef=useRef<HTMLVideoElement|null>(null);
+  const videoEl=useCallback((el:HTMLVideoElement|null)=>{videoRef.current=el;registerVideo(camera.id,el)},[camera.id,registerVideo]);
   // HLS y WebRTC son video en vivo; un archivo (MP4 de pruebas) se repite como grabación.
   const live=camera.live||(!!camera.streamUrl&&streamKind(camera.streamUrl)!=='file');
+  const kind=camera.streamUrl?streamKind(camera.streamUrl):null;
   // Sin video configurado no hay nada que esperar para arrancar el tiempo.
-  useEffect(()=>{if(!camera.streamUrl)onSettled(camera.id)},[camera.id,camera.streamUrl]);
+  useEffect(()=>{setStatus(camera.streamUrl?'connecting':'no-signal');if(!camera.streamUrl)onSettled(camera.id)},[camera.id,camera.streamUrl]);
   // Conecta el video según su formato (MP4, HLS o WebRTC); al cambiar de cámara o desmontar, lo desconecta.
   useEffect(()=>{
     const video=videoRef.current;
     if(!video||!camera.streamUrl)return;
-    return attachStream(video,camera.streamUrl,()=>{setFailed(true);onSettled(camera.id)});
-  },[camera.id,camera.streamUrl,failed]);
+    return attachStream(video,camera.streamUrl,next=>{setStatus(next);if(next==='playing'||next==='retrying'||next==='denied'||next==='failed')onSettled(camera.id)});
+  },[camera.id,camera.streamUrl]);
+
+  const loaded=()=>{setStatus('playing');onSettled(camera.id)};
+  const fileError=()=>{
+    if(kind!=='file'||!camera.streamUrl)return;
+    onSettled(camera.id);
+    void fetch(streamSrc(camera.streamUrl),{method:'HEAD'}).then(res=>setStatus(res.status===403?'denied':'failed')).catch(()=>setStatus('failed'));
+  };
 
   function togglePlay(e:MouseEvent){
     e.stopPropagation();
@@ -72,14 +81,15 @@ function Feed({camera,index,now,selected,onSelect,registerVideo,onSettled}:{came
   function fullscreen(e:MouseEvent){e.stopPropagation();void boxRef.current?.requestFullscreen?.();}
 
   return <div ref={boxRef} className={`obs-feed${selected?' selected':''}`} onClick={onSelect}>
-    {failed||!camera.streamUrl
-      ?<div className="obs-no-signal"><VideoOff size={34}/><span>Sin señal</span><small>{camera.streamUrl??'Video en vivo pendiente de conexión'}</small></div>
-      :<video ref={el=>{videoRef.current=el;registerVideo(camera.id,el)}} autoPlay muted playsInline preload="auto"
-          loop={!live} onLoadedData={()=>onSettled(camera.id)} onError={()=>{setFailed(true);onSettled(camera.id)}}/>}
+    {camera.streamUrl&&<video ref={videoEl} autoPlay muted playsInline preload="auto" loop={!live} onLoadedData={loaded} onPlaying={loaded} onError={fileError}/>}
+    {status!=='playing'&&<div className="obs-no-signal obs-feed-status" role="status"><VideoOff size={34}/>
+      <span>{status==='connecting'?'Conectando…':status==='retrying'?'Sin señal — reintentando':status==='denied'?'Sin acceso a esta cámara':'Sin señal'}</span>
+      {status==='no-signal'&&<small>Video en vivo pendiente de conexión</small>}
+    </div>}
     <div className="obs-feed-title"><Video size={16}/><div><b>{camera.name||`Cámara ${String(index+1).padStart(2,'0')}`}</b><span>{camera.location??camera.code}</span>{selected&&<em>Seleccionada para evidencia</em>}</div></div>
-    <div className={`obs-feed-badge ${live?'live':''}`}><i/>{live?'EN VIVO':'GRABACIÓN'}</div>
+    <div className={`obs-feed-badge ${live&&status==='playing'?'live':''}`}><i/>{live?'EN VIVO':'GRABACIÓN'}</div>
     <div className="obs-feed-time">{formatDateTime(now)}</div>
-    {!failed&&<div className="obs-feed-controls">
+    {status==='playing'&&<div className="obs-feed-controls">
       <button type="button" title="Usar para evidencia" aria-label="Usar para evidencia" onClick={e=>{e.stopPropagation();onSelect()}}><Crosshair size={15}/></button>
       <button type="button" title={paused?'Reproducir':'Pausar'} aria-label={paused?'Reproducir':'Pausar'} onClick={togglePlay}>{paused?<Play size={15}/>:<Pause size={15}/>}</button>
       <button type="button" title="Pantalla completa" aria-label="Pantalla completa" onClick={fullscreen}><Maximize2 size={15}/></button>

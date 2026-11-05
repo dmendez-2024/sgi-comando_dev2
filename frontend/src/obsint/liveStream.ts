@@ -2,6 +2,7 @@ import {streamSrc} from './obsint';
 
 /** Formato del video de una cámara según su URL: archivo (MP4), HLS (.m3u8) o WebRTC (WHEP, termina en /whep). */
 export type StreamKind='file'|'hls'|'webrtc';
+export type StreamStatus='connecting'|'playing'|'retrying'|'denied'|'failed';
 
 export function streamKind(url:string):StreamKind{
   const path=url.split(/[?#]/)[0].toLowerCase();
@@ -12,54 +13,122 @@ export function streamKind(url:string):StreamKind{
 
 /**
  * Conecta el video de la cámara al <video> y devuelve la función que lo desconecta. El video siempre termina en el mismo
- * <video>, así que los controles y la captura de evidencia no cambian. onError avisa que no se pudo reproducir.
+ * <video>, así que los controles y la captura de evidencia no cambian.
  */
-export function attachStream(video:HTMLVideoElement,url:string,onError:()=>void):()=>void{
+export function attachStream(video:HTMLVideoElement,url:string,onStatus:(status:StreamStatus)=>void):()=>void{
   const src=streamSrc(url);
   switch(streamKind(url)){
-    case 'hls':return attachHls(video,src,onError);
-    case 'webrtc':return attachWhep(video,src,onError);
-    default:return attachFile(video,src);
+    case 'hls':return attachHls(video,src,onStatus);
+    case 'webrtc':return attachWhep(video,src,onStatus);
+    default:return attachFile(video,src,onStatus);
   }
 }
 
-function attachFile(video:HTMLVideoElement,src:string){
+function attachFile(video:HTMLVideoElement,src:string,onStatus:(status:StreamStatus)=>void){
+  onStatus('connecting');
   video.src=src;
   return()=>{video.removeAttribute('src');video.load();};
 }
 
 /**
- * HLS con hls.js (se carga recién cuando hace falta): reintenta mientras el servidor prepara la lista de video. El HLS
- * nativo del navegador queda solo donde hls.js no funciona (Safari en iPhone), porque no reintenta.
+ * HLS con hls.js (se carga recién cuando hace falta). Los fallos de red y los congelamientos reinician la sesión;
+ * un 403 detiene los reintentos. Safari usa HLS nativo con la misma vigilancia de progreso.
  */
-function attachHls(video:HTMLVideoElement,src:string,onError:()=>void){
+function attachHls(video:HTMLVideoElement,src:string,onStatus:(status:StreamStatus)=>void){
+  const RETRY_MS=3000;
+  const START_TIMEOUT_MS=12000;
+  const STALL_TIMEOUT_MS=10000;
   let closed=false;
-  let hls:{destroy:()=>void}|null=null;
-  let native:(()=>void)|null=null;
-  void import('hls.js').then(({default:Hls})=>{
-    if(closed)return;
-    if(!Hls.isSupported()){
-      if(video.canPlayType('application/vnd.apple.mpegurl'))native=attachFile(video,src);else onError();
-      return;
+  let denied=false;
+  let HlsClass:typeof import('hls.js').default|null=null;
+  let hls:import('hls.js').default|null=null;
+  let native=false;
+  let retryTimer:ReturnType<typeof setTimeout>|null=null;
+  let stallTimer:ReturnType<typeof setTimeout>|null=null;
+  let attemptAt=Date.now();
+  let lastProgress=attemptAt;
+  let lastTime=video.currentTime;
+  let hasPlayed=false;
+
+  const clearStall=()=>{if(stallTimer){clearTimeout(stallTimer);stallTimer=null}};
+  const detach=()=>{
+    hls?.destroy();hls=null;
+    video.removeAttribute('src');video.load();
+  };
+  const deny=()=>{
+    if(closed||denied)return;
+    denied=true;clearStall();
+    if(retryTimer){clearTimeout(retryTimer);retryTimer=null}
+    detach();onStatus('denied');
+  };
+  const retry=(delay=RETRY_MS)=>{
+    if(closed||denied||retryTimer)return;
+    clearStall();onStatus('retrying');
+    retryTimer=setTimeout(()=>{retryTimer=null;start()},delay);
+    detach();
+  };
+  const checkNativeAccess=()=>{
+    void fetch(src,{method:'HEAD'}).then(res=>{if(res.status===403)deny();else retry()}).catch(()=>retry());
+  };
+  const onPlaying=()=>{if(closed||denied)return;hasPlayed=true;lastProgress=Date.now();lastTime=video.currentTime;clearStall();onStatus('playing')};
+  const onTimeUpdate=()=>{if(Math.abs(video.currentTime-lastTime)>.05){lastTime=video.currentTime;lastProgress=Date.now()}};
+  const onWaiting=()=>{if(closed||denied||!hasPlayed||video.paused||stallTimer)return;
+    onStatus('retrying');stallTimer=setTimeout(()=>{stallTimer=null;retry(0)},RETRY_MS)};
+  const onVideoError=()=>{if(closed||denied)return;if(native)checkNativeAccess();else retry()};
+  video.addEventListener('playing',onPlaying);
+  video.addEventListener('timeupdate',onTimeUpdate);
+  video.addEventListener('waiting',onWaiting);
+  video.addEventListener('stalled',onWaiting);
+  video.addEventListener('error',onVideoError);
+  const watchdog=setInterval(()=>{
+    if(closed||denied||retryTimer)return;
+    const now=Date.now();
+    if(!hasPlayed&&now-attemptAt>START_TIMEOUT_MS)retry();
+    else if(hasPlayed&&!video.paused&&now-lastProgress>STALL_TIMEOUT_MS)retry();
+  },2000);
+
+  function start(){
+    if(closed||denied)return;
+    attemptAt=Date.now();lastProgress=attemptAt;lastTime=video.currentTime;hasPlayed=false;
+    if(!HlsClass){void import('hls.js').then(({default:Hls})=>{if(closed||denied)return;HlsClass=Hls;start()}).catch(()=>retry());return}
+    if(!HlsClass.isSupported()){
+      if(!video.canPlayType('application/vnd.apple.mpegurl')){onStatus('failed');return}
+      native=true;video.src=src;video.load();void video.play().catch(()=>undefined);return;
     }
-    const player=new Hls({lowLatencyMode:true,manifestLoadingMaxRetry:5,manifestLoadingRetryDelay:1000,levelLoadingMaxRetry:5});
-    player.on(Hls.Events.ERROR,(_event,data)=>{if(data.fatal&&!closed)onError();});
-    player.loadSource(src);
-    player.attachMedia(video);
+    native=false;
+    const player=new HlsClass({lowLatencyMode:true,manifestLoadingMaxRetry:0,levelLoadingMaxRetry:0,fragLoadingMaxRetry:0});
     hls=player;
-  }).catch(()=>{if(!closed)onError();});
-  return()=>{closed=true;hls?.destroy();native?.();};
+    player.on(HlsClass.Events.ERROR,(_event,data)=>{
+      if(closed||denied)return;
+      if(data.response?.code===403||data.networkDetails?.status===403){deny();return}
+      if(data.type===HlsClass!.ErrorTypes.NETWORK_ERROR||data.fatal)retry();
+    });
+    player.loadSource(src);player.attachMedia(video);
+  }
+  onStatus('connecting');start();
+  return()=>{
+    closed=true;clearStall();clearInterval(watchdog);
+    if(retryTimer)clearTimeout(retryTimer);
+    video.removeEventListener('playing',onPlaying);
+    video.removeEventListener('timeupdate',onTimeUpdate);
+    video.removeEventListener('waiting',onWaiting);
+    video.removeEventListener('stalled',onWaiting);
+    video.removeEventListener('error',onVideoError);
+    detach();
+  };
 }
 
 /**
  * WebRTC con WHEP (estándar de MediaMTX y otros servidores): una oferta SDP por POST y la respuesta del servidor.
  * Requiere H.264 sin B-frames (lo normal en cámaras IP). Si en 10 s no llega imagen, se da por fallido.
  */
-function attachWhep(video:HTMLVideoElement,src:string,onError:()=>void){
+function attachWhep(video:HTMLVideoElement,src:string,onStatus:(status:StreamStatus)=>void){
   const pc=new RTCPeerConnection();
   let closed=false;
   let session:string|null=null;
-  const fail=()=>{if(!closed){closed=true;onError();}};
+  let forbidden=false;
+  onStatus('connecting');
+  const fail=()=>{if(!closed){closed=true;onStatus(forbidden?'denied':'failed');}};
   const watchdog=setTimeout(()=>{if(video.readyState<2)fail();},10000);
   pc.addTransceiver('video',{direction:'recvonly'});
   pc.ontrack=event=>{video.srcObject=event.streams[0]??new MediaStream([event.track]);};
@@ -68,7 +137,7 @@ function attachWhep(video:HTMLVideoElement,src:string,onError:()=>void){
     await pc.setLocalDescription(await pc.createOffer());
     await iceGathered(pc);
     const res=await fetch(src,{method:'POST',headers:{'Content-Type':'application/sdp'},body:pc.localDescription?.sdp});
-    if(!res.ok)throw new Error(`WHEP ${res.status}`);
+    if(!res.ok){forbidden=res.status===403;throw new Error(`WHEP ${res.status}`)}
     const location=res.headers.get('Location');
     if(location)session=new URL(location,res.url).toString();
     await pc.setRemoteDescription({type:'answer',sdp:await res.text()});
