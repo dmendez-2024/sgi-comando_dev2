@@ -1,5 +1,5 @@
 import {useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode} from 'react';
-import {AlertTriangle, ArrowLeft, BrushCleaning, CarFront, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ClipboardList, Factory, History, Package, Pencil, Plus, Power, Save, Search, ShieldCheck, Trash2, UserRound, UsersRound, X} from 'lucide-react';
+import {AlertTriangle, ArrowLeft, BrushCleaning, CarFront, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ClipboardList, Factory, History, Info, Package, Pencil, Plus, Power, Save, Search, ShieldCheck, Trash2, UserRound, UsersRound, X} from 'lucide-react';
 import {errorText, obsintConfigApi, type ObsintCameraOption, type ObsintCategory, type ObsintConsignaConfig, type ObsintConsignaSave, type ObsintConsignmentOption, type ObsintFrequency, type ObsintProtocol, type ObsintTaskSaved} from '../obsintApi';
 import {CATEGORIES, categoryLabel, DAYS, protocolStatusLabel} from '../obsint';
 import {ObsintMonitoringPanel} from './ObsintMonitoringPanel';
@@ -226,6 +226,7 @@ function ConsignaForm({pointId,initial,cameras,linkable,defaultCategory,onSaved,
   const [week,setWeek]=useState(()=>weekFromSlots(initial?initial.schedule:null));
   const [saving,setSaving]=useState(false);
   const [error,setError]=useState('');
+  const [scheduleHint,setScheduleHint]=useState('');
   const [categoryAbove,setCategoryAbove]=useState(false);
   const categoryMenu=useRef<HTMLDetailsElement>(null);
   useEffect(()=>{
@@ -242,7 +243,13 @@ function ConsignaForm({pointId,initial,cameras,linkable,defaultCategory,onSaved,
   const options=initial?.consignmentCode&&!linkable.some(o=>o.code===initial.consignmentCode)
     ?[{code:initial.consignmentCode,title:`${initial.title} (ya no está vigente con OBSINT)`,instruction:initial.instruction},...linkable]:linkable;
   const chooseConsignment=(code:string)=>{const option=options.find(o=>o.code===code);
-    setForm(prev=>option?{...prev,consignmentCode:option.code,title:option.title,instruction:option.instruction,description:prev.description||option.instruction}:{...prev,consignmentCode:null})};
+    setForm(prev=>option?{...prev,consignmentCode:option.code,title:option.title,instruction:option.instruction,description:prev.description||option.instruction}:{...prev,consignmentCode:null});
+    setScheduleHint('');
+    if(option&&!initial)void obsintConfigApi.scheduleSuggestion(pointId,option.code).then(suggestion=>{
+      setScheduleHint(suggestion.message);
+      if(suggestion.available)setWeek(weekFromSlots(suggestion.slots));
+    }).catch(()=>setScheduleHint('No se pudo consultar el horario comercial del dispositivo.'));
+  };
   const timeLimits=TIME_LIMITS.includes(form.timeLimitSeconds)?TIME_LIMITS:[...TIME_LIMITS,form.timeLimitSeconds].sort((a,b)=>a-b);
 
   async function submit(e:FormEvent){
@@ -285,6 +292,7 @@ function ConsignaForm({pointId,initial,cameras,linkable,defaultCategory,onSaved,
       <Field label="Tiempo máximo de ejecución" required><select value={form.timeLimitSeconds} onChange={e=>set('timeLimitSeconds',Number(e.target.value))}>{timeLimits.map(s=><option key={s} value={s}>{timeLimitLabel(s)}</option>)}</select></Field>
     </div>
     <ObsintScheduleEditor value={week} onChange={setWeek}/>
+    {scheduleHint&&<p className="obs-cfg-hint"><Info size={13}/>{scheduleHint}</p>}
 
     <fieldset className="obs-cfg-fieldset"><legend>Cámaras asociadas<RequiredMark/> <small>{form.cameraIds.length}/4</small></legend>
       <p className="obs-cfg-camera-hint">Seleccione las cámaras desde los componentes de seguridad configurados.</p>

@@ -1,6 +1,10 @@
 package com.cajamarca.sgi.comando.obsint;
 
+import com.cajamarca.sgi.comando.consignments.Consignment;
+import com.cajamarca.sgi.comando.consignments.ConsignmentPostScope;
 import com.cajamarca.sgi.comando.secelec.SecElecComponent;
+import com.cajamarca.sgi.comando.secelec.ElectronicMonitoringDevice;
+import com.cajamarca.sgi.comando.secelec.ElectronicMonitoringShift;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
 import jakarta.persistence.EntityManager;
@@ -50,6 +54,8 @@ public class ObsintConfigResource {
     public record SaveConsigna(String consignmentCode, String title, String description, String instruction, String category, String frequency, Integer timeLimitSeconds, Boolean active,
                                List<UUID> cameraIds, List<SlotView> schedule) {}
     public record Summary(String status, String meta, Integer activeVersion, int activeConsignas, boolean hasDraft, List<String> warnings) {}
+    /** Horario comercial sugerido para una tarea, únicamente cuando su consigna apunta a un solo dispositivo. */
+    public record ScheduleSuggestion(boolean available, String message, List<SlotView> slots) {}
     /** Resultado de guardar una tarea: la nueva versión activa y el código de la tarea guardada. */
     public record TaskSaved(ProtocolView protocol, String code) {}
 
@@ -72,6 +78,39 @@ public class ObsintConfigResource {
     public List<ConsignmentOption> consignments(@PathParam("pointId") UUID pointId) {
         platform.requirePoint(pointId);
         return platform.obsintConsignments(pointId).values().stream().map(c -> new ConsignmentOption(c.code(), c.title(), c.instruction())).toList();
+    }
+
+    @GET @Path("/points/{pointId}/schedule-suggestion") @Transactional
+    public ScheduleSuggestion scheduleSuggestion(@PathParam("pointId") UUID pointId, @QueryParam("consignmentCode") String consignmentCode) {
+        platform.requirePoint(pointId);
+        if (consignmentCode == null || consignmentCode.isBlank()) return new ScheduleSuggestion(false, "Seleccione una consigna para consultar su horario comercial.", List.of());
+        Consignment consignment = Consignment.<Consignment>find(
+            "instanceCountryId=?1 and pointId=?2 and code=?3 and obsint=true and status='VIGENTE'",
+            platform.instanceCountryId(), pointId, consignmentCode.trim()).firstResultOptional().orElse(null);
+        if (consignment == null || !platform.obsintConsignments(pointId).containsKey(consignmentCode.trim())) {
+            return new ScheduleSuggestion(false, "La consigna no está vigente con alcance OBSINT.", List.of());
+        }
+        List<UUID> deviceIds = ConsignmentPostScope.<ConsignmentPostScope>list(
+            "instanceCountryId=?1 and consignmentId=?2 and electronicDeviceId is not null",
+            platform.instanceCountryId(), consignment.id).stream().map(scope -> scope.electronicDeviceId).distinct().toList();
+        if (deviceIds.size() != 1) {
+            return new ScheduleSuggestion(false, deviceIds.isEmpty()
+                ? "La consigna no está asociada a un dispositivo electrónico; defina el horario manualmente."
+                : "La consigna tiene varios dispositivos; defina el horario manualmente.", List.of());
+        }
+        ElectronicMonitoringDevice device = ElectronicMonitoringDevice.<ElectronicMonitoringDevice>find(
+            "id=?1 and instanceCountryId=?2 and pointId=?3", deviceIds.getFirst(), platform.instanceCountryId(), pointId).firstResultOptional().orElse(null);
+        if (device == null || !"ACTIVE".equalsIgnoreCase(device.commercialStatus)) return new ScheduleSuggestion(false, "El dispositivo asociado no está activo.", List.of());
+        List<ElectronicMonitoringShift> shifts = ElectronicMonitoringShift.list(
+            "instanceCountryId=?1 and deviceId=?2 and active=true order by shiftCode", platform.instanceCountryId(), device.id);
+        if (shifts.size() != 1) return new ScheduleSuggestion(false, "El dispositivo tiene varios horarios activos; seleccione el horario operativo manualmente.", List.of());
+        ElectronicMonitoringShift shift = shifts.getFirst();
+        if (shift.dayMask == null || shift.dayMask < 1 || shift.dayMask > 127) return new ScheduleSuggestion(false, "El horario comercial tiene días inválidos.", List.of());
+        if (!shift.endTime.isAfter(shift.startTime)) return new ScheduleSuggestion(false, "El horario comercial cruza medianoche; regístrelo manualmente en dos días.", List.of());
+        List<SlotView> slots = new ArrayList<>();
+        for (int day = 1; day <= 7; day++) if ((shift.dayMask & (1 << (day - 1))) != 0)
+            slots.add(new SlotView(day, shift.startTime.toString(), shift.endTime.toString()));
+        return new ScheduleSuggestion(true, "Horario comercial de " + device.code + " · " + shift.shiftName, slots);
     }
 
     /** Borrador para editar: el existente, una nueva versión del último publicado o la versión 1. */

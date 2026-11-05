@@ -9,6 +9,7 @@ import com.cajamarca.sgi.comando.companies.CompanyRegion;
 import com.cajamarca.sgi.comando.operations.PointEntity;
 import com.cajamarca.sgi.comando.operations.PostEntity;
 import com.cajamarca.sgi.comando.operations.ServiceEntity;
+import com.cajamarca.sgi.comando.secelec.ElectronicMonitoringDevice;
 import com.cajamarca.sgi.comando.territory.OperationalScopeService;
 import com.cajamarca.sgi.comando.territory.CountrySubdivision;
 import com.cajamarca.sgi.comando.territory.UserOperationalScope;
@@ -49,7 +50,7 @@ public class ServiceOverviewResource {
         UUID serviceId, UUID pointId, UUID postId, UUID companyId,
         String companyName, String companyLogoDataUrl,
         String serviceCode, String serviceName, UUID clientId, String clientName,
-        String pointCode, String pointName, String postCode, String postName,
+        String pointCode, String pointName, String postCode, String postName, String securityDomain,
         String tier, Double idAverage, Double icAverage,
         int pendingNews, String state, String assignmentStatus, boolean canAssign, boolean canReturn, boolean returnedToCoordination,
         boolean atsLoaded
@@ -106,6 +107,7 @@ public class ServiceOverviewResource {
             .stream().collect(Collectors.toMap(x -> x.id, Function.identity()));
         Map<UUID,PointEntity> pointMap = points.stream().collect(Collectors.toMap(x -> x.id, Function.identity()));
         List<PostEntity> posts = PostEntity.list("instanceCountryId=?1 and pointId in ?2 order by code", tenant.instanceCountryId(), pointIds);
+        List<ElectronicMonitoringDevice> electronicDevices = ElectronicMonitoringDevice.list("instanceCountryId=?1 and pointId in ?2 order by code", tenant.instanceCountryId(), pointIds);
         Set<UUID> postIds = posts.stream().map(p -> p.id).collect(Collectors.toSet());
         Set<UUID> atsLoadedPointIds = AtsPointPackage.<AtsPointPackage>list(
                 "instanceCountryId=?1 and pointId in ?2 and current=true", tenant.instanceCountryId(), pointIds)
@@ -153,7 +155,7 @@ public class ServiceOverviewResource {
                 pendingAssignment ? (kaibil == null ? "Kaibil" : kaibil.name) : (company == null ? "—" : company.name),
                 pendingAssignment ? (kaibil == null ? null : kaibil.logoDataUrl) : (company == null ? null : company.logoDataUrl),
                 service.code, service.name, service.clientId, point.clientName,
-                point.code, point.name, post.code, post.name,
+                point.code, point.name, post.code, post.name, "PHYSICAL",
                 post.tier,
                 metricValue(idMetrics.get(post.id)), metricValue(icMetrics.get(post.id)),
                 pendingNews, state, pendingAssignment ? "PENDING" : "ASSIGNED",
@@ -161,6 +163,26 @@ public class ServiceOverviewResource {
                 !pendingAssignment && canAssignServices() && canManagePoint(point),
                 pendingAssignment && returnedPointIds.contains(point.id),
                 atsLoadedPointIds.contains(point.id)
+            ));
+        }
+        for (ElectronicMonitoringDevice device : electronicDevices) {
+            PointEntity point = pointMap.get(device.pointId);
+            if (point == null) continue;
+            ServiceEntity service = services.get(point.serviceId);
+            if (service == null) continue;
+            Company company = point.companyId == null ? null : companies.get(point.companyId);
+            boolean pendingAssignment = "PENDING".equalsIgnoreCase(point.operationalAssignmentStatus) || point.companyId == null;
+            rows.add(new OverviewRow(
+                service.id, point.id, device.id, point.companyId,
+                pendingAssignment ? (kaibil == null ? "Kaibil" : kaibil.name) : (company == null ? "—" : company.name),
+                pendingAssignment ? (kaibil == null ? null : kaibil.logoDataUrl) : (company == null ? null : company.logoDataUrl),
+                service.code, service.name, service.clientId, point.clientName,
+                point.code, point.name, device.code, device.name, "ELECTRONIC",
+                "—", null, null, 0, electronicState(service, point, device),
+                pendingAssignment ? "PENDING" : "ASSIGNED",
+                pendingAssignment && canAssignServices() && "ACTIVE".equalsIgnoreCase(service.commercialStatus) && "ACTIVE".equalsIgnoreCase(point.status),
+                !pendingAssignment && canAssignServices() && canManagePoint(point),
+                pendingAssignment && returnedPointIds.contains(point.id), atsLoadedPointIds.contains(point.id)
             ));
         }
         rows.sort(Comparator.comparing(OverviewRow::companyName).thenComparing(OverviewRow::clientName).thenComparing(OverviewRow::pointName).thenComparing(OverviewRow::postCode));
@@ -179,6 +201,12 @@ public class ServiceOverviewResource {
         if ("PENDING".equalsIgnoreCase(point.operationalAssignmentStatus) || point.companyId == null) return "PENDING_ASSIGNMENT";
         if (!"CONFIGURED".equalsIgnoreCase(service.configStatus) || !"CONFIGURED".equalsIgnoreCase(post.configStatus)) return "TO_CONFIGURE";
         return "ACTIVE";
+    }
+
+    private String electronicState(ServiceEntity service, PointEntity point, ElectronicMonitoringDevice device) {
+        if (!"ACTIVE".equalsIgnoreCase(service.commercialStatus) || !"ACTIVE".equalsIgnoreCase(point.status) || !"ACTIVE".equalsIgnoreCase(device.commercialStatus)) return "INACTIVE";
+        if ("PENDING".equalsIgnoreCase(point.operationalAssignmentStatus) || point.companyId == null) return "PENDING_ASSIGNMENT";
+        return "CONFIGURED".equalsIgnoreCase(device.configStatus) ? "ACTIVE" : "TO_CONFIGURE";
     }
 
 
