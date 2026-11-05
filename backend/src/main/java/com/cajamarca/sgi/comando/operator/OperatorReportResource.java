@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.quarkus.security.Authenticated;
+import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.inject.Inject;
 import jakarta.persistence.EntityManager;
 import jakarta.transaction.Transactional;
@@ -33,6 +34,10 @@ public class OperatorReportResource {
     @Inject TenantContext tenant;
     @Inject EntityManager em;
     @Inject ObjectMapper mapper;
+    @Inject SecurityIdentity identity;
+    @Inject OperationalReportWorkflowResource workflow;
+
+    public record ValidationRequest(UUID assignmentId,String comment) {}
 
     @org.jboss.resteasy.reactive.server.ServerExceptionMapper
     public Response mapError(WebApplicationException e) { return OperatorErrors.withMessage(e); }
@@ -74,7 +79,7 @@ public class OperatorReportResource {
         em.createNativeQuery("""
           insert into operator_operational_report
           (id,instance_country_id,assignment_id,employee_id,username,point_id,post_id,report_type,category,subcategory,title,description,severity,status,occurred_at,source,created_at,updated_at,payload_hash,routing_target,routing_status,photo_count)
-          values (:id,:tenant,:assignment,:employee,:username,:point,:post,:type,:category,:subcategory,:title,:description,:severity,'REPORTED',:occurred,'SGI_OPERADOR_LOCAL',:now,:now,:hash,:routingTarget,:routingStatus,:photoCount)
+          values (:id,:tenant,:assignment,:employee,:username,:point,:post,:type,:category,:subcategory,:title,:description,:severity,'PENDING',:occurred,'SGI_OPERADOR_LOCAL',:now,:now,:hash,:routingTarget,:routingStatus,:photoCount)
           """).setParameter("id",reportId).setParameter("tenant",tenant.instanceCountryId())
           .setParameter("assignment",assignmentId).setParameter("employee",employee).setParameter("username",ctx.username())
           .setParameter("point",assignment.point().id).setParameter("post",assignment.post().id).setParameter("type",type)
@@ -92,6 +97,77 @@ public class OperatorReportResource {
         String selected=normalizeType(type);
         return rows(employee,selected);
     }
+
+    /** Novedades pendientes que pueden ser validadas desde la asignación actual. */
+    @GET
+    @Path("/validation-candidates")
+    public ArrayNode validationCandidates(@QueryParam("assignmentId") UUID assignmentId) {
+        if(assignmentId==null)throw new BadRequestException("assignmentId es obligatorio");
+        UUID employee=ctx.employee(); OperatorContext.Assignment assignment=activeAssignment(assignmentId,employee);
+        boolean supervisor=identity.hasRole("SUPERVISOR_SEGURIDAD");
+        String access=supervisor
+          ?" and exists (select 1 from point actor_point where actor_point.id=:actorPoint and actor_point.instance_country_id=r.instance_country_id and actor_point.company_id=p.company_id)"
+          :" and r.point_id=:actorPoint and r.employee_id<>:employee";
+        String sql=SELECT+" and r.status='PENDING' and r.assignment_id<>:assignment"+access+" order by r.occurred_at desc limit 100";
+        var query=em.createNativeQuery(sql).setParameter("tenant",tenant.instanceCountryId()).setParameter("actorPoint",assignment.point().id)
+          .setParameter("assignment",assignmentId);
+        if(!supervisor)query.setParameter("employee",employee);
+        @SuppressWarnings("unchecked") List<Object[]> data=query.getResultList();
+        ArrayNode out=mapper.createArrayNode();data.forEach(row->out.add(response(row,false)));return out;
+    }
+
+    @POST
+    @Path("/{id}/confirm")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Transactional
+    public ObjectNode confirm(@PathParam("id") UUID id,ValidationRequest body) {
+        return validate(id,body,true);
+    }
+
+    @POST
+    @Path("/{id}/discard")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Transactional
+    public ObjectNode discard(@PathParam("id") UUID id,ValidationRequest body) {
+        if(body==null||body.comment()==null||body.comment().isBlank())throw new BadRequestException("Indique el motivo para descartar la novedad.");
+        return validate(id,body,false);
+    }
+
+    private ObjectNode validate(UUID id,ValidationRequest body,boolean confirm) {
+        if(body==null||body.assignmentId()==null)throw new BadRequestException("assignmentId es obligatorio");
+        UUID employee=ctx.employee();OperatorContext.Assignment assignment=activeAssignment(body.assignmentId(),employee);
+        OperationalReportWorkflowResource.Report report=workflow.locked(id);
+        if(!"PENDING".equals(report.status()))throw new ClientErrorException("La novedad ya fue procesada.",409);
+        Object[] origin=origin(id);boolean supervisor=identity.hasRole("SUPERVISOR_SEGURIDAD");
+        UUID reporterEmployee=uuidValue(origin[0]);UUID reportPoint=uuidValue(origin[1]);UUID reportCompany=uuidValue(origin[2]);
+        if(supervisor){if(!Objects.equals(reportCompany,assignment.point().companyId))throw new ForbiddenException("La novedad pertenece a otra Compañía.");}
+        else {
+            if(!reportPoint.equals(assignment.point().id))throw new ForbiddenException("La novedad pertenece a otro Punto.");
+            if(reporterEmployee.equals(employee))throw new ForbiddenException("El agente que registró la novedad no puede validarla en este turno.");
+        }
+        String comment=body.comment()==null||body.comment().isBlank()?null:body.comment().trim().substring(0,Math.min(1000,body.comment().trim().length()));
+        String resulting=confirm?"CONFIRMED":"DISCARDED";
+        workflow.transition(report,confirm?"CONFIRM":"DISCARD",resulting,comment,employee,body.assignmentId(),assignment.shift().id);
+        return mapper.createObjectNode().put("reportId",id.toString()).put("status",resulting)
+          .put("message",confirm?"Novedad confirmada y enviada para aprobación.":"Novedad descartada. Se conserva en el historial.");
+    }
+
+    private OperatorContext.Assignment activeAssignment(UUID assignmentId,UUID employee) {
+        OperatorContext.Assignment assignment=ctx.assignment(assignmentId,employee);Instant now=Instant.now();
+        if(now.isBefore(assignment.shift().startsAt.minusSeconds(3540))||now.isAfter(assignment.shift().endsAt))
+            throw new ForbiddenException("La asignación no se encuentra vigente para validar novedades.");
+        return assignment;
+    }
+
+    private Object[] origin(UUID id) {
+        @SuppressWarnings("unchecked") List<Object[]> rows=em.createNativeQuery("""
+            select r.employee_id,r.point_id,p.company_id from operator_operational_report r
+            join point p on p.id=r.point_id and p.instance_country_id=r.instance_country_id
+            where r.id=:id and r.instance_country_id=:tenant
+            """).setParameter("id",id).setParameter("tenant",tenant.instanceCountryId()).getResultList();
+        if(rows.isEmpty())throw new NotFoundException("Novedad no encontrada.");return rows.get(0);
+    }
+    private static UUID uuidValue(Object value){return value instanceof UUID x?x:UUID.fromString(value.toString());}
 
     ArrayNode rows(UUID employee,String type) { return rows(employee,type,null); }
 

@@ -11,7 +11,7 @@ import SearchableSelect from '../components/SearchableSelect';
 import FilterAccordion from '../components/FilterAccordion';
 
 type NoveltyType='FINDING'|'VULNERABILITY'|'INCIDENT';
-type NoveltyStatus='PENDING'|'APPROVED'|'DISCARDED';
+type NoveltyStatus='PENDING'|'CONFIRMED'|'APPROVED'|'DISCARDED';
 type ReporterRole='AGENT'|'SUPERVISOR';
 
 type AuditEvent={
@@ -175,7 +175,7 @@ const EMPTY_FILTERS:Filters={type:'ALL',query:'',city:'',company:'ALL',client:''
 type OperatorReport={reportId:string;type:NoveltyType;category:string;subcategory?:string;title:string;description:string;severity:'LOW'|'MEDIUM'|'HIGH'|'CRITICAL';status:string;occurredAt:string;createdAt:string;username:string;pointName:string;postName:string;clientName?:string;city?:string;companyCode?:string;companyName?:string;latitude?:number;longitude?:number;accuracyM?:number;photoCount?:number};
 function fromOperatorReport(row:OperatorReport):Novelty{return {
   id:row.reportId,code:`OPR-${row.reportId.slice(0,8).toUpperCase()}`,type:row.type,subcategory:row.subcategory||row.category,
-  status:row.status==='APPROVED'?'APPROVED':row.status==='DISCARDED'?'DISCARDED':'PENDING',critical:row.severity==='CRITICAL',
+  status:row.status==='APPROVED'?'APPROVED':row.status==='DISCARDED'?'DISCARDED':row.status==='CONFIRMED'?'CONFIRMED':'PENDING',critical:row.severity==='CRITICAL',
   company:row.companyName||'—',companyCode:row.companyCode||'',client:row.clientName||'—',city:row.city||'—',point:row.pointName||'—',post:row.postName||'—',zone:'',region:'',
   reportedBy:row.username||'Operador',reporterRole:'AGENT',createdAt:row.occurredAt||row.createdAt,description:row.description,
   latitude:row.latitude??null,longitude:row.longitude??null,accuracyM:row.accuracyM??null,photoCount:row.photoCount||0,reviewComment:'',reviewedBy:null,reviewedAt:null,clientVisible:false,sourceSystem:'SGI_OPR',
@@ -184,14 +184,15 @@ function fromOperatorReport(row:OperatorReport):Novelty{return {
 
 const typeLabel=(type:NoveltyType)=>type==='FINDING'?'Hallazgo':type==='VULNERABILITY'?'Vulnerabilidad':'Incidente';
 const typeClass=(type:NoveltyType)=>type==='FINDING'?'finding':type==='VULNERABILITY'?'vulnerability':'incident';
-const statusLabel=(status:NoveltyStatus)=>status==='PENDING'?'Pendiente':status==='APPROVED'?'Aprobada':'Descartada';
+const statusLabel=(status:NoveltyStatus)=>status==='PENDING'?'Pendiente':status==='CONFIRMED'?'Confirmada':status==='APPROVED'?'Aprobada':'Descartada';
 const roleLabel=(role:ReporterRole)=>role==='SUPERVISOR'?'Supervisor':'Agente de Seguridad';
-const statusClass=(status:NoveltyStatus)=>status==='PENDING'?'pending':status==='APPROVED'?'approved':'discarded';
+const statusClass=(status:NoveltyStatus)=>status==='PENDING'?'pending':status==='CONFIRMED'?'confirmed':status==='APPROVED'?'approved':'discarded';
 const iconForType=(type:NoveltyType)=>type==='FINDING'?<Eye size={16}/>:type==='VULNERABILITY'?<ShieldCheck size={16}/>:<AlertTriangle size={16}/>;
 const dateOnly=(value:string)=>value.slice(0,10);
 const formatDateTime=(value:string)=>new Intl.DateTimeFormat('es-EC',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}).format(new Date(value));
 const unique=(values:string[])=>Array.from(new Set(values)).sort((a,b)=>a.localeCompare(b,'es'));
-const canReview=(user:UatUser)=>['presidente','ggeneral','don','dnacional','dzonal','jregional','coord','asistente'].includes(user);
+const canReview=(user:UatUser)=>user==='coord'||user==='asistente';
+function apiMessage(error:unknown,fallback:string){if(error instanceof Error){const body=(error as Error&{body?:string}).body;if(body){try{const parsed=JSON.parse(body);return parsed.message||parsed.error||fallback}catch{return body}}return error.message||fallback}return fallback}
 function withinScope(row:Novelty,scope:Scope){if(scope.companies&&!scope.companies.includes(row.companyCode))return false;if(scope.zone&&row.zone!==scope.zone)return false;if(scope.region&&row.region!==scope.region)return false;return true}
 function validateRange(from:string,to:string){if(!from||!to)return 'Debe elegir siempre una fecha inicio y una fecha fin.';if(to<from)return 'La fecha fin no puede ser menor que la fecha inicio.';const start=new Date(`${from}T00:00:00`);const max=new Date(start);max.setFullYear(max.getFullYear()+1);const end=new Date(`${to}T23:59:59`);return end>max?'El período consultado no puede ser mayor a 1 año.':''}
 function subcategories(type:NoveltyType){return type==='FINDING'?FINDING_SUBCATEGORIES:type==='VULNERABILITY'?VULNERABILITY_SUBCATEGORIES:INCIDENT_SUBCATEGORIES}
@@ -208,6 +209,8 @@ export default function NovedadesExecution(){
   const [draft,setDraft]=useState<EditableDraft|null>(null);
   const [reviewComment,setReviewComment]=useState('');
   const [modalError,setModalError]=useState('');
+  const [decisionBusy,setDecisionBusy]=useState(false);
+  const [actionNotice,setActionNotice]=useState('');
 
   const loadRecords=useCallback(async()=>{
     try{const values=await api.operationalReports();setRecords((values as OperatorReport[]).map(fromOperatorReport));setLoadError('')}
@@ -258,7 +261,13 @@ export default function NovedadesExecution(){
   function setPoint(value:string){setFilters(prev=>({...prev,point:value,post:''}))}
   function setCompany(value:string){setFilters(prev=>({...prev,company:value,reporter:''}))}
   function clearFilters(){setFilters(EMPTY_FILTERS)}
-  function openModal(row:Novelty){setSelectedId(row.id);setEditing(false);setDraft(draftFrom(row));setReviewComment(row.reviewComment);setModalError('')}
+  function openModal(row:Novelty){
+    setSelectedId(row.id);setEditing(false);setDraft(draftFrom(row));setReviewComment('');setModalError('');
+    void api.operationalReportHistory(row.id).then((history:any[])=>setRecords(current=>current.map(item=>item.id!==row.id?item:{...item,audit:[item.audit[0],...history.map(event=>({
+      id:String(event.id),at:String(event.createdAt),title:event.action==='CONFIRM'?'Novedad confirmada':event.action==='APPROVE'?'Novedad aprobada':'Novedad descartada',
+      detail:event.comment||statusLabel(event.resultingStatus as NoveltyStatus),actor:`${event.actor} · ${roleLabelFromCode(event.actorRole)}`
+    }))]}))).catch(()=>setModalError('No fue posible consultar la trazabilidad completa de la novedad.'))
+  }
   function closeModal(){setSelectedId(null);setEditing(false);setDraft(null);setReviewComment('');setModalError('')}
   function updateDraft<K extends keyof EditableDraft>(key:K,value:EditableDraft[K]){setDraft(prev=>prev?{...prev,[key]:value}:prev)}
 
@@ -270,19 +279,19 @@ export default function NovedadesExecution(){
     setEditing(false);setModalError('');
   }
 
-  function approve(){
-    if(!selected||!canReview(user))return;
-    const now=new Date().toISOString();
-    setRecords(prev=>prev.map(row=>row.id!==selected.id?row:{...row,status:'APPROVED',reviewComment,reviewedBy:userLabel(user),reviewedAt:now,clientVisible:true,audit:[...row.audit,{id:`approve-${Date.now()}`,at:now,title:'Aprobada en SGI: Comando',detail:'La novedad quedó habilitada para visualización en SGI: Cliente.',actor:userLabel(user)}]}));
-    setModalError('');setEditing(false);
+  async function approve(){
+    if(!selected||!canReview(user)||selected.status!=='CONFIRMED')return;
+    setDecisionBusy(true);setModalError('');
+    try{const result=await api.approveOperationalReport(selected.id,reviewComment);setActionNotice(result.message);closeModal();await loadRecords()}
+    catch(error){setModalError(apiMessage(error,'No fue posible aprobar la novedad.'))}finally{setDecisionBusy(false)}
   }
 
-  function discard(){
-    if(!selected||!canReview(user))return;
+  async function discard(){
+    if(!selected||!canReview(user)||!['PENDING','CONFIRMED'].includes(selected.status))return;
     if(!reviewComment.trim()){setModalError('Para descartar una novedad debe ingresar un comentario de revisión.');return}
-    const now=new Date().toISOString();
-    setRecords(prev=>prev.map(row=>row.id!==selected.id?row:{...row,status:'DISCARDED',reviewComment,reviewedBy:userLabel(user),reviewedAt:now,clientVisible:false,audit:[...row.audit,{id:`discard-${Date.now()}`,at:now,title:'Descartada en SGI: Comando',detail:reviewComment,actor:userLabel(user)}]}));
-    setModalError('');setEditing(false);
+    setDecisionBusy(true);setModalError('');
+    try{const result=await api.discardOperationalReport(selected.id,reviewComment);setActionNotice(result.message);closeModal();await loadRecords()}
+    catch(error){setModalError(apiMessage(error,'No fue posible descartar la novedad.'))}finally{setDecisionBusy(false)}
   }
 
   function exportCsv(){const header=['Tipo','Código','Subcategoría','Descripción','Cliente','Compañía','Ciudad','Punto','Puesto','Reportado por','Fecha / Hora','Estado'];const body=rows.map(r=>[typeLabel(r.type),r.code,r.subcategory,r.description,r.client,r.company,r.city,r.point,r.post,r.reportedBy,formatDateTime(r.createdAt),statusLabel(r.status)]);const csv=[header,...body].map(line=>line.map(v=>`"${String(v).replaceAll('"','""')}"`).join(',')).join('\n');const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='novedades.csv';a.click();URL.revokeObjectURL(url)}
@@ -295,7 +304,7 @@ export default function NovedadesExecution(){
       <Metric icon={<Eye size={21}/>} label="Hallazgos pendientes" detail="en revisión" value={metrics.findings} tone="teal"/>
       <Metric icon={<ShieldCheck size={21}/>} label="Vulnerabilidades pendientes" detail="en revisión" value={metrics.vulnerabilities} tone="amber"/>
       <Metric icon={<AlertTriangle size={21}/>} label="Incidentes pendientes" detail="en revisión" value={metrics.incidents} tone="red"/>
-      <Metric icon={<CheckCircle2 size={21}/>} label="Aprobadas hoy" detail="aprobaciones" value={metrics.approvedToday} tone="green"/>
+      <Metric icon={<CheckCircle2 size={21}/>} label="Confirmadas" detail="pendientes de aprobación" value={scoped.filter(x=>x.status==='CONFIRMED').length} tone="green"/>
       <Metric icon={<CircleAlert size={21}/>} label="Críticas" detail="pendientes" value={metrics.critical} tone="red"/>
     </div>
 
@@ -316,7 +325,7 @@ export default function NovedadesExecution(){
           <Field label="Punto"><SearchableSelect ariaLabel="Punto" value={filters.point} onChange={setPoint} disabled={!filters.client} searchPlaceholder="Buscar punto…" options={[{value:'',label:filters.client?'Todos':'Seleccione cliente primero'},...points.map(x=>({value:x,label:x}))]}/></Field>
           <Field label="Puesto"><SearchableSelect ariaLabel="Puesto" value={filters.post} onChange={value=>set('post',value)} disabled={!filters.point} searchPlaceholder="Buscar puesto…" options={[{value:'',label:filters.point?'Todos':'Seleccione punto primero'},...posts.map(x=>({value:x,label:x}))]}/></Field>
           <Field label="Tipo de novedad"><select value={filters.type} onChange={e=>set('type',e.target.value as Filters['type'])}><option value="ALL">Todos</option><option value="FINDING">Hallazgos</option><option value="VULNERABILITY">Vulnerabilidades</option><option value="INCIDENT">Incidentes</option></select></Field>
-          <Field label="Estado"><select value={filters.status} onChange={e=>set('status',e.target.value as Filters['status'])}><option value="ALL">Todos</option><option value="PENDING">Pendiente</option><option value="APPROVED">Aprobada</option><option value="DISCARDED">Descartada</option></select></Field>
+          <Field label="Estado"><select value={filters.status} onChange={e=>set('status',e.target.value as Filters['status'])}><option value="ALL">Todos</option><option value="PENDING">Pendiente</option><option value="CONFIRMED">Confirmada</option><option value="APPROVED">Aprobada</option><option value="DISCARDED">Descartada</option></select></Field>
           <Field label="Reportado por"><SearchableSelect ariaLabel="Reportado por" value={filters.reporter} onChange={value=>set('reporter',value)} disabled={filters.company==='ALL'} searchPlaceholder="Buscar persona…" options={[{value:'',label:filters.company!=='ALL'?'Todos':'Seleccione compañía primero'},...reporters.map(x=>({value:x,label:x}))]}/></Field>
           <Field label="Fecha inicio"><input type="date" value={filters.dateFrom} onChange={e=>set('dateFrom',e.target.value)}/></Field>
           <Field label="Fecha fin"><input type="date" value={filters.dateTo} onChange={e=>set('dateTo',e.target.value)}/></Field>
@@ -324,6 +333,7 @@ export default function NovedadesExecution(){
         <div className="nov-rule-note"><CircleAlert size={15}/><span>Para filtrar por Punto primero seleccione un Cliente; para Puesto seleccione un Punto; para Reportado por seleccione una Compañía. Las fechas son obligatorias y el rango máximo es 1 año.</span></div>
         {dateError&&<div className="nov-validation"><AlertTriangle size={16}/>{dateError}</div>}
         {loadError&&<div className="nov-validation"><AlertTriangle size={16}/>{loadError}</div>}
+        {actionNotice&&<div className="cns-action-notice"><CheckCircle2 size={16}/><span>{actionNotice}</span><button onClick={()=>setActionNotice('')} aria-label="Cerrar mensaje"><X size={14}/></button></div>}
         <div className="nov-actions"><button className="primary" disabled={!!dateError} onClick={()=>void loadRecords()}><Search size={16}/>Buscar</button><button onClick={clearFilters}><FilterX size={16}/>Limpiar filtros</button><button className="export" onClick={exportCsv} disabled={!!dateError||!rows.length}><Upload size={16}/>Exportar</button></div>
       </FilterAccordion>
 
@@ -337,8 +347,10 @@ export default function NovedadesExecution(){
       </div>
     </section>
 
-    {selected&&draft&&<OperationalDrawer title={`${selected.code} · ${typeLabel(selected.type)}`} subtitle="Registro recibido desde SGI Operador · Solo lectura" onClose={closeModal} footer={<>
-      <button className="close" onClick={closeModal}><X size={15}/>Cerrar</button>
+    {selected&&draft&&<OperationalDrawer title={`${selected.code} · ${typeLabel(selected.type)}`} subtitle="Registro recibido desde SGI Operador" onClose={closeModal} footer={<>
+      {canReview(user)&&['PENDING','CONFIRMED'].includes(selected.status)&&<button className="discard" disabled={decisionBusy} onClick={()=>void discard()}><Trash2 size={15}/>Descartar</button>}
+      {canReview(user)&&selected.status==='CONFIRMED'&&<button className="approve" disabled={decisionBusy} onClick={()=>void approve()}><CheckCircle2 size={15}/>Aprobar</button>}
+      <button className="close" disabled={decisionBusy} onClick={closeModal}><X size={15}/>Cerrar</button>
     </>}>
           <div className="nov-edit-grid three">
             <ModalField label="Tipo de novedad"><select value={draft.type} disabled={!editing} onChange={e=>{const next=e.target.value as NoveltyType;updateDraft('type',next);updateDraft('subcategory',subcategories(next)[0])}}>{(['FINDING','VULNERABILITY','INCIDENT'] as NoveltyType[]).map(x=><option key={x} value={x}>{typeLabel(x)}</option>)}</select></ModalField>
@@ -373,7 +385,10 @@ export default function NovedadesExecution(){
 
           <div className="nov-audit"><h4>Historial / Trazabilidad</h4>{selected.audit.map(event=><article key={event.id}><i/><div><strong>{event.title}</strong><span>{formatDateTime(event.at)} · {event.actor}</span><small>{event.detail}</small></div></article>)}</div>
 
-          <ModalField label="Comentario de revisión"><div className={`nov-readonly-copy${reviewComment?'':' empty'}`}>{reviewComment||'Sin revisión registrada.'}</div></ModalField>
+          {canReview(user)&&['PENDING','CONFIRMED'].includes(selected.status)
+            ?<ModalField label="Comentario de revisión"><textarea value={reviewComment} maxLength={1000} onChange={event=>setReviewComment(event.target.value)} placeholder={selected.status==='CONFIRMED'?'Comentario opcional para aprobar; obligatorio para descartar.':'Motivo obligatorio si decide descartar.'}/></ModalField>
+            :<ModalField label="Comentario de revisión"><div className={`nov-readonly-copy${selected.reviewComment?'':' empty'}`}>{selected.reviewComment||'Sin revisión registrada.'}</div></ModalField>}
+          {selected.status==='CONFIRMED'&&<div className="nov-publication confirmed"><CheckCircle2 size={16}/><span>Confirmada: pendiente de aprobación por Asistente de Operaciones o Coordinador de Compañía.</span></div>}
           {selected.status==='APPROVED'&&<div className="nov-publication approved"><CheckCircle2 size={16}/><span>Aprobada: esta novedad está habilitada para SGI: Cliente.</span></div>}
           {selected.status==='DISCARDED'&&<div className="nov-publication discarded"><Trash2 size={16}/><span>Descartada: se conserva en histórico y no se publica a SGI: Cliente.</span></div>}
           {modalError&&<div className="nov-modal-error"><AlertTriangle size={15}/>{modalError}</div>}
@@ -382,6 +397,7 @@ export default function NovedadesExecution(){
 }
 
 function userLabel(user:UatUser){return ({presidente:'Presidencia UAT',ggeneral:'Gerente General Ecuador UAT',dlatam:'Director Operaciones LATAM UAT',don:'Director Nacional de Operaciones UAT',dnacional:'Director Nacional de Operaciones UAT',dzonal:'Director Zonal de Operaciones UAT',jregional:'Jefe Regional de Operaciones UAT',coord:'Coordinador de Compañía UAT',asistente:'Asistente de Operaciones UAT',supervisor:'Supervisor UAT',agente:'Agente UAT',cliente:'Cliente UAT',monitor:'Monitor OBSINT UAT'}[user])}
+function roleLabelFromCode(role:string){return ({AGENTE_SEGURIDAD:'Agente de Seguridad',SUPERVISOR_SEGURIDAD:'Supervisor de Seguridad',COORDINADOR_COMPANIA:'Coordinador de Compañía',ASISTENTE_COORDINACION:'Asistente de Operaciones'} as Record<string,string>)[role]??role}
 function Metric({icon,label,detail,value,tone}:{icon:ReactNode;label:string;detail:string;value:number;tone:'blue'|'teal'|'amber'|'red'|'green'}){return <article><span className={tone}>{icon}</span><div><small>{label}</small><strong>{value}</strong><em>{detail}</em></div></article>}
 function Field({label,children}:{label:string;children:ReactNode}){return <label className="nov-field"><span>{label}</span>{children}</label>}
 function ModalField({label,children}:{label:string;children:ReactNode}){return <label className="nov-modal-field"><span>{label}</span>{children}</label>}

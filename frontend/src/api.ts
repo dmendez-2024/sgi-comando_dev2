@@ -75,6 +75,9 @@ export const api={
  operationalEventReferences:(eventId:string)=>request<{id:string;source:'STANDARD'|'ATS_PLAN';label:string}[]>(`/api/operation/events/${encodeURIComponent(eventId)}/evidences/references`),
  operationalEventReferenceImage:(eventId:string,imageId:string)=>binaryRequest(`/api/operation/events/${encodeURIComponent(eventId)}/evidences/references/${encodeURIComponent(imageId)}/content`),
  operationalReports:(type?:'INCIDENT'|'FINDING'|'VULNERABILITY')=>request<any[]>(`/api/operational-reports${type?`?type=${type}`:''}`),
+ operationalReportHistory:(reportId:string)=>request<any[]>(`/api/operational-reports/${encodeURIComponent(reportId)}/history`),
+ approveOperationalReport:(reportId:string,comment:string)=>request<any>(`/api/operational-reports/${encodeURIComponent(reportId)}/approve`,{method:'POST',body:JSON.stringify({comment})}),
+ discardOperationalReport:(reportId:string,comment:string)=>request<any>(`/api/operational-reports/${encodeURIComponent(reportId)}/discard`,{method:'POST',body:JSON.stringify({comment})}),
  /** Evaluaciones de supervisión registradas desde SGI Operador (solo lectura). Filtros vacíos se omiten. */
  supervisionEvaluations:(filters:Record<string,string|number>)=>request<any>(`/api/supervision/evaluations?${new URLSearchParams(Object.entries(filters).filter(([,v])=>v!==''&&v!=null).map(([k,v])=>[k,String(v)]))}`),
  supervisionFilters:()=>request<any>('/api/supervision/evaluations/filters'),
