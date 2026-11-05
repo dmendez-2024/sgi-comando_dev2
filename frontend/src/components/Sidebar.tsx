@@ -1,6 +1,6 @@
 import {useEffect,useState} from 'react';
 import sidebarLogo from '../assets/sgi-comando-logo-sidebar.png';
-import {BarChart3,Bell,Building2,ChevronDown,ClipboardList,FileSearch,FileText,Gauge,MapPinned,MessageSquareText,Radio,Settings,ShieldCheck,Users,UserCheck,Warehouse,Map,Network,Smartphone} from 'lucide-react';
+import {BarChart3,Bell,Building2,ChevronDown,ClipboardList,FileSearch,FileText,Gauge,MapPinned,MessageSquareText,Radio,Settings,ShieldCheck,Users,UserCheck,Warehouse,Map,Network,Smartphone,BookOpen} from 'lucide-react';
 
 type NavItem={name:string;icon:any};
 type NavGroup={name:string;icon:any;children:NavItem[]};
@@ -63,6 +63,7 @@ export default function Sidebar({active,onChange,uatTools,monitorOnly=false,open
       <button onClick={()=>onChange('Recurso Humano')} className={active==='Recurso Humano'?'active':''}><Users size={18}/><span>Recurso Humano</span></button>
       <button onClick={()=>onChange('Recurso Material')} className={active==='Recurso Material'?'active':''}><Warehouse size={18}/><span>Recurso Material</span></button>
       <Group group={reports} active={active} onChange={onChange}/>
+      <button onClick={()=>onChange('Biblioteca')} className={active==='Biblioteca'?'active':''}><BookOpen size={18}/><span>Biblioteca</span></button>
       <button onClick={()=>onChange('Auditoría')} className={active==='Auditoría'?'active':''}><ShieldCheck size={18}/><span>Auditoría</span></button>
       <button onClick={()=>onChange('Configuración')} className={active==='Configuración'?'active':''}><Settings size={18}/><span>Configuración</span></button>
     </nav>
