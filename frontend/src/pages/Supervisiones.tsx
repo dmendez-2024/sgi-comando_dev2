@@ -8,7 +8,7 @@ import SearchableSelect from '../components/SearchableSelect';
 type Level='LOW'|'MEDIUM'|'HIGH'|'VERY_HIGH';
 type Row={id:string;capturedAt:string;companyId:string;companyName:string|null;pointId:string;pointName:string;clientName:string;postId:string;postCode:string;postName:string;
   supervisorEmployeeId:string;supervisorName:string;agentEmployeeId:string;agentName:string;vigilanceLevel:Level;cleanlinessLevel:Level;consignmentKnowledgeLevel:Level;situationalLevel:Level;inventoryOverallState:string;status:string};
-type Detail={row:Row;supervisorComments:string|null;pointPostNotes:string|null;inventoryComments:string|null;consignmentVersion:number|null;consignmentSnapshot:string|null;hasPhoto:boolean;createdBy:string;createdAt:string;
+type Detail={row:Row;supervisorComments:string|null;pointPostNotes:string|null;inventoryComments:string|null;consignmentVersion:number|null;consignmentSnapshot:string|null;hasPhoto:boolean;createdBy:string;createdAt:string;sanctionDescription:string|null;sanctionImageCount:number;
   inventory:{assetId:string;description:string;observedState:string;comment:string|null}[];
   decisions:{noveltyId:string;noveltyType:string;title:string;severity:string|null;occurredAt:string|null;decision:string;decidedBy:string;decidedAt:string}[]};
 type Option={id:string;name:string;parentId:string|null};
@@ -135,11 +135,15 @@ function EvaluationDrawer({id,onClose}:{id:string;onClose:()=>void}){
   const [detail,setDetail]=useState<Detail|null>(null);
   const [photo,setPhoto]=useState('');
   const [photoFailed,setPhotoFailed]=useState(false);
+  const [sanctionImages,setSanctionImages]=useState<string[]|null>(null);
   const [error,setError]=useState('');
-  useEffect(()=>{let url='';let live=true;
-    api.supervisionEvaluation(id).then(d=>{if(!live)return;setDetail(d);if(d.hasPhoto)api.supervisionPhoto(id).then(b=>{url=URL.createObjectURL(b);if(live)setPhoto(url)}).catch(()=>{if(live){setPhotoFailed(true);setError('No fue posible cargar la foto del Agente.')}})})
+  useEffect(()=>{let url='';let live=true;const sanctionUrls:string[]=[];
+    api.supervisionEvaluation(id).then(d=>{if(!live)return;setDetail(d);
+      // Imágenes de la sanción en orden; una que falle no impide mostrar las demás.
+      Promise.all(Array.from({length:d.sanctionImageCount??0},(_,i)=>api.supervisionSanctionImage(id,i+1).then(b=>{const u=URL.createObjectURL(b);sanctionUrls.push(u);return u}).catch(()=>''))).then(urls=>{if(live)setSanctionImages(urls.filter(Boolean))});
+      if(d.hasPhoto)api.supervisionPhoto(id).then(b=>{url=URL.createObjectURL(b);if(live)setPhoto(url)}).catch(()=>{if(live){setPhotoFailed(true);setError('No fue posible cargar la foto del Agente.')}})})
       .catch(e=>live&&setError(errorText(e,'No fue posible cargar la evaluación.')));
-    return ()=>{live=false;if(url)URL.revokeObjectURL(url)}},[id]);
+    return ()=>{live=false;if(url)URL.revokeObjectURL(url);sanctionUrls.forEach(u=>URL.revokeObjectURL(u))}},[id]);
   const r=detail?.row;
   // created_by/decided_by guardan el usuario de IDENT del Supervisor (un UUID): se muestra su nombre.
   const person=(value:string)=>r&&detail&&value===detail.createdBy?r.supervisorName:UUID_PATTERN.test(value)?'Usuario de SGI Operador':value;
@@ -178,6 +182,10 @@ function EvaluationDrawer({id,onClose}:{id:string;onClose:()=>void}){
           {detail.decisions.map(x=><tr key={x.noveltyId}><td><strong>{x.title}</strong>{x.occurredAt&&<small>{formatDateTime(x.occurredAt)}</small>}</td><td>{NOVELTY_TYPES[x.noveltyType]??x.noveltyType}</td>
             <td><span className={`nov-status ${x.decision==='CONFIRMED'?'approved':'discarded'}`}>{x.decision==='CONFIRMED'?'Confirmada':'Descartada'}</span></td><td><strong>{person(x.decidedBy)}</strong><small>{formatDateTime(x.decidedAt)}</small></td></tr>)}
         </tbody></table>:<p className="sup-note">El Supervisor no revisó novedades del Agente en esta evaluación.</p>}
+      </div>
+      <div className="nov-photo-block"><div className="nov-section-title"><strong>Sanción registrada</strong></div>
+        {detail.sanctionDescription?<p className="sup-note">{detail.sanctionDescription}</p>:<p className="sup-note">El Supervisor no registró sanción en esta evaluación.</p>}
+        {detail.sanctionImageCount>0&&<div className="sup-sanction-images">{sanctionImages===null?<span className="sup-note">Cargando imágenes…</span>:sanctionImages.length?sanctionImages.map((u,i)=><img key={u} src={u} alt={`Imagen ${i+1} de la sanción`}/>):<span className="sup-note">Imágenes no disponibles</span>}</div>}
       </div>
       <p className="sup-note">Registrada por {person(detail.createdBy)} el {formatDateTime(detail.createdAt)}.</p>
     </>}

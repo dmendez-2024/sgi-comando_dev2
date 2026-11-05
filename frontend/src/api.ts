@@ -83,6 +83,7 @@ export const api={
  supervisionFilters:()=>request<any>('/api/supervision/evaluations/filters'),
  supervisionEvaluation:(id:string)=>request<any>(`/api/supervision/evaluations/${encodeURIComponent(id)}`),
  supervisionPhoto:(id:string)=>binaryRequest(`/api/supervision/evaluations/${encodeURIComponent(id)}/photo`),
+ supervisionSanctionImage:(id:string,position:number)=>binaryRequest(`/api/supervision/evaluations/${encodeURIComponent(id)}/sanction-images/${position}`),
  operationExecutions:(pointId:string)=>request<any[]>(`/api/operation/executions?pointId=${encodeURIComponent(pointId)}`),
  operationCollaborators:(pointId:string)=>request<any[]>(`/api/operation/points/${encodeURIComponent(pointId)}/collaborators`),
  incidents:()=>request<any[]>('/api/incidents'),
