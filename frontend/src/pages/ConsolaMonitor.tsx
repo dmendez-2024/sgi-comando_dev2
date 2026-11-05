@@ -125,7 +125,9 @@ const incidentToConsoleItem=(record:IncidentRecord):ConsoleItem=>({
   company:record.company||'—',companyCode:record.companyCode||'',companyId:record.companyId,client:record.client||'—',city:record.city||'—',point:record.point||'—',post:record.post||'—',
   responsible:record.collaboratorNames.join(', ')||'Operador de Consola',zone:'Zona Costa',region:'Costa Sur',status:record.status,priority:severityToPriority(record.severity),
   createdAt:record.createdAt||record.updatedAt,updatedAt:record.updatedAt,summary:record.description||'Incidente en elaboración.',source:'NOV',originLabel:`Novedades · Incidentes · ${record.incidentType||record.subcategory||'Sin clasificar'}`,
-  recommendedAction:record.status==='DRAFT'?'Completar y finalizar la notificación del incidente.':'Incidente finalizado; puede reabrirse para edición desde Consola.'
+  recommendedAction:record.status==='DRAFT'?'Completar y finalizar la notificación del incidente.':record.coverageAssignmentId
+    ?`Cobertura aplicada en Asignaciones: ${record.replacementEmployeeName || 'agente seleccionado'}.`
+    :'Incidente finalizado; puede reabrirse para edición desde Consola.'
 });
 const operatorReportToConsoleItem=(record:OperatorReport,location?:LocationOption):ConsoleItem=>({
   id:`operator:${record.reportId}`,category:'NOVEDADES',subtype:record.type==='INCIDENT'?'Incidente':record.type==='FINDING'?'Hallazgo':'Vulnerabilidad',
@@ -259,7 +261,7 @@ export default function ConsolaMonitor(){
     setSelectedId(row.id);
     setDetailId(row.id);setEditingIncidentId('');setIncidentEditorOpen(false);
   }
-  async function saveIncident(record:IncidentRecord):Promise<IncidentRecord>{
+  async function saveIncident(record:IncidentRecord,keepEditing=false):Promise<IncidentRecord>{
     const normalized=await (record.id?api.updateIncident(record.id,record):api.createIncident(record)) as IncidentRecord;
     setIncidents(prev=>prev.some(x=>x.id===normalized.id)?prev.map(x=>x.id===normalized.id?normalized:x):[normalized,...prev]);
     setIncidentsError('');
@@ -268,7 +270,7 @@ export default function ConsolaMonitor(){
     const savedDate=dateOnly(normalized.updatedAt);
     const start=new Date(`${savedDate}T12:00:00Z`); start.setUTCDate(start.getUTCDate()-30);
     setFilters({...EMPTY_FILTERS,dateFrom:start.toISOString().slice(0,10),dateTo:savedDate});
-    if(normalized.status==='DRAFT'){
+    if(keepEditing||normalized.status==='DRAFT'){
       setEditingIncidentId(normalized.id);
       return normalized;
     }

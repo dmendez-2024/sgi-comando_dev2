@@ -16,6 +16,7 @@ class DashboardResourceTest {
     @Inject EntityManager em;
     @Inject TenantContext tenant;
     UUID planId;
+    UUID previousPlanId;
     UUID createdConsignmentProtocolId;
     UUID createdConsignmentId;
     UUID coordinationPostId;
@@ -49,6 +50,7 @@ class DashboardResourceTest {
                 em.createNativeQuery("delete from shift_occurrence where id=:id").setParameter("id", id).executeUpdate();
             }
             if (planId != null) em.createNativeQuery("delete from assignment_plan where id=:id").setParameter("id", planId).executeUpdate();
+            if (previousPlanId != null) em.createNativeQuery("delete from assignment_plan where id=:id").setParameter("id", previousPlanId).executeUpdate();
         });
     }
 
@@ -69,14 +71,21 @@ class DashboardResourceTest {
             score(country, post, 1, 2, 50, "ASSIGNED");
             score(country, post, 3, 4, 100, "ASSIGNED");
             score(country, post, 10, 5, 100, "REMOVED");
-            relief(country, post, "2001-01-02 05:01:00+00");
+            relief(country, post, "2001-01-02 07:01:00+00");
             relief(country, post, "2001-01-02 05:00:00+00");
             relief(country, post, null);
+            relief(country, post, "2001-01-02 07:00:00+00");
+            relief(country, post, "2001-01-02 08:00:00+00");
+            relief(country, post, "2001-01-02 08:01:00+00");
         });
         as("presidente").queryParam("weekStart", "2001-01-03").queryParam("companyId", company).queryParam("clientId", client)
             .get("/api/dashboard/metrics").then().statusCode(200).body("weekStart", is("2001-01-01"))
             .body("idAverage", is(3.5f)).body("icAverage", is(87.5f))
-            .body("idSamples", is(2)).body("lateReliefs", is(1)).body("recordedReliefs", is(2));
+            .body("idSamples", is(2)).body("lateReliefs", is(2)).body("recordedReliefs", is(5))
+            .body("reliefsOverThreeHours", is(1)).body("previousLateReliefs", is(0));
+        as("presidente").queryParam("weekStart", "2001-01-03").queryParam("companyId", company)
+            .queryParam("period", "7d").get("/api/dashboard/metrics").then().statusCode(200)
+            .body("lateReliefs", is(2)).body("reliefsOverThreeHours", is(1));
         as("presidente").queryParam("weekStart", "2001-01-01").queryParam("clientId", UUID.randomUUID())
             .get("/api/dashboard/metrics").then().statusCode(200).body("idAverage", nullValue())
             .body("icAverage", nullValue()).body("lateReliefs", is(0));
@@ -138,6 +147,8 @@ class DashboardResourceTest {
                 .setParameter("employee", UUID.randomUUID()).setParameter("id", assignments.get(index)).executeUpdate();
             em.createNativeQuery("update relief_event set shift_occurrence_id=:shift where id=:id")
                 .setParameter("shift", shifts.get(0)).setParameter("id", reliefs.get(0)).executeUpdate();
+            for (int index = 1; index < reliefs.size(); index++) em.createNativeQuery("update relief_event set shift_occurrence_id=:shift where id=:id")
+                .setParameter("shift", shifts.get(0)).setParameter("id", reliefs.get(index)).executeUpdate();
             em.createNativeQuery("update relief_event set executed_at=null where id=:id")
                 .setParameter("id", reliefs.get(1)).executeUpdate();
             report(country, pointId, post, assignments.get(0), "INCIDENT", "CRITICAL");
@@ -146,6 +157,27 @@ class DashboardResourceTest {
         as("presidente").queryParam("weekStart", "2001-01-03").queryParam("companyId", company).queryParam("clientId", client)
             .get("/api/dashboard/missed-reliefs").then().statusCode(200)
             .body("assignedShifts", is(2)).body("missedShifts", is(1));
+        as("presidente").queryParam("weekStart", "2001-01-03").queryParam("companyId", company).queryParam("clientId", client)
+            .get("/api/dashboard/operational-coverage").then().statusCode(200)
+            .body("weekStart", is("2001-01-01")).body("evaluatedPoints", is(1))
+            .body("uncoveredPoints", is(1)).body("evaluatedShifts", is(3))
+            .body("uncoveredShifts", is(1)).body("previousUncoveredPoints", is(0));
+        previousPlanId = UUID.randomUUID();
+        UUID previousShift = UUID.randomUUID(); shifts.add(previousShift);
+        QuarkusTransaction.requiringNew().run(() -> {
+            em.createNativeQuery("""
+                insert into assignment_plan(id,instance_country_id,company_id,week_start,status,created_at,updated_at)
+                values(:id,:tenant,:company,'2000-12-25','PUBLISHED',now(),now())
+                """).setParameter("id", previousPlanId).setParameter("tenant", country).setParameter("company", company).executeUpdate();
+            em.createNativeQuery("""
+                insert into shift_occurrence(id,instance_country_id,post_id,starts_at,ends_at,required,created_at,updated_at)
+                values(:id,:tenant,:post,'2000-12-31 05:00:00+00','2000-12-31 06:00:00+00',true,now(),now())
+                """).setParameter("id", previousShift).setParameter("tenant", country).setParameter("post", post).executeUpdate();
+        });
+        as("presidente").queryParam("weekStart", "2001-01-07").queryParam("companyId", company).queryParam("clientId", client)
+            .get("/api/dashboard/operational-coverage").then().statusCode(200)
+            .body("weekStart", is("2001-01-01")).body("previousUncoveredPoints", is(1))
+            .body("previousEvaluatedPoints", is(1));
         as("presidente").queryParam("weekStart", "2001-01-03").queryParam("companyId", company).queryParam("clientId", client)
             .get("/api/dashboard/critical-incidents").then().statusCode(200)
             .body("reportedCriticalIncidents", is(1));
@@ -164,8 +196,11 @@ class DashboardResourceTest {
 
     @Test void validatesDatesAndCompanyScope() {
         as("presidente").queryParam("weekStart", "invalid").get("/api/dashboard/metrics").then().statusCode(400);
+        as("presidente").queryParam("period", "invalid").get("/api/dashboard/metrics").then().statusCode(400);
+        as("presidente").queryParam("weekStart", "invalid").get("/api/dashboard/operational-coverage").then().statusCode(400);
         as("presidente").queryParam("period", "invalid").get("/api/dashboard/operational-risk-trend").then().statusCode(400);
         as("coord").queryParam("companyId", UUID.randomUUID()).get("/api/dashboard/metrics").then().statusCode(403);
+        as("coord").queryParam("companyId", UUID.randomUUID()).get("/api/dashboard/operational-coverage").then().statusCode(403);
         as("coord").queryParam("companyId", UUID.randomUUID()).get("/api/dashboard/operational-risk-trend").then().statusCode(403);
         as("agente").get("/api/dashboard/metrics").then().statusCode(403);
         as("coord").queryParam("companyId", UUID.randomUUID()).get("/api/assignments/coverage").then().statusCode(403);

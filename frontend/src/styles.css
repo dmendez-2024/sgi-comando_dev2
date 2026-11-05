@@ -1320,13 +1320,17 @@
 .bitacora-config-page .bit-post-list span:not(.bit-post-icon):not(.bit-status-dot){font-size:10px}
 .bitacora-config-page .bit-post-list small{font-size:9px}
 .bitacora-config-page .bit-search input{font-size:11px}
-.bitacora-config-page .bit-posts-card>header{display:flex;align-items:center;justify-content:space-between}
-.bitacora-config-page .bit-posts-card>header .bit-posts-toggle{width:32px;height:32px;flex:0 0 32px;padding:0;justify-content:center}
+.bitacora-config-page .bit-posts-card>header,.bitacora-config-page .bit-protocols-card>header{display:flex;align-items:center;justify-content:space-between}
+.bitacora-config-page .bit-posts-card>header .bit-posts-toggle,.bitacora-config-page .bit-protocols-card>header .bit-protocols-toggle{width:32px;height:32px;flex:0 0 32px;padding:0;justify-content:center}
 .bitacora-config-page .bit-main-grid.posts-collapsed{grid-template-columns:52px minmax(410px,1fr) minmax(0,calc(100% - 698px))}
+.bitacora-config-page .bit-main-grid.protocols-collapsed{grid-template-columns:260px 52px minmax(0,1fr)}
+.bitacora-config-page .bit-main-grid.posts-collapsed.protocols-collapsed{grid-template-columns:52px 52px minmax(0,1fr)}
 .bitacora-config-page .bit-main-grid.posts-collapsed .bit-posts-card>header{justify-content:center;padding:10px 4px!important}
 .bitacora-config-page .bit-main-grid.posts-collapsed .bit-posts-card>header>div{display:none}
-@media(max-width:1250px){.bitacora-config-page .bit-main-grid{grid-template-columns:230px minmax(0,1fr)}.bitacora-config-page .bit-main-grid.posts-collapsed{grid-template-columns:52px minmax(0,1fr)}.bitacora-config-page .bit-main-grid .bit-detail-card{grid-column:1/-1}.bitacora-config-page .bit-posts-card,.bitacora-config-page .bit-protocols-card{min-height:420px}}
-@media(max-width:900px){.bitacora-config-page .bit-main-grid,.bitacora-config-page .bit-main-grid.posts-collapsed{grid-template-columns:minmax(0,1fr)}.bitacora-config-page .bit-main-grid.posts-collapsed .bit-posts-card{width:52px}.bitacora-config-page .bit-main-grid .bit-detail-card{grid-column:auto}}
+.bitacora-config-page .bit-main-grid.protocols-collapsed .bit-protocols-card>header{justify-content:center;padding:10px 4px!important}
+.bitacora-config-page .bit-main-grid.protocols-collapsed .bit-protocols-card>header>div{display:none}
+@media(max-width:1250px){.bitacora-config-page .bit-main-grid{grid-template-columns:230px minmax(0,1fr)}.bitacora-config-page .bit-main-grid.posts-collapsed{grid-template-columns:52px minmax(0,1fr)}.bitacora-config-page .bit-main-grid.protocols-collapsed{grid-template-columns:230px 52px minmax(0,1fr)}.bitacora-config-page .bit-main-grid.posts-collapsed.protocols-collapsed{grid-template-columns:52px 52px minmax(0,1fr)}.bitacora-config-page .bit-main-grid .bit-detail-card{grid-column:1/-1}.bitacora-config-page .bit-main-grid.protocols-collapsed .bit-detail-card{grid-column:auto}.bitacora-config-page .bit-posts-card,.bitacora-config-page .bit-protocols-card{min-height:420px}}
+@media(max-width:900px){.bitacora-config-page .bit-main-grid,.bitacora-config-page .bit-main-grid.posts-collapsed,.bitacora-config-page .bit-main-grid.protocols-collapsed,.bitacora-config-page .bit-main-grid.posts-collapsed.protocols-collapsed{grid-template-columns:minmax(0,1fr)}.bitacora-config-page .bit-main-grid.posts-collapsed .bit-posts-card,.bitacora-config-page .bit-main-grid.protocols-collapsed .bit-protocols-card{width:52px}.bitacora-config-page .bit-main-grid .bit-detail-card{grid-column:auto}}
 .bitacora-config-page .bit-protocol-table{font-size:11px}
 .bitacora-config-page .bit-protocol-table th{font-size:9px;padding:9px}
 .bitacora-config-page .bit-protocol-table td{padding:10px 9px}
@@ -1357,6 +1361,7 @@
 .bitacora-config-page .bit-step-tabs-rail .bit-step-tabs{margin-inline:16px;padding:8px 0;border-bottom:0;background:transparent}
 .patrol-config-page .bit-protocol-table td:last-child{text-align:center}
 .patrol-config-page .bit-contextual-note{display:block;width:100%;text-align:center}
+.consignas-config-page .bit-detail-header .bit-contextual-note{text-align:left}
 .patrol-config-page .bit-step-tabs-rail{padding-inline:16px}
 .patrol-config-page .bit-step-tabs-rail .bit-step-tabs{width:100%;margin-inline:0}
 .bitacora-config-page .bit-detail-body{padding:16px 18px 18px}
