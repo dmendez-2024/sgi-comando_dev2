@@ -18,6 +18,7 @@ import NovedadesExecution from './pages/NovedadesExecution';
 import Supervisiones from './pages/Supervisiones';
 import Placeholder from './pages/Placeholder';
 import AgentSimulator from './pages/AgentSimulator';
+import Documentation from './pages/Documentation';
 import UniformColumnBadges from './components/UniformColumnBadges';
 import './responsive.css';
 
@@ -25,6 +26,7 @@ export default function App() {
   // El monitorista (rol MONITOR) entra directo a la Consola; el resto, al Dashboard.
   const home = () => isMonitor() ? 'Consola' : 'Dashboard';
   const [active, setActive] = useState(home);
+  const [attentionCase, setAttentionCase] = useState('');
   // "Atras" del navegador con la sesion abierta: se queda en SGI y vuelve al inicio.
   useEffect(() => { installBackGuard(() => setActive(home())); }, []);
   const [userRevision, setUserRevision] = useState(0);
@@ -50,7 +52,8 @@ export default function App() {
   }, [userRevision,contextReload]);
 
   const monitor = isMonitor();
-  const navigate = (next:string) => { setActive(next); setMobileNavOpen(false); };
+  const navigate = (next:string) => { setAttentionCase(''); setActive(next); setMobileNavOpen(false); };
+  const openAttention = (target:'Consola'|'Consignas', id:string) => { setAttentionCase(id); setActive(target); setMobileNavOpen(false); };
 
   useEffect(() => {
     document.body.classList.toggle('mobile-nav-open', mobileNavOpen);
@@ -66,9 +69,9 @@ export default function App() {
   }, [mobileNavOpen]);
 
   const page = monitor
-    ? <ConsolaMonitor />
+    ? <ConsolaMonitor initialCaseId={attentionCase} />
     : active === 'Dashboard'
-    ? <Dashboard />
+    ? <Dashboard onOpenAttention={openAttention} />
     : active === 'Territorio'
       ? <Territory coreContext={coreContext} />
     : active === 'Compañías'
@@ -80,15 +83,17 @@ export default function App() {
       : active === 'Asignaciones'
         ? <Assignments />
       : active === 'Consola'
-        ? <ConsolaMonitor />
+        ? <ConsolaMonitor initialCaseId={attentionCase} />
       : active === 'Bitácora'
         ? <BitacoraGlobal />
       : active === 'Consignas'
-        ? <ConsignasExecution />
+        ? <ConsignasExecution initialCaseId={attentionCase} />
       : active === 'Novedades'
         ? <NovedadesExecution />
       : active === 'Supervisiones'
         ? <Supervisiones />
+      : active === 'Documentación'
+        ? <Documentation />
       : active === 'Configuración'
         ? <SettingsPage />
       : active === SIMULATOR_MENU

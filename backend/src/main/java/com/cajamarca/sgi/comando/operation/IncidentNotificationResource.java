@@ -1,6 +1,7 @@
 package com.cajamarca.sgi.comando.operation;
 
 import com.cajamarca.sgi.comando.common.TenantContext;
+import com.cajamarca.sgi.comando.assignments.AssignmentResource;
 import com.cajamarca.sgi.comando.companies.Company;
 import com.cajamarca.sgi.comando.operations.PointEntity;
 import com.cajamarca.sgi.comando.operations.PostEntity;
@@ -31,6 +32,8 @@ public class IncidentNotificationResource {
     @Inject EntityManager em;
     @Inject ObjectMapper mapper;
     @Inject IncidentEvidenceResource images;
+    @Inject AssignmentResource assignments;
+    @Inject IncidentCoverageRolePolicy coverageRolePolicy;
 
     @GET
     public List<ObjectNode> list() throws JsonProcessingException {
@@ -74,6 +77,23 @@ public class IncidentNotificationResource {
         if (body == null) throw new BadRequestException("El incidente es obligatorio");
         String status = text(body, "status");
         if (!Set.of("DRAFT", "FINALIZED").contains(status)) throw new BadRequestException("Estado de incidente inválido");
+        JsonNode previous = record.payloadJson == null ? mapper.createObjectNode() : mapper.readTree(record.payloadJson);
+        String appliedAssignmentId = text(previous, "coverageAssignmentId");
+        body.remove("coverageAssignmentId");
+        body.remove("coverageAppliedAt");
+        if (!appliedAssignmentId.isEmpty()) {
+            if (!"FINALIZED".equals(status)) throw new BadRequestException("Un incidente con cobertura aplicada no puede volver a borrador.");
+            if (!Objects.equals(text(previous,"targetShiftId"),text(body,"targetShiftId"))
+                    || !Objects.equals(text(previous,"replacementEmployeeId"),text(body,"replacementEmployeeId"))
+                    || !Objects.equals(text(previous,"incidentType"),text(body,"incidentType"))
+                    || !Objects.equals(text(previous,"category"),text(body,"category"))
+                    || !Objects.equals(text(previous,"subcategory"),text(body,"subcategory"))
+                    || !Objects.equals(text(previous,"pointId"),text(body,"pointId"))
+                    || !Objects.equals(text(previous,"postId"),text(body,"postId")))
+                throw new BadRequestException("La cobertura ya aplicada no puede cambiarse desde el incidente; use Asignaciones para otra reasignación.");
+            body.put("coverageAssignmentId", appliedAssignmentId);
+            body.put("coverageAppliedAt", text(previous,"coverageAppliedAt"));
+        }
         UUID pointId = uuid(body, "pointId"), postId = uuid(body, "postId");
         PointEntity point = null;
         PostEntity post = null;
@@ -119,8 +139,10 @@ public class IncidentNotificationResource {
             if (body.path("sanction").asBoolean(false) && text(body, "sanctionDescription").isBlank())
                 throw new BadRequestException("Describa la sanción");
         }
-        if (!absenceMode.isEmpty() && "FINALIZED".equals(status)) {
+        if (!absenceMode.isEmpty() && "FINALIZED".equals(status) && appliedAssignmentId.isEmpty()) {
             if (post == null) throw new BadRequestException("Seleccione el Puesto para la cobertura");
+            if ("EFFECTIVE".equals(absenceMode)) coverageRolePolicy.requireCurrentShiftPermission();
+            else coverageRolePolicy.requireFutureShiftPermission();
             UUID shiftId = uuid(body, "targetShiftId"), employeeId = uuid(body, "replacementEmployeeId");
             OperationResource.CoverageOptions options = operation.coverageOptions(pointId, postId);
             List<OperationResource.CoverageShift> shifts = "EFFECTIVE".equals(absenceMode)
@@ -132,8 +154,11 @@ public class IncidentNotificationResource {
             if (candidate == null) throw new BadRequestException("El agente de cobertura ya no está disponible");
             body.put("targetShiftLabel", shift.startsAt() + " / " + shift.endsAt());
             body.put("replacementEmployeeName", candidate.fullName());
+            AssignmentResource.AssignmentDto assignment=assignments.assignIncidentCoverage(pointId,postId,shiftId,employeeId,
+                    "Consola · " + incidentType + " · " + record.code);
+            body.put("coverageAssignmentId", assignment.id().toString());
+            body.put("coverageAppliedAt", Instant.now().toString());
         }
-        // El formulario registra la decisión de cobertura; no cambia por sí mismo el plan de Asignaciones.
         record.status = status;
         record.pointId = pointId;
         record.postId = postId;

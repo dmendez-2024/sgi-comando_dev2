@@ -45,6 +45,8 @@ export type IncidentRecord={
   targetShiftLabel:string;
   replacementEmployeeId:string;
   replacementEmployeeName:string;
+  coverageAssignmentId?:string;
+  coverageAppliedAt?:string;
   status:IncidentLifecycle;
   createdAt:string;
   updatedAt:string;
@@ -58,12 +60,12 @@ type Props={
   locationsError:string;
   onRetryLocations:()=>void;
   onCancel:()=>void;
-  onSave:(record:IncidentRecord)=>Promise<IncidentRecord>;
+  onSave:(record:IncidentRecord,keepEditing?:boolean)=>Promise<IncidentRecord>;
 };
 
 type ReplacementCandidate={employeeId:string;fullName:string;roleCode:string;group:number;lastPoint:string;lastPost:string};
 type CoverageShift={id:string;startsAt:string;endsAt:string;candidates:ReplacementCandidate[]};
-type CoverageOptions={currentShift:CoverageShift|null;nextShifts:CoverageShift[]};
+type CoverageOptions={currentShift:CoverageShift|null;nextShifts:CoverageShift[];currentShiftAllowed:boolean;futureShiftAllowed:boolean};
 
 type CollaboratorRow={employeeId:string;fullName:string;roleCode:string;postName:string;lastAt:string;source:'EXECUTION'|'PUBLISHED_SHIFT'|'CURRENT_SHIFT'|'UPCOMING_SHIFT'};
 
@@ -125,14 +127,14 @@ export default function IncidentNotificationPanel({initial,nextCode,locations,lo
   },[form.pointId,collaboratorsRefresh]);
 
   useEffect(()=>{
-    if(!form.pointId||!form.postId){setCoverage(null);setCoverageError('');setCoverageLoading(false);return;}
+    if(!form.pointId||!form.postId||form.coverageAssignmentId){setCoverage(null);setCoverageError('');setCoverageLoading(false);return;}
     let current=true;
     setCoverage(null);setCoverageLoading(true);setCoverageError('');
     void api.operationCoverageOptions(form.pointId,form.postId).then(value=>{if(current)setCoverage(value as CoverageOptions)})
       .catch(()=>{if(current)setCoverageError('No se pudieron consultar los turnos y agentes de este Puesto.')})
       .finally(()=>{if(current)setCoverageLoading(false)});
     return ()=>{current=false};
-  },[form.pointId,form.postId,coverageRefresh]);
+  },[form.pointId,form.postId,form.coverageAssignmentId,coverageRefresh]);
 
   const clients=useMemo(()=>Array.from(new Map(locations.map(x=>[x.clientId,{id:x.clientId,name:x.client}])).values()),[locations]);
   const points=useMemo(()=>Array.from(new Map(locations.filter(x=>x.clientId===form.clientId).map(x=>[x.pointId,{id:x.pointId,name:x.point}])).values()),[locations,form.clientId]);
@@ -140,6 +142,7 @@ export default function IncidentNotificationPanel({initial,nextCode,locations,lo
   const subcategories=form.category?Object.keys(INCIDENT_TAXONOMY[form.category]):[];
   const incidentTypes=form.category&&form.subcategory?(INCIDENT_TAXONOMY[form.category][form.subcategory]??[]):[];
   const absenceMode=absenceModeFromIncidentType(form.incidentType);
+  const coverageApplied=!!form.coverageAssignmentId;
 
   const selectedLocation=useMemo(()=>locations.find(x=>x.clientId===form.clientId&&x.pointId===form.pointId&&(form.postId?x.postId===form.postId:true)),[locations,form.clientId,form.pointId,form.postId]);
   const targetShift=absenceMode==='EFFECTIVE'?coverage?.currentShift:coverage?.nextShifts.find(x=>x.id===form.targetShiftId);
@@ -191,10 +194,12 @@ export default function IncidentNotificationPanel({initial,nextCode,locations,lo
     if(!form.client||!form.point)return 'Cliente y Punto son obligatorios.';
     if(!form.collaboratorIds.length)return 'Seleccione uno o más colaboradores involucrados.';
     if(!form.description.trim())return 'Ingrese la descripción del incidente.';
-    if(absenceMode==='PROGRAMMED'&&!targetShift)return 'Seleccione uno de los próximos dos turnos.';
-    if(absenceMode==='EFFECTIVE'&&!targetShift)return 'No hay un turno en curso para el Puesto seleccionado.';
-    if(absenceMode&&form.replacementEmployeeId&&!replacementCandidates.some(person=>person.employeeId===form.replacementEmployeeId))return 'Seleccione un agente que siga disponible para este turno.';
-    if(absenceMode&&!form.replacementEmployeeId)return 'Seleccione un Agente disponible para la reasignación.';
+    if(!coverageApplied&&absenceMode==='EFFECTIVE'&&coverage?.currentShiftAllowed===false)return 'Su perfil solo puede cubrir turnos futuros.';
+    if(!coverageApplied&&absenceMode==='PROGRAMMED'&&coverage?.futureShiftAllowed===false)return 'Su perfil no puede cubrir turnos futuros desde Consola.';
+    if(!coverageApplied&&absenceMode==='PROGRAMMED'&&!targetShift)return 'Seleccione uno de los próximos dos turnos.';
+    if(!coverageApplied&&absenceMode==='EFFECTIVE'&&!targetShift)return 'No hay un turno en curso para el Puesto seleccionado.';
+    if(!coverageApplied&&absenceMode&&form.replacementEmployeeId&&!replacementCandidates.some(person=>person.employeeId===form.replacementEmployeeId))return 'Seleccione un agente que siga disponible para este turno.';
+    if(!coverageApplied&&absenceMode&&!form.replacementEmployeeId)return 'Seleccione un Agente disponible para la reasignación.';
     if(!form.resolution.trim())return 'Ingrese la resolución antes de finalizar.';
     if(form.sanction&&!form.sanctionDescription.trim())return 'Describa la sanción cuando marca que sí genera sanción.';
     return '';
@@ -207,11 +212,11 @@ export default function IncidentNotificationPanel({initial,nextCode,locations,lo
     const location=selectedLocation;
     setSaving(true);
     try{
-      let working:IncidentRecord={...form,code:form.code||nextCode,status,absenceMode,targetShiftId:targetShift?.id??form.targetShiftId,targetShiftLabel:targetShift?fmtShift(targetShift,'Turno a cubrir'):form.targetShiftLabel,companyId:location?.companyId??form.companyId,company:location?.company??form.company,companyCode:location?.companyCode??form.companyCode,city:location?.city??form.city,createdAt:form.createdAt||now,updatedAt:now};
+      let working:IncidentRecord={...form,code:form.code||nextCode,status,absenceMode,targetShiftId:coverageApplied?form.targetShiftId:targetShift?.id??form.targetShiftId,targetShiftLabel:coverageApplied?form.targetShiftLabel:targetShift?fmtShift(targetShift,'Turno a cubrir'):form.targetShiftLabel,companyId:location?.companyId??form.companyId,company:location?.company??form.company,companyCode:location?.companyCode??form.companyCode,city:location?.city??form.city,createdAt:form.createdAt||now,updatedAt:now};
       const pending=working.descriptionImages.some(x=>x.file)||working.resolutionImages.some(x=>x.file);
       if(pending){
         // Persist the draft first; a failed upload must never finalize or lose the selected files.
-        const draft=await onSave({...working,status:'DRAFT',descriptionImages:working.descriptionImages.filter(x=>!x.file),resolutionImages:working.resolutionImages.filter(x=>!x.file)});
+        const draft=await onSave({...working,status:coverageApplied?'FINALIZED':'DRAFT',descriptionImages:working.descriptionImages.filter(x=>!x.file),resolutionImages:working.resolutionImages.filter(x=>!x.file)},true);
         working={...working,...draft,descriptionImages:working.descriptionImages,resolutionImages:working.resolutionImages};
         setForm(working);
         for(const section of ['description','resolution'] as const){
@@ -238,15 +243,15 @@ export default function IncidentNotificationPanel({initial,nextCode,locations,lo
     <div className="csl-incident-scroll">
       <Field label="Título *"><input value={form.title} maxLength={140} onChange={e=>patch('title',e.target.value)} placeholder="Título del incidente"/></Field>
 
-      <section className="csl-incident-section"><SectionTitle step="1" title="Categoría"/><div className="csl-incident-categories">{(Object.keys(CATEGORY_META) as IncidentCategory[]).map(value=>{const meta=CATEGORY_META[value];return <button type="button" key={value} className={form.category===value?'selected':''} onClick={()=>chooseCategory(value)}><span className="csl-category-symbol" aria-hidden="true">{meta.icon}</span><strong>{meta.label}</strong><small>{meta.description}</small><i aria-hidden="true"/></button>})}</div></section>
+      <section className="csl-incident-section"><SectionTitle step="1" title="Categoría"/><div className="csl-incident-categories">{(Object.keys(CATEGORY_META) as IncidentCategory[]).map(value=>{const meta=CATEGORY_META[value];return <button type="button" key={value} className={form.category===value?'selected':''} disabled={coverageApplied} onClick={()=>chooseCategory(value)}><span className="csl-category-symbol" aria-hidden="true">{meta.icon}</span><strong>{meta.label}</strong><small>{meta.description}</small><i aria-hidden="true"/></button>})}</div></section>
 
-      <section className="csl-incident-section"><SectionTitle step="2" title="Subcategoría"/><Field label=""><select value={form.subcategory} disabled={!form.category} onChange={e=>chooseSubcategory(e.target.value)}><option value="">{form.category?'Seleccione una subcategoría':'Seleccione primero una categoría'}</option>{subcategories.map(x=><option key={x} value={x}>{x}</option>)}</select></Field></section>
+      <section className="csl-incident-section"><SectionTitle step="2" title="Subcategoría"/><Field label=""><select value={form.subcategory} disabled={!form.category||coverageApplied} onChange={e=>chooseSubcategory(e.target.value)}><option value="">{form.category?'Seleccione una subcategoría':'Seleccione primero una categoría'}</option>{subcategories.map(x=><option key={x} value={x}>{x}</option>)}</select></Field></section>
 
-      <section className="csl-incident-section"><SectionTitle step="3" title="Incidente"/><Field label=""><select value={form.incidentType} disabled={!form.subcategory} onChange={e=>chooseIncidentType(e.target.value)}><option value="">{form.subcategory?'Seleccione el incidente':'Seleccione primero una subcategoría'}</option>{incidentTypes.map(x=><option key={x} value={x}>{x}</option>)}</select></Field>{form.category==='SERVICE'&&form.subcategory==='Asistencia y Puntualidad'&&<p className="csl-incident-hint">Según el Excel vigente, Inasistencia programada e Inasistencia efectiva son tipos de incidente dentro de Asistencia y Puntualidad; ambos activan el flujo especial de cobertura/reasignación.</p>}</section>
+      <section className="csl-incident-section"><SectionTitle step="3" title="Incidente"/><Field label=""><select value={form.incidentType} disabled={!form.subcategory||coverageApplied} onChange={e=>chooseIncidentType(e.target.value)}><option value="">{form.subcategory?'Seleccione el incidente':'Seleccione primero una subcategoría'}</option>{incidentTypes.map(x=><option key={x} value={x}>{x}</option>)}</select></Field>{form.category==='SERVICE'&&form.subcategory==='Asistencia y Puntualidad'&&<p className="csl-incident-hint">Según el Excel vigente, Inasistencia programada e Inasistencia efectiva son tipos de incidente dentro de Asistencia y Puntualidad; ambos activan el flujo especial de cobertura/reasignación.</p>}</section>
 
       <section className="csl-incident-section"><SectionTitle step="4" title="Criticidad"/><div className="csl-severity-grid">{SEVERITIES.map(item=><button key={item.value} type="button" className={`${item.tone} ${form.severity===item.value?'selected':''}`} aria-pressed={form.severity===item.value} onClick={()=>patch('severity',item.value)}><span className="csl-severity-icon" aria-hidden="true">{item.icon}</span><strong>{item.label}</strong><i className="csl-severity-dot" aria-hidden="true"/></button>)}</div></section>
 
-      <section className="csl-incident-section"><SectionTitle step="5" title="Ubicación"/>{locationsError&&<div className="csl-incident-error"><AlertTriangle size={16}/>{locationsError}<button type="button" onClick={onRetryLocations}>Reintentar</button></div>}<div className="csl-incident-grid two"><Field label="Cliente *"><SearchableSelect ariaLabel="Cliente" value={form.clientId??''} disabled={locationsLoading||!!locationsError} onChange={chooseClient} searchPlaceholder="Buscar cliente…" options={[{value:'',label:locationsLoading?'Cargando clientes…':locationsError?'Clientes no disponibles':clients.length?'Seleccione cliente':'No hay clientes en su alcance'},...clients.map(x=>({value:x.id,label:x.name}))]}/></Field><Field label="Punto *"><SearchableSelect ariaLabel="Punto" value={form.pointId??''} disabled={!form.clientId||locationsLoading||!!locationsError} onChange={choosePoint} searchPlaceholder="Buscar punto…" options={[{value:'',label:form.clientId?'Seleccione punto':'Seleccione cliente primero'},...points.map(x=>({value:x.id,label:x.name}))]}/></Field></div><Field label={absenceMode?'Puesto *':'Puesto (opcional)'}><SearchableSelect ariaLabel="Puesto" value={form.postId??''} disabled={!form.pointId||locationsLoading||!!locationsError} onChange={choosePost} searchPlaceholder="Buscar puesto…" options={[{value:'',label:'Todos / No aplica'},...posts.map(x=>({value:x.id,label:x.name}))]}/></Field></section>
+      <section className="csl-incident-section"><SectionTitle step="5" title="Ubicación"/>{locationsError&&<div className="csl-incident-error"><AlertTriangle size={16}/>{locationsError}<button type="button" onClick={onRetryLocations}>Reintentar</button></div>}<div className="csl-incident-grid two"><Field label="Cliente *"><SearchableSelect ariaLabel="Cliente" value={form.clientId??''} disabled={coverageApplied||locationsLoading||!!locationsError} onChange={chooseClient} searchPlaceholder="Buscar cliente…" options={[{value:'',label:locationsLoading?'Cargando clientes…':locationsError?'Clientes no disponibles':clients.length?'Seleccione cliente':'No hay clientes en su alcance'},...clients.map(x=>({value:x.id,label:x.name}))]}/></Field><Field label="Punto *"><SearchableSelect ariaLabel="Punto" value={form.pointId??''} disabled={coverageApplied||!form.clientId||locationsLoading||!!locationsError} onChange={choosePoint} searchPlaceholder="Buscar punto…" options={[{value:'',label:form.clientId?'Seleccione punto':'Seleccione cliente primero'},...points.map(x=>({value:x.id,label:x.name}))]}/></Field></div><Field label={absenceMode?'Puesto *':'Puesto (opcional)'}><SearchableSelect ariaLabel="Puesto" value={form.postId??''} disabled={coverageApplied||!form.pointId||locationsLoading||!!locationsError} onChange={choosePost} searchPlaceholder="Buscar puesto…" options={[{value:'',label:'Todos / No aplica'},...posts.map(x=>({value:x.id,label:x.name}))]}/></Field></section>
 
       <section className="csl-incident-section"><SectionTitle step="6" title="Colaboradores involucrados"/><p className="csl-incident-hint">Personas con actividad confirmada en los últimos 14 días o con turnos publicados en este Punto hasta los próximos 14 días. Cada persona aparece una sola vez.</p><div className="csl-collaborator-list">{form.pointId&&collaborators.map(person=><label key={person.employeeId} className={form.collaboratorIds.includes(person.employeeId)?'selected':''}><input type="checkbox" checked={form.collaboratorIds.includes(person.employeeId)} onChange={()=>toggleCollaborator(person)}/><span><strong>{person.fullName}</strong><small>{person.roleCode||'Personal'} · {person.source==='EXECUTION'?'Actividad confirmada':person.source==='CURRENT_SHIFT'?'Turno en curso':person.source==='UPCOMING_SHIFT'?'Turno próximo':'Turno publicado'}: {fmtDate(person.lastAt)} · {person.postName}</small></span></label>)}{form.pointId&&collaboratorsLoading&&<div className="csl-inline-empty"><Users size={17}/>Cargando colaboradores del Punto…</div>}{form.pointId&&collaboratorsError&&<div className="csl-inline-empty"><AlertTriangle size={17}/>{collaboratorsError}<button type="button" onClick={()=>setCollaboratorsRefresh(value=>value+1)}>Reintentar</button></div>}{form.pointId&&!collaboratorsLoading&&!collaboratorsError&&!collaborators.length&&<div className="csl-inline-empty"><Users size={17}/>No hay actividad confirmada ni turnos publicados para este Punto en el período consultado.</div>}{!form.pointId&&<div className="csl-inline-empty"><MapPin size={17}/>Seleccione Cliente y Punto para obtener la lista.</div>}</div></section>
 
@@ -258,16 +263,18 @@ export default function IncidentNotificationPanel({initial,nextCode,locations,lo
           <strong>{absenceMode==='PROGRAMMED'?'Inasistencia Programada':'Inasistencia Efectiva'}</strong>
           <span>{absenceMode==='PROGRAMMED'?'Seleccione uno de los dos próximos turnos registrados para este Puesto.':'Se utiliza el turno actualmente en curso para este Puesto.'}</span>
         </div></div>
-        {!form.postId&&<div className="csl-inline-empty"><MapPin size={17}/>Seleccione un Puesto en Ubicación para consultar turnos y agentes.</div>}
-        {form.postId&&coverageLoading&&<div className="csl-inline-empty"><CalendarClock size={17}/>Cargando turnos y disponibilidad...</div>}
-        {form.postId&&coverageError&&<div className="csl-inline-empty"><AlertTriangle size={17}/>{coverageError}<button type="button" onClick={()=>setCoverageRefresh(x=>x+1)}>Reintentar</button></div>}
-        {form.postId&&!coverageLoading&&!coverageError&&absenceMode==='PROGRAMMED'&&<Field label="Turno a cubrir *"><select value={form.targetShiftId} onChange={e=>chooseShift(e.target.value)}>
+        {coverageApplied&&<div className="csl-current-shift"><CheckCircle2 size={16}/>Cobertura aplicada en Asignaciones: {form.replacementEmployeeName||'agente seleccionado'} · {form.targetShiftLabel||'turno seleccionado'}.</div>}
+        {!coverageApplied&&!form.postId&&<div className="csl-inline-empty"><MapPin size={17}/>Seleccione un Puesto en Ubicación para consultar turnos y agentes.</div>}
+        {!coverageApplied&&form.postId&&coverageLoading&&<div className="csl-inline-empty"><CalendarClock size={17}/>Cargando turnos y disponibilidad...</div>}
+        {!coverageApplied&&form.postId&&coverageError&&<div className="csl-inline-empty"><AlertTriangle size={17}/>{coverageError}<button type="button" onClick={()=>setCoverageRefresh(x=>x+1)}>Reintentar</button></div>}
+        {!coverageApplied&&form.postId&&!coverageLoading&&!coverageError&&absenceMode==='PROGRAMMED'&&coverage?.futureShiftAllowed===false&&<div className="csl-inline-empty"><AlertTriangle size={17}/>Su perfil no puede cubrir turnos futuros desde Consola.</div>}
+        {!coverageApplied&&form.postId&&!coverageLoading&&!coverageError&&absenceMode==='PROGRAMMED'&&coverage?.futureShiftAllowed!==false&&<Field label="Turno a cubrir *"><select value={form.targetShiftId} onChange={e=>chooseShift(e.target.value)}>
           <option value="">{coverage?.nextShifts.length?'Seleccione turno':'No hay próximos turnos registrados'}</option>
           {coverage?.nextShifts.map((shift,index)=><option key={shift.id} value={shift.id}>{fmtShift(shift,index===0?'Siguiente turno':'Segundo turno')}</option>)}
         </select></Field>}
-        {form.postId&&!coverageLoading&&!coverageError&&absenceMode==='EFFECTIVE'&&<div className="csl-current-shift"><Clock3 size={16}/>{coverage?.currentShift?fmtShift(coverage.currentShift,'Turno en curso'):'No hay un turno en curso registrado para este Puesto.'}</div>}
-        <div className="csl-reassignment-title"><UserCheck size={17}/><div><strong>Agentes Disponibles para Reasignación</strong><small>Prelación: mismo Puesto → mismo Punto → misma Compañía.</small></div></div>
-        <div className="csl-candidate-list">
+        {!coverageApplied&&form.postId&&!coverageLoading&&!coverageError&&absenceMode==='EFFECTIVE'&&<div className="csl-current-shift"><Clock3 size={16}/>{coverage?.currentShiftAllowed===false?'Su perfil solo puede cubrir turnos futuros.':coverage?.currentShift?fmtShift(coverage.currentShift,'Turno en curso'):'No hay un turno en curso registrado para este Puesto.'}</div>}
+        {!coverageApplied&&<div className="csl-reassignment-title"><UserCheck size={17}/><div><strong>Agentes Disponibles para Reasignación</strong><small>Prelación: mismo Puesto → mismo Punto → misma Compañía.</small></div></div>}
+        {!coverageApplied&&<div className="csl-candidate-list">
           {targetShift&&replacementCandidates.map(person=><button type="button" key={person.employeeId} className={form.replacementEmployeeId===person.employeeId?'selected':''} onClick={()=>chooseReplacement(person)}>
             <span className={`rank rank-${person.group}`}>{person.group}</span><div><strong>{person.fullName}</strong>
             <small>{person.roleCode}</small>
@@ -275,8 +282,8 @@ export default function IncidentNotificationPanel({initial,nextCode,locations,lo
           </button>)}
           {form.postId&&!coverageLoading&&!coverageError&&!targetShift&&<div className="csl-inline-empty"><CalendarClock size={17}/>{absenceMode==='PROGRAMMED'?'Seleccione un turno para consultar disponibilidad.':'No hay turno en curso para este Puesto.'}</div>}
           {targetShift&&!replacementCandidates.length&&<div className="csl-inline-empty"><Users size={17}/>No hay agentes libres según las asignaciones publicadas y las indisponibilidades registradas.</div>}
-        </div>
-        <p className="csl-incident-hint">Disponibilidad calculada para el turno a cubrir y el turno previo, con asignaciones publicadas e indisponibilidades registradas.</p>
+        </div>}
+        {!coverageApplied&&<p className="csl-incident-hint">Disponibilidad calculada para el turno a cubrir y el turno previo, con asignaciones publicadas e indisponibilidades registradas. Al finalizar, la cobertura se aplicará en Asignaciones.</p>}
       </section>}
 
       <section className="csl-incident-section csl-resolution-section"><SectionTitle step={absenceMode?'9':'8'} title="Resolución *"/><Field label=""><textarea aria-label="Resolución requerida" value={form.resolution} onChange={e=>patch('resolution',e.target.value)} placeholder="Detalle cómo se resolvió o gestionó el incidente…"/></Field><ImagePicker label="Evidencia de resolución" items={form.resolutionImages} onAdd={e=>addImages('resolutionImages',e)} onRemove={id=>removeImage('resolutionImages',id)}/></section>
@@ -287,7 +294,7 @@ export default function IncidentNotificationPanel({initial,nextCode,locations,lo
       {error&&<div className="csl-incident-error"><AlertTriangle size={16}/>{error}</div>}
     </div>
 
-    <div className="csl-incident-footer"><button type="button" className="draft" disabled={saving} onClick={()=>void submit('DRAFT')}><Save size={16}/>{saving?'Guardando…':'Guardar borrador'}</button><button type="button" className="finalize" disabled={saving} onClick={()=>void submit('FINALIZED')}><Send size={16}/>{initial?.status==='FINALIZED'?'Guardar finalizado':'Finalizar'}</button></div>
+    <div className="csl-incident-footer"><button type="button" className="draft" disabled={saving||coverageApplied} onClick={()=>void submit('DRAFT')}><Save size={16}/>{saving?'Guardando…':'Guardar borrador'}</button><button type="button" className="finalize" disabled={saving} onClick={()=>void submit('FINALIZED')}><Send size={16}/>{initial?.status==='FINALIZED'?'Guardar finalizado':'Finalizar'}</button></div>
   </aside>
 }
 
