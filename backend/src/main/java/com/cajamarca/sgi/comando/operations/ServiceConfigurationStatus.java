@@ -1,5 +1,6 @@
 package com.cajamarca.sgi.comando.operations;
 
+import com.cajamarca.sgi.comando.secelec.ElectronicMonitoringDevice;
 import java.util.List;
 import java.util.UUID;
 
@@ -23,6 +24,8 @@ public final class ServiceConfigurationStatus {
         List<UUID> pointIds=activePoints.stream().map(point->point.id).toList();
         long activePosts=PostEntity.count("instanceCountryId=?1 and pointId in ?2 and upper(commercialStatus)='ACTIVE'",instanceCountryId,pointIds);
         long pendingPosts=PostEntity.count("instanceCountryId=?1 and pointId in ?2 and upper(commercialStatus)='ACTIVE' and (configStatus is null or upper(configStatus)<>'CONFIGURED')",instanceCountryId,pointIds);
-        service.configStatus=activePosts>0&&pendingPosts==0?"CONFIGURED":"TO_CONFIGURE";
+        long activeDevices=ElectronicMonitoringDevice.count("instanceCountryId=?1 and pointId in ?2 and upper(commercialStatus)='ACTIVE'",instanceCountryId,pointIds);
+        long pendingDevices=ElectronicMonitoringDevice.count("instanceCountryId=?1 and pointId in ?2 and upper(commercialStatus)='ACTIVE' and (configStatus is null or upper(configStatus)<>'CONFIGURED')",instanceCountryId,pointIds);
+        service.configStatus=activePosts+activeDevices>0&&pendingPosts+pendingDevices==0?"CONFIGURED":"TO_CONFIGURE";
     }
 }
