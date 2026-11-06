@@ -10,6 +10,7 @@ import jakarta.ws.rs.core.Response;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.time.Instant;
 import java.util.Optional;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.jboss.logging.Logger;
@@ -33,20 +34,33 @@ public class VideoAuthResource {
     /** Lo que envía MediaMTX (los campos que no se usan se ignoran). */
     public record AuthRequest(String user, String password, String token, String ip, String action, String path, String protocol, String query) {}
 
+    @Inject VideoAuthLog log;
+
     @POST
     @Consumes(MediaType.APPLICATION_JSON)
     public Response check(AuthRequest r) {
-        boolean ok = r != null && allowed(r);
-        if (!ok && r != null) LOG.debugf("video_auth_denied action=%s path=%s ip=%s", r.action(), r.path(), r.ip());
+        if (r == null) return Response.status(401).build();
+        String token = Optional.ofNullable(blank(r.token())).orElseGet(() -> queryToken(r.query()));
+        String problem = problem(r, token);
+        boolean ok = problem == null;
+        if (!"api".equals(r.action())) {
+            // Lo que llega de MediaMTX, sin el token (guía de Infra, 5.1): el diagnóstico lo usa para saber si MediaMTX pregunta.
+            log.add(new VideoAuthLog.Entry(Instant.now(), r.action(), r.path(), r.protocol(), r.ip(), token != null, ok, problem));
+            if (!ok) LOG.infof("video_auth_denied action=%s path=%s protocol=%s ip=%s token=%s motivo=%s",
+                r.action(), r.path(), r.protocol(), r.ip(), token != null ? "sí" : "no", problem);
+        } else if (!ok) {
+            LOG.infof("video_auth_denied action=api user=%s ip=%s", r.user(), r.ip());
+        }
         return Response.status(ok ? 200 : 401).build();
     }
 
-    private boolean allowed(AuthRequest r) {
+    /** null si se permite; si no, el motivo. */
+    private String problem(AuthRequest r, String token) {
         if ("api".equals(r.action())) return apiUser.filter(u -> !u.isBlank()).isPresent()
-            && same(apiUser.get(), r.user()) && same(apiPassword.orElse(""), r.password());
-        if ("read".equals(r.action()) && r.path() != null && r.path().startsWith("live/"))
-            return tokens.valid(r.path(), Optional.ofNullable(blank(r.token())).orElseGet(() -> queryToken(r.query())));
-        return false;
+            && same(apiUser.get(), r.user()) && same(apiPassword.orElse(""), r.password()) ? null : "usuario o clave de API incorrectos";
+        if (!"read".equals(r.action())) return "acción no permitida (" + r.action() + ")";
+        if (r.path() == null || !r.path().startsWith("live/")) return "ruta fuera de live/";
+        return tokens.problem(r.path(), token);
     }
 
     /** token=… de la URL del navegador (?token=vence.firma). */

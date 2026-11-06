@@ -36,6 +36,7 @@ public class VideoGateway {
     @ConfigProperty(name = "sgi.video.mediamtx.protocol", defaultValue = "hls") String protocol;
     @Inject CameraSecretCipher cipher;
     @Inject VideoToken tokens;
+    @Inject VideoAuthLog authLog;
 
     /** Cada cuánto se confirma que MediaMTX sigue teniendo la cámara: sus registros viven en memoria y se pierden si se reinicia. */
     static final Duration CHECK_EVERY = Duration.ofSeconds(30);
@@ -112,6 +113,7 @@ public class VideoGateway {
         if (!configured()) return new Diagnostic(false, false, false,
             "No hay servidor de video configurado (SGI_VIDEO_MEDIAMTX_API_URL y SGI_VIDEO_MEDIAMTX_PUBLIC_URL).", steps);
         steps.add(new Step("Servidor de video configurado", true, serverInfo()));
+        steps.add(mediamtxAuthConfig());
         String path = "live/diagnostico-" + UUID.randomUUID();
         // sourceOnDemand=false explícito: si el servidor lo tiene activado por defecto, MediaMTX rechaza una ruta "publisher" con él.
         String error = registerError(path, "{\"source\":\"publisher\",\"sourceOnDemand\":false}");
@@ -121,6 +123,7 @@ public class VideoGateway {
         try {
             String base = checkBase(browserUrl(path));
             String unsigned = base.substring(0, base.indexOf('?'));
+            Instant asked = Instant.now();
             Hit noToken = hit(unsigned);
             Hit badToken = hit(base.substring(0, base.length() - 3) + "xxx");
             Hit withToken = hit(base);
@@ -136,6 +139,7 @@ public class VideoGateway {
             steps.add(new Step("Token de Comando: se acepta", acceptsToken, withToken.text(base)
                 + (acceptsToken ? " (404 es normal: la ruta de prueba no tiene video)."
                     : " → MediaMTX no acepta la firma: sigue en modo prueba (usuario y clave propios) o no llega a /api/internal/video/auth de este Comando.")));
+            steps.add(authStep(path, asked, !acceptsToken));
             boolean protectedByToken = rejectsNoToken && rejectsBadToken;
             boolean ok = protectedByToken && acceptsToken;
             String summary = ok ? "Todo bien: solo se ve el video con la URL firmada de Comando."
@@ -205,12 +209,14 @@ public class VideoGateway {
         Hit noToken = hit(unsigned);
         steps.add(new Step("Sin token: se rechaza", noToken.code() == 401, noToken.text(unsigned)
             + (noToken.code() == 401 ? "" : noToken.code() == 0 ? " (el backend no llega a la dirección del video)" : " → MediaMTX entrega video sin permiso (authMethod no es http).")));
+        Instant asked = Instant.now();
         Hit playlist = playlist(base);
         boolean plays = playlist.code() == 200;
         steps.add(new Step("Con la URL firmada de Comando: llega el video", plays, plays ? "MediaMTX entregó la lista de video (#EXTM3U) en " + hideToken(base) + "."
             : playlist.text(base) + (playlist.code() == 0 ? " (revisar SGI_VIDEO_MEDIAMTX_CHECK_URL)."
             : playlist.code() == 401 ? " → MediaMTX no acepta la firma: sigue en modo prueba o no llega a /api/internal/video/auth de este Comando."
             : " → MediaMTX recibe la cámara pero no entregó la lista de video.")));
+        if (!plays) steps.add(authStep(s.path(), asked, playlist.code() == 401));
         boolean ok = steps.stream().allMatch(Step::ok);
         String summary = ok ? "Todo bien: la cámara llega a MediaMTX y solo se ve con la URL firmada de Comando."
             : !h264 ? "El video llega, pero en H.265: el navegador no lo va a reproducir."
@@ -363,6 +369,54 @@ public class VideoGateway {
         Throwable c = e;
         while (c.getCause() != null && c.getCause() != c) c = c.getCause();
         return c.getClass().getSimpleName() + (c.getMessage() == null ? "" : ": " + c.getMessage());
+    }
+
+    /**
+     * Si MediaMTX le preguntó a este backend por la ruta (VideoAuthLog) y qué se le respondió. Sin consultas, MediaMTX no está
+     * llamando a /api/internal/video/auth de este backend: la causa está en su configuración (authHTTPAddress) o su red.
+     */
+    private Step authStep(String path, Instant from, boolean mediamtxDenied) {
+        java.util.List<VideoAuthLog.Entry> calls = authLog.since(path, from.minusSeconds(1));
+        String name = "MediaMTX le pregunta a Comando si deja ver el video";
+        if (calls.isEmpty()) return new Step(name, false, "Comando no recibió ninguna consulta de MediaMTX para " + path
+            + " → MediaMTX no está llamando a /api/internal/video/auth de este backend: revisar authMethod y authHTTPAddress en mediamtx.yml,"
+            + " que MediaMTX se haya recargado y que su contenedor llegue a esa dirección (con varios backends, pudo ir a otro).");
+        long allowed = calls.stream().filter(VideoAuthLog.Entry::allowed).count();
+        long withToken = calls.stream().filter(VideoAuthLog.Entry::withToken).count();
+        String reasons = calls.stream().filter(e -> !e.allowed()).map(VideoAuthLog.Entry::reason).distinct()
+            .collect(java.util.stream.Collectors.joining(", "));
+        VideoAuthLog.Entry last = calls.get(0);
+        String detail = "Comando recibió " + calls.size() + " consultas de MediaMTX (ip " + last.ip() + ", " + last.protocol() + "): "
+            + allowed + " aceptadas, " + (calls.size() - allowed) + " rechazadas" + (reasons.isEmpty() ? "" : " (" + reasons + ")")
+            + ", " + withToken + " traían token.";
+        if (allowed > 0) return new Step(name, !mediamtxDenied, detail + (mediamtxDenied
+            ? " → Comando aceptó el token, pero MediaMTX igual respondió 401: no está tomando la respuesta de Comando (revisar el log de MediaMTX)." : ""));
+        if (withToken == 0) return new Step(name, false, detail + " → Ninguna traía el token: el proxy (nginx) le quita ?token=… a la URL antes de MediaMTX.");
+        return new Step(name, false, detail);
+    }
+
+    private static final java.util.regex.Pattern AUTH_METHOD = java.util.regex.Pattern.compile("\"authMethod\"\\s*:\\s*\"([^\"]*)\"");
+    private static final java.util.regex.Pattern AUTH_ADDRESS = java.util.regex.Pattern.compile("\"authHTTPAddress\"\\s*:\\s*\"([^\"]*)\"");
+    private static final java.util.regex.Pattern AUTH_EXCLUDE = java.util.regex.Pattern.compile("\"authHTTPExclude\"\\s*:\\s*(\\[[^\\]]*\\])");
+
+    /** Cómo pide permiso MediaMTX (authMethod, authHTTPAddress), leído de su API. Solo esos datos: nada de usuarios ni claves. */
+    private Step mediamtxAuthConfig() {
+        String name = "MediaMTX pide permiso a Comando (configuración)";
+        Hit r;
+        try {
+            HttpResponse<String> res = http.send(request("/v3/config/global/get").GET().build(), HttpResponse.BodyHandlers.ofString());
+            r = new Hit(res.statusCode(), res.body(), null);
+        } catch (Exception e) {
+            r = new Hit(0, null, describe(e));
+        }
+        if (r.code() != 200) return new Step(name, true, "No se pudo leer la configuración de MediaMTX (no impide el video): "
+            + new Hit(r.code(), shorten(r.body()), r.error()).text(apiUrl.get() + "/v3/config/global/get"));
+        java.util.regex.Matcher m = AUTH_METHOD.matcher(r.body()), a = AUTH_ADDRESS.matcher(r.body()), x = AUTH_EXCLUDE.matcher(r.body());
+        String method = m.find() ? m.group(1) : "?", address = a.find() ? a.group(1) : "?", exclude = x.find() ? x.group(1) : "?";
+        boolean ok = "http".equals(method) && address.endsWith("/api/internal/video/auth");
+        return new Step(name, ok, "authMethod=" + method + " · authHTTPAddress=" + address + " · authHTTPExclude=" + exclude
+            + (ok ? "." : "http".equals(method) ? " → authHTTPAddress debe terminar en /api/internal/video/auth (la de este Comando)."
+                : " → authMethod debe ser http para que MediaMTX le pregunte a Comando."));
     }
 
     /** A qué servidor de video habla este backend (sin claves): va en cada diagnóstico para descartar configuración. */

@@ -45,15 +45,20 @@ public class VideoToken {
     }
 
     /** true si el token lo firmó Comando para esta ruta y aún no vence. */
-    public boolean valid(String path, String token) {
-        if (path == null || token == null) return false;
+    public boolean valid(String path, String token) { return problem(path, token) == null; }
+
+    /** null si el token sirve; si no, por qué (para el registro de consultas de MediaMTX y el diagnóstico). */
+    public String problem(String path, String token) {
+        if (path == null) return "consulta sin ruta";
+        if (token == null || token.isBlank()) return "sin token";
         int dot = token.indexOf('.');
-        if (dot <= 0) return false;
+        if (dot <= 0) return "token con formato inválido";
         long exp;
-        try { exp = Long.parseLong(token.substring(0, dot)); } catch (NumberFormatException e) { return false; }
-        if (Instant.now().getEpochSecond() > exp) return false;
+        try { exp = Long.parseLong(token.substring(0, dot)); } catch (NumberFormatException e) { return "token con formato inválido"; }
+        if (Instant.now().getEpochSecond() > exp) return "token vencido";
         byte[] expected = mac(path + "|" + exp).getBytes(StandardCharsets.US_ASCII);
-        return MessageDigest.isEqual(expected, token.substring(dot + 1).getBytes(StandardCharsets.US_ASCII));
+        return MessageDigest.isEqual(expected, token.substring(dot + 1).getBytes(StandardCharsets.US_ASCII))
+            ? null : "firma inválida (otra llave u otra ruta)";
     }
 
     private String mac(String data) {
