@@ -312,9 +312,18 @@ Contrato completo para SGI: Operador: `docs/API_CATALOG.md` → `OPR-EVIDENCE-LO
 - Los endpoints de configuración aceptan `matchThreshold` (Hito, evidencia de Consigna, campo de Bitácora) y `stationMatchThreshold` (Puesto): número 0–1, se redondea a dos decimales; fuera de rango → 400. `null` = predeterminado.
 - `serviceType` admite además `RELEVO` (fotos del puesto del relevo).
 
+### Fotos del puesto del relevo (2026-11-06)
+- El contexto del relevo (`relief` de `/api/v1/operator/runtime`) trae una foto por cada foto estándar del Puesto (`standard_reference_image`, `POST_CONFIG`, máximo 3, por `position`):
+  - `stationPhotos`: títulos, en orden (`["Entrada Principal","Bodega","Terraza"]`). Título vacío → `"Foto N del puesto"`.
+  - `stationPhotoDetails`: `[{purpose:"station_0", title, detail|null, standardImageId|null}]`.
+  - Sin fotos estándar (o Puesto de coordinación): las 3 de siempre (`Vista general del puesto`, `Área de trabajo o garita`, `Acceso principal`) con `detail` y `standardImageId` en `null`.
+- Ambos campos entran en `configurationVersion`: cambiar las fotos estándar del Puesto durante un relevo devuelve 409 y el agente actualiza el contexto.
+- `RELIEF_SUBMITTED` envía `station_0..N-1` sin huecos (N = tamaño de `stationPhotos`); se aceptan más hasta `station_2` (apps anteriores envían siempre 3). Menos fotos que `stationPhotos` → 400.
+- Operación muestra el nombre de cada foto del puesto con el `stationPhotos` guardado con el relevo (`label` en `/api/operation/events/{eventId}/evidences`).
+
 ### Relevo con VISINT opcional
 - `PUT /api/post-configurations/{postId}` acepta `stationVisintEnabled` (por defecto `false`) y `stationMatchThreshold`.
-- Si está activo, cada foto `station_0..2` del `RELIEF_SUBMITTED` se registra como ejecución `RELIEF_STATION_CAPTURED` con revisión visual contra las fotos estándar del Puesto. El acuse añade `stationVisintStatus` (`QUEUED_FOR_VISINT` | `NOT_REQUESTED`).
+- Si está activo, cada foto `station_0..N-1` del `RELIEF_SUBMITTED` se registra como ejecución `RELIEF_STATION_CAPTURED` con revisión visual contra las fotos estándar del Puesto. El acuse añade `stationVisintStatus` (`QUEUED_FOR_VISINT` | `NOT_REQUESTED`).
 - Resultado: `GET /api/v1/operator/executions?groupId={eventId del relevo}`; cada captura trae `station` y `canRetake=false`.
 
 ### Ubicación GPS de referencia

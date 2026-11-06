@@ -12,16 +12,40 @@ import java.time.*;
 import java.util.*;
 
 /**
- * Fotos del puesto del relevo (station_0..2) como ejecuciones RELIEF_STATION_CAPTURED, visibles en Operación, cuando el Puesto
+ * Fotos del puesto del relevo (station_0..2, una por foto estándar del Puesto) como ejecuciones RELIEF_STATION_CAPTURED, visibles en Operación, cuando el Puesto
  * valida con VISINT (revisión contra sus fotos estándar) o tiene ubicación GPS (aviso "Fuera del radio GPS" con el GPS del relevo).
  * Nunca bloquea el relevo: los resultados solo se informan.
  */
 @ApplicationScoped
 public class ReliefStationReviews {
     public static final String TYPE = "RELIEF_STATION_CAPTURED";
-    /** Fotos del puesto del relevo y su nombre (stationPhotos del contexto). */
-    public static final Map<String,String> STATIONS = Map.of(
-        "station_0", "Vista general del puesto", "station_1", "Área de trabajo o garita", "station_2", "Acceso principal");
+    /** Máximo de fotos del puesto en el relevo (station_0..2); coincide con el máximo de fotos estándar del Puesto. */
+    public static final int MAX_STATIONS = 3;
+    /** Fotos del puesto cuando el Puesto no tiene fotos estándar configuradas. */
+    public static final List<String> DEFAULT_STATIONS = List.of("Vista general del puesto", "Área de trabajo o garita", "Acceso principal");
+
+    /** Foto del puesto que pide el relevo: station_N, su título y detalle, y la foto estándar de referencia (null sin fotos estándar). */
+    public record Station(String purpose, String title, String detail, UUID standardImageId) {}
+
+    /**
+     * Fotos del puesto del relevo: una por cada foto estándar del Puesto (POST_CONFIG, Servicios → Puestos), en su orden,
+     * con su título y detalle. Sin fotos estándar (o en puestos de coordinación, postId null) se piden las 3 de siempre.
+     */
+    public static List<Station> stations(UUID postId) {
+        List<StandardReferenceImage> images = postId == null ? List.of() : StandardReferenceImage.of(StandardReferenceImage.POST_CONFIG, postId);
+        List<Station> out = new ArrayList<>();
+        if (images.isEmpty()) {
+            for (int i = 0; i < DEFAULT_STATIONS.size(); i++) out.add(new Station("station_" + i, DEFAULT_STATIONS.get(i), null, null));
+            return out;
+        }
+        for (int i = 0; i < Math.min(images.size(), MAX_STATIONS); i++) {
+            StandardReferenceImage img = images.get(i);
+            String title = img.title == null || img.title.isBlank() ? "Foto " + (i + 1) + " del puesto" : img.title.trim();
+            String detail = img.detail == null || img.detail.isBlank() ? null : img.detail.trim();
+            out.add(new Station("station_" + i, title, detail, img.id));
+        }
+        return out;
+    }
 
     @Inject EntityManager em;
     @Inject StorageService storage;
@@ -98,12 +122,44 @@ public class ReliefStationReviews {
 
     /** Foto del puesto (station_0..2) de una ejecución de relevo; null si no se reconoce. */
     public static String purpose(TaskExecution x) {
-        return STATIONS.keySet().stream().filter(k -> x.payloadJson != null && x.payloadJson.contains("\"" + k + "\"")).findFirst().orElse(null);
+        for (int i = 0; i < MAX_STATIONS; i++) {
+            String k = "station_" + i;
+            if (x.payloadJson != null && x.payloadJson.contains("\"" + k + "\"")) return k;
+        }
+        return null;
     }
 
-    /** Foto del puesto de una ejecución de relevo: [código, nombre], p. ej. ["F1", "Vista general del puesto"]. */
-    public static String[] station(TaskExecution x) {
+    /**
+     * Foto del puesto de una ejecución de relevo: [código, nombre], p. ej. ["F1", "Entrada principal"]. El nombre sale de
+     * stationPhotos del contexto que se guardó con el relevo (el que vio el agente); relevos sin ese dato usan los nombres de siempre.
+     */
+    public static String[] station(TaskExecution x, EntityManager em) {
         String k = purpose(x);
-        return k == null ? new String[]{null, "Foto del puesto"} : new String[]{"F" + (k.charAt(k.length() - 1) - '0' + 1), STATIONS.get(k)};
+        if (k == null) return new String[]{null, "Foto del puesto"};
+        int index = k.charAt(k.length() - 1) - '0';
+        return new String[]{"F" + (index + 1), name(names(em, x.instanceCountryId, x.groupId), k)};
     }
+
+    /** Nombres de las fotos del puesto (stationPhotos) del contexto guardado con el relevo; vacío si el relevo no lo trae. */
+    public static List<String> names(EntityManager em, UUID tenant, UUID reliefId) {
+        if (reliefId == null) return List.of();
+        List<?> rows = em.createNativeQuery("select context_json from operator_relief_submission where id=:id and instance_country_id=:t")
+            .setParameter("id", reliefId).setParameter("t", tenant).getResultList();
+        if (rows.isEmpty() || rows.get(0) == null) return List.of();
+        try {
+            List<String> out = new ArrayList<>();
+            for (JsonNode n : MAPPER.readTree(rows.get(0).toString()).path("stationPhotos")) out.add(n.asText(""));
+            return out;
+        } catch (Exception e) { return List.of(); } // contexto ilegible: nombres de siempre
+    }
+
+    /** Nombre de la foto del puesto station_N: el del contexto del relevo o, si no está, el de siempre; null si no es foto del puesto. */
+    public static String name(List<String> names, String purpose) {
+        if (purpose == null || !purpose.matches("station_[0-9]")) return null;
+        int index = purpose.charAt(purpose.length() - 1) - '0';
+        if (index < names.size() && !names.get(index).isBlank()) return names.get(index);
+        return index < DEFAULT_STATIONS.size() ? DEFAULT_STATIONS.get(index) : "Foto del puesto";
+    }
+
+    private static final com.fasterxml.jackson.databind.ObjectMapper MAPPER = new com.fasterxml.jackson.databind.ObjectMapper();
 }

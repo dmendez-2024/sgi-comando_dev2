@@ -303,7 +303,7 @@ public class OperationResource {
         List<Object[]> found = label == null || relief ? List.of() : em.createNativeQuery(label[1]).setParameter("t", x.targetId).getResultList();
         Object[] m = found.isEmpty() ? new Object[6] : found.get(0);
         if (relief) {
-            String[] station = com.cajamarca.sgi.comando.operator.ReliefStationReviews.station(x);
+            String[] station = com.cajamarca.sgi.comando.operator.ReliefStationReviews.station(x, em);
             m = new Object[]{"Relevo", 0, null, "Fotos del puesto", station[0], station[1]};
         }
         List<EvidenceObject> photos = photos(x.id);
