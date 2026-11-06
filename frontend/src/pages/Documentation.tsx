@@ -14,8 +14,10 @@ type InstitutionalDocument={
   updatedAt:string;
 };
 
-const UPLOAD_ROLES=new Set(['presidente','ggeneral']);
-const formatDate=(value:string)=>new Intl.DateTimeFormat('es-EC',{day:'2-digit',month:'short',year:'numeric'}).format(new Date(value.length===10?`${value}T12:00:00`:value));
+const formatDate=(value:string)=>{
+  const formatted=new Intl.DateTimeFormat('es-EC',{day:'2-digit',month:'short',year:'numeric'}).format(new Date(value.length===10?`${value}T12:00:00`:value));
+  return formatted.replace(/\b([a-záéíóúñ])/u,letter=>letter.toLocaleUpperCase('es-EC'));
+};
 const statusLabel=(status:DocumentStatus)=>status==='VIGENTE'?'Vigente':'No vigente';
 function message(error:unknown){
   if(error instanceof ApiError)try{return JSON.parse(error.body)?.message||error.body}catch{return error.body}
@@ -39,7 +41,7 @@ export default function Documentation(){
   const [saving,setSaving]=useState(false);
   const [error,setError]=useState('');
   const inputRef=useRef<HTMLInputElement|null>(null);
-  const canUpload=UPLOAD_ROLES.has(getUser());
+  const canUpload=getUser()==='presidente';
 
   useEffect(()=>{
     let active=true;
@@ -132,7 +134,7 @@ export default function Documentation(){
           <div><b className="documentation-version">{document.version}</b></div>
           <div><b className={`documentation-status ${document.status==='VIGENTE'?'current':'expired'}`}><i/>{statusLabel(document.status)}</b></div>
           <time dateTime={document.updatedAt}>{formatDate(document.updatedAt)}</time>
-          <div className="documentation-actions"><button type="button" onClick={()=>downloadDocument(document)}><Download size={14}/>Descargar</button><button type="button" className="icon-only" aria-label={`Más acciones para ${document.name}`}><MoreHorizontal size={18}/></button></div>
+          <div className="documentation-actions"><button type="button" onClick={()=>downloadDocument(document)}><Download size={14}/>Descargar</button>{canUpload&&<button type="button" className="icon-only" aria-label={`Más acciones para ${document.name}`}><MoreHorizontal size={18}/></button>}</div>
         </div>)}
         {!loading&&!filtered.length&&<div className="documentation-empty">No hay documentos cargados que coincidan con los filtros.</div>}
         {loading&&<div className="documentation-empty">Cargando documentos…</div>}

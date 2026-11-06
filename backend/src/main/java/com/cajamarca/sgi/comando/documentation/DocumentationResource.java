@@ -63,7 +63,7 @@ public class DocumentationResource {
 
     @POST
     @Consumes(MediaType.MULTIPART_FORM_DATA)
-    @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL"})
+    @RolesAllowed("PRESIDENTE")
     @Transactional
     public DocumentView upload(@RestForm("name") String name,
                                @RestForm("version") String version,

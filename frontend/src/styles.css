@@ -2592,6 +2592,7 @@ button.rel-material-image:focus-visible{outline:3px solid rgba(45,103,216,.3);ou
 .assignment-searchable-select{flex:0 0 180px;width:180px;max-width:180px}
 .assignment-searchable-select.company{flex-basis:150px;width:150px;max-width:150px}
 .assignment-searchable-select .searchable-select-trigger{height:40px;border-color:#dfe4ea;border-radius:9px;font-size:12px}
+.assignment-searchable-select .searchable-select-menu{width:100%;max-width:100%;box-sizing:border-box}
 .assignments-asi-v066 .assignment-toolbar-actions{overflow:visible;flex-wrap:wrap}
 
 .ident-userbox{flex-direction:column;align-items:flex-start;justify-content:center;gap:2px;min-width:0}
@@ -2661,3 +2662,6 @@ button.rel-material-image:focus-visible{outline:3px solid rgba(45,103,216,.3);ou
 
 /* Acciones de biblioteca de protocolos en las tres configuraciones. */
 .patrol-config-page .bit-detail-header>div:last-child,.consignas-config-page .bit-detail-header>div:last-child{flex-wrap:wrap}
+
+/* Novedades: todos los controles del panel lateral usan la tipografía de la aplicación. */
+.nov-modal-field input,.nov-modal-field select,.nov-modal-field textarea{font-family:inherit}
