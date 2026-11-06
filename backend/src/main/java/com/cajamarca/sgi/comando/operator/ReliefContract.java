@@ -47,6 +47,12 @@ public final class ReliefContract {
         if(!version.isInt() || version.asInt()<1 || version.asInt()>INVENTORY_CONTRACT_V2) throw new BadRequestException("inventoryContractVersion inválido");
         return version.asInt();
     }
+    /** Fotos del puesto del evento (station_N enviadas); el relevo las exige desde station_0 sin huecos. */
+    public static int stationPhotos(JsonNode event) {
+        int count=0;
+        for(JsonNode photo:event.path("evidence")) if(photo.path("purpose").asText("").startsWith("station_")) count++;
+        return count;
+    }
     public static String text(JsonNode n,String key) {
         if(n==null || !n.path(key).isTextual() || n.path(key).asText().isBlank()) throw new BadRequestException("Campo requerido: "+key);
         return n.path(key).asText();
@@ -115,16 +121,20 @@ public final class ReliefContract {
         }
         Instant executed=time(e,"executedAt");
         if(executed.isAfter(captured.plusSeconds(300))) throw new BadRequestException("Ejecución posterior a la captura");
-        Set<String> required=new HashSet<>(Set.of("entrant_face","entrant_full","station_0","station_1","station_2"));
+        Set<String> required=new HashSet<>(Set.of("entrant_face","entrant_full"));
         if(MODE_NORMAL.equals(mode)) required.addAll(Set.of("outgoing_face","outgoing_full"));
         JsonNode evidence=e.path("evidence");
         if(!evidence.isArray()) throw new BadRequestException("Evidencias requeridas");
         Set<String> seen=new HashSet<>(); Set<UUID> ids=new HashSet<>();
         for(JsonNode photo:evidence) {
             String purpose=text(photo,"purpose");
-            if(!required.contains(purpose) || !seen.add(purpose) || !ids.add(uuid(photo,"evidenceId"))) throw new BadRequestException("Evidencia duplicada o inesperada");
+            boolean known=required.contains(purpose) || purpose.matches("station_[0-"+(ReliefStationReviews.MAX_STATIONS-1)+"]");
+            if(!known || !seen.add(purpose) || !ids.add(uuid(photo,"evidenceId"))) throw new BadRequestException("Evidencia duplicada o inesperada");
         }
-        if(!seen.equals(required)) throw new BadRequestException("Faltan fotografías obligatorias");
+        // Las fotos del puesto van en orden desde station_0; cuántas exige el Puesto lo valida stationPhotos(…) contra el contexto.
+        int stations=stationPhotos(e);
+        if(stations==0 || !seen.containsAll(required)) throw new BadRequestException("Faltan fotografías obligatorias");
+        for(int i=0;i<stations;i++) if(!seen.contains("station_"+i)) throw new BadRequestException("Faltan fotografías obligatorias");
         if(!e.path("consignmentReadings").isArray()) throw new BadRequestException("Lecturas requeridas");
     }
 }

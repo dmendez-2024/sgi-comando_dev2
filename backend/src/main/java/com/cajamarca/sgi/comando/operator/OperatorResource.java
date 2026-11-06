@@ -440,7 +440,15 @@ public class OperatorResource {
             }
         } else n.putArray("patrols");
         n.set("nextActions",c.coordination()?mapper.createArrayNode():nextActions(c,assignmentConsignments));
-        n.putArray("stationPhotos").add("Vista general del puesto").add("Área de trabajo o garita").add("Acceso principal");
+        // Fotos del puesto: las fotos estándar del Puesto (Servicios → Puestos) con su título y detalle; sin ellas, las 3 de siempre.
+        // stationPhotos (solo nombres) se mantiene para apps anteriores; stationPhotoDetails trae el detalle y la foto de referencia.
+        ArrayNode stationNames=n.putArray("stationPhotos"), stationDetails=n.putArray("stationPhotoDetails");
+        for(ReliefStationReviews.Station s:ReliefStationReviews.stations(c.coordination()?null:c.post.id)) {
+            stationNames.add(s.title());
+            ObjectNode d=stationDetails.addObject().put("purpose",s.purpose()).put("title",s.title());
+            if(s.detail()!=null) d.put("detail",s.detail()); else d.putNull("detail");
+            if(s.standardImageId()!=null) d.put("standardImageId",s.standardImageId().toString()); else d.putNull("standardImageId");
+        }
         // fetchedAt/warning/status cambian por disponibilidad de red y no deben invalidar una confirmación del mismo inventario.
         // El último estado reportado es informativo: otro relevo puede cambiarlo mientras el agente confirma.
         ObjectNode versionedContext=n.deepCopy();
@@ -1040,6 +1048,8 @@ public class OperatorResource {
         String openingCause=MODE_OPENING.equals(mode)?predecessor.openingCause():null;
         ObjectNode snapshot=context(c);
         if(!text(event,"configurationVersion").equals(snapshot.path("configurationVersion").asText())) throw new ClientErrorException("El contexto cambió; actualiza y vuelve a confirmar las lecturas",409);
+        // Una foto por cada foto del puesto del contexto; las apps anteriores siempre envían 3 y se aceptan.
+        if(ReliefContract.stationPhotos(event)<snapshot.path("stationPhotos").size()) throw new BadRequestException("Faltan fotografías obligatorias del puesto");
         Map<String,String> required=new TreeMap<>(), actual=new TreeMap<>();
         for(JsonNode item:snapshot.path("consignments")) required.put(item.path("consignmentId").asText(),item.path("version").asText());
         for(JsonNode item:event.path("consignmentReadings")) { String id=uuid(item,"consignmentId").toString(); if(actual.put(id,text(item,"version"))!=null) throw new BadRequestException("Lectura duplicada");

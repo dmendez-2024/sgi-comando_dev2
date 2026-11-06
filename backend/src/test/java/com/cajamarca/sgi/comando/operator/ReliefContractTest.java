@@ -49,5 +49,15 @@ class ReliefContractTest {
    assertThrows(jakarta.ws.rs.BadRequestException.class,()->ReliefContract.validate(inventory(2,c,"  ",true),employee,country,now));
    assertDoesNotThrow(()->ReliefContract.validate(inventory(2,c,"Detalle",true),employee,country,now));}}
  @Test void refusesUnknownInventoryContractVersion(){assertThrows(jakarta.ws.rs.BadRequestException.class,()->ReliefContract.validate(inventory(3,"GOOD",null,true),employee,country,now));}
+ /** Fotos del puesto: una por foto estándar del Puesto (1..3), en orden desde station_0. */
+ ObjectNode stations(String... purposes){var b=batch(true);ArrayNode photos=event(b).putArray("evidence");
+  for(String p:new String[]{"entrant_face","entrant_full"})photos.addObject().put("purpose",p).put("evidenceId",UUID.randomUUID().toString());
+  for(String p:purposes)photos.addObject().put("purpose",p).put("evidenceId",UUID.randomUUID().toString());return b;}
+ @Test void acceptsAsManyStationPhotosAsThePostDefines(){assertDoesNotThrow(()->ReliefContract.validate(stations("station_0"),employee,country,now));
+  assertDoesNotThrow(()->ReliefContract.validate(stations("station_0","station_1"),employee,country,now));
+  assertEquals(2,ReliefContract.stationPhotos(event(stations("station_0","station_1"))));}
+ @Test void stationPhotosStartAtZeroWithoutGaps(){assertThrows(jakarta.ws.rs.BadRequestException.class,()->ReliefContract.validate(stations(),employee,country,now));
+  assertThrows(jakarta.ws.rs.BadRequestException.class,()->ReliefContract.validate(stations("station_0","station_2"),employee,country,now));
+  assertThrows(jakarta.ws.rs.BadRequestException.class,()->ReliefContract.validate(stations("station_3"),employee,country,now));}
  @Test void refusesMissingUnilateralReason(){var b=batch(true);event(b).remove("unilateralReason");assertThrows(jakarta.ws.rs.BadRequestException.class,()->ReliefContract.validate(b,employee,country,now));}
 }

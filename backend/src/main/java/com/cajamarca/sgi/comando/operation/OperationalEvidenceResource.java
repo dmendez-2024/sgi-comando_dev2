@@ -56,10 +56,15 @@ public class OperationalEvidenceResource {
         UUID pointId = event.pointId();
         ArrayNode result = mapper.createArrayNode();
         List<Object[]> relief = reliefPhotos(eventId);
+        // Fotos del puesto: el nombre que vio el agente (stationPhotos del contexto del relevo, de las fotos estándar del Puesto).
+        List<String> stationNames = relief.isEmpty() ? List.of() : com.cajamarca.sgi.comando.operator.ReliefStationReviews.names(em, tenant.instanceCountryId(), eventId);
         for (Object[] row : relief) {
             UUID id = (UUID) row[0];
-            if (row[2] != null && row[2].toString().startsWith("image/"))
-                result.addObject().put("id", id.toString()).put("source", "RELIEF").put("purpose", row[1].toString());
+            if (row[2] != null && row[2].toString().startsWith("image/")) {
+                ObjectNode node = result.addObject().put("id", id.toString()).put("source", "RELIEF").put("purpose", row[1].toString());
+                String station = com.cajamarca.sgi.comando.operator.ReliefStationReviews.name(stationNames, row[1].toString());
+                if (station != null) node.put("label", station);
+            }
         }
         if (relief.isEmpty() && event.kind() == LOGBOOK) logbookPhotos(result, eventId, pointId);
         else if (relief.isEmpty() && event.kind() == CONSIGNMENT_REQUEST) consignmentRequestPhotos(result, eventId);
