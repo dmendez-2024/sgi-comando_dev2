@@ -25,7 +25,8 @@ public class SupervisionQueryResource {
     public record InventoryItem(UUID assetId, String description, String observedState, String comment) {}
     public record NoveltyDecision(UUID noveltyId, String noveltyType, String title, String severity, Instant occurredAt, String decision, String decidedBy, Instant decidedAt) {}
     public record EvaluationDetail(EvaluationRow row, String supervisorComments, String pointPostNotes, String inventoryComments, UUID consignmentId, Integer consignmentVersion,
-                                   String consignmentSnapshot, boolean hasPhoto, String createdBy, Instant createdAt, List<InventoryItem> inventory, List<NoveltyDecision> decisions) {}
+                                   String consignmentSnapshot, boolean hasPhoto, String createdBy, Instant createdAt, List<InventoryItem> inventory, List<NoveltyDecision> decisions,
+                                   String sanctionDescription, int sanctionImageCount) {}
     public record Option(UUID id, String name, UUID parentId) {}
     public record FilterOptions(List<Option> companies, List<Option> points, List<Option> posts, List<Option> supervisors, List<Option> agents) {}
 
@@ -88,7 +89,7 @@ public class SupervisionQueryResource {
     public EvaluationDetail detail(@PathParam("id") UUID id) {
         EvaluationRow row = find(id);
         Object[] e = (Object[]) em.createNativeQuery("""
-            select supervisor_comments,point_post_notes,inventory_comments,consignment_id,consignment_version,consignment_snapshot,agent_photo_evidence_id,created_by,created_at
+            select supervisor_comments,point_post_notes,inventory_comments,consignment_id,consignment_version,consignment_snapshot,agent_photo_evidence_id,created_by,created_at,sanction_description
             from supervisor_evaluation where id=:id and instance_country_id=:tenant""").setParameter("id", id).setParameter("tenant", tenant.instanceCountryId()).getSingleResult();
         @SuppressWarnings("unchecked") List<Object[]> items = em.createNativeQuery("""
             select asset_id,description_snapshot,observed_state,comment from supervisor_evaluation_inventory_item where evaluation_id=:id order by description_snapshot""")
@@ -97,9 +98,12 @@ public class SupervisionQueryResource {
             select d.novelty_id,d.novelty_type,r.title,r.severity,r.occurred_at,d.decision,d.decided_by,d.decided_at
             from supervisor_evaluation_novelty_decision d left join operator_operational_report r on r.id=d.novelty_id and r.instance_country_id=:tenant
             where d.evaluation_id=:id order by r.occurred_at desc nulls last""").setParameter("id", id).setParameter("tenant", tenant.instanceCountryId()).getResultList();
+        int sanctionImages = ((Number) em.createNativeQuery("select count(*) from supervisor_evaluation_sanction_image where evaluation_id=:id")
+            .setParameter("id", id).getSingleResult()).intValue();
         return new EvaluationDetail(row, str(e[0]), str(e[1]), str(e[2]), (UUID) e[3], e[4] == null ? null : ((Number) e[4]).intValue(), str(e[5]), e[6] != null, str(e[7]), instant(e[8]),
             items.stream().map(x -> new InventoryItem((UUID) x[0], str(x[1]), str(x[2]), str(x[3]))).toList(),
-            decisions.stream().map(x -> new NoveltyDecision((UUID) x[0], str(x[1]), x[2] == null ? "Novedad no disponible" : str(x[2]), str(x[3]), instant(x[4]), str(x[5]), str(x[6]), instant(x[7]))).toList());
+            decisions.stream().map(x -> new NoveltyDecision((UUID) x[0], str(x[1]), x[2] == null ? "Novedad no disponible" : str(x[2]), str(x[3]), instant(x[4]), str(x[5]), str(x[6]), instant(x[7]))).toList(),
+            str(e[9]), sanctionImages);
     }
 
     /** Foto actual del Agente tomada por el Supervisor (evidence_object SUPERVISOR_AGENT_PHOTO en MinIO). */
@@ -110,6 +114,17 @@ public class SupervisionQueryResource {
             .setParameter("id", id).setParameter("tenant", tenant.instanceCountryId()).getResultList();
         EvidenceObject o = ids.isEmpty() || ids.get(0) == null ? null : EvidenceObject.find("id=?1 and instanceCountryId=?2 and targetType=?3", ids.get(0), tenant.instanceCountryId(), "SUPERVISOR_AGENT_PHOTO").firstResult();
         if (o == null) throw new NotFoundException("Foto no encontrada");
+        return Response.ok(storage.read(o.bucket, o.objectKey)).type(o.contentType).header(HttpHeaders.CACHE_CONTROL, "private, max-age=300").build();
+    }
+
+    /** Imagen de la sanción registrada por el Supervisor (evidence_object SUPERVISOR_SANCTION_IMAGE, posición 1..3). */
+    @GET @Path("/{id}/sanction-images/{position}")
+    public Response sanctionImage(@PathParam("id") UUID id, @PathParam("position") int position) {
+        find(id);
+        List<?> ids = em.createNativeQuery("select evidence_id from supervisor_evaluation_sanction_image where evaluation_id=:id and position=:position")
+            .setParameter("id", id).setParameter("position", (short) position).getResultList();
+        EvidenceObject o = ids.isEmpty() ? null : EvidenceObject.find("id=?1 and instanceCountryId=?2 and targetType=?3", ids.get(0), tenant.instanceCountryId(), "SUPERVISOR_SANCTION_IMAGE").firstResult();
+        if (o == null) throw new NotFoundException("Imagen de sanción no encontrada");
         return Response.ok(storage.read(o.bucket, o.objectKey)).type(o.contentType).header(HttpHeaders.CACHE_CONTROL, "private, max-age=300").build();
     }
 

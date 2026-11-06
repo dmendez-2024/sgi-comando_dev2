@@ -126,7 +126,9 @@ const incidentToConsoleItem=(record:IncidentRecord):ConsoleItem=>({
   company:record.company||'—',companyCode:record.companyCode||'',companyId:record.companyId,client:record.client||'—',city:record.city||'—',point:record.point||'—',post:record.post||'—',
   responsible:record.collaboratorNames.join(', ')||'Operador de Consola',zone:'Zona Costa',region:'Costa Sur',status:record.status,priority:severityToPriority(record.severity),
   createdAt:record.createdAt||record.updatedAt,updatedAt:record.updatedAt,summary:record.description||'Incidente en elaboración.',source:'NOV',originLabel:`Novedades · Incidentes · ${record.incidentType||record.subcategory||'Sin clasificar'}`,
-  recommendedAction:record.status==='DRAFT'?'Completar y finalizar la notificación del incidente.':'Incidente finalizado; puede reabrirse para edición desde Consola.'
+  recommendedAction:record.status==='DRAFT'?'Completar y finalizar la notificación del incidente.':record.coverageAssignmentId
+    ?`Cobertura aplicada en Asignaciones: ${record.replacementEmployeeName || 'agente seleccionado'}.`
+    :'Incidente finalizado; puede reabrirse para edición desde Consola.'
 });
 const operatorReportToConsoleItem=(record:OperatorReport,location?:LocationOption):ConsoleItem=>({
   id:`operator:${record.reportId}`,category:'NOVEDADES',subtype:record.type==='INCIDENT'?'Incidente':record.type==='FINDING'?'Hallazgo':'Vulnerabilidad',
@@ -138,7 +140,7 @@ const operatorReportToConsoleItem=(record:OperatorReport,location?:LocationOptio
   recommendedAction:'Validar el reporte recibido desde SGI Operador.'
 });
 
-export default function ConsolaMonitor(){
+export default function ConsolaMonitor({initialCaseId=''}:{initialCaseId?:string}){
   const user=getUser();
   const scope=scopeByUser[user];
   const [filters,setFilters]=useState<Filters>(EMPTY_FILTERS);
@@ -208,6 +210,7 @@ export default function ConsolaMonitor(){
   //const allRows=useMemo(()=>[...operatorRows,...DATA,...incidentRows],[operatorRows,incidentRows]);
   const allRows=useMemo(()=>[...operatorRows,...incidentRows],[operatorRows,incidentRows]);
   const scoped=useMemo(()=>allRows.filter(x=>withinScope(x,scope)),[allRows,scope]);
+  useEffect(()=>{if(initialCaseId&&scoped.some(row=>row.id===initialCaseId))setDetailId(initialCaseId)},[initialCaseId,scoped]);
   const cities=useMemo(()=>unique(scoped.map(x=>x.city)),[scoped]);
   const companies=useMemo(()=>unique(scoped.map(x=>x.company)),[scoped]);
   const clients=useMemo(()=>unique(scoped.map(x=>x.client)),[scoped]);
@@ -234,7 +237,7 @@ export default function ConsolaMonitor(){
     }).sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt));
   },[scoped,filters,dateError]);
 
-  const inspected=detailId?rows.find(x=>x.id===detailId)??null:null;
+  const inspected=detailId?scoped.find(x=>x.id===detailId)??null:null;
   const editingIncident=editingIncidentId?incidents.find(x=>x.id===editingIncidentId)??null:null;
   const metrics=useMemo(()=>({
     attention: scoped.filter(x=>['PENDING','OVERDUE','NEW','CRITICAL','ESCALATED'].includes(x.status)).length,
@@ -268,7 +271,7 @@ export default function ConsolaMonitor(){
     setSelectedId(row.id);
     setDetailId(row.id);setEditingIncidentId('');setIncidentEditorOpen(false);
   }
-  async function saveIncident(record:IncidentRecord):Promise<IncidentRecord>{
+  async function saveIncident(record:IncidentRecord,keepEditing=false):Promise<IncidentRecord>{
     const normalized=await (record.id?api.updateIncident(record.id,record):api.createIncident(record)) as IncidentRecord;
     setIncidents(prev=>prev.some(x=>x.id===normalized.id)?prev.map(x=>x.id===normalized.id?normalized:x):[normalized,...prev]);
     setIncidentsError('');
@@ -277,7 +280,7 @@ export default function ConsolaMonitor(){
     const savedDate=dateOnly(normalized.updatedAt);
     const start=new Date(`${savedDate}T12:00:00Z`); start.setUTCDate(start.getUTCDate()-30);
     setFilters({...EMPTY_FILTERS,dateFrom:start.toISOString().slice(0,10),dateTo:savedDate});
-    if(normalized.status==='DRAFT'){
+    if(keepEditing||normalized.status==='DRAFT'){
       setEditingIncidentId(normalized.id);
       return normalized;
     }

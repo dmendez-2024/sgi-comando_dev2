@@ -16,6 +16,7 @@ class DashboardResourceTest {
     @Inject EntityManager em;
     @Inject TenantContext tenant;
     UUID planId;
+    UUID previousPlanId;
     UUID createdConsignmentProtocolId;
     UUID createdConsignmentId;
     UUID coordinationPostId;
@@ -25,6 +26,7 @@ class DashboardResourceTest {
     UUID supervisionAssignmentId;
     UUID supervisionEvidenceId;
     UUID supervisionEvaluationId;
+    UUID incidentNotificationId;
     final List<UUID> shifts = new ArrayList<>();
     final List<UUID> assignments = new ArrayList<>();
     final List<UUID> reliefs = new ArrayList<>();
@@ -32,6 +34,7 @@ class DashboardResourceTest {
 
     @AfterEach void cleanup() {
         QuarkusTransaction.requiringNew().run(() -> {
+            if (incidentNotificationId != null) em.createNativeQuery("delete from incident_notification where id=:id").setParameter("id", incidentNotificationId).executeUpdate();
             if (supervisionEvaluationId != null) em.createNativeQuery("delete from supervisor_evaluation where id=:id").setParameter("id", supervisionEvaluationId).executeUpdate();
             if (supervisionEvidenceId != null) em.createNativeQuery("delete from evidence_object where id=:id").setParameter("id", supervisionEvidenceId).executeUpdate();
             if (supervisionAssignmentId != null) em.createNativeQuery("delete from operational_assignment where id=:id").setParameter("id", supervisionAssignmentId).executeUpdate();
@@ -49,6 +52,7 @@ class DashboardResourceTest {
                 em.createNativeQuery("delete from shift_occurrence where id=:id").setParameter("id", id).executeUpdate();
             }
             if (planId != null) em.createNativeQuery("delete from assignment_plan where id=:id").setParameter("id", planId).executeUpdate();
+            if (previousPlanId != null) em.createNativeQuery("delete from assignment_plan where id=:id").setParameter("id", previousPlanId).executeUpdate();
         });
     }
 
@@ -69,14 +73,21 @@ class DashboardResourceTest {
             score(country, post, 1, 2, 50, "ASSIGNED");
             score(country, post, 3, 4, 100, "ASSIGNED");
             score(country, post, 10, 5, 100, "REMOVED");
-            relief(country, post, "2001-01-02 05:01:00+00");
+            relief(country, post, "2001-01-02 07:01:00+00");
             relief(country, post, "2001-01-02 05:00:00+00");
             relief(country, post, null);
+            relief(country, post, "2001-01-02 07:00:00+00");
+            relief(country, post, "2001-01-02 08:00:00+00");
+            relief(country, post, "2001-01-02 08:01:00+00");
         });
         as("presidente").queryParam("weekStart", "2001-01-03").queryParam("companyId", company).queryParam("clientId", client)
             .get("/api/dashboard/metrics").then().statusCode(200).body("weekStart", is("2001-01-01"))
             .body("idAverage", is(3.5f)).body("icAverage", is(87.5f))
-            .body("idSamples", is(2)).body("lateReliefs", is(1)).body("recordedReliefs", is(2));
+            .body("idSamples", is(2)).body("lateReliefs", is(2)).body("recordedReliefs", is(5))
+            .body("reliefsOverThreeHours", is(1)).body("previousLateReliefs", is(0));
+        as("presidente").queryParam("weekStart", "2001-01-03").queryParam("companyId", company)
+            .queryParam("period", "7d").get("/api/dashboard/metrics").then().statusCode(200)
+            .body("lateReliefs", is(2)).body("reliefsOverThreeHours", is(1));
         as("presidente").queryParam("weekStart", "2001-01-01").queryParam("clientId", UUID.randomUUID())
             .get("/api/dashboard/metrics").then().statusCode(200).body("idAverage", nullValue())
             .body("icAverage", nullValue()).body("lateReliefs", is(0));
@@ -98,6 +109,8 @@ class DashboardResourceTest {
             .get("/api/dashboard/consignment-compliance").then().statusCode(200).extract().path("activeConsignments");
         int previousNonCompliant = as("presidente").queryParam("weekStart", "2001-01-03").queryParam("companyId", company).queryParam("clientId", client)
             .get("/api/dashboard/consignment-compliance").then().statusCode(200).extract().path("nonCompliant");
+        int previousExpected = as("presidente").queryParam("weekStart", "2001-01-03").queryParam("companyId", company).queryParam("clientId", client)
+            .get("/api/dashboard/consignment-compliance").then().statusCode(200).extract().path("expectedExecutions");
         QuarkusTransaction.requiringNew().run(() -> {
             consignment(country, pointId);
             compliance(country, assignments.get(0));
@@ -105,8 +118,9 @@ class DashboardResourceTest {
         });
         as("presidente").queryParam("weekStart", "2001-01-03").queryParam("companyId", company).queryParam("clientId", client)
             .get("/api/dashboard/consignment-compliance").then().statusCode(200)
-            .body("activeConsignments", is(previousActive + 1)).body("nonCompliant", is(previousNonCompliant + 1))
-            .body("nonCompliancePct", is(Math.round(1000f * (previousNonCompliant + 1) / (previousActive + 1)) / 10f));
+            .body("activeConsignments", is(previousActive + 1)).body("expectedExecutions", is(previousExpected + 2))
+            .body("nonCompliant", is(previousNonCompliant + 2))
+            .body("nonCompliancePct", is(Math.round(1000f * (previousNonCompliant + 2) / (previousExpected + 2)) / 10f));
         as("presidente").queryParam("weekStart", "2001-01-03").queryParam("companyId", company).queryParam("clientId", client)
             .get("/api/dashboard/consignment-compliance").then().statusCode(200)
             .body("attention.find { it.pointId == '" + pointId + "' }.nonCompliant", greaterThanOrEqualTo(1))
@@ -115,7 +129,8 @@ class DashboardResourceTest {
             .setParameter("id", createdConsignmentId).executeUpdate());
         as("presidente").queryParam("weekStart", "2001-01-03").queryParam("companyId", company).queryParam("clientId", client)
             .get("/api/dashboard/consignment-compliance").then().statusCode(200)
-            .body("activeConsignments", is(previousActive)).body("nonCompliant", is(previousNonCompliant));
+            .body("activeConsignments", is(previousActive)).body("expectedExecutions", is(previousExpected))
+            .body("nonCompliant", is(previousNonCompliant));
         as("presidente").queryParam("weekStart", "2001-01-03").queryParam("clientId", UUID.randomUUID())
             .get("/api/dashboard/consignment-compliance").then().statusCode(200)
             .body("activeConsignments", is(0)).body("nonCompliancePct", nullValue()).body("attention", empty());
@@ -130,7 +145,7 @@ class DashboardResourceTest {
             .get("/api/dashboard/operational-risk-trend").then().statusCode(200).body("size()", greaterThan(170));
         as("presidente").queryParam("weekStart", "2001-01-03").queryParam("companyId", company).queryParam("clientId", client)
             .get("/api/dashboard/supervision-route-compliance").then().statusCode(200)
-            .body("expectedVisits", is(0)).body("nonCompliancePct", nullValue());
+            .body("evaluatedRoutes", is(0)).body("nonCompliancePct", nullValue());
         QuarkusTransaction.requiringNew().run(() -> {
             em.createNativeQuery("update assignment_plan set status='PUBLISHED' where id=:id")
                 .setParameter("id", planId).executeUpdate();
@@ -138,6 +153,8 @@ class DashboardResourceTest {
                 .setParameter("employee", UUID.randomUUID()).setParameter("id", assignments.get(index)).executeUpdate();
             em.createNativeQuery("update relief_event set shift_occurrence_id=:shift where id=:id")
                 .setParameter("shift", shifts.get(0)).setParameter("id", reliefs.get(0)).executeUpdate();
+            for (int index = 1; index < reliefs.size(); index++) em.createNativeQuery("update relief_event set shift_occurrence_id=:shift where id=:id")
+                .setParameter("shift", shifts.get(0)).setParameter("id", reliefs.get(index)).executeUpdate();
             em.createNativeQuery("update relief_event set executed_at=null where id=:id")
                 .setParameter("id", reliefs.get(1)).executeUpdate();
             report(country, pointId, post, assignments.get(0), "INCIDENT", "CRITICAL");
@@ -147,25 +164,102 @@ class DashboardResourceTest {
             .get("/api/dashboard/missed-reliefs").then().statusCode(200)
             .body("assignedShifts", is(2)).body("missedShifts", is(1));
         as("presidente").queryParam("weekStart", "2001-01-03").queryParam("companyId", company).queryParam("clientId", client)
+            .get("/api/dashboard/operational-coverage").then().statusCode(200)
+            .body("weekStart", is("2001-01-01")).body("evaluatedPoints", is(1))
+            .body("uncoveredPoints", is(1)).body("evaluatedShifts", is(3))
+            .body("uncoveredShifts", is(1)).body("previousUncoveredPoints", is(0));
+        previousPlanId = UUID.randomUUID();
+        UUID previousShift = UUID.randomUUID(); shifts.add(previousShift);
+        QuarkusTransaction.requiringNew().run(() -> {
+            em.createNativeQuery("""
+                insert into assignment_plan(id,instance_country_id,company_id,week_start,status,created_at,updated_at)
+                values(:id,:tenant,:company,'2000-12-25','PUBLISHED',now(),now())
+                """).setParameter("id", previousPlanId).setParameter("tenant", country).setParameter("company", company).executeUpdate();
+            em.createNativeQuery("""
+                insert into shift_occurrence(id,instance_country_id,post_id,starts_at,ends_at,required,created_at,updated_at)
+                values(:id,:tenant,:post,'2000-12-31 05:00:00+00','2000-12-31 06:00:00+00',true,now(),now())
+                """).setParameter("id", previousShift).setParameter("tenant", country).setParameter("post", post).executeUpdate();
+        });
+        as("presidente").queryParam("weekStart", "2001-01-07").queryParam("companyId", company).queryParam("clientId", client)
+            .get("/api/dashboard/operational-coverage").then().statusCode(200)
+            .body("weekStart", is("2001-01-01")).body("previousUncoveredPoints", is(1))
+            .body("previousEvaluatedPoints", is(1));
+        as("presidente").queryParam("weekStart", "2001-01-03").queryParam("companyId", company).queryParam("clientId", client)
             .get("/api/dashboard/critical-incidents").then().statusCode(200)
             .body("reportedCriticalIncidents", is(1));
+        incidentNotificationId = UUID.randomUUID();
+        QuarkusTransaction.requiringNew().run(() -> em.createNativeQuery("""
+            insert into incident_notification(id,instance_country_id,code,status,company_id,point_id,
+                created_by,updated_by,payload_json,created_at,updated_at)
+            values(:id,:tenant,:code,'DRAFT',:company,:point,'test','test',
+                '{"severity":"CRITICAL"}','2001-01-02 05:00:00+00','2001-01-02 05:00:00+00')
+            """).setParameter("id",incidentNotificationId).setParameter("tenant",country)
+            .setParameter("code","TEST-"+incidentNotificationId).setParameter("company",company)
+            .setParameter("point",pointId).executeUpdate());
+        as("presidente").queryParam("weekStart", "2001-01-03").queryParam("companyId", company).queryParam("clientId", client)
+            .get("/api/dashboard/critical-incidents").then().statusCode(200)
+            .body("reportedCriticalIncidents", is(2));
         as("presidente").queryParam("weekStart", "2001-01-03").queryParam("clientId", UUID.randomUUID())
             .get("/api/dashboard/critical-incidents").then().statusCode(200)
             .body("reportedCriticalIncidents", is(0));
         QuarkusTransaction.requiringNew().run(() -> route(country, company, pointId));
         as("presidente").queryParam("weekStart", "2001-01-03").queryParam("companyId", company).queryParam("clientId", client)
             .get("/api/dashboard/supervision-route-compliance").then().statusCode(200)
-            .body("expectedVisits", is(1)).body("missedVisits", is(1)).body("nonCompliancePct", is(100.0f));
+            .body("evaluatedRoutes", is(1)).body("nonCompliantRoutes", is(1)).body("nonCompliancePct", is(100.0f));
         QuarkusTransaction.requiringNew().run(() -> completedVisit(country, pointId, post, assignments.get(0)));
         as("presidente").queryParam("weekStart", "2001-01-03").queryParam("companyId", company).queryParam("clientId", client)
             .get("/api/dashboard/supervision-route-compliance").then().statusCode(200)
-            .body("expectedVisits", is(1)).body("missedVisits", is(0)).body("nonCompliancePct", is(0.0f));
+            .body("evaluatedRoutes", is(1)).body("nonCompliantRoutes", is(0)).body("nonCompliancePct", is(0.0f));
+    }
+
+    @Test void includesDraftShiftsWithoutReliefOrServiceEvidence() {
+        UUID country = tenant.instanceCountryId();
+        Object[] point = (Object[]) em.createNativeQuery("""
+            select p.id, p.company_id, s.client_id, po.id from point p
+            join service s on s.id=p.service_id join post po on po.point_id=p.id
+            where p.instance_country_id=:tenant and p.company_id is not null order by p.code limit 1
+            """).setParameter("tenant", country).getSingleResult();
+        UUID company = (UUID) point[1], client = (UUID) point[2], post = (UUID) point[3];
+        planId = UUID.randomUUID();
+        UUID shift = UUID.randomUUID();
+        shifts.add(shift);
+        QuarkusTransaction.requiringNew().run(() -> {
+            em.createNativeQuery("""
+                insert into assignment_plan(id,instance_country_id,company_id,week_start,status,created_at,updated_at)
+                values(:id,:tenant,:company,'2002-01-07','DRAFT',now(),now())
+                """).setParameter("id", planId).setParameter("tenant", country)
+                .setParameter("company", company).executeUpdate();
+            em.createNativeQuery("""
+                insert into shift_occurrence(id,instance_country_id,post_id,starts_at,ends_at,required,created_at,updated_at)
+                values(:id,:tenant,:post,'2002-01-08 05:00:00+00','2002-01-08 13:00:00+00',true,now(),now())
+                """).setParameter("id", shift).setParameter("tenant", country)
+                .setParameter("post", post).executeUpdate();
+        });
+        as("presidente").queryParam("weekStart", "2002-01-07").queryParam("companyId", company)
+            .queryParam("clientId", client).get("/api/dashboard/operational-coverage")
+            .then().statusCode(200).body("uncoveredPoints", is(1))
+            .body("uncoveredShifts", is(1)).body("evaluatedShifts", is(1));
+
+        UUID relief = UUID.randomUUID();
+        reliefs.add(relief);
+        QuarkusTransaction.requiringNew().run(() -> em.createNativeQuery("""
+            insert into relief_event(id,instance_country_id,post_id,shift_occurrence_id,status,planned_at,executed_at,created_at,updated_at)
+            values(:id,:tenant,:post,:shift,'PENDIENTE','2002-01-08 05:00:00+00','2002-01-08 05:05:00+00',now(),now())
+            """).setParameter("id", relief).setParameter("tenant", country)
+            .setParameter("post", post).setParameter("shift", shift).executeUpdate());
+        as("presidente").queryParam("weekStart", "2002-01-07").queryParam("companyId", company)
+            .queryParam("clientId", client).get("/api/dashboard/operational-coverage")
+            .then().statusCode(200).body("uncoveredPoints", is(0))
+            .body("uncoveredShifts", is(0)).body("evaluatedShifts", is(1));
     }
 
     @Test void validatesDatesAndCompanyScope() {
         as("presidente").queryParam("weekStart", "invalid").get("/api/dashboard/metrics").then().statusCode(400);
+        as("presidente").queryParam("period", "invalid").get("/api/dashboard/metrics").then().statusCode(400);
+        as("presidente").queryParam("weekStart", "invalid").get("/api/dashboard/operational-coverage").then().statusCode(400);
         as("presidente").queryParam("period", "invalid").get("/api/dashboard/operational-risk-trend").then().statusCode(400);
         as("coord").queryParam("companyId", UUID.randomUUID()).get("/api/dashboard/metrics").then().statusCode(403);
+        as("coord").queryParam("companyId", UUID.randomUUID()).get("/api/dashboard/operational-coverage").then().statusCode(403);
         as("coord").queryParam("companyId", UUID.randomUUID()).get("/api/dashboard/operational-risk-trend").then().statusCode(403);
         as("agente").get("/api/dashboard/metrics").then().statusCode(403);
         as("coord").queryParam("companyId", UUID.randomUUID()).get("/api/assignments/coverage").then().statusCode(403);
@@ -179,10 +273,11 @@ class DashboardResourceTest {
             """).setParameter("id", shift).setParameter("tenant", country).setParameter("post", post).setParameter("hours", hours).executeUpdate();
         UUID assignment = UUID.randomUUID(); assignments.add(assignment);
         em.createNativeQuery("""
-            insert into operational_assignment(id,instance_country_id,assignment_plan_id,shift_occurrence_id,id_score,compatibility_index,status,created_at,updated_at)
-            values(:id,:tenant,:plan,:shift,:score,:ic,:status,now(),now())
+            insert into operational_assignment(id,instance_country_id,assignment_plan_id,shift_occurrence_id,employee_id,id_score,compatibility_index,status,created_at,updated_at)
+            values(:id,:tenant,:plan,:shift,:employee,:score,:ic,:status,now(),now())
             """).setParameter("id", assignment).setParameter("tenant", country).setParameter("plan", planId)
-            .setParameter("shift", shift).setParameter("score", id).setParameter("ic", ic).setParameter("status", status).executeUpdate();
+            .setParameter("shift", shift).setParameter("employee", UUID.randomUUID())
+            .setParameter("score", id).setParameter("ic", ic).setParameter("status", status).executeUpdate();
     }
     private void consignment(UUID country, UUID point) {
         List<?> existing = em.createNativeQuery("select id from consignment_protocol where instance_country_id=:tenant and point_id=:point and status='ACTIVO' limit 1")

@@ -17,7 +17,7 @@ const operations:NavGroup={
     {name:'Consignas',icon:ClipboardList},
     {name:'Simulador Agente (UAT)',icon:Smartphone}, // TEMPORAL (demo UAT)
     {name:'Novedades',icon:ShieldCheck},
-    // {name:'Supervisiones',icon:UserCheck}, // Oculta temporalmente
+    {name:'Supervisiones',icon:UserCheck},
     {name:'Requerimientos',icon:MessageSquareText},
     {name:'Comunicación',icon:Radio},
   ]
@@ -63,6 +63,7 @@ export default function Sidebar({active,onChange,uatTools,monitorOnly=false,open
       <button onClick={()=>onChange('Recurso Humano')} className={active==='Recurso Humano'?'active':''}><Users size={18}/><span>Recurso Humano</span></button>
       <button onClick={()=>onChange('Recurso Material')} className={active==='Recurso Material'?'active':''}><Warehouse size={18}/><span>Recurso Material</span></button>
       <Group group={reports} active={active} onChange={onChange}/>
+      <button onClick={()=>onChange('Documentación')} className={active==='Documentación'?'active':''}><FileText size={18}/><span>Documentación</span></button>
       <button onClick={()=>onChange('Auditoría')} className={active==='Auditoría'?'active':''}><ShieldCheck size={18}/><span>Auditoría</span></button>
       <button onClick={()=>onChange('Configuración')} className={active==='Configuración'?'active':''}><Settings size={18}/><span>Configuración</span></button>
     </nav>

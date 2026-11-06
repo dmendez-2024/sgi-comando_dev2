@@ -34,6 +34,7 @@ export type ObsintProtocol={id:string;pointId:string;code:string;versionNo:numbe
 export type ObsintConsignmentOption={code:string;title:string;instruction:string};
 export type ObsintCameraOption={id:string;code:string;name:string;location:string|null;status:'ACTIVE'|'OBSERVED'};
 export type ObsintSummary={enabled:boolean;status:'complete'|'warning'|'blocked';meta:string;activeVersion:number|null;activeConsignas:number;hasDraft:boolean;warnings:string[]};
+export type ObsintScheduleSuggestion={available:boolean;message:string;slots:ObsintSlot[]};
 
 /**
  * API de la Consola OBSINT (/api/obsint). Del cliente común de SGI solo usa el transporte (token, renovación y errores),
@@ -70,6 +71,7 @@ export const obsintConfigApi={
   protocols:(pointId:string)=>request<ObsintProtocol[]>(`${point(pointId)}/protocols`),
   cameras:(pointId:string)=>request<ObsintCameraOption[]>(`${point(pointId)}/cameras`),
   consignments:(pointId:string)=>request<ObsintConsignmentOption[]>(`${point(pointId)}/consignments`),
+  scheduleSuggestion:(pointId:string,consignmentCode:string)=>request<ObsintScheduleSuggestion>(`${point(pointId)}/schedule-suggestion?consignmentCode=${encodeURIComponent(consignmentCode)}`),
   /** Para la fila "OBSINT" de Configuración del Punto: status complete | warning | blocked y el texto a mostrar. */
   summary:(pointId:string)=>request<ObsintSummary>(`${point(pointId)}/summary`),
   draft:(pointId:string)=>request<ObsintProtocol>(`${point(pointId)}/protocols/draft`,{method:'POST'}),

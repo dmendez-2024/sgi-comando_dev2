@@ -219,7 +219,7 @@ function reliefToExecution(item:any):Execution{
   };
 }
 
-export default function ConsignasExecution(){
+export default function ConsignasExecution({initialCaseId=''}:{initialCaseId?:string}){
   const user=getUser();
   const scope=scopeByUser[user];
   const [filters,setFilters]=useState<Filters>(EMPTY_FILTERS);
@@ -254,6 +254,7 @@ export default function ConsignasExecution(){
 
   // El backend es la fuente oficial y aplica alcance RBAC; esta vista no mezcla datos DEMO.
   const scoped=useMemo(()=>[...reliefExecutions,...reviewRequests,...patrolExecutions],[reliefExecutions,reviewRequests,patrolExecutions]);
+  useEffect(()=>{if(initialCaseId&&scoped.some(row=>row.id===initialCaseId))setInspectorId(initialCaseId)},[initialCaseId,scoped]);
   const postsWithRecords=useMemo(()=>new Set(scoped.map(row=>`${row.companyCode}|${row.point}|${row.post}`)).size,[scoped]);
 
   const companies=useMemo(()=>unique(scoped.map(x=>x.company)),[scoped]);
@@ -288,7 +289,7 @@ export default function ConsignasExecution(){
     }).sort((a,b)=>b.start.localeCompare(a.start));
   },[scoped,filters,dateError]);
 
-  const inspected=rows.find(x=>x.id===inspectorId) ?? null;
+  const inspected=scoped.find(x=>x.id===inspectorId) ?? null;
 
   const metrics=useMemo(()=>({
     reliefRunning:scoped.filter(x=>x.type==='RELIEF'&&x.status==='IN_PROGRESS').length,

@@ -1,13 +1,14 @@
 import {useCallback, useEffect, useMemo, useState, type ReactNode} from 'react';
-import {AlertTriangle, Camera, ChevronLeft, ChevronRight, CircleAlert, ClipboardCheck, FilterX, Search, ShieldCheck, X} from 'lucide-react';
+import {AlertTriangle, Camera, ChevronLeft, ChevronRight, CircleAlert, ClipboardCheck, ClipboardList, FilterX, MapPinned, Search, ShieldCheck, Upload, UserCheck, X} from 'lucide-react';
 import {api} from '../api';
+import FilterAccordion from '../components/FilterAccordion';
 import {OperationalDrawer} from '../components/OperationalDrawer';
 import SearchableSelect from '../components/SearchableSelect';
 
 type Level='LOW'|'MEDIUM'|'HIGH'|'VERY_HIGH';
 type Row={id:string;capturedAt:string;companyId:string;companyName:string|null;pointId:string;pointName:string;clientName:string;postId:string;postCode:string;postName:string;
   supervisorEmployeeId:string;supervisorName:string;agentEmployeeId:string;agentName:string;vigilanceLevel:Level;cleanlinessLevel:Level;consignmentKnowledgeLevel:Level;situationalLevel:Level;inventoryOverallState:string;status:string};
-type Detail={row:Row;supervisorComments:string|null;pointPostNotes:string|null;inventoryComments:string|null;consignmentVersion:number|null;consignmentSnapshot:string|null;hasPhoto:boolean;createdBy:string;createdAt:string;
+type Detail={row:Row;supervisorComments:string|null;pointPostNotes:string|null;inventoryComments:string|null;consignmentVersion:number|null;consignmentSnapshot:string|null;hasPhoto:boolean;createdBy:string;createdAt:string;sanctionDescription:string|null;sanctionImageCount:number;
   inventory:{assetId:string;description:string;observedState:string;comment:string|null}[];
   decisions:{noveltyId:string;noveltyType:string;title:string;severity:string|null;occurredAt:string|null;decision:string;decidedBy:string;decidedAt:string}[]};
 type Option={id:string;name:string;parentId:string|null};
@@ -15,6 +16,7 @@ type Options={companies:Option[];points:Option[];posts:Option[];supervisors:Opti
 type Filters={companyId:string;pointId:string;postId:string;supervisorEmployeeId:string;agentEmployeeId:string;from:string;to:string};
 
 const PAGE_SIZE=50;
+const EXPORT_SIZE=200; // máximo que acepta el backend por página
 const today=new Date();const monthAgo=new Date(today);monthAgo.setDate(monthAgo.getDate()-30);
 const localDate=(d:Date)=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 const EMPTY_FILTERS:Filters={companyId:'',pointId:'',postId:'',supervisorEmployeeId:'',agentEmployeeId:'',from:localDate(monthAgo),to:localDate(today)};
@@ -25,6 +27,8 @@ const ITEM_STATES:Record<string,string>={GOOD:'Bueno',DAMAGED:'Dañado',MISSING:
 const NOVELTY_TYPES:Record<string,string>={FINDING:'Hallazgo',VULNERABILITY:'Vulnerabilidad',INCIDENT:'Incidente'};
 const inventoryClass=(s:string)=>s==='COMPLETE'?'approved':s==='OBSERVATIONS'?'pending':'critical';
 const formatDateTime=(value:string)=>new Intl.DateTimeFormat('es-EC',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}).format(new Date(value));
+const UUID_PATTERN=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const levelsOf=(r:Row):Level[]=>[r.vigilanceLevel,r.cleanlinessLevel,r.consignmentKnowledgeLevel,r.situationalLevel];
 const errorText=(e:unknown,fallback:string)=>e instanceof Error&&e.message?`${fallback} (${e.message.slice(0,160)})`:fallback;
 
 export default function Supervisiones(){
@@ -50,37 +54,62 @@ export default function Supervisiones(){
   const points=useMemo(()=>options.points.filter(x=>!filters.companyId||x.parentId===filters.companyId),[options.points,filters.companyId]);
   const posts=useMemo(()=>options.posts.filter(x=>x.parentId===filters.pointId),[options.posts,filters.pointId]);
   const pages=Math.max(1,Math.ceil(data.total/PAGE_SIZE));
-  const metrics=useMemo(()=>({critical:data.items.filter(x=>x.inventoryOverallState==='CRITICAL'||x.inventoryOverallState==='INCOMPLETE').length,
-    low:data.items.filter(x=>[x.vigilanceLevel,x.cleanlinessLevel,x.consignmentKnowledgeLevel,x.situationalLevel].includes('LOW')).length}),[data.items]);
+  const metrics=useMemo(()=>({posts:new Set(data.items.map(x=>x.postId)).size,agents:new Set(data.items.map(x=>x.agentEmployeeId)).size,
+    observations:data.items.filter(x=>x.inventoryOverallState==='OBSERVATIONS').length,
+    critical:data.items.filter(x=>x.inventoryOverallState==='CRITICAL'||x.inventoryOverallState==='INCOMPLETE').length,
+    low:data.items.filter(x=>levelsOf(x).includes('LOW')).length}),[data.items]);
+  // Los indicadores de detalle se calculan sobre las filas cargadas: si hay más de una página, se aclara.
+  const scopeDetail=data.total>data.items.length?'en esta página':'en los resultados';
+  const [exporting,setExporting]=useState(false);
 
   function set<K extends keyof Filters>(key:K,value:Filters[K]){setFilters(prev=>({...prev,[key]:value}))}
   function search(){if(dateError)return;setPage(0);setApplied({...filters})}
   function clear(){setFilters(EMPTY_FILTERS);setPage(0);setApplied(EMPTY_FILTERS)}
+  /** Exporta todas las evaluaciones de los filtros aplicados (no solo la página visible), en lotes de 200. */
+  async function exportCsv(){
+    setExporting(true);
+    try{
+      const all:Row[]=[];
+      for(let p=0;;p++){const res=await api.supervisionEvaluations({...applied,page:p,size:EXPORT_SIZE});all.push(...res.items);if(!res.items.length||all.length>=res.total)break}
+      const header=['Fecha / Hora','Compañía','Cliente','Punto','Código Puesto','Puesto','Supervisor','Agente','Vigilancia','Limpieza','Conocimiento de consigna','Situacional','Inventario'];
+      const body=all.map(r=>[formatDateTime(r.capturedAt),r.companyName??'',r.clientName,r.pointName,r.postCode,r.postName,r.supervisorName,r.agentName,
+        LEVELS[r.vigilanceLevel]??r.vigilanceLevel,LEVELS[r.cleanlinessLevel]??r.cleanlinessLevel,LEVELS[r.consignmentKnowledgeLevel]??r.consignmentKnowledgeLevel,LEVELS[r.situationalLevel]??r.situationalLevel,
+        INVENTORY[r.inventoryOverallState]??r.inventoryOverallState]);
+      const csv='﻿'+[header,...body].map(line=>line.map(v=>`"${String(v).replaceAll('"','""')}"`).join(',')).join('\n');
+      const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8;'}));const a=document.createElement('a');a.href=url;a.download=`supervisiones_${applied.from}_${applied.to}.csv`;a.click();URL.revokeObjectURL(url);
+      setError('');
+    }catch(e){setError(errorText(e,'No fue posible exportar las evaluaciones de supervisión.'))}
+    finally{setExporting(false)}
+  }
 
   return <div className="nov-page">
     <div className="nov-topbar"><div><div className="page-backline">Operaciones / Supervisiones</div><h2>Supervisiones</h2><p>Evaluaciones de Puesto registradas por los Supervisores desde SGI: Operador · Solo lectura</p></div><div className="nov-scope"><ShieldCheck size={16}/>Según el alcance territorial del usuario</div></div>
 
     <div className="coord-kpis nov-kpis">
       <Metric icon={<ClipboardCheck size={21}/>} label="Evaluaciones" detail="con los filtros aplicados" value={data.total} tone="blue"/>
-      <Metric icon={<AlertTriangle size={21}/>} label="Inventario incompleto o crítico" detail="en esta página" value={metrics.critical} tone="red"/>
-      <Metric icon={<CircleAlert size={21}/>} label="Con algún nivel bajo" detail="en esta página" value={metrics.low} tone="amber"/>
+      <Metric icon={<MapPinned size={21}/>} label="Puestos evaluados" detail={scopeDetail} value={metrics.posts} tone="teal"/>
+      <Metric icon={<UserCheck size={21}/>} label="Agentes evaluados" detail={scopeDetail} value={metrics.agents} tone="green"/>
+      <Metric icon={<ClipboardList size={21}/>} label="Inventario con observaciones" detail={scopeDetail} value={metrics.observations} tone="amber"/>
+      <Metric icon={<AlertTriangle size={21}/>} label="Inventario incompleto o crítico" detail={scopeDetail} value={metrics.critical} tone="red"/>
+      <Metric icon={<CircleAlert size={21}/>} label="Con algún nivel bajo" detail={scopeDetail} value={metrics.low} tone="red"/>
     </div>
 
     <section className="nov-main-card">
-      <div className="nov-filter-grid">
+      <FilterAccordion id="sup-search-filters">
+      <div className="nov-filter-grid operational-filter-grid">
         <Field label="Compañía"><SearchableSelect ariaLabel="Compañía" value={filters.companyId} onChange={value=>setFilters(prev=>({...prev,companyId:value,pointId:'',postId:''}))} searchPlaceholder="Buscar compañía…" options={[{value:'',label:'Todas'},...options.companies.map(x=>({value:x.id,label:x.name}))]}/></Field>
         <Field label="Punto"><SearchableSelect ariaLabel="Punto" value={filters.pointId} onChange={value=>setFilters(prev=>({...prev,pointId:value,postId:''}))} searchPlaceholder="Buscar punto…" options={[{value:'',label:'Todos'},...points.map(x=>({value:x.id,label:x.name}))]}/></Field>
         <Field label="Puesto"><SearchableSelect ariaLabel="Puesto" value={filters.postId} onChange={value=>set('postId',value)} disabled={!filters.pointId} searchPlaceholder="Buscar puesto…" options={[{value:'',label:filters.pointId?'Todos':'Seleccione punto primero'},...posts.map(x=>({value:x.id,label:x.name}))]}/></Field>
         <Field label="Supervisor"><SearchableSelect ariaLabel="Supervisor" value={filters.supervisorEmployeeId} onChange={value=>set('supervisorEmployeeId',value)} searchPlaceholder="Buscar supervisor…" options={[{value:'',label:'Todos'},...options.supervisors.map(x=>({value:x.id,label:x.name}))]}/></Field>
         <Field label="Agente"><SearchableSelect ariaLabel="Agente" value={filters.agentEmployeeId} onChange={value=>set('agentEmployeeId',value)} searchPlaceholder="Buscar agente…" options={[{value:'',label:'Todos'},...options.agents.map(x=>({value:x.id,label:x.name}))]}/></Field>
-      </div>
-      <div className="nov-filter-grid">
         <Field label="Fecha inicio"><input type="date" value={filters.from} onChange={e=>set('from',e.target.value)}/></Field>
         <Field label="Fecha fin"><input type="date" value={filters.to} onChange={e=>set('to',e.target.value)}/></Field>
       </div>
+      <div className="nov-rule-note"><CircleAlert size={15}/><span>Para filtrar por Puesto primero seleccione un Punto. Las fechas son obligatorias. Se muestran solo las evaluaciones de las compañías dentro de su alcance territorial.</span></div>
       {dateError&&<div className="nov-validation"><AlertTriangle size={16}/>{dateError}</div>}
       {error&&<div className="nov-validation"><AlertTriangle size={16}/>{error}</div>}
-      <div className="nov-actions"><button className="primary" disabled={!!dateError||loading} onClick={search}><Search size={16}/>Buscar</button><button onClick={clear}><FilterX size={16}/>Limpiar filtros</button></div>
+      <div className="nov-actions"><button className="primary" disabled={!!dateError||loading} onClick={search}><Search size={16}/>Buscar</button><button onClick={clear}><FilterX size={16}/>Limpiar filtros</button><button className="export" onClick={()=>void exportCsv()} disabled={exporting||loading||!data.total}><Upload size={16}/>{exporting?'Exportando…':'Exportar'}</button></div>
+      </FilterAccordion>
 
       <div className="nov-results-card">
         <div className="nov-results-head"><h3>Evaluaciones ({data.total})</h3><span>Ordenado por <strong>Fecha más reciente</strong></span></div>
@@ -105,18 +134,25 @@ export default function Supervisiones(){
 function EvaluationDrawer({id,onClose}:{id:string;onClose:()=>void}){
   const [detail,setDetail]=useState<Detail|null>(null);
   const [photo,setPhoto]=useState('');
+  const [photoFailed,setPhotoFailed]=useState(false);
+  const [sanctionImages,setSanctionImages]=useState<string[]|null>(null);
   const [error,setError]=useState('');
-  useEffect(()=>{let url='';let live=true;
-    api.supervisionEvaluation(id).then(d=>{if(!live)return;setDetail(d);if(d.hasPhoto)api.supervisionPhoto(id).then(b=>{url=URL.createObjectURL(b);if(live)setPhoto(url)}).catch(()=>live&&setError('No fue posible cargar la foto del Agente.'))})
+  useEffect(()=>{let url='';let live=true;const sanctionUrls:string[]=[];
+    api.supervisionEvaluation(id).then(d=>{if(!live)return;setDetail(d);
+      // Imágenes de la sanción en orden; una que falle no impide mostrar las demás.
+      Promise.all(Array.from({length:d.sanctionImageCount??0},(_,i)=>api.supervisionSanctionImage(id,i+1).then(b=>{const u=URL.createObjectURL(b);sanctionUrls.push(u);return u}).catch(()=>''))).then(urls=>{if(live)setSanctionImages(urls.filter(Boolean))});
+      if(d.hasPhoto)api.supervisionPhoto(id).then(b=>{url=URL.createObjectURL(b);if(live)setPhoto(url)}).catch(()=>{if(live){setPhotoFailed(true);setError('No fue posible cargar la foto del Agente.')}})})
       .catch(e=>live&&setError(errorText(e,'No fue posible cargar la evaluación.')));
-    return ()=>{live=false;if(url)URL.revokeObjectURL(url)}},[id]);
+    return ()=>{live=false;if(url)URL.revokeObjectURL(url);sanctionUrls.forEach(u=>URL.revokeObjectURL(u))}},[id]);
   const r=detail?.row;
+  // created_by/decided_by guardan el usuario de IDENT del Supervisor (un UUID): se muestra su nombre.
+  const person=(value:string)=>r&&detail&&value===detail.createdBy?r.supervisorName:UUID_PATTERN.test(value)?'Usuario de SGI Operador':value;
   return <OperationalDrawer title={r?`Supervisión ${r.postCode} · ${formatDateTime(r.capturedAt)}`:'Supervisión'} subtitle="Registro recibido desde SGI Operador · Solo lectura" onClose={onClose} footer={<button className="close" onClick={onClose}><X size={15}/>Cerrar</button>}>
     {error&&<div className="nov-modal-error"><AlertTriangle size={15}/>{error}</div>}
     {!detail&&!error&&<div className="nov-results-footer">Cargando evaluación…</div>}
     {r&&detail&&<>
       <div className="sup-head">
-        <div className="sup-photo">{photo?<img src={photo} alt={`Foto de ${r.agentName}`}/>:<span><Camera size={26}/>{detail.hasPhoto?'Cargando foto…':'Sin foto'}</span>}</div>
+        <div className="sup-photo">{photo?<img src={photo} alt={`Foto de ${r.agentName}`}/>:<span><Camera size={26}/>{!detail.hasPhoto?'Sin foto':photoFailed?'Foto no disponible':'Cargando foto…'}</span>}</div>
         <div className="nov-edit-grid two">
           <ModalField label="Compañía"><input value={r.companyName??'—'} disabled/></ModalField>
           <ModalField label="Cliente"><input value={r.clientName} disabled/></ModalField>
@@ -144,15 +180,19 @@ function EvaluationDrawer({id,onClose}:{id:string;onClose:()=>void}){
       <div className="nov-photo-block"><div className="nov-section-title"><strong>Novedades del Agente revisadas ({detail.decisions.length})</strong></div>
         {detail.decisions.length?<table className="nov-table"><thead><tr><th>Novedad</th><th>Tipo</th><th>Decisión</th><th>Decidida por</th></tr></thead><tbody>
           {detail.decisions.map(x=><tr key={x.noveltyId}><td><strong>{x.title}</strong>{x.occurredAt&&<small>{formatDateTime(x.occurredAt)}</small>}</td><td>{NOVELTY_TYPES[x.noveltyType]??x.noveltyType}</td>
-            <td><span className={`nov-status ${x.decision==='CONFIRMED'?'approved':'discarded'}`}>{x.decision==='CONFIRMED'?'Confirmada':'Descartada'}</span></td><td><strong>{x.decidedBy}</strong><small>{formatDateTime(x.decidedAt)}</small></td></tr>)}
+            <td><span className={`nov-status ${x.decision==='CONFIRMED'?'approved':'discarded'}`}>{x.decision==='CONFIRMED'?'Confirmada':'Descartada'}</span></td><td><strong>{person(x.decidedBy)}</strong><small>{formatDateTime(x.decidedAt)}</small></td></tr>)}
         </tbody></table>:<p className="sup-note">El Supervisor no revisó novedades del Agente en esta evaluación.</p>}
       </div>
-      <p className="sup-note">Registrada por {detail.createdBy} el {formatDateTime(detail.createdAt)}.</p>
+      <div className="nov-photo-block"><div className="nov-section-title"><strong>Sanción registrada</strong></div>
+        {detail.sanctionDescription?<p className="sup-note">{detail.sanctionDescription}</p>:<p className="sup-note">El Supervisor no registró sanción en esta evaluación.</p>}
+        {detail.sanctionImageCount>0&&<div className="sup-sanction-images">{sanctionImages===null?<span className="sup-note">Cargando imágenes…</span>:sanctionImages.length?sanctionImages.map((u,i)=><img key={u} src={u} alt={`Imagen ${i+1} de la sanción`}/>):<span className="sup-note">Imágenes no disponibles</span>}</div>}
+      </div>
+      <p className="sup-note">Registrada por {person(detail.createdBy)} el {formatDateTime(detail.createdAt)}.</p>
     </>}
   </OperationalDrawer>
 }
 
 function LevelChip({level}:{level:Level}){return <span className={`sup-level ${level.toLowerCase()}`}>{LEVELS[level]??level}</span>}
-function Metric({icon,label,detail,value,tone}:{icon:ReactNode;label:string;detail:string;value:number;tone:'blue'|'red'|'amber'}){return <article><span className={tone}>{icon}</span><div><small>{label}</small><strong>{value}</strong><em>{detail}</em></div></article>}
+function Metric({icon,label,detail,value,tone}:{icon:ReactNode;label:string;detail:string;value:number;tone:'blue'|'teal'|'green'|'amber'|'red'}){return <article><span className={tone}>{icon}</span><div><small>{label}</small><strong>{value}</strong><em>{detail}</em></div></article>}
 function Field({label,children}:{label:string;children:ReactNode}){return <label className="nov-field"><span>{label}</span>{children}</label>}
 function ModalField({label,children}:{label:string;children:ReactNode}){return <label className="nov-modal-field"><span>{label}</span>{children}</label>}

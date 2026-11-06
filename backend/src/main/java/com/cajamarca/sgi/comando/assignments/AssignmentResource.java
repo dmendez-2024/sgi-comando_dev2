@@ -11,11 +11,15 @@ import com.cajamarca.sgi.comando.operations.PointEntity;
 import com.cajamarca.sgi.comando.operations.PostEntity;
 import com.cajamarca.sgi.comando.operations.ServiceEntity;
 import com.cajamarca.sgi.comando.outbox.OutboxEvent;
+import com.cajamarca.sgi.comando.operation.IncidentCoverageRolePolicy;
+import com.cajamarca.sgi.comando.territory.OperationalScopeService;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.quarkus.panache.common.Page;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.LockModeType;
 import jakarta.transaction.Transactional;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.*;
@@ -42,6 +46,9 @@ public class AssignmentResource {
     @Inject AssignmentScopeService scope;
     @Inject AssignmentRolePolicy rolePolicy;
     @Inject AssignmentReleaseService assignmentReleaseService;
+    @Inject OperationalScopeService operationalScope;
+    @Inject IncidentCoverageRolePolicy coverageRolePolicy;
+    @Inject EntityManager em;
 
     public record EnsurePlanRequest(UUID companyId, LocalDate weekStart) {}
     public record AssignRequest(UUID planId, UUID shiftOccurrenceId, UUID employeeId, UUID sourceAssignmentId, String reason) {}
@@ -436,9 +443,47 @@ public class AssignmentResource {
     @Path("/assign")
     @Transactional
     public Response assign(AssignRequest req) {
+        return assignInternal(req, false);
+    }
+
+    /** Aplica en el plan publicado la cobertura validada al finalizar una notificación de incidente. */
+    @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION","MONITOR"})
+    @Transactional
+    public AssignmentDto assignIncidentCoverage(UUID pointId, UUID postId, UUID shiftId, UUID employeeId, String reason) {
+        ShiftOccurrenceEntity shift=em.find(ShiftOccurrenceEntity.class,shiftId,LockModeType.PESSIMISTIC_WRITE);
+        if(shift==null||!tenant.instanceCountryId().equals(shift.instanceCountryId)||!Objects.equals(shift.postId,postId))
+            throw new BadRequestException("El turno no corresponde al Puesto seleccionado.");
+        Instant coverageTime=Instant.now();
+        if(!shift.endsAt.isAfter(coverageTime))throw conflict("TURNO_FINALIZADO","El turno ya terminó y no admite cobertura.");
+        if(shift.startsAt.isAfter(coverageTime))coverageRolePolicy.requireFutureShiftPermission();
+        else coverageRolePolicy.requireCurrentShiftPermission();
+        PostEntity post=PostEntity.find("id=?1 and instanceCountryId=?2",postId,tenant.instanceCountryId()).firstResult();
+        if(post==null||!Objects.equals(post.pointId,pointId))throw new BadRequestException("El Puesto no corresponde al Punto seleccionado.");
+        PointEntity point=PointEntity.find("id=?1 and instanceCountryId=?2",pointId,tenant.instanceCountryId()).firstResult();
+        if(point==null)throw new NotFoundException("Punto no encontrado");
+        operationalScope.requireCompanyForCompanyRoles(point.companyId);
+        LocalDate weekStart=shift.startsAt.atZone(OPERATING_ZONE).toLocalDate().with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
+        AssignmentPlanEntity plan=AssignmentPlanEntity.find("instanceCountryId=?1 and companyId=?2 and weekStart=?3",tenant.instanceCountryId(),point.companyId,weekStart).firstResult();
+        if(plan==null||!"PUBLISHED".equals(plan.status))throw conflict("PLAN_NO_PUBLICADO","El turno no tiene un plan publicado que admita cobertura desde Consola.");
+        if(planShifts(plan).stream().noneMatch(candidate->candidate.id.equals(shiftId)))
+            throw conflict("TURNO_FUERA_DEL_PLAN","El turno ya no forma parte del plan publicado del Punto.");
+        OperationalAssignmentEntity current=OperationalAssignmentEntity.find("instanceCountryId=?1 and shiftOccurrenceId=?2 and status<>'REMOVED'",tenant.instanceCountryId(),shiftId).firstResult();
+        if(current!=null&&Objects.equals(current.effectiveEmployeeId(),employeeId)){
+            EmployeeOperationalSnapshot employee=EmployeeOperationalSnapshot.find("instanceCountryId=?1 and employeeId=?2",tenant.instanceCountryId(),employeeId).firstResult();
+            if(employee!=null)return toAssignmentDto(current,employee);
+        }
+        Response response=assignInternal(new AssignRequest(plan.id,shiftId,employeeId,null,reason),true);
+        if(response.getStatus()!=200)throw new WebApplicationException(response);
+        return (AssignmentDto)response.getEntity();
+    }
+
+    private Response assignInternal(AssignRequest req, boolean incidentCoverage) {
         if(req==null||req.planId()==null||req.shiftOccurrenceId()==null||req.employeeId()==null) throw new BadRequestException("planId, shiftOccurrenceId y employeeId obligatorios");
         AssignmentPlanEntity plan=plan(req.planId());
-        scope.requireEditorForCompany(plan.companyId);
+        if(incidentCoverage){
+            operationalScope.requireCompanyForCompanyRoles(plan.companyId);
+            if(!"PUBLISHED".equals(plan.status))throw conflict("PLAN_NO_PUBLICADO","La cobertura desde Consola requiere un plan publicado.");
+        }else scope.requireEditorForCompany(plan.companyId);
         if("CLOSED".equals(plan.status)) throw conflict("PLAN_CERRADO","El plan está cerrado y no admite cambios.");
         ShiftOccurrenceEntity shift=ShiftOccurrenceEntity.find("id=?1 and instanceCountryId=?2",req.shiftOccurrenceId(),tenant.instanceCountryId()).firstResult();
         if(shift==null) throw new NotFoundException("Turno requerido no encontrado");

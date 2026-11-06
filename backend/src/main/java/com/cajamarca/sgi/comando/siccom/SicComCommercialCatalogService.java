@@ -11,6 +11,9 @@ import com.cajamarca.sgi.comando.operations.PointEntity;
 import com.cajamarca.sgi.comando.operations.PostEntity;
 import com.cajamarca.sgi.comando.operations.ServiceEntity;
 import com.cajamarca.sgi.comando.operations.ServiceConfigurationStatus;
+import com.cajamarca.sgi.comando.secelec.ElectronicMonitoringCodeAllocation;
+import com.cajamarca.sgi.comando.secelec.ElectronicMonitoringDevice;
+import com.cajamarca.sgi.comando.secelec.ElectronicMonitoringShift;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonProperty;
@@ -85,6 +88,10 @@ public class SicComCommercialCatalogService {
       BigDecimal fhe,
       String tier,
       String commercialStatus,
+      String securityDomain,
+      String postType,
+      String product,
+      Integer minutesPerDay,
       RotationInput rotation,
       List<ShiftInput> shifts) {}
   public record RotationInput(String code, Integer cycleLengthDays) {}
@@ -146,9 +153,15 @@ public class SicComCommercialCatalogService {
         if (point.previousServiceId != null) servicesToRefresh.add(point.previousServiceId);
         List<AppliedEntity> appliedPosts = new ArrayList<>();
         for (PostInput postInput : safe(pointInput.posts())) {
-          Upsert<PostEntity> post = upsertPost(instanceCountryId, postInput, pointInput, request.client(), point.value);
-          applyPlanningSnapshot(instanceCountryId, post.value, postInput, request.commercialVersion(), UPDATED.equals(request.eventType()));
-          appliedPosts.add(applied(post.value.code, postInput.code2(), post.value.id, post.action));
+          if (isElectronic(postInput)) {
+            Upsert<ElectronicMonitoringDevice> device = upsertElectronicDevice(instanceCountryId, postInput, pointInput, request.client(), point.value, request.commercialVersion());
+            applyElectronicShiftSnapshot(instanceCountryId, device.value, postInput, request.commercialVersion(), UPDATED.equals(request.eventType()));
+            appliedPosts.add(applied(device.value.code, device.value.sourceCode2, device.value.id, device.action));
+          } else {
+            Upsert<PostEntity> post = upsertPost(instanceCountryId, postInput, pointInput, request.client(), point.value);
+            applyPlanningSnapshot(instanceCountryId, post.value, postInput, request.commercialVersion(), UPDATED.equals(request.eventType()));
+            appliedPosts.add(applied(post.value.code, postInput.code2(), post.value.id, post.action));
+          }
         }
         appliedPoints.add(new AppliedPoint(pointInput.code(), point.value.id, point.action, appliedPosts));
       }
@@ -276,6 +289,38 @@ public class SicComCommercialCatalogService {
     return new Upsert<>(post, created ? "CREATED" : "UPDATED");
   }
 
+  /** Un dispositivo comercial OBSINT no es un puesto operativo ni genera asignaciones de guardias. */
+  private Upsert<ElectronicMonitoringDevice> upsertElectronicDevice(
+      UUID instanceCountryId, PostInput input, PointInput pointInput, ClientInput clientInput, PointEntity point, String version) {
+    String sourceCode2 = required(input.code2(), "posts.code2");
+    ElectronicMonitoringDevice device = ElectronicMonitoringDevice.find(
+        "instanceCountryId=?1 and sourceCode2=?2", instanceCountryId, sourceCode2).firstResult();
+    boolean created = device == null;
+    if (!created && !device.pointId.equals(point.id)) {
+      throw conflict("El Dispositivo " + sourceCode2 + " pertenece a otro Punto.");
+    }
+    if (created) {
+      device = new ElectronicMonitoringDevice();
+      device.instanceCountryId = instanceCountryId;
+      device.pointId = point.id;
+      device.code = nextElectronicDeviceCode(instanceCountryId, pointInput, clientInput);
+      device.configStatus = "TO_CONFIGURE";
+    }
+    device.sourceCode2 = sourceCode2;
+    device.postType = blankToNull(input.postType()) == null ? "OBSINT" : input.postType().trim().toUpperCase(Locale.ROOT);
+    device.name = required(input.name(), "posts.name");
+    device.format = required(input.format(), "posts.format");
+    device.product = blankToNull(input.product());
+    device.minutesPerDay = input.minutesPerDay();
+    device.commercialStatus = commercialStatus(input.commercialStatus());
+    device.sourceVersion = version;
+    if (INACTIVE.equals(device.commercialStatus)) {
+      ElectronicMonitoringShift.update("active=false where instanceCountryId=?1 and deviceId=?2", instanceCountryId, device.id);
+    }
+    if (created) device.persist();
+    return new Upsert<>(device, created ? "CREATED" : "UPDATED");
+  }
+
   private String nextGeneratedPostCode(
       UUID instanceCountryId, PointInput point, ClientInput client) {
     // El código operativo se compone de Provincia + Ciudad + Cliente + Punto.
@@ -311,6 +356,41 @@ public class SicComCommercialCatalogService {
     } while (PostEntity.count("instanceCountryId=?1 and code=?2", instanceCountryId, code) > 0);
     allocation.lastSequence = sequence;
     return code;
+  }
+
+  private String nextElectronicDeviceCode(UUID instanceCountryId, PointInput point, ClientInput client) {
+    String baseCode = PostCodeGenerator.baseCode(point.province(), point.city(), client.name(), point.name());
+    String signature = PostCodeGenerator.sourceSignature(point.province(), point.city(), client.name(), point.name());
+    entityManager.createNativeQuery("select pg_advisory_xact_lock(hashtext(?1))")
+        .setParameter(1, instanceCountryId + ":ELECTRONIC:" + baseCode).getSingleResult();
+    ElectronicMonitoringCodeAllocation allocation = ElectronicMonitoringCodeAllocation.find(
+        "instanceCountryId=?1 and baseCode=?2 and sourceSignature=?3", instanceCountryId, baseCode, signature).firstResult();
+    if (allocation == null) {
+      allocation = new ElectronicMonitoringCodeAllocation();
+      allocation.instanceCountryId = instanceCountryId;
+      allocation.baseCode = baseCode;
+      allocation.sourceSignature = signature;
+      allocation.discriminator = nextElectronicDiscriminator(instanceCountryId, baseCode);
+      allocation.lastSequence = 0;
+      allocation.persist();
+    }
+    int sequence = allocation.lastSequence;
+    String code;
+    do {
+      if (++sequence > 999) throw unprocessable("Se agotó la secuencia de dispositivos de seguridad electrónica para " + baseCode + ".");
+      code = baseCode + allocation.discriminator + "-SE-%03d".formatted(sequence);
+    } while (ElectronicMonitoringDevice.count("instanceCountryId=?1 and code=?2", instanceCountryId, code) > 0);
+    allocation.lastSequence = sequence;
+    return code;
+  }
+
+  private String nextElectronicDiscriminator(UUID instanceCountryId, String baseCode) {
+    Set<String> used = new HashSet<>(ElectronicMonitoringCodeAllocation.<ElectronicMonitoringCodeAllocation>list(
+        "instanceCountryId=?1 and baseCode=?2", instanceCountryId, baseCode).stream().map(x -> x.discriminator).toList());
+    for (int index = 0; ; index++) {
+      String candidate = PostCodeGenerator.discriminator(index);
+      if (!used.contains(candidate)) return candidate;
+    }
   }
 
   private String nextDiscriminator(UUID instanceCountryId, String baseCode) {
@@ -371,6 +451,35 @@ public class SicComCommercialCatalogService {
         if (!receivedShiftCodes.contains(existing.shiftCode)) existing.active = false;
       }
       reconcileFutureUnassignedOccurrences(instanceCountryId, post, version);
+    }
+  }
+
+  /** Conserva el historial comercial de horarios del dispositivo; no materializa turnos de personal. */
+  private void applyElectronicShiftSnapshot(UUID instanceCountryId, ElectronicMonitoringDevice device, PostInput input, String version, boolean replaceShiftSet) {
+    for (ShiftInput shiftInput : safe(input.shifts())) {
+      ElectronicMonitoringShift shift = ElectronicMonitoringShift.find(
+          "instanceCountryId=?1 and deviceId=?2 and shiftCode=?3", instanceCountryId, device.id, required(shiftInput.code(), "shifts.code")).firstResult();
+      if (shift == null) {
+        shift = new ElectronicMonitoringShift();
+        shift.instanceCountryId = instanceCountryId;
+        shift.deviceId = device.id;
+        shift.shiftCode = required(shiftInput.code(), "shifts.code");
+      }
+      shift.shiftName = required(shiftInput.name(), "shifts.name");
+      shift.startTime = shiftInput.startTime();
+      shift.endTime = shiftInput.endTime();
+      shift.dayMask = shiftInput.dayMask();
+      shift.active = shiftInput.active();
+      shift.commercialVersion = version;
+      if (shift.id == null) shift.persist();
+    }
+    if (replaceShiftSet) {
+      Set<String> received = new HashSet<>();
+      for (ShiftInput shift : safe(input.shifts())) received.add(required(shift.code(), "shifts.code"));
+      for (ElectronicMonitoringShift existing : ElectronicMonitoringShift.<ElectronicMonitoringShift>list(
+          "instanceCountryId=?1 and deviceId=?2 and active=true", instanceCountryId, device.id)) {
+        if (!received.contains(existing.shiftCode)) existing.active = false;
+      }
     }
   }
 
@@ -582,9 +691,17 @@ public class SicComCommercialCatalogService {
           inactivation |= postInactive;
           if (!postInactive || !INACTIVATED.equals(request.eventType())) {
             required(post.name(), "posts.name"); required(post.format(), "posts.format");
-            if (post.fhe() == null || post.tier() == null) throw validation("posts.fhe y posts.tier son obligatorios.");
-            boolean hasPlanning = post.rotation() != null || !safe(post.shifts()).isEmpty();
-            if (!INACTIVATED.equals(request.eventType()) || hasPlanning) validatePlanning(post);
+            if (isElectronic(post)) {
+              required(post.code2(), "posts.code2");
+              if (post.minutesPerDay() != null && (post.minutesPerDay() < 1 || post.minutesPerDay() > 1440)) {
+                throw unprocessable("posts.minutesPerDay debe estar entre 1 y 1440.");
+              }
+              if (!INACTIVATED.equals(request.eventType()) || !safe(post.shifts()).isEmpty()) validateShifts(post);
+            } else {
+              if (post.fhe() == null || post.tier() == null) throw validation("posts.fhe y posts.tier son obligatorios.");
+              boolean hasPlanning = post.rotation() != null || !safe(post.shifts()).isEmpty();
+              if (!INACTIVATED.equals(request.eventType()) || hasPlanning) validatePlanning(post);
+            }
           }
         }
       }
@@ -602,6 +719,11 @@ public class SicComCommercialCatalogService {
       throw unprocessable("posts.rotation.cycleLengthDays debe estar entre 1 y " + MAX_CYCLE_LENGTH_DAYS + ".");
     }
     validateShifts(post);
+  }
+
+  private boolean isElectronic(PostInput post) {
+    return "ELECTRONIC".equalsIgnoreCase(blankToNull(post.securityDomain()))
+        || "OBSINT".equalsIgnoreCase(blankToNull(post.postType()));
   }
 
   private void validateShifts(PostInput post) {

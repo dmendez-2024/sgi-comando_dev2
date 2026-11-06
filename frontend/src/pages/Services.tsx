@@ -61,7 +61,7 @@ type Row={
   serviceId:string;pointId:string;postId:string;companyId:string|null;
   companyName:string;companyLogoDataUrl?:string|null;
   serviceCode:string;serviceName:string;clientId:string;clientName:string;
-  pointCode:string;pointName:string;postCode:string;postName:string;tier:string;
+  pointCode:string;pointName:string;postCode:string;postName:string;securityDomain:'PHYSICAL'|'ELECTRONIC';tier:string;
   idAverage:number|null;icAverage:number|null;pendingNews:number;state:State;assignmentStatus:'PENDING'|'ASSIGNED';canAssign:boolean;canReturn:boolean;returnedToCoordination:boolean;atsLoaded:boolean;
 };
 type Overview={
@@ -231,12 +231,13 @@ function highestTier(posts:Row[]){
   return [...posts].sort((a:Row,b:Row)=>order.indexOf(b.tier)-order.indexOf(a.tier))[0]?.tier ?? 'I';
 }
 function snapshotFor(point:PointRow):Snapshot{
-  const totalPosts=point.posts.length;
-  const configuredPosts=point.posts.filter((post:Row)=>post.state!=='TO_CONFIGURE').length;
-  const highest=highestTier(point.posts);
+  const physicalPosts=point.posts.filter((post:Row)=>post.securityDomain!=='ELECTRONIC');
+  const totalPosts=physicalPosts.length;
+  const configuredPosts=physicalPosts.filter((post:Row)=>post.state!=='TO_CONFIGURE').length;
+  const highest=highestTier(physicalPosts);
   const atsStatus:ModuleStatus=point.atsLoaded?'complete':'blocked';
-  const postStatus:ModuleStatus=configuredPosts===totalPosts?'complete':'blocked';
-  const bitacoraStatus:ModuleStatus=configuredPosts===totalPosts?'complete':'warning';
+  const postStatus:ModuleStatus=totalPosts===0?'complete':configuredPosts===totalPosts?'complete':'blocked';
+  const bitacoraStatus:ModuleStatus=totalPosts===0?'complete':configuredPosts===totalPosts?'complete':'warning';
   const patrullaStatus:ModuleStatus=point.pendingNews>2?'warning':'complete';
   const consignaStatus:ModuleStatus='complete';
   const rrhhStatus:ModuleStatus=(point.idAverage!=null&&(point.idAverage>=(TIER_MIN[highest]??0)))?'complete':'warning';
@@ -244,7 +245,7 @@ function snapshotFor(point:PointRow):Snapshot{
   const historialStatus:ModuleStatus='complete';
   const modules:ModuleCard[]=[
     {key:'ats',title:'ATS',summary:'Plano del punto, importación y vinculación operacional',meta:point.atsLoaded?'Archivo .ats vigente':'Sin archivo .ats importado',status:atsStatus,blocking:true,icon:'ats'},
-    {key:'puestos',title:'Puestos',summary:'Estructura contractual recibida de SIC: COM',meta:`${configuredPosts}/${totalPosts} puestos con configuración base`,status:postStatus,blocking:true,icon:'posts'},
+    {key:'puestos',title:'Puestos',summary:'Estructura contractual recibida de SIC: COM',meta:`${configuredPosts}/${totalPosts} unidades con configuración base`,status:postStatus,blocking:true,icon:'posts'},
     {key:'bitacora',title:'Bitácora',summary:'Procedimiento operativo y protocolos por puesto',meta:`${configuredPosts}/${totalPosts} puestos con bitácora definida`,status:bitacoraStatus,blocking:true,icon:'bitacora'},
     {key:'patrullas',title:'Patrullas',summary:'Rutas, hitos y frecuencia de patrullaje',meta:`${Math.max(1,totalPosts-1)}/${Math.max(1,totalPosts)} patrullas configuradas`,status:patrullaStatus,blocking:false,icon:'patrullas'},
     {key:'consignas',title:'Consignas',summary:'Consignas vigentes y alcance por punto o puesto',meta:`${Math.max(3,totalPosts+2)} consignas vigentes`,status:consignaStatus,blocking:false,icon:'consignas'},
@@ -554,13 +555,14 @@ function PostLocationMap({planUrl,x,y,onSelect}:{planUrl:string;x?:number|null;y
 }
 
 function PostsPage({point,onBack}:{point:PointRow;onBack:()=>void}){
+  const physicalPosts=useMemo(()=>point.posts.filter((post:Row)=>post.securityDomain!=='ELECTRONIC'),[point.posts]);
   const canEditVisualRule=['presidente','ggeneral','dlatam','don','dnacional','dzonal'].includes(getUser());
   const [configs,setConfigs]=useState<PostOperationalConfig[]>([]);
   const [commercialWeek,setCommercialWeek]=useState<CommercialWeek|null>(null);
   const [atsPackage,setAtsPackage]=useState<AtsPackageDto|null>(null);
   const [atsPlanUrl,setAtsPlanUrl]=useState('');
   const atsPlanObjectUrlRef=useRef('');
-  const [selectedPostId,setSelectedPostId]=useState(point.posts[0]?.postId??'');
+  const [selectedPostId,setSelectedPostId]=useState(physicalPosts[0]?.postId??'');
   const [draft,setDraft]=useState<PostOperationalConfig|null>(null);
   const [loading,setLoading]=useState(true);
   const [saving,setSaving]=useState(false);
@@ -601,12 +603,12 @@ function PostsPage({point,onBack}:{point:PointRow;onBack:()=>void}){
     if(loading)return;
     const config=configs.find((item:PostOperationalConfig)=>item.postId===selectedPostId);
     if(config){setDraft(previous=>previous?.postId===selectedPostId?{...previous,standardImageId:config.standardImageId,standardImageName:config.standardImageName}:{...config,skills:{...config.skills}});return}
-    const row=point.posts.find((item:Row)=>item.postId===selectedPostId);
+    const row=physicalPosts.find((item:Row)=>item.postId===selectedPostId);
     if(row){
       const type:PostOperationalConfig['postType']=row.postName.toLowerCase().includes('acceso')?'CAA':row.postName.toLowerCase().includes('perímetro')?'PAT':'VIG';
       setDraft({postId:row.postId,postType:type,description:'',atsLocationKey:'',atsLocationLabel:'',atsPackageId:null,atsLocationX:null,atsLocationY:null,skills:{...POST_TEMPLATES[type]},adjustmentJustification:'',configStatus:'DRAFT'});
     }
-  },[configs,selectedPostId,point.posts,loading]);
+  },[configs,selectedPostId,physicalPosts,loading]);
 
   useEffect(()=>{
     let active=true;
@@ -644,8 +646,8 @@ function PostsPage({point,onBack}:{point:PointRow;onBack:()=>void}){
 
   const postRows=useMemo(()=>{
     const names=new Map(configs.map(config=>[config.postId,config.postName]));
-    return point.posts.map((post:Row)=>names.get(post.postId)?{...post,postName:names.get(post.postId)!}:post);
-  },[point.posts,configs]);
+    return physicalPosts.map((post:Row)=>names.get(post.postId)?{...post,postName:names.get(post.postId)!}:post);
+  },[physicalPosts,configs]);
   const filteredPosts=useMemo(()=>{
     const q=searchPost.trim().toLowerCase();
     return postRows.filter((post:Row)=>!q||post.postCode.toLowerCase().includes(q)||post.postName.toLowerCase().includes(q));
@@ -657,7 +659,7 @@ function PostsPage({point,onBack}:{point:PointRow;onBack:()=>void}){
   const weeklyHours=Math.round(postShifts.reduce((sum:number,shift:CommercialShift)=>sum+hoursBetween(shift.startsAt,shift.endsAt),0));
   const isConfigCurrent=(config:PostOperationalConfig)=>config.configStatus==='CONFIGURED'&&(!atsPackage||(config.atsLocationX!=null&&config.atsLocationY!=null&&config.atsPackageId===atsPackage.id));
   const configuredCount=configs.filter(isConfigCurrent).length;
-  const tierMax=highestTier(point.posts);
+  const tierMax=highestTier(physicalPosts);
   const currentTotal=draft?skillTotal(draft.skills):0;
   const currentRuleError=draft?skillRuleError(draft.skills):'';
   const template=draft?POST_TEMPLATES[draft.postType]:POST_TEMPLATES.VIG;
@@ -924,6 +926,7 @@ function PostsPage({point,onBack}:{point:PointRow;onBack:()=>void}){
 
 function ConfigurationLanding({point,onBack,onOpenModule}:{point:PointRow;onBack:()=>void;onOpenModule:(module:ConfigModuleKey)=>void}){
   const snapshot=useMemo(()=>snapshotFor(point),[point]);
+  const physicalPostCount=point.posts.filter((post:Row)=>post.securityDomain!=='ELECTRONIC').length;
   const [expandedGroups,setExpandedGroups]=useState<Set<string>>(()=>new Set(['physical','electronic']));
   const [electronic,setElectronic]=useState<{
     components:{status:ChecklistStatus;meta:string};obsint:{enabled:boolean;status:ChecklistStatus;meta:string}
@@ -952,7 +955,7 @@ function ConfigurationLanding({point,onBack,onOpenModule}:{point:PointRow;onBack
     {key:'components',title:'Componentes de Seguridad',icon:<Cctv size={18}/>,...electronic.components},
     {key:'obsint',title:'OBSINT',icon:<RadioTower size={18}/>,...electronic.obsint},
   ] as const;
-  const physicalStatus=groupChecklistStatus(physicalModules.map(module=>modulesByKey.get(module.key)?.status??'unavailable'));
+  const physicalStatus:ChecklistStatus=physicalPostCount===0?'unavailable':groupChecklistStatus(physicalModules.map(module=>modulesByKey.get(module.key)?.status??'unavailable'));
   const electronicStatus=groupChecklistStatus(electronicModules.map(module=>module.status));
   const moduleCount=snapshot.modules.length+electronicModules.length;
   const configProgress=Math.round((snapshot.modules.filter(module=>module.status==='complete').length+electronicModules.filter(module=>module.status==='complete').length)/moduleCount*100);
@@ -1012,7 +1015,7 @@ function ConfigurationLanding({point,onBack,onOpenModule}:{point:PointRow;onBack
       <div><span>Servicio</span><strong>{point.serviceName}</strong><small>{point.serviceCode}</small></div>
       <div><span>Cliente</span><strong>{point.clientName}</strong></div>
       <div><span>Punto</span><strong>{point.pointName}</strong><small>{point.pointCode}</small></div>
-      <div><span>Puestos</span><strong>{point.posts.length}</strong></div>
+      <div><span>Unidades</span><strong>{point.posts.length}</strong></div>
       <div><span>Versión</span><strong>{snapshot.version}</strong><small>Actualizado {snapshot.updatedAt}</small></div>
     </div>
 
@@ -1028,8 +1031,8 @@ function ConfigurationLanding({point,onBack,onOpenModule}:{point:PointRow;onBack
         <header><div><h3>Checklist de configuración</h3><span>Configure todos los módulos y actividades requeridas para la operación del punto.</span></div></header>
         <div className="ser-checklist">
           {checklistModule('ats')}
-          {checklistGroup('physical','Seguridad Física',<ShieldCheck size={18}/>,'Configuración de puestos y protocolos',physicalStatus,<>
-            {physicalModules.map(module=>checklistModule(module.key,module.title))}
+          {checklistGroup('physical','Seguridad Física',<ShieldCheck size={18}/>,physicalPostCount?'Configuración de puestos y protocolos':'Sin puestos físicos en el punto',physicalStatus,<>
+            {physicalPostCount?physicalModules.map(module=>checklistModule(module.key,module.title)):physicalModules.map(module=>unavailableModule(module.key,module.title,moduleIcon((modulesByKey.get(module.key)?.icon??'posts') as ModuleCard['icon'])))}
           </>)}
           {checklistGroup('electronic','Seguridad Electrónica',<TfiVideoCamera/>,'Componentes y consignas OBSINT',electronicStatus,<>
             {electronicModules.map(electronicRow)}
@@ -1048,8 +1051,8 @@ function ConfigurationLanding({point,onBack,onOpenModule}:{point:PointRow;onBack
           <div className="ser-next-list">{snapshot.nextActions.map((item:string,idx:number)=><div key={idx}><b>{idx+1}</b><span>{item}</span></div>)}</div>
         </section>
         <section className="ser-table-card ser-post-summary-card">
-          <header><div><h3>Puestos del punto</h3><span>Vista rápida</span></div></header>
-          <div className="ser-post-summary-list">{point.posts.map((post:Row)=><div key={post.postId} className="ser-post-summary-row"><div><strong>{post.postCode}</strong><span>{post.postName}</span></div><small>TIER {post.tier}</small><span className={`ser-state ${post.state.toLowerCase()}`}><i/>{stateLabel(post.state)}</span></div>)}</div>
+          <header><div><h3>Unidades del punto</h3><span>Vista rápida</span></div></header>
+          <div className="ser-post-summary-list">{point.posts.map((post:Row)=><div key={post.postId} className="ser-post-summary-row"><div><strong>{post.postCode}</strong><span>{post.postName}</span></div><small>{post.securityDomain==='ELECTRONIC'?'SEG. ELECTRÓNICA':`TIER ${post.tier}`}</small><span className={`ser-state ${post.state.toLowerCase()}`}><i/>{stateLabel(post.state)}</span></div>)}</div>
         </section>
       </aside>
     </div>
@@ -1205,7 +1208,7 @@ export default function Services(){
       <header><div><h3>Servicios <b>({filtered.length})</b></h3><span>Vista a nivel de Cliente · Punto</span></div><button onClick={exportCsv} disabled={!filtered.length}><Upload size={15}/>Exportar</button></header>
       <div className="ser-table-wrap">
         <table className="ser-table ser-point-table">
-          <thead><tr><th>Compañía</th><th>Servicio</th><th>Cliente</th><th>Punto</th><th>Puestos</th><th>ID Promedio</th><th>IC Promedio</th><th>Novedades</th><th>Estado</th><th>Operación</th><th>Gestión</th></tr></thead>
+          <thead><tr><th>Compañía</th><th>Servicio</th><th>Cliente</th><th>Punto</th><th>Unidades</th><th>ID Promedio</th><th>IC Promedio</th><th>Novedades</th><th>Estado</th><th>Operación</th><th>Gestión</th></tr></thead>
           <tbody>
             {loading&&!data?<tr><td colSpan={11}><div className="ser-loading">Cargando Servicios…</div></td></tr>:visible.length?visible.map((row:PointRow)=>{
               const tier=highestTier(row.posts);

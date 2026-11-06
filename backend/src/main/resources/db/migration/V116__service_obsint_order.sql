@@ -1,7 +1,7 @@
 -- SEN-01: OBSINT solo se habilita en los Puntos cuyo servicio es una orden de servicio OBSINT.
 -- La marca va en el servicio (no se deduce del nombre visible).
--- Antes era V107 (chocaba con la V107 de sgiComandoDev). Solo corre si la columna no existe: las bases que ya
--- aplicaron la V107 anterior no vuelven a marcar servicios.
+-- Antes era V107 y luego V111 (chocaban con la V107 y la V111 de sgiComandoDev). Solo corre si la columna no existe: las bases que ya
+-- aplicaron una versión anterior no vuelven a marcar servicios.
 DO $$
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns
