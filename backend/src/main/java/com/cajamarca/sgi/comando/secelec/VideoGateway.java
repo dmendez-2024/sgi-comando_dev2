@@ -111,27 +111,31 @@ public class VideoGateway {
         java.util.List<Step> steps = new java.util.ArrayList<>();
         if (!configured()) return new Diagnostic(false, false, false,
             "No hay servidor de video configurado (SGI_VIDEO_MEDIAMTX_API_URL y SGI_VIDEO_MEDIAMTX_PUBLIC_URL).", steps);
+        steps.add(new Step("Servidor de video configurado", true, serverInfo()));
         String path = "live/diagnostico-" + UUID.randomUUID();
-        boolean registered = registerJson(path, "{\"source\":\"publisher\"}");
-        steps.add(new Step("Comando entra a la API de MediaMTX", registered,
-            registered ? "Ruta de prueba registrada." : "La API no respondió o rechazó el usuario y la clave de API de Comando."));
+        // sourceOnDemand=false explícito: si el servidor lo tiene activado por defecto, MediaMTX rechaza una ruta "publisher" con él.
+        String error = registerError(path, "{\"source\":\"publisher\",\"sourceOnDemand\":false}");
+        boolean registered = error == null;
+        steps.add(new Step("Comando entra a la API de MediaMTX", registered, registered ? "Ruta de prueba registrada." : error));
         if (!registered) return new Diagnostic(true, false, false, "Comando no puede registrar cámaras en el servidor de video.", steps);
         try {
             String base = checkBase(browserUrl(path));
             String unsigned = base.substring(0, base.indexOf('?'));
-            int noToken = status(unsigned);
-            int badToken = status(base.substring(0, base.length() - 3) + "xxx");
-            int withToken = status(base);
-            boolean reachable = withToken > 0;
-            if (!reachable) LOG.warnf("video_diagnostic_unreachable url=%s", unsigned);
+            Hit noToken = hit(unsigned);
+            Hit badToken = hit(base.substring(0, base.length() - 3) + "xxx");
+            Hit withToken = hit(base);
+            boolean reachable = withToken.code() > 0;
             steps.add(new Step("El backend llega al video de MediaMTX", reachable,
-                reachable ? "Respondió " + withToken + "." : "Sin respuesta (revisar SGI_VIDEO_MEDIAMTX_CHECK_URL; la dirección probada queda en el log)."));
+                reachable ? "Respondió " + withToken.code() + " en " + hideToken(base) + "."
+                    : withToken.text(base) + " (revisar SGI_VIDEO_MEDIAMTX_CHECK_URL: el backend debe poder abrir esa dirección)."));
             if (!reachable) return new Diagnostic(true, false, false, "El backend no llega a la dirección de video de MediaMTX.", steps);
-            boolean rejectsNoToken = noToken == 401, rejectsBadToken = badToken == 401, acceptsToken = withToken != 401;
-            steps.add(new Step("Sin token: se rechaza", rejectsNoToken, "Respondió " + noToken + (rejectsNoToken ? "." : ": MediaMTX entrega video sin permiso (authMethod no es http).")));
-            steps.add(new Step("Token alterado: se rechaza", rejectsBadToken, "Respondió " + badToken + "."));
-            steps.add(new Step("Token de Comando: se acepta", acceptsToken, "Respondió " + withToken
-                + (acceptsToken ? " (404 es normal: la ruta de prueba no tiene video)." : ": MediaMTX no acepta la firma (¿llega a /api/internal/video/auth? ¿misma SGI_VIDEO_TOKEN_KEY en todos los backends?).")));
+            boolean rejectsNoToken = noToken.code() == 401, rejectsBadToken = badToken.code() == 401, acceptsToken = withToken.code() != 401;
+            steps.add(new Step("Sin token: se rechaza", rejectsNoToken, noToken.text(unsigned)
+                + (rejectsNoToken ? "" : " → MediaMTX entrega video sin permiso (authMethod no es http).")));
+            steps.add(new Step("Token alterado: se rechaza", rejectsBadToken, badToken.text(base)));
+            steps.add(new Step("Token de Comando: se acepta", acceptsToken, withToken.text(base)
+                + (acceptsToken ? " (404 es normal: la ruta de prueba no tiene video)."
+                    : " → MediaMTX no acepta la firma: sigue en modo prueba (usuario y clave propios) o no llega a /api/internal/video/auth de este Comando.")));
             boolean protectedByToken = rejectsNoToken && rejectsBadToken;
             boolean ok = protectedByToken && acceptsToken;
             String summary = ok ? "Todo bien: solo se ve el video con la URL firmada de Comando."
@@ -176,6 +180,7 @@ public class VideoGateway {
         }
 
         // En el servidor Comando no llega a la red de cámaras: la prueba la hace MediaMTX, que sí llega.
+        steps.add(new Step("Servidor de video configurado", true, serverInfo()));
         ServerProbe s = probeThroughServer(host, port, rtspPath, user, password);
         steps.add(new Step("Comando registra la cámara en MediaMTX", s.path() != null,
             s.path() != null ? "Ruta temporal " + s.path() + "." : s.message()));
@@ -196,15 +201,16 @@ public class VideoGateway {
                 codec, rtspPath, url, minutes, steps);
         }
         String base = checkBase(url);
-        int noToken = status(base.substring(0, base.indexOf('?')));
-        steps.add(new Step("Sin token: se rechaza", noToken == 401,
-            "Respondió " + noToken + (noToken == 401 ? "." : ": MediaMTX entrega video sin permiso (authMethod no es http).")));
-        int playlist = playlist(base);
-        boolean plays = playlist == 200;
-        steps.add(new Step("Con la URL firmada de Comando: llega el video", plays, plays ? "MediaMTX entregó la lista de video (#EXTM3U)."
-            : playlist == 0 ? "Sin respuesta (revisar SGI_VIDEO_MEDIAMTX_CHECK_URL)."
-            : playlist == 401 ? "Respondió 401: MediaMTX no acepta la firma (¿llega a /api/internal/video/auth?)."
-            : "Respondió " + playlist + ": MediaMTX no pudo leer la cámara (revisar que MediaMTX llegue a la IP de la cámara)."));
+        String unsigned = base.substring(0, base.indexOf('?'));
+        Hit noToken = hit(unsigned);
+        steps.add(new Step("Sin token: se rechaza", noToken.code() == 401, noToken.text(unsigned)
+            + (noToken.code() == 401 ? "" : noToken.code() == 0 ? " (el backend no llega a la dirección del video)" : " → MediaMTX entrega video sin permiso (authMethod no es http).")));
+        Hit playlist = playlist(base);
+        boolean plays = playlist.code() == 200;
+        steps.add(new Step("Con la URL firmada de Comando: llega el video", plays, plays ? "MediaMTX entregó la lista de video (#EXTM3U) en " + hideToken(base) + "."
+            : playlist.text(base) + (playlist.code() == 0 ? " (revisar SGI_VIDEO_MEDIAMTX_CHECK_URL)."
+            : playlist.code() == 401 ? " → MediaMTX no acepta la firma: sigue en modo prueba o no llega a /api/internal/video/auth de este Comando."
+            : " → MediaMTX recibe la cámara pero no entregó la lista de video.")));
         boolean ok = steps.stream().allMatch(Step::ok);
         String summary = ok ? "Todo bien: la cámara llega a MediaMTX y solo se ve con la URL firmada de Comando."
             : !h264 ? "El video llega, pero en H.265: el navegador no lo va a reproducir."
@@ -241,20 +247,24 @@ public class VideoGateway {
         long start = System.nanoTime();
         removeExpiredPreviews();
         String path = "live/prueba-" + UUID.randomUUID();
-        if (!register(path, rtspSource(host, port, rtspPath, user, password)))
-            return new ServerProbe(RtspProbe.Outcome.PROTOCOL_ERROR, "La API del servidor de video no respondió o rechazó el usuario y la clave de Comando.",
-                null, elapsed(start), null, null);
+        // Sin sourceOnDemand: MediaMTX se conecta a la cámara al registrarla, sin esperar a que alguien pida el video
+        // (si MediaMTX rechaza ese pedido, p. ej. en modo prueba con usuario y clave, igual se sabe si llega a la cámara).
+        String error = registerError(path, sourceJson(rtspSource(host, port, rtspPath, user, password), false));
+        if (error != null) return new ServerProbe(RtspProbe.Outcome.PROTOCOL_ERROR, error, null, elapsed(start), null, null);
         previews.put(path, Instant.now().plus(PREVIEW_TTL));
         String url = browserUrl(path);
         String hls = checkBase(publicUrl.get().replaceAll("/+$", "") + "/" + path + "/index.m3u8?token=" + tokens.sign(path));
-        // Despierta la cámara (sourceOnDemand) sin esperar la respuesta: el estado se consulta aparte.
-        http.sendAsync(HttpRequest.newBuilder(URI.create(hls)).timeout(PROBE_WAIT).GET().build(), HttpResponse.BodyHandlers.discarding())
-            .exceptionally(e -> null);
+        // Además pide el video, como lo haría el navegador; su respuesta va al detalle si la cámara no conecta.
+        java.util.concurrent.CompletableFuture<Hit> wake = http.sendAsync(HttpRequest.newBuilder(URI.create(hls)).timeout(PROBE_WAIT).GET().build(),
+                HttpResponse.BodyHandlers.ofString())
+            .thenApply(r -> new Hit(r.statusCode(), r.statusCode() / 100 == 2 ? null : shorten(r.body()), null))
+            .exceptionally(e -> new Hit(0, null, describe(e)));
         Instant until = Instant.now().plus(PROBE_WAIT);
+        Hit state = null;
         while (Instant.now().isBefore(until)) {
-            String state = liveState(path);
-            if (state != null && READY.matcher(state).find()) {
-                java.util.regex.Matcher t = TRACKS.matcher(state);
+            state = liveState(path);
+            if (state.code() == 200 && READY.matcher(state.body()).find()) {
+                java.util.regex.Matcher t = TRACKS.matcher(state.body());
                 String codec = t.find() ? t.group(1) : null;
                 LOG.infof("video_probe_ok path=%s codec=%s", path, codec);
                 return new ServerProbe(RtspProbe.Outcome.OK, "El servidor de video se conectó a la cámara.", codec, elapsed(start), path, url);
@@ -263,21 +273,37 @@ public class VideoGateway {
         }
         previews.remove(path);
         delete(path);
-        LOG.infof("video_probe_timeout path=%s host=%s", path, host);
-        return new ServerProbe(RtspProbe.Outcome.TIMEOUT, "No se pudo conectar: revise IP, usuario, clave o ruta (el servidor de video no recibió imagen en "
-            + PROBE_WAIT.toSeconds() + " s).", null, elapsed(start), path, null);
+        Hit video = wake.getNow(new Hit(0, null, "sin respuesta todavía"));
+        String detail = "No se pudo conectar: revise IP, usuario, clave o ruta (el servidor de video no recibió imagen en " + PROBE_WAIT.toSeconds()
+            + " s). Estado en MediaMTX: " + stateText(state) + ". Pedido del video: " + video.text(hls) + "."
+            + " Si los datos son correctos, MediaMTX no llega a " + host + ":" + port + " (pedir a Infra: docker logs sgi-mediamtx).";
+        LOG.infof("video_probe_timeout path=%s host=%s state=%s video=%s", path, host, state == null ? null : state.body(), video);
+        return new ServerProbe(RtspProbe.Outcome.TIMEOUT, detail, null, elapsed(start), path, null);
+    }
+
+    private static final java.util.regex.Pattern BYTES = java.util.regex.Pattern.compile("\"bytesReceived\"\\s*:\\s*(\\d+)");
+    private static final java.util.regex.Pattern SOURCE = java.util.regex.Pattern.compile("\"source\"\\s*:\\s*(null|\\{[^}]*\\})");
+
+    /** Lo que MediaMTX dice de la ruta: si está lista, cuántos bytes recibió de la cámara y qué fuente tiene. */
+    private static String stateText(Hit state) {
+        if (state == null) return "no se consultó";
+        if (state.code() != 200) return "la API " + state.text("/v3/paths/get") .replaceFirst("\\.$", "");
+        String body = state.body();
+        java.util.regex.Matcher b = BYTES.matcher(body), s = SOURCE.matcher(body);
+        return "lista=" + READY.matcher(body).find() + ", bytes recibidos de la cámara=" + (b.find() ? b.group(1) : "?")
+            + ", fuente=" + (s.find() ? s.group(1) : "?");
     }
 
     private static long elapsed(long start) { return (System.nanoTime() - start) / 1_000_000; }
 
-    /** Estado en vivo de la ruta (GET /v3/paths/get/…); null si no respondió. */
-    private String liveState(String path) {
+    /** Estado en vivo de la ruta (GET /v3/paths/get/…), con el cuerpo completo si respondió 200. */
+    private Hit liveState(String path) {
         try {
             HttpResponse<String> r = http.send(request("/v3/paths/get/" + path).GET().build(), HttpResponse.BodyHandlers.ofString());
-            return r.statusCode() == 200 ? r.body() : null;
+            return new Hit(r.statusCode(), r.statusCode() == 200 ? r.body() : shorten(r.body()), null);
         } catch (Exception e) {
             LOG.debugf("video_probe_state_unreachable path=%s %s", path, e.getMessage());
-            return null;
+            return new Hit(0, null, describe(e));
         }
     }
 
@@ -285,32 +311,65 @@ public class VideoGateway {
      * Pide la lista HLS hasta que MediaMTX la entrega: con sourceOnDemand, la primera vez se conecta a la cámara y puede tardar.
      * 200 solo si llegó una lista de video; si no, el último código (0 si no hubo respuesta).
      */
-    private int playlist(String url) {
-        int last = 0;
+    private Hit playlist(String url) {
+        Hit last = new Hit(0, null, "sin intentos");
         for (int attempt = 0; attempt < 4; attempt++) {
             try {
                 HttpResponse<String> r = http.send(HttpRequest.newBuilder(URI.create(url)).timeout(Duration.ofSeconds(12)).GET().build(),
                     HttpResponse.BodyHandlers.ofString());
-                if (r.statusCode() == 200 && r.body().contains("#EXTM3U")) return 200;
-                last = r.statusCode() == 200 ? 502 : r.statusCode();
-                if (last == 401) return last;
+                if (r.statusCode() == 200 && r.body().contains("#EXTM3U")) return new Hit(200, null, null);
+                last = new Hit(r.statusCode(), shorten(r.body()), null);
+                if (r.statusCode() == 401) return last;
             } catch (Exception e) {
                 LOG.warnf("video_diagnostic_playlist_unreachable %s", e.getMessage());
-                last = 0;
+                last = new Hit(0, null, describe(e));
             }
             try { Thread.sleep(2000); } catch (InterruptedException e) { Thread.currentThread().interrupt(); return last; }
         }
         return last;
     }
 
-    /** Código HTTP de un GET; 0 si no hubo respuesta. */
-    private int status(String url) {
-        try {
-            return http.send(HttpRequest.newBuilder(URI.create(url)).timeout(Duration.ofSeconds(4)).GET().build(), HttpResponse.BodyHandlers.discarding()).statusCode();
-        } catch (Exception e) {
-            LOG.warnf("video_gateway_check_unreachable url=%s %s", url.replaceAll("token=[^&]*", "token=…"), e.getMessage());
-            return 0;
+    /** Respuesta de un GET: código (0 si no hubo respuesta) y, si no fue 2xx, qué respondió o por qué no hubo respuesta. */
+    record Hit(int code, String body, String error) {
+        /** "Respondió 401: …" o "Sin respuesta de <url>: <error>", para mostrar en el diagnóstico. */
+        String text(String url) {
+            if (code == 0) return "Sin respuesta de " + hideToken(url) + (error == null ? "" : ": " + error) + ".";
+            return "Respondió " + code + (body == null || body.isBlank() ? "." : ": " + body);
         }
+    }
+
+    private Hit hit(String url, Duration timeout) {
+        try {
+            HttpResponse<String> r = http.send(HttpRequest.newBuilder(URI.create(url)).timeout(timeout).GET().build(), HttpResponse.BodyHandlers.ofString());
+            return new Hit(r.statusCode(), r.statusCode() / 100 == 2 ? null : shorten(r.body()), null);
+        } catch (Exception e) {
+            LOG.warnf("video_gateway_check_unreachable url=%s %s", hideToken(url), e.getMessage());
+            return new Hit(0, null, describe(e));
+        }
+    }
+
+    private Hit hit(String url) { return hit(url, Duration.ofSeconds(4)); }
+
+    static String hideToken(String url) { return url == null ? null : url.replaceAll("token=[^&]*", "token=…"); }
+
+    /** Respuesta del servidor recortada y sin claves de cámara (rtsp://usuario:clave@…). */
+    static String shorten(String body) {
+        if (body == null) return null;
+        String b = body.replaceAll("rtsp://[^@/\\s\"]*@", "rtsp://***@").replaceAll("\\s+", " ").strip();
+        return b.length() > 300 ? b.substring(0, 300) + "…" : b;
+    }
+
+    static String describe(Throwable e) {
+        Throwable c = e;
+        while (c.getCause() != null && c.getCause() != c) c = c.getCause();
+        return c.getClass().getSimpleName() + (c.getMessage() == null ? "" : ": " + c.getMessage());
+    }
+
+    /** A qué servidor de video habla este backend (sin claves): va en cada diagnóstico para descartar configuración. */
+    public String serverInfo() {
+        if (!configured()) return "Sin servidor de video configurado.";
+        return "API " + apiUrl.get() + " (usuario " + apiUser.filter(v -> !v.isBlank()).orElse("—") + ") · video " + publicUrl.get()
+            + checkUrl.filter(v -> !v.isBlank()).map(v -> " · el backend pide el video en " + v).orElse("") + " · protocolo " + protocol;
     }
 
     /** Quita la cámara del servidor de video (al eliminarla o pasarla a otra fuente). */
@@ -340,19 +399,31 @@ public class VideoGateway {
 
     /** "replace" crea la ruta si no existe y la actualiza si cambió; sourceOnDemand: solo se conecta a la cámara mientras alguien mira. */
     private boolean register(String path, String source) {
-        return registerJson(path, "{\"source\":\"" + source.replace("\\", "\\\\").replace("\"", "\\\"") + "\",\"sourceOnDemand\":true,\"rtspTransport\":\"tcp\"}");
+        return registerJson(path, sourceJson(source, true));
     }
 
-    private boolean registerJson(String path, String json) {
+    private static String sourceJson(String source, boolean onDemand) {
+        return "{\"source\":\"" + source.replace("\\", "\\\\").replace("\"", "\\\"") + "\",\"sourceOnDemand\":" + onDemand + ",\"rtspTransport\":\"tcp\"}";
+    }
+
+    private boolean registerJson(String path, String json) { return registerError(path, json) == null; }
+
+    /** null si MediaMTX aceptó la ruta; si no, qué respondió (código y mensaje, sin la clave de la cámara) para mostrarlo. */
+    private String registerError(String path, String json) {
         try {
             HttpResponse<String> r = http.send(request("/v3/config/paths/replace/" + path)
                 .header("Content-Type", "application/json").POST(HttpRequest.BodyPublishers.ofString(json)).build(), HttpResponse.BodyHandlers.ofString());
-            if (r.statusCode() / 100 == 2) return true;
-            LOG.warnf("video_gateway_register_failed path=%s status=%d", path, r.statusCode());
+            if (r.statusCode() / 100 == 2) return null;
+            String body = r.body() == null ? "" : r.body().replaceAll("rtsp://[^@/\\s\"]*@", "rtsp://***@").strip();
+            if (body.length() > 300) body = body.substring(0, 300) + "…";
+            LOG.warnf("video_gateway_register_failed path=%s status=%d body=%s", path, r.statusCode(), body);
+            return "La API de MediaMTX (" + apiUrl.get() + ") respondió " + r.statusCode()
+                + (r.statusCode() == 401 ? " (rechazó el usuario y la clave de Comando)" : r.statusCode() == 403 ? " (nginx no deja entrar desde esta IP)" : "")
+                + (body.isEmpty() ? "." : ": " + body);
         } catch (Exception e) {
             LOG.warnf("video_gateway_unreachable path=%s %s", path, e.getMessage());
+            return "La API de MediaMTX (" + apiUrl.get() + ") no respondió: " + describe(e) + ".";
         }
-        return false;
     }
 
     /** true/false si MediaMTX tiene o no la ruta; null si no respondió (la consola muestra "Sin señal" y se reintenta en la próxima vista). */
