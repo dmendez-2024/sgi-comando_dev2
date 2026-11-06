@@ -235,6 +235,9 @@ function ConsignaForm({pointId,initial,cameras,linkable,defaultCategory,onSaved,
   const [saving,setSaving]=useState(false);
   const [error,setError]=useState('');
   const [scheduleHint,setScheduleHint]=useState('');
+  /** Dispositivos de SIC:COM de la consigna elegida: la tarea solo ofrece sus cámaras. */
+  const [deviceIds,setDeviceIds]=useState<string[]>([]);
+  useEffect(()=>{if(initial?.consignmentCode)void obsintConfigApi.scheduleSuggestion(pointId,initial.consignmentCode).then(s=>setDeviceIds(s.deviceIds)).catch(()=>undefined)},[]);
   const [categoryAbove,setCategoryAbove]=useState(false);
   const categoryMenu=useRef<HTMLDetailsElement>(null);
   useEffect(()=>{
@@ -252,12 +255,19 @@ function ConsignaForm({pointId,initial,cameras,linkable,defaultCategory,onSaved,
     ?[{code:initial.consignmentCode,title:`${initial.title} (ya no está vigente con OBSINT)`,instruction:initial.instruction},...linkable]:linkable;
   const chooseConsignment=(code:string)=>{const option=options.find(o=>o.code===code);
     setForm(prev=>option?{...prev,consignmentCode:option.code,title:option.title,instruction:option.instruction,description:prev.description||option.instruction}:{...prev,consignmentCode:null});
-    setScheduleHint('');
-    if(option&&!initial)void obsintConfigApi.scheduleSuggestion(pointId,option.code).then(suggestion=>{
+    setScheduleHint('');setDeviceIds([]);
+    if(option)void obsintConfigApi.scheduleSuggestion(pointId,option.code).then(suggestion=>{
+      setDeviceIds(suggestion.deviceIds);
+      // Las cámaras de ese dispositivo se eligen solas (hasta 4); las de otros dispositivos dejan de ofrecerse.
+      const own=cameras.filter(c=>c.deviceId&&suggestion.deviceIds.includes(c.deviceId)).map(c=>c.id);
+      if(suggestion.deviceIds.length)setForm(prev=>({...prev,cameraIds:own.slice(0,4)}));
+      if(initial)return;
       setScheduleHint(suggestion.message);
       if(suggestion.available)setWeek(weekFromSlots(suggestion.slots));
     }).catch(()=>setScheduleHint('No se pudo consultar el horario comercial del dispositivo.'));
   };
+  /** Con dispositivo: sus cámaras y las que aún no tienen dispositivo; sin dispositivo, todas. */
+  const offered=deviceIds.length?cameras.filter(c=>!c.deviceId||deviceIds.includes(c.deviceId)||form.cameraIds.includes(c.id)):cameras;
   const timeLimits=TIME_LIMITS.includes(form.timeLimitSeconds)?TIME_LIMITS:[...TIME_LIMITS,form.timeLimitSeconds].sort((a,b)=>a-b);
 
   async function submit(e:FormEvent){
@@ -302,12 +312,12 @@ function ConsignaForm({pointId,initial,cameras,linkable,defaultCategory,onSaved,
     {scheduleHint&&<p className="obs-cfg-hint"><Info size={13}/>{scheduleHint}</p>}
 
     <fieldset className="obs-cfg-fieldset"><legend>Cámaras asociadas<RequiredMark/> <small>{form.cameraIds.length}/4</small></legend>
-      <p className="obs-cfg-camera-hint">Seleccione las cámaras desde los componentes de seguridad configurados.</p>
+      <p className="obs-cfg-camera-hint">{deviceIds.length?'Cámaras del servicio OBSINT de esta consigna (se asignan en Componentes de Seguridad).':'Seleccione las cámaras desde los componentes de seguridad configurados.'}</p>
       <div className="obs-cfg-camera-chips">{cameras.filter(c=>form.cameraIds.includes(c.id)).map(c=><button type="button" key={c.id} onClick={()=>toggleCamera(c.id)} title={`Quitar ${c.code}`}>{c.code} {c.name}<X size={11}/></button>)}</div>
-      {cameras.length?<div className="obs-cfg-cameras">{cameras.map(c=>{const checked=form.cameraIds.includes(c.id);
+      {offered.length?<div className="obs-cfg-cameras">{offered.map(c=>{const checked=form.cameraIds.includes(c.id);
         return <label key={c.id} className={checked?'checked':''}><input type="checkbox" checked={checked} disabled={!checked&&form.cameraIds.length>=4} onChange={()=>toggleCamera(c.id)}/>
           <span><b>{c.code}</b> {c.name}{c.location&&<small>{c.location}</small>}</span>{c.status==='OBSERVED'&&<em>Con observación</em>}</label>})}</div>
-      :<p className="obs-cfg-hint"><AlertTriangle size={15}/>Este punto no tiene cámaras. Agréguelas en Componentes de Seguridad → Videovigilancia.</p>}
+      :<p className="obs-cfg-hint"><AlertTriangle size={15}/>{deviceIds.length?'El dispositivo de esta consigna no tiene cámaras. Asígnelas en Componentes de Seguridad → Videovigilancia.':'Este punto no tiene cámaras. Agréguelas en Componentes de Seguridad → Videovigilancia.'}</p>}
     </fieldset>
     </div>
     <Field label="Instrucciones operativas" required><textarea value={form.instruction} onChange={e=>set('instruction',e.target.value)} required maxLength={1000} rows={4} readOnly={linked} title={linked?'Sale de la consigna; se edita en Consignas.':undefined}

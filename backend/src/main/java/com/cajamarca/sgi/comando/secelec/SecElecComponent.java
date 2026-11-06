@@ -27,6 +27,12 @@ public class SecElecComponent extends BaseEntity {
     public Integer port;
     /** Canal del equipo (1 para una cámara sola; en un NVR, cada canal es una cámara). */
     public Integer channel;
+    /** Marca: define la ruta RTSP (ver {@link CameraBrand}). null en cámaras anteriores = Hikvision. */
+    @Enumerated(EnumType.STRING) @Column(name = "camera_brand", length = 24) public CameraBrand cameraBrand;
+    /** Ruta RTSP escrita a mano; solo con marca OTHER ("Otra"). */
+    @Column(name = "rtsp_path", length = 300) public String rtspPath;
+    /** Códec del video según la última "Probar conexión" (H.264, H.265…). */
+    @Column(name = "detected_codec", length = 20) public String detectedCodec;
     @Column(precision = 9, scale = 6) public java.math.BigDecimal latitude;
     @Column(precision = 9, scale = 6) public java.math.BigDecimal longitude;
     @Column(name = "streaming_enabled") public Boolean streamingEnabled;
@@ -36,5 +42,7 @@ public class SecElecComponent extends BaseEntity {
     @Column(name = "password_cipher", length = 600) public String passwordCipher;
     /** Video de pruebas mientras no exista el servidor de video. Relativo a la web o absoluto. */
     @Column(name = "stream_url", length = 500) public String streamUrl;
+    /** Dispositivo OBSINT de SIC:COM al que pertenece la cámara (electronic_monitoring_post); null si no está asignada. */
+    @Column(name = "electronic_device_id") public UUID electronicDeviceId;
     @Column(name = "updated_by", nullable = false, length = 160) public String updatedBy;
 }

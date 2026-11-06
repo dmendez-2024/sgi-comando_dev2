@@ -26,38 +26,97 @@ import org.jboss.resteasy.reactive.server.ServerExceptionMapper;
 @Consumes(MediaType.APPLICATION_JSON)
 @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION","SUPERVISOR_SEGURIDAD"})
 public class SecElecResource {
-    private static final Pattern HOST = Pattern.compile("^[A-Za-z0-9]([A-Za-z0-9.-]{0,251}[A-Za-z0-9])?$");
+    static final Pattern HOST = Pattern.compile("^[A-Za-z0-9]([A-Za-z0-9.-]{0,251}[A-Za-z0-9])?$");
     private static final Map<Family, String> CODE_PREFIX = Map.of(Family.VIDEO, "CCTV", Family.PERIMETER, "PER", Family.ACCESS_CONTROL, "ACC",
         Family.INTRUSION, "INT", Family.LIGHTING, "ILU", Family.FIRE, "INC");
 
     @Inject SecElecPlatform platform;
     @Inject CameraSecretCipher cipher;
+    @Inject VideoGateway video;
     @Inject EntityManager em;
 
     public record ComponentView(UUID id, UUID pointId, Family family, String componentType, String code, String name, String location,
                                 String coverage, String brandModel, Status status, String observations, String ip, Integer port,
-                                Integer channel, BigDecimal latitude, BigDecimal longitude, Boolean streamingEnabled, StreamingMode streamingMode,
-                                String username, boolean hasPassword, String streamUrl, String updatedBy, java.time.Instant updatedAt) {
+                                Integer channel, CameraBrand cameraBrand, String rtspPath, String streamPath, String detectedCodec,
+                                BigDecimal latitude, BigDecimal longitude, Boolean streamingEnabled, StreamingMode streamingMode,
+                                String username, boolean hasPassword, String streamUrl, UUID electronicDeviceId, String updatedBy, java.time.Instant updatedAt) {
         static ComponentView of(SecElecComponent c) {
+            boolean video = c.family == Family.VIDEO;
             return new ComponentView(c.id, c.pointId, c.family, c.componentType, c.code, c.name, c.location, c.coverage, c.brandModel, c.status,
-                c.observations, c.ip, c.port, c.channel, c.latitude, c.longitude, c.streamingEnabled, c.streamingMode,
-                c.username, c.passwordCipher != null, c.streamUrl, c.updatedBy, c.updatedAt);
+                c.observations, c.ip, c.port, c.channel, video ? (c.cameraBrand == null ? CameraBrand.HIKVISION : c.cameraBrand) : null,
+                c.rtspPath, video ? CameraBrand.pathOf(c) : null, c.detectedCodec, c.latitude, c.longitude, c.streamingEnabled, c.streamingMode,
+                c.username, c.passwordCipher != null, c.streamUrl, c.electronicDeviceId, c.updatedBy, c.updatedAt);
         }
     }
     /**
      * password: obligatoria al crear una cámara; al editar, vacía o null conserva la actual.
-     * channel (1 por defecto), streamingEnabled (sí por defecto) y streamingMode (COPY por defecto) solo aplican a cámaras.
+     * channel (1 por defecto), cameraBrand (HIKVISION por defecto), rtspPath (obligatoria y solo con cameraBrand OTHER),
+     * streamingEnabled (sí por defecto) y streamingMode (COPY por defecto) solo aplican a cámaras.
      * latitude y longitude son opcionales, pero van juntas.
+     * electronicDeviceId: dispositivo OBSINT de SIC:COM del mismo Punto al que pertenece la cámara (opcional).
      */
     public record SaveRequest(Family family, String componentType, String name, String location, String coverage, String brandModel,
-                              Status status, String observations, String ip, Integer port, Integer channel, BigDecimal latitude, BigDecimal longitude,
-                              Boolean streamingEnabled, StreamingMode streamingMode, String username, String password, String streamUrl) {}
+                              Status status, String observations, String ip, Integer port, Integer channel, CameraBrand cameraBrand, String rtspPath,
+                              BigDecimal latitude, BigDecimal longitude,
+                              Boolean streamingEnabled, StreamingMode streamingMode, String username, String password, String streamUrl,
+                              UUID electronicDeviceId) {}
     public record Summary(int total, int active, int observed, int cameras, String status, String meta) {}
+    /** Dispositivo OBSINT que SIC:COM envió para el Punto (la línea contratada) y su horario, para elegirlo en la cámara. */
+    public record DeviceView(UUID id, String code, String name, String product, String commercialStatus, String schedule, int cameras) {}
     /** Datos del formulario para "Probar conexión". password vacía + componentId usa la contraseña guardada de esa cámara. */
-    public record CameraTestRequest(UUID componentId, String ip, Integer port, Integer channel, String username, String password) {}
-    public record CameraTestResult(boolean ok, RtspProbe.Outcome outcome, String message, String codec, String streamPath, long elapsedMs) {}
+    public record CameraTestRequest(UUID componentId, String ip, Integer port, Integer channel, CameraBrand cameraBrand, String rtspPath,
+                                    String username, String password) {}
+    /** Opción de la lista "Marca" del formulario. pathTemplate null = "Otra": la ruta se escribe a mano (requiresPath). */
+    public record BrandView(CameraBrand code, String label, int defaultPort, String pathTemplate, boolean requiresPath) {}
+    /** previewUrl: video en vivo para ver en el formulario (solo si conectó y hay servidor de video); vive unos minutos. */
+    public record CameraTestResult(boolean ok, RtspProbe.Outcome outcome, String message, String codec, String streamPath, long elapsedMs,
+                                   String previewUrl) {}
 
     private static final RtspProbe PROBE = new RtspProbe(3000, 5000);
+
+    /** Lista "Marca" del formulario de cámara. */
+    @GET @Path("/camera-brands")
+    public List<BrandView> brands() {
+        return Arrays.stream(CameraBrand.values())
+            .map(b -> new BrandView(b, b.label, CameraBrand.DEFAULT_PORT, b.pathTemplate, b.pathTemplate == null)).toList();
+    }
+
+    /** Dispositivos OBSINT del Punto enviados por SIC:COM, con su horario y cuántas cámaras tienen asignadas. */
+    @GET @Path("/points/{pointId}/devices") @Transactional
+    public List<DeviceView> devices(@PathParam("pointId") UUID pointId) {
+        platform.requirePoint(pointId);
+        UUID tenant = platform.instanceCountryId();
+        return ElectronicMonitoringDevice.<ElectronicMonitoringDevice>list("instanceCountryId=?1 and pointId=?2 and upper(postType)='OBSINT' order by code", tenant, pointId)
+            .stream().map(d -> new DeviceView(d.id, d.code, d.name, d.product, d.commercialStatus, scheduleText(tenant, d.id),
+                (int) SecElecComponent.count("instanceCountryId=?1 and electronicDeviceId=?2 and family=?3 and status<>?4", tenant, d.id, Family.VIDEO, Status.INACTIVE)))
+            .toList();
+    }
+
+    private static final String[] DAY = {"Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"};
+
+    /** Horario contratado en texto: "Lun–Vie 08:00–18:00 · Sáb 08:00–13:00". */
+    static String scheduleText(UUID tenant, UUID deviceId) {
+        List<String> parts = new ArrayList<>();
+        for (ElectronicMonitoringShift s : ElectronicMonitoringShift.<ElectronicMonitoringShift>list(
+                "instanceCountryId=?1 and deviceId=?2 and active=true order by shiftCode", tenant, deviceId))
+            parts.add(daysText(s.dayMask == null ? 0 : s.dayMask) + " " + s.startTime + "–" + s.endTime);
+        return parts.isEmpty() ? "Sin horario" : String.join(" · ", parts);
+    }
+
+    /** dayMask (lunes 1 … domingo 64) a texto: rangos seguidos se juntan ("Lun–Vie", "Sáb, Dom"). */
+    static String daysText(int mask) {
+        if (mask == 127) return "Todos los días";
+        List<String> out = new ArrayList<>();
+        int d = 0;
+        while (d < 7) {
+            if ((mask & (1 << d)) == 0) { d++; continue; }
+            int end = d;
+            while (end + 1 < 7 && (mask & (1 << (end + 1))) != 0) end++;
+            out.add(end - d >= 2 ? DAY[d] + "–" + DAY[end] : end == d ? DAY[d] : DAY[d] + ", " + DAY[end]);
+            d = end + 1;
+        }
+        return String.join(", ", out);
+    }
 
     @GET @Path("/points/{pointId}/components") @Transactional
     public List<ComponentView> list(@PathParam("pointId") UUID pointId) {
@@ -96,6 +155,7 @@ public class SecElecResource {
         try {
             c.delete();
             em.flush();
+            if (c.family == Family.VIDEO) video.remove(c.id);
         } catch (PersistenceException e) {
             throw new ClientErrorException("El componente está en uso (por ejemplo, en consignas OBSINT). Cámbielo a Inactivo en lugar de eliminarlo.", 409);
         }
@@ -113,9 +173,25 @@ public class SecElecResource {
         if (body.port() == null || body.port() < 1 || body.port() > 65535) throw new BadRequestException("El puerto debe estar entre 1 y 65535.");
         int channel = body.channel() == null ? 1 : body.channel();
         if (channel < 1 || channel > 256) throw new BadRequestException("El canal debe estar entre 1 y 256.");
+        CameraBrand brand = body.cameraBrand() == null ? CameraBrand.HIKVISION : body.cameraBrand();
+        String path = brand.path(channel, rtspPath(brand, body.rtspPath()));
         String username = required(body.username(), "El usuario de la cámara es obligatorio.", 120);
-        RtspProbe.Result r = PROBE.describe(ip, body.port(), channel, username, password);
-        return new CameraTestResult(r.ok(), r.outcome(), r.message(), r.codec(), RtspProbe.streamPath(channel), r.elapsedMs());
+        if (video.configured()) {
+            // En el servidor Comando no llega a la red de cámaras: prueba MediaMTX, que sí llega, y deja la vista previa.
+            VideoGateway.ServerProbe s = video.probeThroughServer(ip, body.port(), path, username, password);
+            if (s.ok() && s.codec() != null && body.componentId() != null) saveCodec(body.componentId(), s.codec());
+            return new CameraTestResult(s.ok(), s.outcome(), s.message(), s.codec(), path, s.elapsedMs(), s.previewUrl());
+        }
+        RtspProbe.Result r = PROBE.describe(ip, body.port(), path, username, password);
+        if (r.ok() && body.componentId() != null) saveCodec(body.componentId(), r.codec());
+        return new CameraTestResult(r.ok(), r.outcome(), r.message(), r.codec(), path, r.elapsedMs(), null);
+    }
+
+    /** Guarda el códec que respondió la cámara (la consola avisa si es H.265, que el navegador no reproduce). */
+    @Transactional
+    void saveCodec(UUID componentId, String codec) {
+        SecElecComponent c = component(componentId);
+        if (c.family == Family.VIDEO) c.detectedCodec = codec;
     }
 
     /** Valida el acceso al punto en una transacción corta, para no mantenerla abierta mientras se espera a la cámara. */
@@ -158,6 +234,7 @@ public class SecElecResource {
         c.status = body.status() == null ? Status.ACTIVE : body.status();
         c.observations = optional(body.observations(), 1000);
         if (c.family == Family.VIDEO) {
+            Integer previousChannel = c.channel;
             String ip = required(body.ip(), "La dirección IP es obligatoria.", 255);
             if (!HOST.matcher(ip).matches()) throw new BadRequestException("Dirección IP o nombre de equipo inválido.");
             if (body.port() == null || body.port() < 1 || body.port() > 65535) throw new BadRequestException("El puerto debe estar entre 1 y 65535.");
@@ -166,6 +243,12 @@ public class SecElecResource {
             c.ip = ip;
             c.port = body.port();
             c.channel = body.channel() == null ? 1 : body.channel();
+            CameraBrand brand = body.cameraBrand() == null ? CameraBrand.HIKVISION : body.cameraBrand();
+            String path = rtspPath(brand, body.rtspPath());
+            // Otra marca, ruta o canal: el códec guardado ya no vale hasta volver a probar.
+            if (brand != c.cameraBrand || !Objects.equals(path, c.rtspPath) || !Objects.equals(c.channel, previousChannel)) c.detectedCodec = null;
+            c.cameraBrand = brand;
+            c.rtspPath = path;
             c.latitude = coordinate(body.latitude(), 90, "La latitud debe estar entre -90 y 90.");
             c.longitude = coordinate(body.longitude(), 180, "La longitud debe estar entre -180 y 180.");
             c.streamingEnabled = body.streamingEnabled() == null || body.streamingEnabled();
@@ -175,11 +258,24 @@ public class SecElecResource {
             if (!password.isBlank()) c.passwordCipher = cipher.encrypt(password);
             else if (creating || c.passwordCipher == null) throw new BadRequestException("La contraseña de la cámara es obligatoria.");
             c.streamUrl = streamUrl(body.streamUrl());
+            c.electronicDeviceId = device(c.pointId, body.electronicDeviceId());
         } else {
+            c.electronicDeviceId = null;
             c.ip = null; c.port = null; c.username = null; c.passwordCipher = null; c.streamUrl = null;
             c.channel = null; c.latitude = null; c.longitude = null; c.streamingEnabled = null; c.streamingMode = null;
+            c.cameraBrand = null; c.rtspPath = null; c.detectedCodec = null;
         }
         c.updatedBy = platform.username();
+    }
+
+    /** El dispositivo debe ser un OBSINT de SIC:COM del mismo Punto; null deja la cámara sin dispositivo. */
+    private UUID device(UUID pointId, UUID deviceId) {
+        if (deviceId == null) return null;
+        ElectronicMonitoringDevice d = ElectronicMonitoringDevice.<ElectronicMonitoringDevice>find("id=?1 and instanceCountryId=?2", deviceId, platform.instanceCountryId())
+            .firstResultOptional().orElse(null);
+        if (d == null || !d.pointId.equals(pointId) || !"OBSINT".equalsIgnoreCase(d.postType))
+            throw new BadRequestException("El dispositivo elegido no es un servicio OBSINT de este Punto.");
+        return d.id;
     }
 
     private String nextCode(UUID pointId, Family family) {
@@ -197,6 +293,19 @@ public class SecElecResource {
         if (url == null) return null;
         if (url.contains(":") && !url.startsWith("http://") && !url.startsWith("https://")) throw new BadRequestException("La URL de video debe ser http(s) o una ruta relativa.");
         return url;
+    }
+
+    /**
+     * Ruta escrita a mano: obligatoria con marca "Otra" (OTHER) y se ignora con las demás, que usan la de su marca.
+     * Debe empezar con "/" y no llevar espacios ni credenciales (esas van en usuario y contraseña).
+     */
+    static String rtspPath(CameraBrand brand, String value) {
+        if (brand != CameraBrand.OTHER) return null;
+        String path = optional(value, 300);
+        if (path == null) throw new BadRequestException("Con la marca \"Otra\" escriba la ruta del video (por ejemplo /stream1).");
+        if (!path.startsWith("/") || path.chars().anyMatch(Character::isWhitespace) || path.contains("@"))
+            throw new BadRequestException("La ruta del video debe empezar con \"/\" y no llevar espacios ni usuario o contraseña.");
+        return path;
     }
 
     /** Grados decimales con 6 decimales (≈ 10 cm), que es lo que guarda la columna. */

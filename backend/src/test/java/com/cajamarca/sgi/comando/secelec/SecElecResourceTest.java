@@ -120,6 +120,73 @@ class SecElecResourceTest {
         }
     }
 
+    /** Lista "Marca" del formulario: cada marca con su plantilla de ruta; "Otra" sin plantilla (la ruta se escribe). */
+    @Test void cameraBrands() {
+        as("coord").get("/api/secelec/camera-brands").then().statusCode(200)
+            .body("code", hasItems("HIKVISION", "DAHUA", "OTHER"))
+            .body("find{it.code=='DAHUA'}.pathTemplate", is("/cam/realmonitor?channel={canal}&subtype=0"))
+            .body("find{it.code=='DAHUA'}.requiresPath", is(false))
+            .body("find{it.code=='OTHER'}.requiresPath", is(true))
+            .body("defaultPort", everyItem(is(554)));
+    }
+
+    /** Sin marca (pantalla anterior) es Hikvision; con marca, la ruta sale de ella; "Otra" exige la ruta escrita. */
+    @Test void cameraBrandDefinesThePath() {
+        as("coord").contentType(ContentType.JSON).body(camera()).post("/api/secelec/points/" + POINT + "/components")
+            .then().statusCode(200).body("cameraBrand", is("HIKVISION")).body("streamPath", is("/Streaming/Channels/101"));
+
+        Map<String, Object> dahua = camera();
+        dahua.put("cameraBrand", "DAHUA");
+        dahua.put("channel", 2);
+        dahua.put("rtspPath", "/ignorada");
+        as("coord").contentType(ContentType.JSON).body(dahua).post("/api/secelec/points/" + POINT + "/components")
+            .then().statusCode(200).body("cameraBrand", is("DAHUA")).body("rtspPath", nullValue())
+            .body("streamPath", is("/cam/realmonitor?channel=2&subtype=0"));
+
+        Map<String, Object> other = camera();
+        other.put("cameraBrand", "OTHER");
+        as("coord").contentType(ContentType.JSON).body(other).post("/api/secelec/points/" + POINT + "/components")
+            .then().statusCode(400).body("message", containsString("ruta del video"));
+        other.put("rtspPath", "live/ch0");
+        as("coord").contentType(ContentType.JSON).body(other).post("/api/secelec/points/" + POINT + "/components")
+            .then().statusCode(400).body("message", containsString("/"));
+        other.put("rtspPath", "/live/ch0");
+        as("coord").contentType(ContentType.JSON).body(other).post("/api/secelec/points/" + POINT + "/components")
+            .then().statusCode(200).body("cameraBrand", is("OTHER")).body("rtspPath", is("/live/ch0")).body("streamPath", is("/live/ch0"));
+    }
+
+    /** "Probar conexión" con la ruta de la marca; si la cámara ya existe, guarda el códec detectado. */
+    @Test void testOtherBrandAndSaveCodec() throws Exception {
+        try (FakeRtspCamera cam = new FakeRtspCamera("comando_view", "secreta", "H265", ".*/cam/realmonitor\\?channel=1&subtype=0$")) {
+            Map<String, Object> saved = camera();
+            saved.put("cameraBrand", "DAHUA");
+            saved.put("ip", "127.0.0.1");
+            saved.put("port", cam.port());
+            String id = as("coord").contentType(ContentType.JSON).body(saved).post("/api/secelec/points/" + POINT + "/components")
+                .then().statusCode(200).body("detectedCodec", nullValue()).extract().path("id");
+
+            Map<String, Object> form = new HashMap<>(Map.of("ip", "127.0.0.1", "port", cam.port(), "cameraBrand", "DAHUA",
+                "username", "comando_view", "password", "secreta", "componentId", id));
+            as("coord").contentType(ContentType.JSON).body(form).post("/api/secelec/points/" + POINT + "/cameras/test")
+                .then().statusCode(200).body("ok", is(true)).body("codec", is("H.265")).body("streamPath", is("/cam/realmonitor?channel=1&subtype=0"))
+                .body("previewUrl", nullValue());  // sin servidor de video en las pruebas
+            as("coord").get("/api/secelec/points/" + POINT + "/components").then().statusCode(200)
+                .body("find{it.id=='" + id + "'}.detectedCodec", is("H.265"));
+
+            // La misma cámara con la ruta de Hikvision no responde: el mensaje dice dónde buscó.
+            form.put("cameraBrand", "HIKVISION");
+            as("coord").contentType(ContentType.JSON).body(form).post("/api/secelec/points/" + POINT + "/cameras/test")
+                .then().statusCode(200).body("ok", is(false)).body("outcome", is("NOT_FOUND")).body("message", containsString("/Streaming/Channels/101"));
+
+            // Cambiar la marca borra el códec guardado hasta volver a probar.
+            saved.put("cameraBrand", "OTHER");
+            saved.put("rtspPath", "/live/ch0");
+            saved.put("password", "");
+            as("coord").contentType(ContentType.JSON).body(saved).put("/api/secelec/components/" + id)
+                .then().statusCode(200).body("detectedCodec", nullValue());
+        }
+    }
+
     @Test void clientHasNoAccess() {
         as("cliente").get("/api/secelec/points/" + POINT + "/components").then().statusCode(403);
     }

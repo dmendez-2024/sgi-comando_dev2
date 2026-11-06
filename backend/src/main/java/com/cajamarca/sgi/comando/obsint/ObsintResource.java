@@ -34,7 +34,9 @@ public class ObsintResource {
     }
 
     public record CameraView(UUID id, String code, String name, String location, String streamUrl, boolean live) {
-        static CameraView of(com.cajamarca.sgi.comando.secelec.SecElecComponent c) { return new CameraView(c.id, c.code, c.name, c.location, c.streamUrl, false); }
+        static CameraView of(com.cajamarca.sgi.comando.secelec.SecElecComponent c, ObsintPlatform.LiveVideo video) {
+            return new CameraView(c.id, c.code, c.name, c.location, video.url(), video.live());
+        }
     }
     public record TaskSummary(UUID id, int position, ObsintCaseTask.Status status, ObsintCaseTask.Decision decision, Boolean timedOut) {
         static TaskSummary of(ObsintCaseTask t) { return new TaskSummary(t.id, t.position, t.status, t.decision, t.timedOut); }
@@ -49,11 +51,15 @@ public class ObsintResource {
     /** serverNow permite a la web corregir la diferencia entre su reloj y el del servidor al calcular el tiempo restante. */
     public record TaskView(UUID id, UUID caseId, String caseCode, String operator, int position, int totalTasks, String consignaCode,
                            String instruction, int timeLimitSeconds, ObsintCaseTask.Status status, Instant startedAt, Instant deadline,
-                           Instant serverNow, ObsintCaseTask.Decision decision, String justification, Boolean timedOut, List<CameraView> cameras) {
-        static TaskView of(ObsintCaseTask t, Instant now) {
+                           Instant serverNow, ObsintCaseTask.Decision decision, String justification, Boolean timedOut, List<CameraView> cameras,
+                           String pointName, String clientName) {
+        /** pointName y clientName: un caso junta tareas de varios Puntos; la Consola muestra de cuál es cada una. */
+        static TaskView of(ObsintCaseTask t, Instant now, ObsintPlatform platform) {
             ObsintCase c = t.obsintCase;
+            ObsintPlatform.PointLabel point = platform.pointLabel(t.consigna.pointId);
             return new TaskView(t.id, c.id, c.code, c.operator, t.position, c.tasks.size(), t.consignaCode, t.instruction, t.timeLimitSeconds,
-                t.status, t.startedAt, t.deadline(), now, t.decision, t.justification, t.timedOut, t.consigna.cameras.stream().map(CameraView::of).toList());
+                t.status, t.startedAt, t.deadline(), now, t.decision, t.justification, t.timedOut, t.consigna.cameras.stream().map(cam -> CameraView.of(cam, platform.liveVideo(cam))).toList(),
+                point.name(), point.client());
         }
     }
     public record AnswerRequest(ObsintCaseTask.Decision decision, String justification) {}
@@ -90,11 +96,11 @@ public class ObsintResource {
     public CaseView get(@PathParam("caseId") UUID caseId) { return CaseView.of(service.get(caseId)); }
 
     @GET @Path("/tasks/{taskId}") @Transactional
-    public TaskView task(@PathParam("taskId") UUID taskId) { return TaskView.of(service.task(taskId), service.now()); }
+    public TaskView task(@PathParam("taskId") UUID taskId) { return TaskView.of(service.task(taskId), service.now(), platform); }
 
     /** Arranca el tiempo de la tarea. Es idempotente: llamarlo de nuevo devuelve el mismo deadline. */
     @POST @Path("/tasks/{taskId}/start") @Transactional
-    public TaskView start(@PathParam("taskId") UUID taskId) { platform.requireMonitor(); return TaskView.of(service.start(taskId), service.now()); }
+    public TaskView start(@PathParam("taskId") UUID taskId) { platform.requireMonitor(); return TaskView.of(service.start(taskId), service.now(), platform); }
 
     /** Registra la respuesta y devuelve el caso con la siguiente tarea actual (o COMPLETED). */
     @PUT @Path("/tasks/{taskId}/answer") @Transactional @Consumes(MediaType.APPLICATION_JSON)

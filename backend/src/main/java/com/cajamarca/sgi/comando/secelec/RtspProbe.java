@@ -21,8 +21,8 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * "Probar conexión" de una cámara: pide DESCRIBE del flujo RTSP del canal (ruta Hikvision /Streaming/Channels/{canal}01),
- * con autenticación Digest o Basic. Valida red, credenciales y canal en una sola llamada y devuelve el códec del video.
+ * "Probar conexión" de una cámara: pide DESCRIBE del flujo RTSP en la ruta de su marca (ver CameraBrand),
+ * con autenticación Digest o Basic. Valida red, credenciales y ruta/canal en una sola llamada y devuelve el códec del video.
  * Sin dependencias: un socket, dos peticiones como máximo y respuestas acotadas.
  */
 public final class RtspProbe {
@@ -43,13 +43,10 @@ public final class RtspProbe {
         this.readTimeoutMs = readTimeoutMs;
     }
 
-    public static String streamPath(int channel) {
-        return "/Streaming/Channels/" + channel + "01";
-    }
-
-    public Result describe(String host, int port, int channel, String username, String password) {
+    /** path: ruta RTSP que empieza con "/" (la de la marca para ese canal, o la escrita a mano). */
+    public Result describe(String host, int port, String path, String username, String password) {
         long start = System.nanoTime();
-        String uri = "rtsp://" + (host.contains(":") ? "[" + host + "]" : host) + ":" + port + streamPath(channel);
+        String uri = "rtsp://" + (host.contains(":") ? "[" + host + "]" : host) + ":" + port + path;
         try (Socket socket = new Socket()) {
             socket.connect(new InetSocketAddress(host, port), connectTimeoutMs);
             socket.setSoTimeout(readTimeoutMs);
@@ -70,7 +67,7 @@ public final class RtspProbe {
                 }
                 case 401, 403 -> result(Outcome.AUTH_FAILED, "Usuario o contraseña incorrectos.", null, start);
                 // Según el equipo, una ruta inexistente vuelve como 404, 454 (Session Not Found) o 400 (MediaMTX, algunos NVR).
-                case 400, 404, 454 -> result(Outcome.NOT_FOUND, "La cámara respondió, pero no tiene el canal " + channel + ".", null, start);
+                case 400, 404, 454 -> result(Outcome.NOT_FOUND, "La cámara respondió, pero no encontró el video en " + path + ". Revise la marca, el canal o la ruta.", null, start);
                 default -> result(Outcome.PROTOCOL_ERROR, "La cámara respondió RTSP " + last.status + ".", null, start);
             };
         } catch (UnknownHostException e) {

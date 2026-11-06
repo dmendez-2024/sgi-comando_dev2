@@ -5,26 +5,38 @@ export type Family='PERIMETER'|'ACCESS_CONTROL'|'VIDEO'|'INTRUSION'|'LIGHTING'|'
 export type ComponentStatus='ACTIVE'|'OBSERVED'|'INACTIVE';
 /** COPY: el servidor de video reenvía el flujo tal cual. TRANSCODE: lo recodifica (p. ej. H.265 → H.264). */
 export type StreamingMode='COPY'|'TRANSCODE';
+/** Marca de la cámara: define la ruta RTSP del video. OTHER ("Otra") lleva la ruta escrita a mano (rtspPath). */
+export type CameraBrand='HIKVISION'|'DAHUA'|'UNIVIEW'|'REOLINK'|'AXIS'|'TPLINK'|'OTHER';
+/** Opción de la lista "Marca" (GET /api/secelec/camera-brands). requiresPath: hay que escribir la ruta (solo "Otra"). */
+export type BrandOption={code:CameraBrand;label:string;defaultPort:number;pathTemplate:string|null;requiresPath:boolean};
 /** channel, latitude, longitude y streaming* solo vienen en cámaras (VIDEO); en otras familias son null. */
 export type SecurityComponent={id:string;pointId:string;family:Family;componentType:string;code:string;name:string;location:string|null;coverage:string|null;
-  brandModel:string|null;status:ComponentStatus;observations:string|null;ip:string|null;port:number|null;channel:number|null;latitude:number|null;
+  brandModel:string|null;status:ComponentStatus;observations:string|null;ip:string|null;port:number|null;channel:number|null;
+  cameraBrand:CameraBrand|null;rtspPath:string|null;streamPath:string|null;detectedCodec:string|null;latitude:number|null;
   longitude:number|null;streamingEnabled:boolean|null;streamingMode:StreamingMode|null;username:string|null;hasPassword:boolean;
-  streamUrl:string|null;updatedBy:string;updatedAt:string};
+  streamUrl:string|null;electronicDeviceId:string|null;updatedBy:string;updatedAt:string};
 /** password: obligatoria al crear una cámara; al editar, vacía conserva la actual. latitude y longitude van juntas o ambas null. */
 export type ComponentSave={family:Family;componentType:string;name:string;location:string;coverage:string;brandModel:string;status:ComponentStatus;
-  observations:string;ip:string;port:number|null;channel:number|null;latitude:number|null;longitude:number|null;streamingEnabled:boolean;
-  streamingMode:StreamingMode;username:string;password:string;streamUrl:string};
+  observations:string;ip:string;port:number|null;channel:number|null;cameraBrand:CameraBrand;rtspPath:string;latitude:number|null;longitude:number|null;streamingEnabled:boolean;
+  streamingMode:StreamingMode;username:string;password:string;streamUrl:string;electronicDeviceId:string|null};
+/** Dispositivo OBSINT que SIC:COM envió para el Punto (la línea contratada) con su horario y cuántas cámaras tiene asignadas. */
+export type ElectronicDevice={id:string;code:string;name:string;product:string|null;commercialStatus:string;schedule:string;cameras:number};
 /** "Probar conexión": datos del formulario. password vacía + componentId usa la contraseña guardada de esa cámara. */
-export type CameraTestRequest={componentId?:string;ip:string;port:number|null;channel:number|null;username:string;password:string};
+export type CameraTestRequest={componentId?:string;ip:string;port:number|null;channel:number|null;cameraBrand:CameraBrand;rtspPath:string;username:string;password:string};
 export type CameraTestOutcome='OK'|'AUTH_FAILED'|'NOT_FOUND'|'UNREACHABLE'|'TIMEOUT'|'PROTOCOL_ERROR';
 /** Siempre llega con 200: ok=false trae el motivo en message. codec: 'H.264', 'H.265'… o null. */
-export type CameraTestResult={ok:boolean;outcome:CameraTestOutcome;message:string;codec:string|null;streamPath:string;elapsedMs:number};
+/** previewUrl: video en vivo para el formulario (null sin servidor de video); vive unos minutos. */
+export type CameraTestResult={ok:boolean;outcome:CameraTestOutcome;message:string;codec:string|null;streamPath:string;elapsedMs:number;previewUrl:string|null};
 export type SecElecSummary={total:number;active:number;observed:number;cameras:number;status:'complete'|'warning'|'blocked';meta:string};
 /** Lo que entrega Servicios al abrir el módulo. */
 export type PointContext={pointId:string;pointName:string;clientName?:string;serviceName?:string;companyName?:string};
 
 const base='/api/secelec';
 export const secelecApi={
+  /** Lista "Marca" del formulario de cámara. */
+  brands:()=>request<BrandOption[]>(`${base}/camera-brands`),
+  /** Dispositivos OBSINT del Punto enviados por SIC:COM, para asignarlos a cada cámara. */
+  devices:(pointId:string)=>request<ElectronicDevice[]>(`${base}/points/${encodeURIComponent(pointId)}/devices`),
   components:(pointId:string)=>request<SecurityComponent[]>(`${base}/points/${encodeURIComponent(pointId)}/components`),
   create:(pointId:string,body:ComponentSave)=>request<SecurityComponent>(`${base}/points/${encodeURIComponent(pointId)}/components`,{method:'POST',body:JSON.stringify(body)}),
   update:(id:string,body:ComponentSave)=>request<SecurityComponent>(`${base}/components/${encodeURIComponent(id)}`,{method:'PUT',body:JSON.stringify(body)}),

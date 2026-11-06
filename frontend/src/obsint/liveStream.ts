@@ -11,14 +11,18 @@ export function streamKind(url:string):StreamKind{
   return 'file';
 }
 
+/** Pide a Comando una URL de video nueva (con un permiso vigente); null si ya no hay video para esa cámara. */
+export type RenewUrl=()=>Promise<string|null>;
+
 /**
  * Conecta el video de la cámara al <video> y devuelve la función que lo desconecta. El video siempre termina en el mismo
- * <video>, así que los controles y la captura de evidencia no cambian.
+ * <video>, así que los controles y la captura de evidencia no cambian. renew: si el servidor de video rechaza el permiso
+ * de la URL (401, por ejemplo porque venció), se pide una URL nueva y se reconecta solo.
  */
-export function attachStream(video:HTMLVideoElement,url:string,onStatus:(status:StreamStatus)=>void):()=>void{
+export function attachStream(video:HTMLVideoElement,url:string,onStatus:(status:StreamStatus)=>void,renew?:RenewUrl):()=>void{
   const src=streamSrc(url);
   switch(streamKind(url)){
-    case 'hls':return attachHls(video,src,onStatus);
+    case 'hls':return attachHls(video,src,onStatus,renew);
     case 'webrtc':return attachWhep(video,src,onStatus);
     default:return attachFile(video,src,onStatus);
   }
@@ -32,9 +36,13 @@ function attachFile(video:HTMLVideoElement,src:string,onStatus:(status:StreamSta
 
 /**
  * HLS con hls.js (se carga recién cuando hace falta). Los fallos de red y los congelamientos reinician la sesión;
- * un 403 detiene los reintentos. Safari usa HLS nativo con la misma vigilancia de progreso.
+ * un 403 detiene los reintentos. Un 401 (permiso de la URL vencido o inválido) pide una URL nueva una vez; si la nueva
+ * también es rechazada antes de reproducir, se detiene. Safari usa HLS nativo con la misma vigilancia de progreso.
  */
-function attachHls(video:HTMLVideoElement,src:string,onStatus:(status:StreamStatus)=>void){
+function attachHls(video:HTMLVideoElement,initialSrc:string,onStatus:(status:StreamStatus)=>void,renew?:RenewUrl){
+  let src=initialSrc;
+  let renewing=false;
+  let renewedWithoutPlay=false;
   const RETRY_MS=3000;
   const START_TIMEOUT_MS=12000;
   const STALL_TIMEOUT_MS=10000;
@@ -67,28 +75,45 @@ function attachHls(video:HTMLVideoElement,src:string,onStatus:(status:StreamStat
     retryTimer=setTimeout(()=>{retryTimer=null;start()},delay);
     detach();
   };
-  const checkNativeAccess=()=>{
-    void fetch(src,{method:'HEAD'}).then(res=>{if(res.status===403)deny();else retry()}).catch(()=>retry());
+  /** 401: la URL perdió su permiso. Se pide otra a Comando; sin renovación posible, o si la nueva tampoco sirve, se detiene. */
+  const unauthorized=()=>{
+    if(closed||denied||renewing)return;
+    if(!renew||renewedWithoutPlay){deny();return}
+    renewing=true;clearStall();onStatus('retrying');detach();
+    void renew().then(next=>{
+      renewing=false;
+      if(closed||denied)return;
+      if(!next||streamKind(next)!=='hls'){deny();return}
+      src=streamSrc(next);renewedWithoutPlay=true;start();
+    }).catch(()=>{renewing=false;retry()});
   };
-  const onPlaying=()=>{if(closed||denied)return;hasPlayed=true;lastProgress=Date.now();lastTime=video.currentTime;clearStall();onStatus('playing')};
+  const rejected=(status:number|undefined)=>{
+    if(status===403){deny();return true}
+    if(status===401){unauthorized();return true}
+    return false;
+  };
+  const checkNativeAccess=()=>{
+    void fetch(src,{method:'HEAD'}).then(res=>{if(!rejected(res.status))retry()}).catch(()=>retry());
+  };
+  const onPlaying=()=>{if(closed||denied)return;hasPlayed=true;renewedWithoutPlay=false;lastProgress=Date.now();lastTime=video.currentTime;clearStall();onStatus('playing')};
   const onTimeUpdate=()=>{if(Math.abs(video.currentTime-lastTime)>.05){lastTime=video.currentTime;lastProgress=Date.now()}};
   const onWaiting=()=>{if(closed||denied||!hasPlayed||video.paused||stallTimer)return;
     onStatus('retrying');stallTimer=setTimeout(()=>{stallTimer=null;retry(0)},RETRY_MS)};
-  const onVideoError=()=>{if(closed||denied)return;if(native)checkNativeAccess();else retry()};
+  const onVideoError=()=>{if(closed||denied||renewing)return;if(native)checkNativeAccess();else retry()};
   video.addEventListener('playing',onPlaying);
   video.addEventListener('timeupdate',onTimeUpdate);
   video.addEventListener('waiting',onWaiting);
   video.addEventListener('stalled',onWaiting);
   video.addEventListener('error',onVideoError);
   const watchdog=setInterval(()=>{
-    if(closed||denied||retryTimer)return;
+    if(closed||denied||retryTimer||renewing)return;
     const now=Date.now();
     if(!hasPlayed&&now-attemptAt>START_TIMEOUT_MS)retry();
     else if(hasPlayed&&!video.paused&&now-lastProgress>STALL_TIMEOUT_MS)retry();
   },2000);
 
   function start(){
-    if(closed||denied)return;
+    if(closed||denied||renewing)return;
     attemptAt=Date.now();lastProgress=attemptAt;lastTime=video.currentTime;hasPlayed=false;
     if(!HlsClass){void import('hls.js').then(({default:Hls})=>{if(closed||denied)return;HlsClass=Hls;start()}).catch(()=>retry());return}
     if(!HlsClass.isSupported()){
@@ -99,8 +124,8 @@ function attachHls(video:HTMLVideoElement,src:string,onStatus:(status:StreamStat
     const player=new HlsClass({lowLatencyMode:true,manifestLoadingMaxRetry:0,levelLoadingMaxRetry:0,fragLoadingMaxRetry:0});
     hls=player;
     player.on(HlsClass.Events.ERROR,(_event,data)=>{
-      if(closed||denied)return;
-      if(data.response?.code===403||data.networkDetails?.status===403){deny();return}
+      if(closed||denied||renewing)return;
+      if(rejected(data.response?.code??data.networkDetails?.status))return;
       if(data.type===HlsClass!.ErrorTypes.NETWORK_ERROR||data.fatal)retry();
     });
     player.loadSource(src);player.attachMedia(video);
@@ -137,7 +162,7 @@ function attachWhep(video:HTMLVideoElement,src:string,onStatus:(status:StreamSta
     await pc.setLocalDescription(await pc.createOffer());
     await iceGathered(pc);
     const res=await fetch(src,{method:'POST',headers:{'Content-Type':'application/sdp'},body:pc.localDescription?.sdp});
-    if(!res.ok){forbidden=res.status===403;throw new Error(`WHEP ${res.status}`)}
+    if(!res.ok){forbidden=res.status===403||res.status===401;throw new Error(`WHEP ${res.status}`)}
     const location=res.headers.get('Location');
     if(location)session=new URL(location,res.url).toString();
     await pc.setRemoteDescription({type:'answer',sdp:await res.text()});

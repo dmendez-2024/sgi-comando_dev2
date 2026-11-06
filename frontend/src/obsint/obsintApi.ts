@@ -14,7 +14,9 @@ export type ObsintTaskSummary={id:string;position:number;status:ObsintTaskStatus
 export type ObsintCase={id:string;code:string;operator:string;status:'IN_PROGRESS'|'COMPLETED';startedAt:string;completedAt:string|null;currentTaskId:string|null;tasks:ObsintTaskSummary[]};
 export type ObsintTask={id:string;caseId:string;caseCode:string;operator:string;position:number;totalTasks:number;consignaCode:string;instruction:string;
   timeLimitSeconds:number;status:ObsintTaskStatus;startedAt:string|null;deadline:string|null;serverNow:string;
-  decision:ObsintDecision|null;justification:string|null;timedOut:boolean|null;cameras:ObsintCamera[]};
+  decision:ObsintDecision|null;justification:string|null;timedOut:boolean|null;cameras:ObsintCamera[];
+  /** Punto y cliente de la tarea: un caso junta tareas de varios Puntos. */
+  pointName:string|null;clientName:string|null};
 export type ObsintEvidence={id:string;cameraId:string;videoTimeSeconds:number;capturedAt:string;contentType:string;sizeBytes:number};
 /** deliveryStatus: hoy siempre 'TEST' (modo prueba: registrado, NO enviado al agente). 'SENT'/'FAILED' quedan para cuando exista el envío real. */
 export type ObsintMessage={id:string;operator:string;text:string;sentAt:string;deliveryStatus:'TEST'|'SENT'|'FAILED'};
@@ -32,9 +34,11 @@ export type ObsintConsignaSave=Omit<ObsintConsignaConfig,'id'|'code'|'position'|
 export type ObsintProtocol={id:string;pointId:string;code:string;versionNo:number;status:ObsintProtocolStatus;publishedAt:string|null;activatedAt:string|null;updatedBy:string;updatedAt:string;consignas:ObsintConsignaConfig[]};
 /** Consigna del protocolo de Consignas activo del Punto marcada con el "puesto" OBSINT. */
 export type ObsintConsignmentOption={code:string;title:string;instruction:string};
-export type ObsintCameraOption={id:string;code:string;name:string;location:string|null;status:'ACTIVE'|'OBSERVED'};
+/** deviceId: dispositivo OBSINT de SIC:COM al que pertenece la cámara (null si no tiene). */
+export type ObsintCameraOption={id:string;code:string;name:string;location:string|null;status:'ACTIVE'|'OBSERVED';deviceId:string|null};
 export type ObsintSummary={enabled:boolean;status:'complete'|'warning'|'blocked';meta:string;activeVersion:number|null;activeConsignas:number;hasDraft:boolean;warnings:string[]};
-export type ObsintScheduleSuggestion={available:boolean;message:string;slots:ObsintSlot[]};
+/** deviceIds: dispositivos de SIC:COM de la consigna; la tarea ofrece solo sus cámaras. */
+export type ObsintScheduleSuggestion={available:boolean;message:string;slots:ObsintSlot[];deviceIds:string[]};
 
 /**
  * API de la Consola OBSINT (/api/obsint). Del cliente común de SGI solo usa el transporte (token, renovación y errores),

@@ -325,7 +325,9 @@ export default function ConsignasConfig({point,onBack}:{point:PointContext;onBac
 
   const chooseEvidence=(e:Evidence)=>{setSelectedEvidenceId(e.id);revokeStandard();};
   const onPlanConfirm=async(x:number,y:number)=>{if(!draft||!isDraft||draft.expectedLocationMode!=='ATS'||!planUrl)return;setDraft(current=>current?{...current,atsPackageId:ats?.id??null,atsX:x,atsY:y}:current);setPlanOpen(false)};
-  const togglePost=(post:PointPost)=>{if(!draft)return;if(post.securityDomain==='ELECTRONIC'){const ids=draft.electronicDeviceIds.includes(post.postId)?draft.electronicDeviceIds.filter(x=>x!==post.postId):[...draft.electronicDeviceIds,post.postId];setDraft({...draft,scopeType:'POSTS',electronicDeviceIds:ids});return}setDraft({...draft,scopeType:'POSTS',postIds:draft.postIds.includes(post.postId)?draft.postIds.filter(x=>x!==post.postId):[...draft.postIds,post.postId]})};
+  // Un dispositivo de seguridad electrónica (OBSINT de SICCOM) es monitoreo por cámara: al marcarlo se marca OBSINT;
+  // al quitar el último dispositivo se quita OBSINT, que se puede volver a marcar a mano.
+  const togglePost=(post:PointPost)=>{if(!draft)return;if(post.securityDomain==='ELECTRONIC'){const adding=!draft.electronicDeviceIds.includes(post.postId);const ids=adding?[...draft.electronicDeviceIds,post.postId]:draft.electronicDeviceIds.filter(x=>x!==post.postId);setDraft({...draft,scopeType:'POSTS',electronicDeviceIds:ids,obsint:adding?true:ids.length?draft.obsint:false});return}setDraft({...draft,scopeType:'POSTS',postIds:draft.postIds.includes(post.postId)?draft.postIds.filter(x=>x!==post.postId):[...draft.postIds,post.postId]})};
   const days=useMemo(()=>{try{return JSON.parse(draft?.applicationDaysJson||'[]') as string[]}catch{return []}},[draft?.applicationDaysJson]);
   const toggleDay=(code:string)=>{if(!draft)return;const next=days.includes(code)?days.filter(d=>d!==code):[...days,code];setDraft({...draft,applicationDaysJson:JSON.stringify(next)})};
 

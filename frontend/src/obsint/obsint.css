@@ -165,3 +165,7 @@
 @media (max-width:1050px){.obs-workspace{grid-template-columns:1fr}}
 @media (max-width:700px){.obs-kpis{grid-template-columns:1fr 1fr}.obs-camera-grid{grid-template-columns:1fr}.obs-camera-thumbs{position:static;overflow:visible}.obs-camera-thumbs-track{position:static;display:grid;grid-auto-flow:column;grid-auto-columns:minmax(112px,32%);overflow-x:auto;overflow-y:hidden}.obs-camera-thumbs .obs-feed-title{display:none}.obs-camera-thumbs .obs-feed-badge{font-size:8px}}
 @media (max-width:560px){.obs-summary-header{justify-content:flex-start;padding:18px}.obs-summary-header h3{font-size:18px}.obs-summary-body{padding:18px}.obs-summary-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+/* Punto y cliente de la tarea: textos largos se cortan con puntos suspensivos. */
+.obs-kpi-point span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
+.obs-kpis article>div{min-width:0}

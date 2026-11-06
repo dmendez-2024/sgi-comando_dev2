@@ -11,7 +11,10 @@ import java.util.HexFormat;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-/** Cámara RTSP simulada (como Hikvision): pide Digest y, con las credenciales correctas, entrega un SDP del canal. */
+/**
+ * Cámara RTSP simulada: pide Digest y, con las credenciales correctas, entrega un SDP si la ruta pedida coincide con pathRegex.
+ * Por defecto responde como Hikvision (/Streaming/Channels/{canal}01) con esa cantidad de canales.
+ */
 final class FakeRtspCamera implements AutoCloseable {
     static final String REALM = "IP Camera(C1234)";
     static final String NONCE = "a1b2c3d4e5";
@@ -19,15 +22,20 @@ final class FakeRtspCamera implements AutoCloseable {
     private final ServerSocket server;
     private final String username;
     private final String password;
-    private final int channels;
+    private final String pathRegex;
     private final String codec;
     private final Thread thread;
 
     FakeRtspCamera(String username, String password, int channels, String codec) throws IOException {
+        this(username, password, codec, ".*/Streaming/Channels/([1-" + channels + "])01$");
+    }
+
+    /** Cámara de otra marca: responde solo en las rutas que coinciden con pathRegex (sobre la URI completa). */
+    FakeRtspCamera(String username, String password, String codec, String pathRegex) throws IOException {
         this.server = new ServerSocket(0);
         this.username = username;
         this.password = password;
-        this.channels = channels;
+        this.pathRegex = pathRegex;
         this.codec = codec;
         this.thread = Thread.ofVirtual().start(this::serve);
     }
@@ -48,7 +56,7 @@ final class FakeRtspCamera implements AutoCloseable {
                         reply = "RTSP/1.0 401 Unauthorized\r\nCSeq: " + cseq + "\r\nWWW-Authenticate: Digest realm=\"" + REALM + "\", nonce=\"" + NONCE + "\", stale=\"FALSE\"\r\n\r\n";
                     } else if (!validDigest(auth, uri)) {
                         reply = "RTSP/1.0 401 Unauthorized\r\nCSeq: " + cseq + "\r\nWWW-Authenticate: Digest realm=\"" + REALM + "\", nonce=\"" + NONCE + "\"\r\n\r\n";
-                    } else if (!uri.matches(".*/Streaming/Channels/([1-" + channels + "])01$")) {
+                    } else if (!uri.matches(pathRegex)) {
                         reply = "RTSP/1.0 404 Not Found\r\nCSeq: " + cseq + "\r\n\r\n";
                     } else {
                         String sdp = "v=0\r\no=- 1 1 IN IP4 0.0.0.0\r\ns=Media Presentation\r\nm=video 0 RTP/AVP 96\r\na=rtpmap:96 " + codec + "/90000\r\n"

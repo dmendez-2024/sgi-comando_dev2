@@ -33,6 +33,7 @@ public class SupervisorEvaluationResource {
     private static final int MAX_SANCTION_IMAGES=3;
     @Inject TenantContext tenant; @Inject EntityManager em; @Inject ObjectMapper mapper;
     @Inject SecurityIdentity identity; @Inject OperatorContext operator; @Inject InventoryService inventory;
+    @Inject OperationalReportWorkflowResource workflow;
     @Inject StorageService storage;
     @ConfigProperty(name="sgi.evidence.max-file-bytes") long maxFileBytes;
 
@@ -92,11 +93,11 @@ public class SupervisorEvaluationResource {
         return response(evaluationId,false);
     }
 
-    private record Scope(UUID supervisorAssignmentId,UUID supervisorEmployeeId,UUID agentAssignmentId,UUID agentEmployeeId,Instant startsAt,Instant endsAt){}
+    private record Scope(UUID supervisorAssignmentId,UUID supervisorEmployeeId,UUID supervisorShiftId,UUID agentAssignmentId,UUID agentEmployeeId,Instant startsAt,Instant endsAt){}
     private Scope scope(UUID assignmentId,UUID postId){
         if(assignmentId==null)throw new BadRequestException("assignmentId es obligatorio");UUID supervisor=operator.employee();
         @SuppressWarnings("unchecked") List<Object[]> rows=em.createNativeQuery("""
-          select aa.id,coalesce(aa.actual_employee_id,aa.employee_id),ss.starts_at,ss.ends_at
+          select ss.id,aa.id,coalesce(aa.actual_employee_id,aa.employee_id),ss.starts_at,ss.ends_at
           from operational_assignment sa join shift_occurrence ss on ss.id=sa.shift_occurrence_id and ss.instance_country_id=sa.instance_country_id
           join assignment_plan sp on sp.id=sa.assignment_plan_id and sp.instance_country_id=sa.instance_country_id
           join supervision_route sr on sr.instance_country_id=ss.instance_country_id
@@ -111,13 +112,28 @@ public class SupervisorEvaluationResource {
           order by ash.starts_at desc limit 1
           """).setParameter("post",postId).setParameter("assignment",assignmentId).setParameter("tenant",tenant.instanceCountryId()).setParameter("supervisor",supervisor).getResultList();
         if(rows.isEmpty())throw new ForbiddenException("El Puesto o el Agente no pertenecen a tu asignación de supervisión");Object[] r=rows.get(0);
-        return new Scope(assignmentId,supervisor,UUID.fromString(r[0].toString()),UUID.fromString(r[1].toString()),toInstant(r[2]),toInstant(r[3]));
+        return new Scope(assignmentId,supervisor,UUID.fromString(r[0].toString()),UUID.fromString(r[1].toString()),UUID.fromString(r[2].toString()),toInstant(r[3]),toInstant(r[4]));
     }
 
-    private ArrayNode novelties(Scope s){ArrayNode out=mapper.createArrayNode();@SuppressWarnings("unchecked") List<Object[]> rows=em.createNativeQuery("select id,report_type,title,description,severity,occurred_at,status from operator_operational_report where instance_country_id=:t and assignment_id=:a and employee_id=:e order by occurred_at desc")
+    private ArrayNode novelties(Scope s){ArrayNode out=mapper.createArrayNode();@SuppressWarnings("unchecked") List<Object[]> rows=em.createNativeQuery("select id,report_type,title,description,severity,occurred_at,status from operator_operational_report where instance_country_id=:t and assignment_id=:a and employee_id=:e and status='PENDING' order by occurred_at desc")
       .setParameter("t",tenant.instanceCountryId()).setParameter("a",s.agentAssignmentId).setParameter("e",s.agentEmployeeId).getResultList();for(Object[] r:rows)out.addObject().put("id",r[0].toString()).put("type",r[1].toString()).put("title",r[2].toString()).put("detail",r[3].toString()).put("severity",r[4].toString()).put("reportedAt",r[5].toString()).put("status",r[6].toString());return out;}
     private void saveInventory(UUID evaluation,JsonNode items,UUID postId){if(!items.isArray())return;for(JsonNode x:items){UUID asset=uuid(x,"assetId");if(!inventory.isExpectedAsset(postId,asset))throw new BadRequestException("Activo fuera del inventario vigente");em.createNativeQuery("insert into supervisor_evaluation_inventory_item(evaluation_id,asset_id,description_snapshot,observed_state,comment) values(:e,:a,:d,:s,:c)").setParameter("e",evaluation).setParameter("a",asset).setParameter("d",required(x,"description",500)).setParameter("s",choice(x,"observedState",Set.of("GOOD","DAMAGED","MISSING","NOT_VERIFIED"))).setParameter("c",text(x,"comment",1000)).executeUpdate();}}
-    private void saveDecisions(UUID evaluation,JsonNode decisions,Scope s){if(!decisions.isArray())return;for(JsonNode x:decisions){UUID id=uuid(x,"noveltyId");String decision=choice(x,"decision",Set.of("CONFIRMED","DISCARDED"));List<?> allowed=em.createNativeQuery("select report_type from operator_operational_report where id=:id and instance_country_id=:t and assignment_id=:a and employee_id=:e").setParameter("id",id).setParameter("t",tenant.instanceCountryId()).setParameter("a",s.agentAssignmentId).setParameter("e",s.agentEmployeeId).getResultList();if(allowed.isEmpty())throw new BadRequestException("Novedad fuera del turno supervisado");em.createNativeQuery("insert into supervisor_evaluation_novelty_decision(evaluation_id,novelty_id,novelty_type,decision,decided_by,decided_at) values(:evaluation,:id,:type,:decision,:by,current_timestamp)").setParameter("evaluation",evaluation).setParameter("id",id).setParameter("type",allowed.get(0).toString()).setParameter("decision",decision).setParameter("by",operator.username()).executeUpdate();}}
+    private void saveDecisions(UUID evaluation,JsonNode decisions,Scope s){
+        if(!decisions.isArray())return;
+        for(JsonNode x:decisions){
+            UUID id=uuid(x,"noveltyId");
+            String decision=choice(x,"decision",Set.of("CONFIRMED","DISCARDED"));
+            List<?> allowed=em.createNativeQuery("select report_type from operator_operational_report where id=:id and instance_country_id=:t and assignment_id=:a and employee_id=:e")
+              .setParameter("id",id).setParameter("t",tenant.instanceCountryId()).setParameter("a",s.agentAssignmentId).setParameter("e",s.agentEmployeeId).getResultList();
+            if(allowed.isEmpty())throw new BadRequestException("Novedad fuera del turno supervisado");
+            OperationalReportWorkflowResource.Report report=workflow.locked(id);
+            if(!"PENDING".equals(report.status()))throw new ClientErrorException("La novedad ya fue procesada por otro usuario. Actualice la supervisión.",409);
+            workflow.transition(report,decision.equals("CONFIRMED")?"CONFIRM":"DISCARD",decision,
+              "Validación realizada durante la supervisión del Punto-Puesto.",s.supervisorEmployeeId,s.supervisorAssignmentId,s.supervisorShiftId);
+            em.createNativeQuery("insert into supervisor_evaluation_novelty_decision(evaluation_id,novelty_id,novelty_type,decision,decided_by,decided_at) values(:evaluation,:id,:type,:decision,:by,current_timestamp)")
+              .setParameter("evaluation",evaluation).setParameter("id",id).setParameter("type",allowed.get(0).toString()).setParameter("decision",decision).setParameter("by",operator.username()).executeUpdate();
+        }
+    }
     /** Sanción del paso 6: texto opcional y hasta 3 imágenes; las imágenes exigen el texto. Valida todo antes de guardar. */
     private List<String> sanctionTypes(String sanction,List<FileUpload> uploads)throws IOException{if(uploads.size()>MAX_SANCTION_IMAGES)throw new BadRequestException("Máximo "+MAX_SANCTION_IMAGES+" imágenes por sanción");if(!uploads.isEmpty()&&sanction==null)throw new BadRequestException("Describe la sanción para adjuntar imágenes");
       List<String> types=new ArrayList<>();for(FileUpload f:uploads){if(f.size()>maxFileBytes)throw new BadRequestException("Una imagen de la sanción supera el tamaño permitido");String type=ImageSniffer.detect(f.uploadedFile());if(type==null)throw new BadRequestException("Formato de imagen de sanción no soportado");types.add(type);}return types;}

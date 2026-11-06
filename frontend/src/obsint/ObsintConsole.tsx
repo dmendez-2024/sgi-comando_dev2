@@ -1,5 +1,5 @@
 import {useCallback, useEffect, useRef, useState, type ReactNode} from 'react';
-import {ArrowLeft, CalendarDays, CircleCheck, Clock3, FileText, FolderOpen, ListChecks, Play, RefreshCw, UserRound, Users, Video} from 'lucide-react';
+import {ArrowLeft, CalendarDays, CircleCheck, Clock3, FileText, FolderOpen, ListChecks, MapPin, Play, RefreshCw, UserRound, Video} from 'lucide-react';
 import {errorText, isObsintNoOrder, obsintApi, type ObsintCase, type ObsintTask} from './obsintApi';
 import {isMonitor} from '../api';
 import {ObsintCameraGrid} from './ObsintCameraGrid';
@@ -69,6 +69,15 @@ export default function ObsintConsole({onBack}:{onBack?:()=>void}){
 
   const registerVideo=useCallback((cameraId:string,el:HTMLVideoElement|null)=>{if(el)videos.current.set(cameraId,el);else videos.current.delete(cameraId);},[]);
 
+  // La URL de cada cámara trae un permiso que vence: al vencer, se vuelve a pedir la tarea (Comando firma URLs nuevas)
+  // y se usa solo la de esa cámara, sin tocar el resto de la pantalla.
+  const taskId=task?.id;
+  const renewStreamUrl=useCallback(async(cameraId:string)=>{
+    if(!taskId)return null;
+    const fresh=await obsintApi.task(taskId);
+    return fresh.cameras.find(camera=>camera.id===cameraId)?.streamUrl??null;
+  },[taskId]);
+
   // El tiempo arranca cuando las cámaras ya cargaron, no antes. En el servidor es idempotente.
   const startWhenReady=useCallback(()=>{
     if(task?.status!=='PENDING')return;
@@ -112,7 +121,8 @@ export default function ObsintConsole({onBack}:{onBack?:()=>void}){
     :<>
       <div className="obs-kpis">
         <Kpi icon={<FolderOpen size={20}/>} tone="blue" label="Caso" value={task.caseCode}/>
-        <Kpi icon={<Users size={20}/>} tone="purple" label="Grupo" value={<span className="obs-kpi-stack"><span>Grupo {task.position}</span><span>{task.cameras.length} {task.cameras.length===1?'cámara':'cámaras'}</span></span>}/>
+        {/* Un caso junta tareas de varios Puntos: aquí se ve de cuál es la tarea actual. */}
+        <Kpi icon={<MapPin size={20}/>} tone="purple" label="Punto" value={<span className="obs-kpi-stack obs-kpi-point" title={[task.pointName,task.clientName].filter(Boolean).join(' · ')}><span>{task.pointName??'—'}</span><span>{task.clientName??''}</span></span>}/>
         <Kpi icon={<ListChecks size={20}/>} tone="blue" label="Tarea" value={<span className="obs-kpi-task"><span>{task.position} de {task.totalTasks}</span><Dots total={task.totalTasks} current={task.position}/></span>}/>
         <Kpi icon={<Clock3 size={20}/>} tone="green" label="Tiempo restante" value={<span className={`obs-timer ${timerTone}`}>{formatSeconds(countdown.seconds)}</span>}/>
         <Kpi icon={<CalendarDays size={20}/>} tone="blue" label="Fecha y hora" value={<span className="obs-kpi-stack obs-kpi-date"><span>{today}</span><span>{clock}</span></span>}/>
@@ -127,7 +137,7 @@ export default function ObsintConsole({onBack}:{onBack?:()=>void}){
           <section className="obs-card obs-video">
             <h3><Video size={19}/>Video en vivo <small>Clic en una cámara para usarla como evidencia</small></h3>
             <ObsintCameraGrid cameras={task.cameras} selectedId={selectedCameraId} onSelect={setSelectedCameraId} now={now}
-              registerVideo={registerVideo} onAllSettled={startWhenReady}/>
+              registerVideo={registerVideo} onAllSettled={startWhenReady} renewStreamUrl={renewStreamUrl}/>
           </section>
           <ObsintCommPanel taskId={task.id} disabled={!running} onNotice={showNotice}/>
         </div>

@@ -3,6 +3,9 @@ package com.cajamarca.sgi.comando.obsint;
 import com.cajamarca.sgi.comando.common.TenantContext;
 import com.cajamarca.sgi.comando.consignments.Consignment;
 import com.cajamarca.sgi.comando.operations.PointEntity;
+import com.cajamarca.sgi.comando.operations.ServiceConfigurationStatus;
+import com.cajamarca.sgi.comando.secelec.SecElecComponent;
+import com.cajamarca.sgi.comando.secelec.VideoGateway;
 import com.cajamarca.sgi.comando.storage.Digests;
 import com.cajamarca.sgi.comando.storage.ImageSniffer;
 import com.cajamarca.sgi.comando.storage.StorageService;
@@ -42,6 +45,7 @@ public class ObsintPlatform {
     @Inject StorageService storage;
     @Inject SecurityIdentity identity;
     @Inject EntityManager em;
+    @Inject VideoGateway video;
     @Inject MonitorShiftScope monitorShift;
 
     public UUID instanceCountryId() { return tenant.instanceCountryId(); }
@@ -64,7 +68,50 @@ public class ObsintPlatform {
         scope.requireCompanyForCompanyRoles(point.companyId);
     }
 
-    /** SEN-01: el servicio del Punto está marcado como orden de servicio OBSINT (service.obsint). */
+    /**
+     * Estado de configuración de los dispositivos OBSINT de SICCOM del Punto: CONFIGURED con un protocolo OBSINT activo, TO_CONFIGURE sin él.
+     * Luego recalcula el estado del Servicio, que la pantalla Servicios muestra ("Por configurar" o "Activo").
+     */
+    public void syncDeviceConfiguration(UUID pointId) {
+        boolean active = ObsintProtocol.count("instanceCountryId=?1 and pointId=?2 and status='ACTIVO'", tenant.instanceCountryId(), pointId) > 0;
+        int changed = em.createNativeQuery("""
+            update electronic_monitoring_post set config_status=:status, updated_at=now()
+            where instance_country_id=:tenant and point_id=:point and upper(post_type)='OBSINT' and config_status<>:status""")
+            .setParameter("status", active ? "CONFIGURED" : "TO_CONFIGURE").setParameter("tenant", tenant.instanceCountryId())
+            .setParameter("point", pointId).executeUpdate();
+        if (changed == 0) return;
+        PointEntity point = PointEntity.find("id=?1 and instanceCountryId=?2", pointId, tenant.instanceCountryId()).firstResult();
+        if (point != null && point.serviceId != null) ServiceConfigurationStatus.refresh(tenant.instanceCountryId(), point.serviceId);
+    }
+
+    /** Nombre del Punto y de su cliente, para que la Consola diga de dónde es cada tarea. */
+    public record PointLabel(String name, String client) {}
+
+    public PointLabel pointLabel(UUID pointId) {
+        PointEntity p = PointEntity.find("id=?1 and instanceCountryId=?2", pointId, tenant.instanceCountryId()).firstResult();
+        return p == null ? new PointLabel(null, null) : new PointLabel(p.name, p.clientName);
+    }
+
+    /** Video de una cámara para la consola: url null = "Sin señal"; live = en vivo (no un archivo de pruebas). */
+    public record LiveVideo(String url, boolean live) {}
+
+    /**
+     * La "URL de video (pruebas)" manda si está escrita. Si no, el servidor de video (MediaMTX) se conecta a la cámara con su
+     * IP, canal y clave y entrega la URL en vivo; sin servidor o sin datos de conexión, la cámara sale "Sin señal".
+     */
+    public LiveVideo liveVideo(SecElecComponent camera) {
+        if (camera.streamUrl != null && !camera.streamUrl.isBlank()) return new LiveVideo(camera.streamUrl, false);
+        return video.liveUrl(camera).map(url -> new LiveVideo(url, true)).orElse(new LiveVideo(null, false));
+    }
+
+    /**
+     * SEN-01: el Punto tiene orden de servicio OBSINT. Vale cualquiera de las dos:
+     * <ul>
+     *   <li>SICCOM envió para el Punto un dispositivo OBSINT activo (electronic_monitoring_post) y el Punto y su Servicio están activos;</li>
+     *   <li>o el Servicio está marcado a mano como OBSINT (service.obsint), mientras SICCOM no envíe todos los Puntos.</li>
+     * </ul>
+     * Si SICCOM inactiva el dispositivo, OBSINT se bloquea solo.
+     */
     public boolean obsintEnabled(UUID pointId) {
         return !enabledPoints(List.of(pointId)).isEmpty();
     }
@@ -75,7 +122,9 @@ public class ObsintPlatform {
         @SuppressWarnings("unchecked")
         List<Object> rows = em.createNativeQuery("""
             select p.id from point p join service s on s.id=p.service_id
-            where p.instance_country_id=:tenant and p.id in (:points) and s.obsint""")
+            where p.instance_country_id=:tenant and p.id in (:points) and (s.obsint or (upper(s.commercial_status)='ACTIVE' and upper(p.status)='ACTIVE' and exists (
+                select 1 from electronic_monitoring_post d where d.instance_country_id=p.instance_country_id and d.point_id=p.id
+                and upper(d.post_type)='OBSINT' and upper(d.commercial_status)='ACTIVE')))""")
             .setParameter("tenant", tenant.instanceCountryId()).setParameter("points", pointIds).getResultList();
         return rows.stream().map(ObsintPlatform::uuid).collect(Collectors.toSet());
     }
@@ -84,7 +133,9 @@ public class ObsintPlatform {
     public Set<UUID> allEnabledPoints() {
         @SuppressWarnings("unchecked")
         List<Object> rows = em.createNativeQuery("""
-            select p.id from point p join service s on s.id=p.service_id where p.instance_country_id=:tenant and s.obsint""")
+            select p.id from point p join service s on s.id=p.service_id where p.instance_country_id=:tenant and (s.obsint or (upper(s.commercial_status)='ACTIVE' and upper(p.status)='ACTIVE' and exists (
+                select 1 from electronic_monitoring_post d where d.instance_country_id=p.instance_country_id and d.point_id=p.id
+                and upper(d.post_type)='OBSINT' and upper(d.commercial_status)='ACTIVE')))""")
             .setParameter("tenant", tenant.instanceCountryId()).getResultList();
         return rows.stream().map(ObsintPlatform::uuid).collect(Collectors.toSet());
     }
@@ -109,15 +160,19 @@ public class ObsintPlatform {
         }
     }
 
+    /** Consignas cuyo alcance es un dispositivo OBSINT de SICCOM: cuentan como OBSINT aunque no tengan la casilla. */
+    static final String OBSINT_DEVICE_SCOPE = "select s.consignmentId from ConsignmentPostScope s where s.instanceCountryId=?1 and s.electronicDeviceId in "
+        + "(select d.id from ElectronicMonitoringDevice d where d.instanceCountryId=?1 and upper(d.postType)='OBSINT')";
+
     /**
-     * Por Punto y por código, las consignas marcadas OBSINT del protocolo de Consignas ACTIVO (estado VIGENTE).
+     * Por Punto y por código, las consignas OBSINT (casilla OBSINT o alcance en el dispositivo OBSINT) del protocolo de Consignas ACTIVO (estado VIGENTE).
      * Es lo que se puede vincular en la configuración OBSINT y lo que la consola acepta.
      */
     public Map<UUID, Map<String, LinkedConsignment>> obsintConsignments(Collection<UUID> pointIds) {
         Map<UUID, Map<String, LinkedConsignment>> out = new HashMap<>();
         if (pointIds.isEmpty()) return out;
         List<Consignment> rows = Consignment.list(
-            "instanceCountryId=?1 and pointId in ?2 and obsint=true and status='VIGENTE' and protocolId in "
+            "instanceCountryId=?1 and pointId in ?2 and (obsint=true or id in (" + OBSINT_DEVICE_SCOPE + ")) and status='VIGENTE' and protocolId in "
                 + "(select p.id from ConsignmentProtocol p where p.instanceCountryId=?1 and p.status='ACTIVO') order by code",
             tenant.instanceCountryId(), pointIds);
         for (Consignment c : rows)

@@ -48,15 +48,19 @@ public class ObsintConfigResource {
     }
     public record ProtocolView(UUID id, UUID pointId, String code, int versionNo, String status, Instant publishedAt, Instant activatedAt,
                                String updatedBy, Instant updatedAt, List<ConsignaView> consignas) {}
-    public record CameraOption(UUID id, String code, String name, String location, String status) {}
+    /** deviceId: dispositivo OBSINT de SIC:COM al que pertenece la cámara (null si no tiene). */
+    public record CameraOption(UUID id, String code, String name, String location, String status, UUID deviceId) {}
     /** Consigna de Consignas marcada OBSINT que se puede vincular a una tarea. */
     public record ConsignmentOption(String code, String title, String instruction) {}
     public record SaveConsigna(String consignmentCode, String title, String description, String instruction, String category, String frequency, Integer timeLimitSeconds, Boolean active,
                                List<UUID> cameraIds, List<SlotView> schedule) {}
     /** enabled=false: el Punto no tiene orden de servicio OBSINT (SEN-01); la fila se muestra deshabilitada. */
     public record Summary(boolean enabled, String status, String meta, Integer activeVersion, int activeConsignas, boolean hasDraft, List<String> warnings) {}
-    /** Horario comercial sugerido para una tarea, únicamente cuando su consigna apunta a un solo dispositivo. */
-    public record ScheduleSuggestion(boolean available, String message, List<SlotView> slots) {}
+    /**
+     * Horario comercial sugerido para una tarea, únicamente cuando su consigna apunta a un solo dispositivo.
+     * deviceIds: dispositivos de la consigna; la pantalla ofrece solo las cámaras de esos dispositivos.
+     */
+    public record ScheduleSuggestion(boolean available, String message, List<SlotView> slots, List<UUID> deviceIds) {}
     /** Resultado de guardar una tarea: la nueva versión activa y el código de la tarea guardada. */
     public record TaskSaved(ProtocolView protocol, String code) {}
 
@@ -71,7 +75,7 @@ public class ObsintConfigResource {
     @GET @Path("/points/{pointId}/cameras") @Transactional
     public List<CameraOption> cameras(@PathParam("pointId") UUID pointId) {
         platform.requirePoint(pointId);
-        return pointCameras(pointId).stream().map(c -> new CameraOption(c.id, c.code, c.name, c.location, c.status.name())).toList();
+        return pointCameras(pointId).stream().map(c -> new CameraOption(c.id, c.code, c.name, c.location, c.status.name(), c.electronicDeviceId)).toList();
     }
 
     /** Consignas del protocolo de Consignas activo del Punto marcadas con el "puesto" OBSINT: las que se pueden vincular. */
@@ -84,34 +88,42 @@ public class ObsintConfigResource {
     @GET @Path("/points/{pointId}/schedule-suggestion") @Transactional
     public ScheduleSuggestion scheduleSuggestion(@PathParam("pointId") UUID pointId, @QueryParam("consignmentCode") String consignmentCode) {
         platform.requirePoint(pointId);
-        if (consignmentCode == null || consignmentCode.isBlank()) return new ScheduleSuggestion(false, "Seleccione una consigna para consultar su horario comercial.", List.of());
-        Consignment consignment = Consignment.<Consignment>find(
-            "instanceCountryId=?1 and pointId=?2 and code=?3 and obsint=true and status='VIGENTE'",
-            platform.instanceCountryId(), pointId, consignmentCode.trim()).firstResultOptional().orElse(null);
-        if (consignment == null || !platform.obsintConsignments(pointId).containsKey(consignmentCode.trim())) {
-            return new ScheduleSuggestion(false, "La consigna no está vigente con alcance OBSINT.", List.of());
+        if (consignmentCode == null || consignmentCode.isBlank()) return new ScheduleSuggestion(false, "Seleccione una consigna para consultar su horario comercial.", List.of(), List.of());
+        if (!platform.obsintConsignments(pointId).containsKey(consignmentCode.trim()))
+            return new ScheduleSuggestion(false, "La consigna no está vigente con alcance OBSINT.", List.of(), List.of());
+        List<UUID> deviceIds = consignmentDevices(pointId, consignmentCode.trim());
+        if (deviceIds.isEmpty())
+            return new ScheduleSuggestion(false, "La consigna no está asociada a un dispositivo electrónico; defina el horario manualmente.", List.of(), deviceIds);
+        // Varios dispositivos (por ejemplo, 3 cámaras del mismo producto) sirven si todos tienen el mismo horario contratado.
+        List<ElectronicMonitoringDevice> devices = ElectronicMonitoringDevice.list("id in ?1 and instanceCountryId=?2 and pointId=?3", deviceIds, platform.instanceCountryId(), pointId);
+        if (devices.size() != deviceIds.size() || devices.stream().anyMatch(d -> !"ACTIVE".equalsIgnoreCase(d.commercialStatus)))
+            return new ScheduleSuggestion(false, "El dispositivo asociado no está activo.", List.of(), deviceIds);
+        ElectronicMonitoringShift shift = null;
+        for (ElectronicMonitoringDevice device : devices) {
+            List<ElectronicMonitoringShift> shifts = ElectronicMonitoringShift.list(
+                "instanceCountryId=?1 and deviceId=?2 and active=true order by shiftCode", platform.instanceCountryId(), device.id);
+            if (shifts.size() != 1) return new ScheduleSuggestion(false, "El dispositivo " + device.code + " tiene varios horarios activos; seleccione el horario operativo manualmente.", List.of(), deviceIds);
+            ElectronicMonitoringShift own = shifts.getFirst();
+            if (shift != null && !(own.startTime.equals(shift.startTime) && own.endTime.equals(shift.endTime) && java.util.Objects.equals(own.dayMask, shift.dayMask)))
+                return new ScheduleSuggestion(false, "Los dispositivos de la consigna tienen horarios distintos; cree una consigna por dispositivo o defina el horario manualmente.", List.of(), deviceIds);
+            shift = own;
         }
-        List<UUID> deviceIds = ConsignmentPostScope.<ConsignmentPostScope>list(
-            "instanceCountryId=?1 and consignmentId=?2 and electronicDeviceId is not null",
-            platform.instanceCountryId(), consignment.id).stream().map(scope -> scope.electronicDeviceId).distinct().toList();
-        if (deviceIds.size() != 1) {
-            return new ScheduleSuggestion(false, deviceIds.isEmpty()
-                ? "La consigna no está asociada a un dispositivo electrónico; defina el horario manualmente."
-                : "La consigna tiene varios dispositivos; defina el horario manualmente.", List.of());
-        }
-        ElectronicMonitoringDevice device = ElectronicMonitoringDevice.<ElectronicMonitoringDevice>find(
-            "id=?1 and instanceCountryId=?2 and pointId=?3", deviceIds.getFirst(), platform.instanceCountryId(), pointId).firstResultOptional().orElse(null);
-        if (device == null || !"ACTIVE".equalsIgnoreCase(device.commercialStatus)) return new ScheduleSuggestion(false, "El dispositivo asociado no está activo.", List.of());
-        List<ElectronicMonitoringShift> shifts = ElectronicMonitoringShift.list(
-            "instanceCountryId=?1 and deviceId=?2 and active=true order by shiftCode", platform.instanceCountryId(), device.id);
-        if (shifts.size() != 1) return new ScheduleSuggestion(false, "El dispositivo tiene varios horarios activos; seleccione el horario operativo manualmente.", List.of());
-        ElectronicMonitoringShift shift = shifts.getFirst();
-        if (shift.dayMask == null || shift.dayMask < 1 || shift.dayMask > 127) return new ScheduleSuggestion(false, "El horario comercial tiene días inválidos.", List.of());
-        if (!shift.endTime.isAfter(shift.startTime)) return new ScheduleSuggestion(false, "El horario comercial cruza medianoche; regístrelo manualmente en dos días.", List.of());
+        if (shift.dayMask == null || shift.dayMask < 1 || shift.dayMask > 127) return new ScheduleSuggestion(false, "El horario comercial tiene días inválidos.", List.of(), deviceIds);
+        if (!shift.endTime.isAfter(shift.startTime)) return new ScheduleSuggestion(false, "El horario comercial cruza medianoche; regístrelo manualmente en dos días.", List.of(), deviceIds);
         List<SlotView> slots = new ArrayList<>();
         for (int day = 1; day <= 7; day++) if ((shift.dayMask & (1 << (day - 1))) != 0)
             slots.add(new SlotView(day, shift.startTime.toString(), shift.endTime.toString()));
-        return new ScheduleSuggestion(true, "Horario comercial de " + device.code + " · " + shift.shiftName, slots);
+        String who = devices.size() == 1 ? devices.getFirst().code : devices.size() + " dispositivos";
+        return new ScheduleSuggestion(true, "Horario comercial de " + who + " · " + shift.shiftName, slots, deviceIds);
+    }
+
+    /** Dispositivos OBSINT de SIC:COM a los que apunta la consigna vigente de Consignas con ese código. */
+    private List<UUID> consignmentDevices(UUID pointId, String consignmentCode) {
+        Consignment consignment = Consignment.<Consignment>find("instanceCountryId=?1 and pointId=?2 and code=?3 and status='VIGENTE'",
+            platform.instanceCountryId(), pointId, consignmentCode).firstResultOptional().orElse(null);
+        if (consignment == null) return List.of();
+        return ConsignmentPostScope.<ConsignmentPostScope>list("instanceCountryId=?1 and consignmentId=?2 and electronicDeviceId is not null",
+            platform.instanceCountryId(), consignment.id).stream().map(scope -> scope.electronicDeviceId).distinct().toList();
     }
 
     /** Borrador para editar: el existente, una nueva versión del último publicado o la versión 1. */
@@ -181,6 +193,8 @@ public class ObsintConfigResource {
         p.status = "ACTIVO";
         p.activatedAt = Instant.now();
         p.updatedBy = platform.username();
+        em.flush();
+        platform.syncDeviceConfiguration(p.pointId);
         return view(p);
     }
 
@@ -190,6 +204,8 @@ public class ObsintConfigResource {
         if (!"ACTIVO".equals(p.status)) throw new ObsintRuleException("Solo la versión activa puede inactivarse.");
         p.status = "INACTIVO";
         p.updatedBy = platform.username();
+        em.flush();
+        platform.syncDeviceConfiguration(p.pointId);
         return view(p);
     }
 
@@ -270,6 +286,7 @@ public class ObsintConfigResource {
         for (ObsintConsigna c : items)
             c.cameras.stream().filter(cam -> cam.status != SecElecComponent.Status.ACTIVE)
                 .forEach(cam -> warnings.add(c.code + ": la cámara " + cam.code + (cam.status == SecElecComponent.Status.INACTIVE ? " está inactiva" : " tiene observaciones")));
+        warnings.addAll(deviceWarnings(pointId, items));
         return new Summary(true, warnings.isEmpty() ? "complete" : "warning",
             "Protocolo v%d activo · %d consignas".formatted(active.get().versionNo, items.size()), active.get().versionNo, items.size(), hasDraft, warnings);
     }
@@ -277,6 +294,33 @@ public class ObsintConfigResource {
     @ServerExceptionMapper
     public Response error(WebApplicationException e) {
         return ObsintPlatform.errorResponse(e);
+    }
+
+    /**
+     * Avisos de la orden de SIC:COM: dispositivos OBSINT activos sin cámara asignada o sin tarea en el protocolo activo,
+     * y tareas con cámaras de otro dispositivo.
+     */
+    private List<String> deviceWarnings(UUID pointId, List<ObsintConsigna> items) {
+        List<String> warnings = new ArrayList<>();
+        List<ElectronicMonitoringDevice> devices = ElectronicMonitoringDevice.list(
+            "instanceCountryId=?1 and pointId=?2 and upper(postType)='OBSINT' and upper(commercialStatus)='ACTIVE' order by code", platform.instanceCountryId(), pointId);
+        if (devices.isEmpty()) return warnings;
+        List<SecElecComponent> cameras = pointCameras(pointId);
+        Set<UUID> covered = new HashSet<>();
+        for (ObsintConsigna c : items) {
+            if (c.consignmentCode == null) continue;
+            List<UUID> own = consignmentDevices(pointId, c.consignmentCode);
+            covered.addAll(own);
+            c.cameras.stream().filter(cam -> !own.isEmpty() && cam.electronicDeviceId != null && !own.contains(cam.electronicDeviceId))
+                .forEach(cam -> warnings.add(c.code + ": la cámara " + cam.code + " es de otro dispositivo de SIC:COM"));
+        }
+        for (ElectronicMonitoringDevice d : devices) {
+            if (cameras.stream().noneMatch(cam -> d.id.equals(cam.electronicDeviceId)))
+                warnings.add("El dispositivo " + d.code + " (" + d.name + ") no tiene cámaras asignadas en Componentes de Seguridad");
+            else if (!covered.contains(d.id))
+                warnings.add("El dispositivo " + d.code + " (" + d.name + ") no tiene tarea OBSINT");
+        }
+        return warnings;
     }
 
     private void apply(ObsintConsigna c, SaveConsigna body) {
@@ -312,10 +356,14 @@ public class ObsintConfigResource {
         if (cameraIds.size() > MAX_CAMERAS) throw new BadRequestException("Máximo " + MAX_CAMERAS + " cámaras por consigna.");
         Map<UUID, SecElecComponent> allowed = new HashMap<>();
         pointCameras(c.pointId).forEach(cam -> allowed.put(cam.id, cam));
+        // Consigna de un dispositivo de SIC:COM: solo sus cámaras (las cámaras sin dispositivo se aceptan mientras se asignan).
+        List<UUID> devices = c.consignmentCode == null ? List.of() : consignmentDevices(c.pointId, c.consignmentCode);
         List<SecElecComponent> cameras = new ArrayList<>();
         for (UUID cameraId : cameraIds) {
             SecElecComponent cam = allowed.get(cameraId);
             if (cam == null) throw new BadRequestException("Solo se pueden asociar cámaras activas de este Punto.");
+            if (!devices.isEmpty() && cam.electronicDeviceId != null && !devices.contains(cam.electronicDeviceId))
+                throw new BadRequestException("La cámara " + cam.code + " pertenece a otro dispositivo de SIC:COM, no al de la consigna " + c.consignmentCode + ".");
             cameras.add(cam);
         }
         c.cameras.clear();

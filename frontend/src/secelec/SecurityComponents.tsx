@@ -1,7 +1,8 @@
-import {useEffect, useMemo, useState, type FormEvent, type ReactNode} from 'react';
+import {useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode} from 'react';
+import {attachStream} from '../obsint/liveStream';
 import {AlertTriangle, ArrowLeft, Bell, Camera, CheckCircle2, ChevronRight, Edit3, Eye, EyeOff, Flame, Fingerprint, Lightbulb, PlugZap, Plus, ShieldCheck, ShieldHalf, Trash2, X} from 'lucide-react';
-import {errorText, FAMILIES, familyLabel, secelecApi, statusLabel, streamingModeLabel, type ComponentSave, type Family, type PointContext, type SecurityComponent,
-  type CameraTestResult, type StreamingMode} from './secelecApi';
+import {errorText, FAMILIES, familyLabel, secelecApi, statusLabel, type BrandOption, type CameraBrand, type ComponentSave, type ElectronicDevice, type Family, type PointContext,
+  type SecurityComponent, type CameraTestResult} from './secelecApi';
 import './secelec.css';
 
 const FAMILY_ICON:Record<Family,ReactNode>={PERIMETER:<ShieldHalf size={20}/>,ACCESS_CONTROL:<Fingerprint size={20}/>,VIDEO:<Camera size={20}/>,
@@ -18,10 +19,15 @@ export default function SecurityComponents({point,onBack}:{point:PointContext;on
   const [editing,setEditing]=useState<SecurityComponent|'new'|null>(null);
   const [loading,setLoading]=useState(true);
   const [error,setError]=useState('');
+  /** Lista "Marca" de las cámaras (la entrega el backend con la ruta de cada una). */
+  const [brands,setBrands]=useState<BrandOption[]>([]);
+  useEffect(()=>{secelecApi.brands().then(setBrands).catch(e=>setError(errorText(e)))},[]);
+  /** Dispositivos OBSINT que llegaron de SIC:COM: cada cámara se asigna a uno (su línea contratada y su horario). */
+  const [devices,setDevices]=useState<ElectronicDevice[]>([]);
 
   async function load(){
     setLoading(true);
-    try{setItems(await secelecApi.components(point.pointId));setError('')}
+    try{const [list,devs]=await Promise.all([secelecApi.components(point.pointId),secelecApi.devices(point.pointId)]);setItems(list);setDevices(devs);setError('')}
     catch(e){setError(errorText(e))}
     finally{setLoading(false)}
   }
@@ -33,7 +39,8 @@ export default function SecurityComponents({point,onBack}:{point:PointContext;on
   const observed=items.filter(c=>c.status==='OBSERVED').length;
 
   function chooseFamily(f:Family){setFamily(f);setSelectedId('');setEditing(null);}
-  function saved(c:SecurityComponent){setItems(prev=>prev.some(x=>x.id===c.id)?prev.map(x=>x.id===c.id?c:x):[...prev,c]);setSelectedId(c.id);setEditing(null);}
+  function saved(c:SecurityComponent){setItems(prev=>prev.some(x=>x.id===c.id)?prev.map(x=>x.id===c.id?c:x):[...prev,c]);setSelectedId(c.id);setEditing(null);
+    void secelecApi.devices(point.pointId).then(setDevices).catch(()=>undefined);}
   async function remove(c:SecurityComponent){
     if(!window.confirm(`¿Eliminar ${c.code} · ${c.name}?`))return;
     try{await secelecApi.remove(c.id);setItems(prev=>prev.filter(x=>x.id!==c.id));setSelectedId('');setError('')}
@@ -45,6 +52,7 @@ export default function SecurityComponents({point,onBack}:{point:PointContext;on
     <div className="sec-hero"><h2>Componentes de Seguridad</h2><p>Configuración, gestión y mantenimiento de los componentes de seguridad del punto.</p></div>
     <PointBar point={point}/>
     {error&&<div className="sec-error"><AlertTriangle size={16}/>{error}</div>}
+    {devices.length>0&&<DeviceBar devices={devices}/>}
 
     <div className="sec-kpis">
       <Kpi icon={<ShieldCheck size={20}/>} tone="blue" label="Total de componentes" value={items.length} hint="en el punto"/>
@@ -68,11 +76,11 @@ export default function SecurityComponents({point,onBack}:{point:PointContext;on
         <header><div><h3>Componentes configurados</h3><span>{familyLabel(family)} · {ofFamily.length} componentes</span></div>
           <button type="button" className="sec-primary" onClick={()=>{setEditing('new');setSelectedId('')}}><Plus size={16}/>Agregar componente</button></header>
         <table className="sec-table">
-          <thead><tr><th>Código</th><th>Componente</th><th>Tipo</th><th>Estado</th><th>Acciones</th></tr></thead>
+          <thead><tr><th>Código</th><th>Componente</th><th>{family==='VIDEO'&&devices.length?'Servicio OBSINT':'Tipo'}</th><th>Estado</th><th>Acciones</th></tr></thead>
           <tbody>
             {loading?<tr><td colSpan={5} className="sec-empty">Cargando componentes…</td></tr>
             :ofFamily.length?ofFamily.map(c=><tr key={c.id} className={c.id===selectedId?'selected':''} onClick={()=>{setSelectedId(c.id);setEditing(null)}}>
-              <td><b>{c.code}</b></td><td>{c.name}</td><td>{c.componentType}</td>
+              <td><b>{c.code}</b></td><td>{c.name}</td><td>{family==='VIDEO'&&devices.length?(devices.find(d=>d.id===c.electronicDeviceId)?.code??<em className="sec-no-device">Sin asignar</em>):c.componentType}</td>
               <td><span className={`sec-status ${c.status.toLowerCase()}`}><i/>{statusLabel(c.status)}</span></td>
               <td className="sec-actions">
                 <button type="button" title="Editar" aria-label="Editar" onClick={e=>{e.stopPropagation();setSelectedId(c.id);setEditing(c)}}><Edit3 size={15}/></button>
@@ -86,9 +94,9 @@ export default function SecurityComponents({point,onBack}:{point:PointContext;on
 
       <section className="sec-card sec-detail">
         {editing
-          ?<ComponentForm key={editing==='new'?`new-${family}`:editing.id} pointId={point.pointId} family={editing==='new'?family:editing.family}
+          ?<ComponentForm key={editing==='new'?`new-${family}`:editing.id} pointId={point.pointId} brands={brands} devices={devices} family={editing==='new'?family:editing.family}
               initial={editing==='new'?null:editing} onSaved={saved} onCancel={()=>setEditing(null)}/>
-          :selected?<Detail c={selected} onEdit={()=>setEditing(selected)} onDelete={()=>void remove(selected)}/>
+          :selected?<Detail c={selected} brands={brands} devices={devices} onEdit={()=>setEditing(selected)} onDelete={()=>void remove(selected)}/>
           :<div className="sec-empty-detail"><ShieldCheck size={30}/>Seleccione un componente para ver su detalle o agregue uno nuevo.</div>}
       </section>
     </div>
@@ -104,18 +112,34 @@ export function PointBar({point}:{point:PointContext}){
   </div>;
 }
 
+/** Lo que contrató el cliente en SIC:COM: cada dispositivo es una línea con su horario; las cámaras se asignan a ellos. */
+function DeviceBar({devices}:{devices:ElectronicDevice[]}){
+  return <section className="sec-card sec-devices"><header><h3>Servicio OBSINT contratado (SIC:COM)</h3><span>Asigne cada cámara al dispositivo que le corresponde</span></header>
+    <div className="sec-device-list">{devices.map(d=><article key={d.id} className={d.cameras?'ok':'missing'}>
+      <b>{d.code}</b><span>{d.name}</span><small>{d.schedule}</small>
+      <em>{d.commercialStatus.toUpperCase()!=='ACTIVE'?'Inactivo':d.cameras?`${d.cameras} ${d.cameras===1?'cámara':'cámaras'}`:'Sin cámara asignada'}</em></article>)}</div>
+  </section>;
+}
+
 function Kpi({icon,tone,label,value,hint}:{icon:ReactNode;tone:'blue'|'green'|'orange';label:string;value:number;hint:string}){
   return <article><span className={tone}>{icon}</span><div><small>{label}</small><strong>{value}</strong><em>{hint}</em></div></article>;
 }
 
-function Detail({c,onEdit,onDelete}:{c:SecurityComponent;onEdit:()=>void;onDelete:()=>void}){
-  const rows:[string,string|null][]=[['Código',c.code],['Nombre',c.name],['Familia',familyLabel(c.family)],['Tipo',c.componentType],['Ubicación',c.location],
-    ['Marca / Modelo',c.brandModel],['Cobertura',c.coverage]];
-  if(c.family==='VIDEO')rows.push(['Dirección IP',c.ip],['Puerto',c.port==null?null:String(c.port)],['Canal',c.channel==null?null:String(c.channel)],
-    ['Usuario',c.username],['Contraseña',c.hasPassword?'Guardada (cifrada)':'—'],
-    ['Coordenadas',c.latitude==null||c.longitude==null?null:`${c.latitude}, ${c.longitude}`],
-    ['Streaming',c.streamingEnabled==null?null:c.streamingEnabled?`Activo · ${streamingModeLabel(c.streamingMode??'COPY')}`:'Desactivado'],
-    ['Video de pruebas',c.streamUrl]);
+function Detail({c,brands,devices,onEdit,onDelete}:{c:SecurityComponent;brands:BrandOption[];devices:ElectronicDevice[];onEdit:()=>void;onDelete:()=>void}){
+  const video=c.family==='VIDEO';
+  const rows:[string,string|null][]=[['Código',c.code],['Nombre',c.name],['Familia',familyLabel(c.family)],['Tipo',c.componentType],['Ubicación',c.location]];
+  if(video&&devices.length){const d=devices.find(x=>x.id===c.electronicDeviceId);rows.push(['Servicio OBSINT',d?`${d.code} · ${d.name} · ${d.schedule}`:'Sin asignar'])}
+  if(video)rows.push(['Marca',brands.find(b=>b.code===c.cameraBrand)?.label??c.cameraBrand],['Modelo',c.brandModel]);
+  else rows.push(['Marca / Modelo',c.brandModel]);
+  rows.push(['Cobertura',c.coverage]);
+  if(video){
+    rows.push(['Dirección IP',c.ip],['Puerto',c.port==null?null:String(c.port)],['Canal',c.channel==null?null:String(c.channel)],
+      ['Ruta del video',c.streamPath],['Códec',c.detectedCodec],
+      ['Usuario',c.username],['Contraseña',c.hasPassword?'Guardada (cifrada)':'—'],
+      ['Coordenadas',c.latitude==null||c.longitude==null?null:`${c.latitude}, ${c.longitude}`],
+      ['Streaming',c.streamingEnabled==null?null:c.streamingEnabled?'Activo':'Desactivado']);
+    if(c.streamUrl)rows.push(['Video de pruebas',c.streamUrl]);
+  }
   return <>
     <header><h3>Detalle del componente</h3></header>
     <div className="sec-detail-head"><span className="sec-family-icon">{FAMILY_ICON[c.family]}</span><div><b>{c.code}</b><small>{c.name}</small></div>
@@ -126,25 +150,36 @@ function Detail({c,onEdit,onDelete}:{c:SecurityComponent;onEdit:()=>void;onDelet
   </>;
 }
 
-function ComponentForm({pointId,family,initial,onSaved,onCancel}:{pointId:string;family:Family;initial:SecurityComponent|null;onSaved:(c:SecurityComponent)=>void;onCancel:()=>void}){
+function ComponentForm({pointId,family,brands,devices,initial,onSaved,onCancel}:{pointId:string;family:Family;brands:BrandOption[];devices:ElectronicDevice[];initial:SecurityComponent|null;
+  onSaved:(c:SecurityComponent)=>void;onCancel:()=>void}){
   const types=FAMILIES.find(f=>f.value===family)?.types??[];
   const [form,setForm]=useState<ComponentSave>(()=>({family,componentType:initial?.componentType??types[0]??'',name:initial?.name??'',location:initial?.location??'',
     coverage:initial?.coverage??'',brandModel:initial?.brandModel??'',status:initial?.status??'ACTIVE',observations:initial?.observations??'',
     ip:initial?.ip??'',port:initial?.port??(family==='VIDEO'?554:null),channel:initial?.channel??(family==='VIDEO'?1:null),
+    cameraBrand:initial?.cameraBrand??'HIKVISION',rtspPath:initial?.rtspPath??'',
     latitude:initial?.latitude??null,longitude:initial?.longitude??null,streamingEnabled:initial?.streamingEnabled??true,streamingMode:initial?.streamingMode??'COPY',
-    username:initial?.username??'',password:'',streamUrl:initial?.streamUrl??''}));
+    username:initial?.username??'',password:'',streamUrl:initial?.streamUrl??'',electronicDeviceId:initial?.electronicDeviceId??(devices.length===1?devices[0].id:null)}));
   const [showPassword,setShowPassword]=useState(false);
   const [testing,setTesting]=useState(false);
   const [test,setTest]=useState<CameraTestResult|null>(null);
   const [saving,setSaving]=useState(false);
   const [error,setError]=useState('');
   const video=family==='VIDEO';
+  /** Solo con la marca "Otra" se escribe la ruta del video; las demás la arman solas en el backend. */
+  const brand=brands.find(b=>b.code===form.cameraBrand);
+  const needsPath=brand?.requiresPath??form.cameraBrand==='OTHER';
+  function chooseBrand(code:CameraBrand){
+    const next=brands.find(b=>b.code===code);
+    setForm(prev=>({...prev,cameraBrand:code,port:prev.port??next?.defaultPort??554}));
+    setTest(null);
+  }
   const set=<K extends keyof ComponentSave>(key:K,value:ComponentSave[K])=>setForm(prev=>({...prev,[key]:value}));
   const num=(value:string)=>value.trim()===''?null:Number(value);
 
   async function testConnection(){
     setTesting(true);setTest(null);setError('');
-    try{setTest(await secelecApi.testCamera(pointId,{componentId:initial?.id,ip:form.ip,port:form.port,channel:form.channel,username:form.username,password:form.password}))}
+    try{setTest(await secelecApi.testCamera(pointId,{componentId:initial?.id,ip:form.ip,port:form.port,channel:form.channel,cameraBrand:form.cameraBrand,
+      rtspPath:form.rtspPath,username:form.username,password:form.password}))}
     catch(err){setError(errorText(err))}
     finally{setTesting(false)}
   }
@@ -165,10 +200,21 @@ function ComponentForm({pointId,family,initial,onSaved,onCancel}:{pointId:string
     <Field label="Nombre del componente *"><input value={form.name} onChange={e=>set('name',e.target.value)} required maxLength={160} placeholder="Cámara Bala Acceso Norte"/></Field>
     <Field label="Ubicación"><input value={form.location} onChange={e=>set('location',e.target.value)} maxLength={200} placeholder="Acceso Norte"/></Field>
     {video&&<>
+      {devices.length>0&&<Field label="Servicio OBSINT (SIC:COM)"><select value={form.electronicDeviceId??''} onChange={e=>set('electronicDeviceId',e.target.value||null)}>
+        <option value="">Sin asignar</option>
+        {devices.map(d=><option key={d.id} value={d.id}>{d.code} · {d.name} · {d.schedule}</option>)}</select></Field>}
+      <div className="sec-form-row">
+        <Field label="Marca *"><select value={form.cameraBrand} onChange={e=>chooseBrand(e.target.value as CameraBrand)} required>
+          {brands.length?brands.map(b=><option key={b.code} value={b.code}>{b.label}</option>):<option value={form.cameraBrand}>{form.cameraBrand}</option>}</select></Field>
+        <Field label="Modelo"><input value={form.brandModel} onChange={e=>set('brandModel',e.target.value)} maxLength={160} placeholder="DS-2CD2043G2-I (opcional)"/></Field>
+      </div>
+      {needsPath&&<Field label="Ruta del video *"><input value={form.rtspPath} onChange={e=>set('rtspPath',e.target.value)} required maxLength={300}
+        pattern="/\S*" title="Empieza con / y sin espacios" placeholder="/stream1 (está en el manual de la cámara)"/></Field>}
       <div className="sec-form-row three">
         <Field label="Dirección IP *"><input value={form.ip} onChange={e=>set('ip',e.target.value)} required maxLength={255} placeholder="192.168.1.10"/></Field>
         <Field label="Puerto *"><input type="number" min={1} max={65535} value={form.port??''} onChange={e=>set('port',num(e.target.value))} required/></Field>
-        <Field label="Canal *"><input type="number" min={1} max={256} value={form.channel??''} onChange={e=>set('channel',num(e.target.value))} required/></Field>
+        <Field label="Canal *"><input type="number" min={1} max={256} value={form.channel??''} onChange={e=>set('channel',num(e.target.value))} required
+          title="1 si es una cámara sola; el número de cámara si es un grabador (NVR/DVR)"/></Field>
       </div>
       <div className="sec-form-row">
         <Field label="Usuario *"><input value={form.username} onChange={e=>set('username',e.target.value)} required maxLength={120} autoComplete="off"/></Field>
@@ -185,32 +231,50 @@ function ComponentForm({pointId,family,initial,onSaved,onCancel}:{pointId:string
         <Field label="Longitud"><input type="number" step="any" min={-180} max={180} value={form.longitude??''} onChange={e=>set('longitude',num(e.target.value))}
           required={form.latitude!=null} placeholder="-78.472500"/></Field>
       </div>
-      <div className="sec-form-row">
+      <div className="sec-form-row one">
         <Field label="Streaming"><span className="sec-switch-row">
           <button type="button" role="switch" aria-checked={form.streamingEnabled} aria-label="Streaming" className={`sec-switch${form.streamingEnabled?' on':''}`}
             onClick={()=>set('streamingEnabled',!form.streamingEnabled)}><i/></button>
           {form.streamingEnabled?'Activo':'Desactivado'}
         </span></Field>
-        <Field label="Modo de streaming"><select value={form.streamingMode} onChange={e=>set('streamingMode',e.target.value as StreamingMode)} disabled={!form.streamingEnabled}>
-          <option value="COPY">{streamingModeLabel('COPY')}</option><option value="TRANSCODE">{streamingModeLabel('TRANSCODE')}</option></select></Field>
       </div>
-      <Field label="URL de video (pruebas, opcional)"><input value={form.streamUrl} onChange={e=>set('streamUrl',e.target.value)} maxLength={500} placeholder="obsint/videos/1-1.mp4"/></Field>
     </>}
-    <Field label="Marca / Modelo"><input value={form.brandModel} onChange={e=>set('brandModel',e.target.value)} maxLength={160} placeholder="Hikvision DS-2CD2043G2-I"/></Field>
+    {!video&&<Field label="Marca / Modelo"><input value={form.brandModel} onChange={e=>set('brandModel',e.target.value)} maxLength={160}/></Field>}
     <Field label="Cobertura"><input value={form.coverage} onChange={e=>set('coverage',e.target.value)} maxLength={300} placeholder="Ingreso principal y zona de parqueo"/></Field>
     <Field label="Estado"><select value={form.status} onChange={e=>set('status',e.target.value as ComponentSave['status'])}>
       <option value="ACTIVE">Activo</option><option value="OBSERVED">Con observación</option><option value="INACTIVE">Inactivo</option></select></Field>
     <Field label="Observaciones"><textarea value={form.observations} onChange={e=>set('observations',e.target.value)} maxLength={1000} rows={3}/></Field>
     {test&&<div className={`sec-test ${test.ok?'ok':'fail'}`} role="status">
       {test.ok?<CheckCircle2 size={16}/>:<AlertTriangle size={16}/>}
-      <div><b>{test.message}</b><small>Canal {form.channel??1} · {test.streamPath} · {test.elapsedMs} ms</small>
-        {test.codec==='H.265'&&form.streamingEnabled&&form.streamingMode==='COPY'&&<small>El navegador no reproduce H.265: use el modo Transcodificar o cambie la cámara a H.264.</small>}</div>
+      <div><b>{test.message}</b><small>Ruta {test.streamPath} · {test.elapsedMs} ms</small>
+        {test.codec==='H.265'&&form.streamingEnabled&&<small>El navegador no reproduce H.265: cambie la cámara a H.264 en su configuración.</small>}</div>
     </div>}
+    {test?.ok&&test.codec!=='H.265'&&(test.previewUrl
+      ?<LivePreview url={test.previewUrl}/>
+      :<p className="sec-preview-note">Vista previa no disponible: el servidor de video no está configurado.</p>)}
     {error&&<div className="sec-error"><AlertTriangle size={16}/>{error}</div>}
     <div className="sec-form-actions"><button type="submit" className="sec-primary" disabled={saving}>{saving?'Guardando…':'Guardar componente'}</button>
       {video&&<button type="button" onClick={()=>void testConnection()} disabled={testing||saving}><PlugZap size={15}/>{testing?'Probando…':'Probar conexión'}</button>}
       <button type="button" onClick={onCancel}>Cancelar</button></div>
   </form>;
+}
+
+/** Video en vivo de "Probar conexión" (HLS o WebRTC del servidor de video); muestra "Sin señal" si no llega imagen. */
+function LivePreview({url}:{url:string}){
+  const ref=useRef<HTMLVideoElement>(null);
+  const [failed,setFailed]=useState(false);
+  useEffect(()=>{
+    const video=ref.current;
+    if(!video)return;
+    setFailed(false);
+    // attachStream informa cada estado (conectando, reproduciendo…); solo los finales sin video cuentan como "Sin señal".
+    return attachStream(video,url,status=>{if(status==='failed'||status==='denied')setFailed(true)});
+  },[url]);
+  return <div className="sec-preview">
+    <span>Vista previa</span>
+    {failed?<div className="sec-preview-fail"><AlertTriangle size={16}/>Sin señal: la cámara conectó, pero el video no llegó al navegador.</div>
+      :<video ref={ref} autoPlay muted playsInline controls/>}
+  </div>;
 }
 
 function Field({label,children}:{label:string;children:ReactNode}){return <label className="sec-field"><span>{label}</span>{children}</label>}

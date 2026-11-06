@@ -2,7 +2,7 @@ import {useCallback, useEffect, useRef, useState, type MouseEvent} from 'react';
 import {Crosshair, Maximize2, Pause, Play, Video, VideoOff} from 'lucide-react';
 import {formatDateTime, streamSrc} from './obsint';
 import type {ObsintCamera} from './obsintApi';
-import {attachStream, streamKind, type StreamStatus} from './liveStream';
+import {attachStream, streamKind, type RenewUrl, type StreamStatus} from './liveStream';
 
 type Props={
   cameras:ObsintCamera[];
@@ -13,12 +13,14 @@ type Props={
   registerVideo:(cameraId:string,el:HTMLVideoElement|null)=>void;
   /** Todas las cámaras cargaron (o fallaron), o pasó el tiempo de espera. Una vez por juego de cámaras. */
   onAllSettled:()=>void;
+  /** URL nueva de una cámara cuando la actual pierde su permiso (vence); null si ya no tiene video. */
+  renewStreamUrl?:(cameraId:string)=>Promise<string|null>;
 };
 
 const SETTLE_TIMEOUT_MS=5000;
 
 /** Cámara seleccionada en grande y las demás en miniaturas desplazables; todas mantienen su video activo para capturar evidencia. */
-export function ObsintCameraGrid({cameras,selectedId,onSelect,now,registerVideo,onAllSettled}:Props){
+export function ObsintCameraGrid({cameras,selectedId,onSelect,now,registerVideo,onAllSettled,renewStreamUrl}:Props){
   const settled=useRef(new Set<string>());
   const notified=useRef(false);
   const onAllSettledRef=useRef(onAllSettled);
@@ -40,15 +42,18 @@ export function ObsintCameraGrid({cameras,selectedId,onSelect,now,registerVideo,
   const main=cameras.find(camera=>camera.id===selectedId)??cameras[0];
   const thumbnails=cameras.filter(camera=>camera.id!==main.id);
   const feed=(camera:ObsintCamera)=><Feed key={camera.id} camera={camera} index={cameras.indexOf(camera)} now={now} selected={camera.id===main.id}
-    onSelect={()=>onSelect(camera.id)} registerVideo={registerVideo} onSettled={handleSettled}/>;
+    onSelect={()=>onSelect(camera.id)} registerVideo={registerVideo} onSettled={handleSettled}
+    renew={renewStreamUrl?()=>renewStreamUrl(camera.id):undefined}/>;
   return <div className={`obs-camera-grid${cameras.length===1?' count-1':''}`}>
     <div className="obs-camera-main">{feed(main)}</div>
     {thumbnails.length>0&&<div className="obs-camera-thumbs" aria-label="Otras cámaras"><div className="obs-camera-thumbs-track">{thumbnails.map(feed)}</div></div>}
   </div>;
 }
 
-function Feed({camera,index,now,selected,onSelect,registerVideo,onSettled}:{camera:ObsintCamera;index:number;now:Date;selected:boolean;onSelect:()=>void;
-  registerVideo:(cameraId:string,el:HTMLVideoElement|null)=>void;onSettled:(cameraId:string)=>void}){
+function Feed({camera,index,now,selected,onSelect,registerVideo,onSettled,renew}:{camera:ObsintCamera;index:number;now:Date;selected:boolean;onSelect:()=>void;
+  registerVideo:(cameraId:string,el:HTMLVideoElement|null)=>void;onSettled:(cameraId:string)=>void;renew?:RenewUrl}){
+  const renewRef=useRef(renew);
+  renewRef.current=renew;
   const [paused,setPaused]=useState(false);
   const [status,setStatus]=useState<StreamStatus|'no-signal'>(camera.streamUrl?'connecting':'no-signal');
   const boxRef=useRef<HTMLDivElement|null>(null);
@@ -63,7 +68,8 @@ function Feed({camera,index,now,selected,onSelect,registerVideo,onSettled}:{came
   useEffect(()=>{
     const video=videoRef.current;
     if(!video||!camera.streamUrl)return;
-    return attachStream(video,camera.streamUrl,next=>{setStatus(next);if(next==='playing'||next==='retrying'||next==='denied'||next==='failed')onSettled(camera.id)});
+    return attachStream(video,camera.streamUrl,next=>{setStatus(next);if(next==='playing'||next==='retrying'||next==='denied'||next==='failed')onSettled(camera.id)},
+      renewRef.current?()=>renewRef.current!():undefined);
   },[camera.id,camera.streamUrl]);
 
   const loaded=()=>{setStatus('playing');onSettled(camera.id)};
