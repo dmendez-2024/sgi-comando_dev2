@@ -19,7 +19,8 @@ import org.jboss.logging.Logger;
  * Lo llama MediaMTX (authMethod: http) antes de entregar cada pedido. Responde 200 si se permite y 401 si no:
  * - ver video (read) de live/…: solo con el token que firmó Comando para esa ruta (ver VideoToken);
  * - API de MediaMTX (api): solo con el usuario y clave de API que usa Comando para registrar las cámaras;
- * - todo lo demás (publicar, métricas…): no.
+ * - publicar en live/…: solo desde 127.0.0.1 (FFmpeg de MediaMTX que convierte H.265 → H.264);
+ * - todo lo demás (métricas…): no.
  * No necesita sesión porque quien llama es el servidor de video, no una persona.
  */
 @Path("/api/internal/video/auth")
@@ -58,8 +59,11 @@ public class VideoAuthResource {
     private String problem(AuthRequest r, String token) {
         if ("api".equals(r.action())) return apiUser.filter(u -> !u.isBlank()).isPresent()
             && same(apiUser.get(), r.user()) && same(apiPassword.orElse(""), r.password()) ? null : "usuario o clave de API incorrectos";
-        if (!"read".equals(r.action())) return "acción no permitida (" + r.action() + ")";
         if (r.path() == null || !r.path().startsWith("live/")) return "ruta fuera de live/";
+        // FFmpeg dentro del contenedor de MediaMTX publica el video convertido a H.264 (ver VideoGateway.transcodeJson):
+        // solo se acepta desde la propia máquina; el RTSP de MediaMTX escucha solo en 127.0.0.1.
+        if ("publish".equals(r.action())) return loopback(r.ip()) ? null : "publicar solo desde 127.0.0.1 (FFmpeg de MediaMTX)";
+        if (!"read".equals(r.action())) return "acción no permitida (" + r.action() + ")";
         return tokens.problem(r.path(), token);
     }
 
@@ -70,6 +74,10 @@ public class VideoAuthResource {
             if (part.startsWith("token=")) return URLDecoder.decode(part.substring(6), StandardCharsets.UTF_8);
         }
         return null;
+    }
+
+    static boolean loopback(String ip) {
+        return ip != null && (ip.equals("127.0.0.1") || ip.equals("::1") || ip.equals("::ffff:127.0.0.1"));
     }
 
     private static String blank(String v) { return v == null || v.isBlank() ? null : v; }

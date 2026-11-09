@@ -21,7 +21,10 @@ import org.jboss.logging.Logger;
 /**
  * Servidor de video (MediaMTX) para las cámaras de origen directo: Comando registra cada cámara con su URL RTSP y su clave
  * (ruta live/cam-<id>) y le da al navegador la URL HLS o WebRTC que entrega MediaMTX. Así no hay que pegar ninguna URL a mano.
- * PRUEBA: probado contra el NVR simulado local (.local/mediamtx). Solo modo COPY: TRANSCODE (p. ej. H.265 → H.264) no está hecho.
+ * PRUEBA: probado contra el NVR simulado local (.local/mediamtx).
+ * H.265 → H.264: el navegador no reproduce H.265. Si la cámara está en TRANSCODE o se detectó H.265, la ruta no toma la cámara
+ * directo: MediaMTX corre FFmpeg mientras alguien mira (runOnDemand), que lee la cámara, la recodifica a H.264 y la publica en la
+ * misma ruta por el RTSP interno de MediaMTX. Requiere la imagen bluenviron/mediamtx:…-ffmpeg y rtsp encendido solo en 127.0.0.1.
  */
 @ApplicationScoped
 public class VideoGateway {
@@ -58,7 +61,9 @@ public class VideoGateway {
         if (!configured() || c.family != SecElecComponent.Family.VIDEO || Boolean.FALSE.equals(c.streamingEnabled)
                 || c.ip == null || c.port == null || c.username == null || c.passwordCipher == null) return Optional.empty();
         String path = path(c.id);
-        String source = rtspSource(c.ip, c.port, CameraBrand.pathOf(c), c.username, cipher.decrypt(c.passwordCipher));
+        String camera = rtspSource(c.ip, c.port, CameraBrand.pathOf(c), c.username, cipher.decrypt(c.passwordCipher));
+        // Lo registrado depende del modo: si cambia (p. ej. se detectó H.265), se vuelve a registrar.
+        String source = transcodes(c) ? transcodeJson(camera) : sourceJson(camera, true);
         Registration known = registered.get(c.id);
         Instant now = Instant.now();
         boolean changed = known == null || !known.source().equals(source);
@@ -66,7 +71,7 @@ public class VideoGateway {
             // Si cambió la fuente (IP, marca, canal, ruta, clave…) o MediaMTX ya no la tiene (p. ej. se reinició), se vuelve a registrar.
             Boolean exists = changed ? Boolean.FALSE : exists(path);
             if (exists == null) return Optional.empty();
-            if (!exists && !register(path, source)) { registered.remove(c.id); return Optional.empty(); }
+            if (!exists && !registerJson(path, source)) { registered.remove(c.id); return Optional.empty(); }
             registered.put(c.id, new Registration(source, now));
         }
         return Optional.of(browserUrl(path));
@@ -192,8 +197,12 @@ public class VideoGateway {
         steps.add(new Step("MediaMTX se conecta a la cámara", s.ok(), s.message()));
         if (!s.ok()) return new CameraDiagnostic(false, "El servidor de video no se pudo conectar con la cámara: revise IP, usuario, clave o ruta.",
             null, rtspPath, null, 0, steps);
-        steps.add(codecStep(s.codec()));
-        boolean h264 = isH264(s.codec());
+        boolean converted = transcodeH265 && isH265(s.codec());
+        steps.add(converted
+            ? new Step("La cámara envía H.264 (el navegador lo reproduce)", true, "Códec: " + s.codec()
+                + ". El servidor de video lo convierte a H.264 con FFmpeg (usa CPU del servidor por cada cámara que se mira).")
+            : codecStep(s.codec()));
+        boolean h264 = isH264(s.codec()) || converted;
         String url = s.previewUrl();
         long minutes = PREVIEW_TTL.toMinutes();
         String codec = s.codec();
@@ -215,11 +224,14 @@ public class VideoGateway {
         steps.add(new Step("Con la URL firmada de Comando: llega el video", plays, plays ? "MediaMTX entregó la lista de video (#EXTM3U) en " + hideToken(base) + "."
             : playlist.text(base) + (playlist.code() == 0 ? " (revisar SGI_VIDEO_MEDIAMTX_CHECK_URL)."
             : playlist.code() == 401 ? " → MediaMTX no acepta la firma: sigue en modo prueba o no llega a /api/internal/video/auth de este Comando."
+            : converted ? " → No llegó el video convertido: revisar que MediaMTX use la imagen -ffmpeg, tenga rtsp encendido en 127.0.0.1"
+                + " y los logs de FFmpeg (docker logs sgi-mediamtx)."
             : " → MediaMTX recibe la cámara pero no entregó la lista de video.")));
         if (!plays) steps.add(authStep(s.path(), asked, playlist.code() == 401));
         boolean ok = steps.stream().allMatch(Step::ok);
         String summary = ok ? "Todo bien: la cámara llega a MediaMTX y solo se ve con la URL firmada de Comando."
-            : !h264 ? "El video llega, pero en H.265: el navegador no lo va a reproducir."
+            : !h264 ? "El video llega, pero en H.265: el navegador no lo va a reproducir (o encender sgi.video.transcode-h265)."
+            : converted && !plays ? "La cámara está en H.265 y la conversión a H.264 no entregó video."
             : !plays ? "MediaMTX recibe la cámara, pero no entrega el video al backend."
             : "El video llega, pero sin protección: cualquiera con la URL puede verlo.";
         return new CameraDiagnostic(ok, summary, codec, rtspPath, url, minutes, steps);
@@ -273,6 +285,13 @@ public class VideoGateway {
                 java.util.regex.Matcher t = TRACKS.matcher(state.body());
                 String codec = t.find() ? t.group(1) : null;
                 LOG.infof("video_probe_ok path=%s codec=%s", path, codec);
+                if (transcodeH265 && isH265(codec)) {
+                    // El navegador no reproduce H.265: la vista previa pasa a la versión que recodifica FFmpeg (misma ruta y token).
+                    String err = registerError(path, transcodeJson(rtspSource(host, port, rtspPath, user, password)));
+                    if (err == null) return new ServerProbe(RtspProbe.Outcome.OK,
+                        "El servidor de video se conectó a la cámara (H.265: se convierte a H.264 para el navegador).", codec, elapsed(start), path, url);
+                    LOG.warnf("video_probe_transcode_failed path=%s %s", path, err);
+                }
                 return new ServerProbe(RtspProbe.Outcome.OK, "El servidor de video se conectó a la cámara.", codec, elapsed(start), path, url);
             }
             try { Thread.sleep(1000); } catch (InterruptedException e) { Thread.currentThread().interrupt(); break; }
@@ -451,14 +470,40 @@ public class VideoGateway {
 
     private static String enc(String v) { return URLEncoder.encode(v, StandardCharsets.UTF_8).replace("+", "%20"); }
 
-    /** "replace" crea la ruta si no existe y la actualiza si cambió; sourceOnDemand: solo se conecta a la cámara mientras alguien mira. */
-    private boolean register(String path, String source) {
-        return registerJson(path, sourceJson(source, true));
+    /** Convertir H.265 → H.264 con FFmpeg en MediaMTX (sgi.video.transcode-h265); apagado = solo se avisa que H.265 no se ve. */
+    @ConfigProperty(name = "sgi.video.transcode-h265", defaultValue = "false") boolean transcodeH265;
+
+    /** La cámara se recodifica: marcada TRANSCODE, o se detectó H.265 y la conversión está encendida. */
+    boolean transcodes(SecElecComponent c) {
+        return c.streamingMode == SecElecComponent.StreamingMode.TRANSCODE || (transcodeH265 && isH265(c.detectedCodec));
     }
 
-    private static String sourceJson(String source, boolean onDemand) {
-        return "{\"source\":\"" + source.replace("\\", "\\\\").replace("\"", "\\\"") + "\",\"sourceOnDemand\":" + onDemand + ",\"rtspTransport\":\"tcp\"}";
+    static boolean isH265(String codec) {
+        if (codec == null) return false;
+        String v = codec.toUpperCase().replace(".", "");
+        return v.contains("H265") || v.contains("HEVC");
     }
+
+    /** sourceOnDemand: solo se conecta a la cámara mientras alguien mira. */
+    static String sourceJson(String source, boolean onDemand) {
+        return "{\"source\":\"" + json(source) + "\",\"sourceOnDemand\":" + onDemand + ",\"rtspTransport\":\"tcp\"}";
+    }
+
+    /**
+     * Ruta que publica FFmpeg (source: publisher por defecto): MediaMTX lo arranca cuando alguien pide el video y lo detiene
+     * 10 s después de que nadie mira. FFmpeg lee la cámara por TCP, quita el audio, recodifica a H.264 de baja latencia y lo
+     * publica en esta misma ruta por el RTSP interno ($RTSP_PORT y $MTX_PATH los pone MediaMTX). VideoAuthResource deja
+     * publicar solo desde 127.0.0.1.
+     */
+    static String transcodeJson(String cameraUrl) {
+        String cmd = "ffmpeg -hide_banner -loglevel error -rtsp_transport tcp -i '" + cameraUrl.replace("'", "%27") + "'"
+            + " -an -c:v libx264 -preset veryfast -tune zerolatency -profile:v main -pix_fmt yuv420p -g 50"
+            + " -f rtsp -rtsp_transport tcp rtsp://127.0.0.1:$RTSP_PORT/$MTX_PATH";
+        // sourceOnDemand:false explícito: pathDefaults de MediaMTX lo trae en yes y con source publisher responde 400.
+        return "{\"source\":\"publisher\",\"sourceOnDemand\":false,\"runOnDemand\":\"" + json(cmd) + "\",\"runOnDemandRestart\":true,\"runOnDemandStartTimeout\":\"20s\",\"runOnDemandCloseAfter\":\"10s\"}";
+    }
+
+    private static String json(String v) { return v.replace("\\", "\\\\").replace("\"", "\\\""); }
 
     private boolean registerJson(String path, String json) { return registerError(path, json) == null; }
 

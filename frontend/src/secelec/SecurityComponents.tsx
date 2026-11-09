@@ -178,8 +178,11 @@ function ComponentForm({pointId,family,brands,devices,initial,onSaved,onCancel}:
 
   async function testConnection(){
     setTesting(true);setTest(null);setError('');
-    try{setTest(await secelecApi.testCamera(pointId,{componentId:initial?.id,ip:form.ip,port:form.port,channel:form.channel,cameraBrand:form.cameraBrand,
-      rtspPath:form.rtspPath,username:form.username,password:form.password}))}
+    try{const result=await secelecApi.testCamera(pointId,{componentId:initial?.id,ip:form.ip,port:form.port,channel:form.channel,cameraBrand:form.cameraBrand,
+      rtspPath:form.rtspPath,username:form.username,password:form.password});
+      setTest(result);
+      // H.265 no se ve en el navegador: se guarda para que el servidor de video la convierta a H.264.
+      if(result.ok&&/H\.?265|HEVC/i.test(result.codec??''))set('streamingMode','TRANSCODE');}
     catch(err){setError(errorText(err))}
     finally{setTesting(false)}
   }

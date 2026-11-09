@@ -45,7 +45,17 @@ class VideoAuthResourceTest {
         String token = tokens.sign(CAM);
         Map<String, Object> publish = read(CAM, "token=" + token);
         publish.put("action", "publish");
-        assertEquals(401, ask(publish), "nadie publica video");
+        assertEquals(401, ask(publish), "nadie de afuera publica video, ni con token");
+        Map<String, Object> ffmpeg = read(CAM, null);
+        ffmpeg.put("action", "publish");
+        ffmpeg.put("ip", "127.0.0.1");
+        assertEquals(200, ask(ffmpeg), "FFmpeg de MediaMTX publica el video convertido a H.264");
+        ffmpeg.put("path", "otra/ruta");
+        assertEquals(401, ask(ffmpeg), "ni FFmpeg publica fuera de live/");
+        Map<String, Object> other = read(CAM, null);
+        other.put("action", "playback");
+        other.put("ip", "127.0.0.1");
+        assertEquals(401, ask(other), "desde 127.0.0.1 solo se permite publicar");
         assertEquals(401, ask(read("Streaming/Channels/101", "token=" + tokens.sign("Streaming/Channels/101"))), "solo rutas live/");
         assertEquals(401, ask(new HashMap<>(Map.of("action", "api", "user", "x", "password", "y"))), "API sin la clave de Comando");
     }
