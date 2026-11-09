@@ -18,6 +18,7 @@ public class LogbookProtocolField extends BaseEntity {
     @Column(name="evidence_required", nullable=false) public boolean evidenceRequired;
     @Column(name="capture_mode", nullable=false, length=32) public String captureMode;
     @Column(name="custom_field", nullable=false) public boolean customField;
+    @Column(name="options_json", nullable=false, columnDefinition="text") public String optionsJson = "[]";
 
     @Column(name="standard_image_original_name", length=255) public String standardImageOriginalName;
     @Column(name="standard_image_content_type", length=100) public String standardImageContentType;
