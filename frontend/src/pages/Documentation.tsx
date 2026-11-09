@@ -1,5 +1,5 @@
 import {useEffect,useMemo,useRef,useState} from 'react';
-import {CheckCircle2,Clock3,Download,FileText,MoreHorizontal,Plus,RefreshCcw,RotateCcw,Search,UploadCloud,X} from 'lucide-react';
+import {CheckCircle2,Clock3,Download,FileText,MoreHorizontal,Pencil,Plus,RefreshCcw,RotateCcw,Search,UploadCloud,X} from 'lucide-react';
 import {ApiError,api,getUser} from '../api';
 
 type DocumentStatus='VIGENTE'|'NO_VIGENTE';
@@ -14,6 +14,7 @@ type InstitutionalDocument={
   updatedAt:string;
 };
 
+const MAX_DOCUMENT_BYTES=20*1024*1024;
 const formatDate=(value:string)=>{
   const formatted=new Intl.DateTimeFormat('es-EC',{day:'2-digit',month:'short',year:'numeric'}).format(new Date(value.length===10?`${value}T12:00:00`:value));
   return formatted.replace(/\b([a-záéíóúñ])/u,letter=>letter.toLocaleUpperCase('es-EC'));
@@ -33,6 +34,8 @@ export default function Documentation(){
   const [companyId,setCompanyId]=useState('');
   const [status,setStatus]=useState('');
   const [drawerOpen,setDrawerOpen]=useState(false);
+  const [editingDocument,setEditingDocument]=useState<InstitutionalDocument|null>(null);
+  const [actionMenuId,setActionMenuId]=useState('');
   const [name,setName]=useState('');
   const [version,setVersion]=useState('');
   const [draftStatus,setDraftStatus]=useState<DocumentStatus>('VIGENTE');
@@ -71,17 +74,35 @@ export default function Documentation(){
   const latest=documents.reduce((current,document)=>document.updatedAt>current?document.updatedAt:current,'');
 
   function closeDrawer(){
-    setDrawerOpen(false);setName('');setVersion('');setDraftStatus('VIGENTE');setFile(null);setDragging(false);setError('');
+    setDrawerOpen(false);setEditingDocument(null);setActionMenuId('');setName('');setVersion('');setDraftStatus('VIGENTE');setFile(null);setDragging(false);setError('');
+  }
+
+  function openCreate(){
+    setEditingDocument(null);setName('');setVersion('');setDraftStatus('VIGENTE');setFile(null);setError('');setDrawerOpen(true);
+  }
+
+  function openEdit(document:InstitutionalDocument){
+    setEditingDocument(document);setName(document.name);setVersion(document.version);setDraftStatus(document.status);setFile(null);setError('');setActionMenuId('');setDrawerOpen(true);
   }
 
   function chooseFile(next:File|null){
     if(!next)return;
     if(next.type!=='application/pdf'&&!next.name.toLocaleLowerCase().endsWith('.pdf')){setError('Seleccione un archivo PDF.');return}
+    if(next.size>MAX_DOCUMENT_BYTES){setFile(null);setError('El archivo PDF no debe superar los 20 MB.');return}
     setFile(next);setError('');
     if(!name)setName(next.name.replace(/\.pdf$/i,'').replace(/[_-]+/g,' '));
   }
 
   async function saveDocument(){
+    if(editingDocument){
+      setSaving(true);setError('');
+      try{
+        const updated=await api.updateDocumentStatus(editingDocument.id,draftStatus);
+        setDocuments(current=>current.map(document=>document.id===updated.id?updated:document));
+        setSaving(false);closeDrawer();
+      }catch(reason){setError(message(reason));setSaving(false)}
+      return;
+    }
     if(!name.trim()||!version.trim()||!file){setError('Complete el nombre, la versión y seleccione un archivo PDF.');return}
     const form=new FormData();form.append('name',name.trim());form.append('version',version.trim());form.append('status',draftStatus);form.append('companyId',companyId);form.append('file',file,file.name);
     setSaving(true);setError('');
@@ -125,7 +146,7 @@ export default function Documentation(){
     <section className="documentation-card">
       <div className="documentation-card-head">
         <h3>Documentos ({filtered.length})</h3>
-        <div><span>{filtered.length} {filtered.length===1?'archivo':'archivos'}</span>{canUpload&&<button type="button" onClick={()=>setDrawerOpen(true)}><Plus size={16}/>Cargar documento</button>}</div>
+        <div><span>{filtered.length} {filtered.length===1?'archivo':'archivos'}</span>{canUpload&&<button type="button" onClick={openCreate}><Plus size={16}/>Cargar documento</button>}</div>
       </div>
       <div className="documentation-table-wrap">
         <div className="documentation-table-head"><span>Documento</span><span>Versión</span><span>Estado</span><span>Actualizado</span><span>Acciones</span></div>
@@ -134,7 +155,7 @@ export default function Documentation(){
           <div><b className="documentation-version">{document.version}</b></div>
           <div><b className={`documentation-status ${document.status==='VIGENTE'?'current':'expired'}`}><i/>{statusLabel(document.status)}</b></div>
           <time dateTime={document.updatedAt}>{formatDate(document.updatedAt)}</time>
-          <div className="documentation-actions"><button type="button" onClick={()=>downloadDocument(document)}><Download size={14}/>Descargar</button>{canUpload&&<button type="button" className="icon-only" aria-label={`Más acciones para ${document.name}`}><MoreHorizontal size={18}/></button>}</div>
+          <div className="documentation-actions"><button type="button" onClick={()=>downloadDocument(document)}><Download size={14}/>Descargar</button>{canUpload&&<div className="documentation-action-menu-wrap"><button type="button" className="icon-only" aria-label={`Más acciones para ${document.name}`} aria-expanded={actionMenuId===document.id} onClick={()=>setActionMenuId(current=>current===document.id?'':document.id)}><MoreHorizontal size={18}/></button>{actionMenuId===document.id&&<div className="documentation-action-menu"><button type="button" onClick={()=>openEdit(document)}><Pencil size={13}/>Editar</button></div>}</div>}</div>
         </div>)}
         {!loading&&!filtered.length&&<div className="documentation-empty">No hay documentos cargados que coincidan con los filtros.</div>}
         {loading&&<div className="documentation-empty">Cargando documentos…</div>}
@@ -142,19 +163,19 @@ export default function Documentation(){
     </section>
 
     {drawerOpen&&<><button className="documentation-drawer-backdrop" type="button" disabled={saving} aria-label="Cerrar panel" onClick={closeDrawer}/><aside className="documentation-drawer" role="dialog" aria-modal="true" aria-labelledby="documentation-drawer-title">
-      <div className="documentation-drawer-head"><h3 id="documentation-drawer-title">Nuevo documento</h3><button type="button" onClick={closeDrawer} disabled={saving} aria-label="Cerrar"><X size={18}/></button></div>
+      <div className="documentation-drawer-head"><h3 id="documentation-drawer-title">{editingDocument?'Editar documento':'Nuevo documento'}</h3><button type="button" onClick={closeDrawer} disabled={saving} aria-label="Cerrar"><X size={18}/></button></div>
       <div className="documentation-form">
-        <label><span>Nombre del documento</span><input value={name} onChange={event=>setName(event.target.value)} placeholder="Ej. Reglamento interno"/></label>
+        <label><span>Nombre del documento</span><input value={name} readOnly={Boolean(editingDocument)} onChange={event=>setName(event.target.value)} placeholder="Ej. Reglamento interno"/></label>
         <div className="documentation-form-row">
-          <label><span>Versión</span><input value={version} onChange={event=>setVersion(event.target.value)} placeholder="Ej. v2.5"/></label>
+          <label><span>Versión</span><input value={version} readOnly={Boolean(editingDocument)} onChange={event=>setVersion(event.target.value)} placeholder="Ej. v2.5"/></label>
           <label><span>Estado</span><select value={draftStatus} onChange={event=>setDraftStatus(event.target.value as DocumentStatus)}><option value="VIGENTE">Vigente</option><option value="NO_VIGENTE">No vigente</option></select></label>
         </div>
-        <div><span className="documentation-field-label">Archivo PDF</span><button type="button" className={`documentation-dropzone ${dragging?'dragging':''} ${file?'selected':''}`} onClick={()=>inputRef.current?.click()} onDragOver={event=>{event.preventDefault();setDragging(true)}} onDragLeave={()=>setDragging(false)} onDrop={event=>{event.preventDefault();setDragging(false);chooseFile(event.dataTransfer.files[0]??null)}}>
+        {editingDocument?<p className="documentation-edit-note">Por el momento solo se puede editar el estado del documento.</p>:<div><span className="documentation-field-label">Archivo PDF</span><button type="button" className={`documentation-dropzone ${dragging?'dragging':''} ${file?'selected':''}`} onClick={()=>inputRef.current?.click()} onDragOver={event=>{event.preventDefault();setDragging(true)}} onDragLeave={()=>setDragging(false)} onDrop={event=>{event.preventDefault();setDragging(false);chooseFile(event.dataTransfer.files[0]??null)}}>
           <UploadCloud size={30}/><strong>{file?file.name:'Subir archivo PDF'}</strong><small>{file?'Archivo listo para guardar':'Arrastra y suelta el archivo o selecciónalo desde tu equipo'}</small>
-        </button><input ref={inputRef} hidden type="file" accept="application/pdf,.pdf" onChange={event=>chooseFile(event.target.files?.[0]??null)}/></div>
+        </button><small className="documentation-upload-limit">El tamaño máximo debe ser de 20 MB.</small><input ref={inputRef} hidden type="file" accept="application/pdf,.pdf" onChange={event=>chooseFile(event.target.files?.[0]??null)}/></div>}
         {error&&<p className="documentation-form-error">{error}</p>}
       </div>
-      <div className="documentation-drawer-actions"><button type="button" onClick={closeDrawer} disabled={saving}>Cancelar</button><button type="button" className="primary" onClick={()=>void saveDocument()} disabled={saving}>{saving?'Guardando…':'Guardar documento'}</button></div>
+      <div className="documentation-drawer-actions"><button type="button" onClick={closeDrawer} disabled={saving}>Cancelar</button><button type="button" className="primary" onClick={()=>void saveDocument()} disabled={saving}>{saving?'Guardando…':editingDocument?'Guardar cambios':'Guardar documento'}</button></div>
     </aside></>}
   </div>;
 }
