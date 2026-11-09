@@ -49,6 +49,7 @@ public class PatrolResource {
     public record ImportRequest(UUID postId) {}
     public record LibraryEntryDto(UUID id,String scope,String code,String name,String description,int versionNo,int itemCount,int detailCount,String exportedBy,Instant exportedAt,boolean alreadyExported) {}
     public record CreatePatrolRequest(String name,String structureType,String scheduleType) {}
+    public record DuplicatePatrolRequest(String windowStart,String windowEnd) {}
     public record SavePatrolRequest(String name,String description,String structureType,String scheduleType,String sequenceType,String windowStart,String windowEnd,Integer repetitions) {}
     public record CreateCheckpointRequest(String name,String description,String originMode,UUID atsPackageId,Double atsX,Double atsY,Double latitude,Double longitude,Double gpsAccuracyM,String controlType,Boolean requiresEvidence) {}
     public record SaveCheckpointRequest(String name,String description,String originMode,UUID atsPackageId,Double atsX,Double atsY,Double latitude,Double longitude,Double gpsAccuracyM,String controlType,boolean requiresEvidence,String standardImageNotes,Boolean visintEnabled,Double matchThreshold,Integer radiusM) {}
@@ -152,10 +153,14 @@ public class PatrolResource {
     }
 
     private PatrolDefinition clonePatrolDefinition(PatrolDefinition old,UUID protocolId,UUID pointId){
+        PatrolDefinition copy=copyPatrolDefinition(old,protocolId,pointId);copy.persist();return copy;
+    }
+
+    private PatrolDefinition copyPatrolDefinition(PatrolDefinition old,UUID protocolId,UUID pointId){
         PatrolDefinition copy=new PatrolDefinition();copy.id=UUID.randomUUID();copy.instanceCountryId=tenant.instanceCountryId();copy.pointId=pointId;copy.protocolId=protocolId;
         copy.code=old.code;copy.name=old.name;copy.description=old.description;copy.structureType=old.structureType;copy.scheduleType=old.scheduleType;
         copy.sequenceType=old.sequenceType;copy.windowStart=old.windowStart;copy.windowEnd=old.windowEnd;copy.repetitions=old.repetitions;
-        copy.versionNo=old.versionNo;copy.legacyVersion=copy.versionNo;copy.status="BORRADOR";copy.updatedByUsername=user();copy.persist();return copy;
+        copy.versionNo=old.versionNo;copy.legacyVersion=copy.versionNo;copy.status="BORRADOR";copy.updatedByUsername=user();return copy;
     }
 
     private LibraryEntryDto libraryDto(ProtocolLibraryExport entry,PatrolProtocol source,boolean alreadyExported){
@@ -264,6 +269,25 @@ public class PatrolResource {
         PostEntity protocolPost=post(p.postId);PatrolDefinition row=new PatrolDefinition();row.instanceCountryId=tenant.instanceCountryId();row.pointId=protocolPost.pointId;row.protocolId=p.id;row.code=nextPatrolCode(p.id);row.name=clean(req==null?null:req.name(),"Nueva patrulla");row.description="";row.structureType=normalize(req==null?null:req.structureType(),STRUCTURES,"CLOSED","Modalidad espacial inválida");row.scheduleType=normalize(req==null?null:req.scheduleType(),SCHEDULES,"PROGRAMMED","Modalidad temporal inválida");row.sequenceType="CLOSED".equals(row.structureType)?"STRICT":null;row.windowStart="PROGRAMMED".equals(row.scheduleType)?LocalTime.of(22,0):null;row.windowEnd="PROGRAMMED".equals(row.scheduleType)?LocalTime.of(22,45):null;row.repetitions=1;row.versionNo=1;row.legacyVersion=1;row.status="BORRADOR";row.updatedByUsername=user();row.persist();return patrolDto(row);
     }
 
+    @POST
+    @Path("/patrols/{patrolId}/duplicate")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Transactional
+    @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION"})
+    public PatrolDto duplicatePatrol(@PathParam("patrolId") UUID patrolId,DuplicatePatrolRequest req){
+        PatrolDefinition source=patrol(patrolId);PatrolProtocol protocol=protocol(source.protocolId);authorize(protocol);requireDraft(protocol);
+        if(!"PROGRAMMED".equals(source.scheduleType))throw new BadRequestException("Solo se pueden duplicar Patrullas Programadas con una nueva ventana de ejecución");
+        if(req==null)throw new BadRequestException("Ingrese el nuevo horario de la Patrulla");
+        int patrolCount=(int)PatrolDefinition.count("protocolId=?1 and instanceCountryId=?2",protocol.id,tenant.instanceCountryId());
+        if(patrolCount>=15)throw new BadRequestException("Un Protocolo admite máximo 15 Patrullas");
+        LocalTime windowStart=parseTime(req.windowStart(),null),windowEnd=parseTime(req.windowEnd(),null);validateWindow(windowStart,windowEnd);
+        if(Objects.equals(source.windowStart,windowStart)&&Objects.equals(source.windowEnd,windowEnd))throw new BadRequestException("El horario de la Patrulla duplicada debe ser diferente al original");
+        String code=nextPatrolCode(protocol.id);PatrolDefinition copy=copyPatrolDefinition(source,protocol.id,source.pointId);
+        copy.code=code;copy.windowStart=windowStart;copy.windowEnd=windowEnd;copy.versionNo=1;copy.legacyVersion=1;copy.updatedByUsername=user();copy.persist();
+        for(PatrolCheckpoint checkpoint:checkpoints(source.id))cloneCheckpoint(checkpoint,copy.id);
+        protocol.updatedByUsername=user();return patrolDto(copy);
+    }
+
     @PUT
     @Path("/patrols/{patrolId}")
     @Consumes(MediaType.APPLICATION_JSON)
@@ -360,7 +384,8 @@ public class PatrolResource {
     }
 
     private void validatePatrolForPublish(PatrolDefinition p){validateWindow(p);if("CLOSED".equals(p.structureType)){List<PatrolCheckpoint> items=checkpoints(p.id);long count=items.size();if(count<1)throw new BadRequestException(p.code+" debe tener al menos un Hito");if(count>25)throw new BadRequestException(p.code+" supera el máximo de 25 Hitos");PatrolProtocol protocol=protocol(p.protocolId);for(PatrolCheckpoint checkpoint:items){validateOrigin(checkpoint,protocol);if(checkpoint.visintEnabled&&StandardReferenceImage.countOf(StandardReferenceImage.PATROL_CHECKPOINT,checkpoint.id)==0)throw new BadRequestException(checkpoint.code+": VISINT activo requiere al menos una foto estándar");}}}
-    private void validateWindow(PatrolDefinition p){if(!"PROGRAMMED".equals(p.scheduleType))return;if(p.windowStart==null||p.windowEnd==null)throw new BadRequestException("La Patrulla Programada requiere hora Desde y Hasta");long start=p.windowStart.toSecondOfDay()/60,end=p.windowEnd.toSecondOfDay()/60,diff=end-start;if(diff<=0)diff+=1440;if(diff>60)throw new BadRequestException("La ventana de una Patrulla Programada no puede superar 1 hora");}
+    private void validateWindow(PatrolDefinition p){if(!"PROGRAMMED".equals(p.scheduleType))return;validateWindow(p.windowStart,p.windowEnd);}
+    private void validateWindow(LocalTime windowStart,LocalTime windowEnd){if(windowStart==null||windowEnd==null)throw new BadRequestException("La Patrulla Programada requiere hora Desde y Hasta");long start=windowStart.toSecondOfDay()/60,end=windowEnd.toSecondOfDay()/60,diff=end-start;if(diff<=0)diff+=1440;if(diff>60)throw new BadRequestException("La ventana de una Patrulla Programada no puede superar 1 hora");}
     private void validateOrigin(PatrolCheckpoint cp,PatrolProtocol protocol){if((cp.latitude==null)!=(cp.longitude==null))throw new BadRequestException("Ingresa latitud y longitud del Hito");if(cp.latitude!=null&&(cp.latitude<-90||cp.latitude>90||cp.longitude<-180||cp.longitude>180))throw new BadRequestException("Coordenadas GPS fuera de rango: latitud entre -90 y 90, longitud entre -180 y 180");if("ATS".equals(cp.originMode)){if(cp.atsX==null||cp.atsY==null)throw new BadRequestException("El Hito de Plano ATS requiere coordenadas del plano");if(cp.atsX<0||cp.atsX>1||cp.atsY<0||cp.atsY>1)throw new BadRequestException("Coordenadas ATS fuera de rango");if(cp.atsPackageId==null){PostEntity post=post(protocol.postId);AtsPointPackage pkg=AtsPointPackage.find("instanceCountryId=?1 and pointId=?2 and current=true",tenant.instanceCountryId(),post.pointId).firstResult();if(pkg==null)throw new BadRequestException("El Punto no tiene un plano ATS vigente");cp.atsPackageId=pkg.id;}}else if("FIELD".equals(cp.originMode)){if(cp.latitude==null||cp.longitude==null)throw new BadRequestException("El Hito levantado en campo requiere coordenadas GPS");}else if("MIXED".equals(cp.originMode)){if((cp.latitude==null||cp.longitude==null)&&(cp.atsX==null||cp.atsY==null))throw new BadRequestException("El Hito mixto requiere una ubicación ATS o GPS");}}
     private void seedRules(PatrolCheckpoint cp){String[] kinds={"INSPECCION_VISUAL","FOTOGRAFIA","CONFIRMACION"};for(int i=0;i<kinds.length;i++){PatrolCheckpointRule r=new PatrolCheckpointRule();r.instanceCountryId=tenant.instanceCountryId();r.checkpointId=cp.id;r.sortOrder=i+1;r.ruleType=kinds[i];r.required=true;r.evidenceRequired="FOTOGRAFIA".equals(kinds[i]);r.persist();}}
     private PatrolCheckpoint cloneCheckpoint(PatrolCheckpoint old,UUID newPatrolId){PatrolCheckpoint cp=new PatrolCheckpoint();cp.id=UUID.randomUUID();cp.instanceCountryId=tenant.instanceCountryId();cp.patrolId=newPatrolId;cp.sortOrder=old.sortOrder;cp.radiusM=old.radiusM;cp.validationRuleJson=old.validationRuleJson==null?"{}":old.validationRuleJson;cp.code=old.code;cp.name=old.name;cp.description=old.description;cp.originMode=old.originMode;cp.atsPackageId=old.atsPackageId;cp.atsX=old.atsX;cp.atsY=old.atsY;cp.latitude=old.latitude;cp.longitude=old.longitude;cp.gpsAccuracyM=old.gpsAccuracyM;cp.locationCapturedAt=old.locationCapturedAt;cp.locationCapturedBy=old.locationCapturedBy;cp.controlType=old.controlType;cp.requiresEvidence=old.requiresEvidence;cp.standardImageOriginalName=old.standardImageOriginalName;cp.standardImageContentType=old.standardImageContentType;cp.standardImageData=old.standardImageData==null?null:Arrays.copyOf(old.standardImageData,old.standardImageData.length);cp.standardImageObjectKey=old.standardImageObjectKey;cp.standardImageSha256=old.standardImageSha256;cp.standardImageSize=old.standardImageSize;cp.standardImageVersion=old.standardImageVersion;cp.standardImageNotes=old.standardImageNotes;cp.visintEnabled=old.visintEnabled;cp.matchThreshold=old.matchThreshold;cp.persist();references.copy(StandardReferenceImage.PATROL_CHECKPOINT,old.id,cp.id);for(PatrolCheckpointRule oldRule:rules(old.id)){PatrolCheckpointRule r=new PatrolCheckpointRule();r.instanceCountryId=tenant.instanceCountryId();r.checkpointId=cp.id;r.sortOrder=oldRule.sortOrder;r.ruleType=oldRule.ruleType;r.required=oldRule.required;r.evidenceRequired=oldRule.evidenceRequired;r.persist();}return cp;}

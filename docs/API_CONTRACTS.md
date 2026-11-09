@@ -56,6 +56,7 @@ Base: `/api/patrols`
 - `POST /protocols/{protocolId}/publish` — valida y publica el snapshot; la versión VIGENTE previa de la misma serie pasa a NO_VIGENTE.
 - `GET /protocols/{protocolId}/history` — historial completo de snapshots de la serie.
 - `POST /protocols/{protocolId}/patrols` — crea Patrulla en el borrador.
+- `POST /patrols/{patrolId}/duplicate` — duplica una Patrulla Programada dentro del mismo borrador, copiando Hitos, reglas y Fotos estándar; el cuerpo solo define la nueva ventana `windowStart`/`windowEnd`.
 - `PUT /patrols/{patrolId}` / `DELETE /patrols/{patrolId}` — modifica/elimina Patrulla solo en borrador.
 - `POST /patrols/{patrolId}/checkpoints` — crea Hito Cerrado ATS/FIELD/MIXED.
 - `PUT /checkpoints/{checkpointId}` / `DELETE /checkpoints/{checkpointId}` — modifica/elimina Hito solo en borrador.
