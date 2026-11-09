@@ -172,6 +172,7 @@ export const api={
  deactivatePatrolProtocol:(protocolId:string)=>request<any>(`/api/patrols/protocols/${encodeURIComponent(protocolId)}/deactivate`,{method:'POST'}),
  patrolProtocolHistory:(protocolId:string)=>request<any[]>(`/api/patrols/protocols/${encodeURIComponent(protocolId)}/history`),
  createPatrol:(protocolId:string,body:any)=>request<any>(`/api/patrols/protocols/${encodeURIComponent(protocolId)}/patrols`,{method:'POST',body:JSON.stringify(body)}),
+ duplicatePatrol:(patrolId:string,body:{windowStart:string;windowEnd:string})=>request<any>(`/api/patrols/patrols/${encodeURIComponent(patrolId)}/duplicate`,{method:'POST',body:JSON.stringify(body)}),
  savePatrol:(patrolId:string,body:any)=>request<any>(`/api/patrols/patrols/${encodeURIComponent(patrolId)}`,{method:'PUT',body:JSON.stringify(body)}),
  deletePatrol:(patrolId:string)=>request<void>(`/api/patrols/patrols/${encodeURIComponent(patrolId)}`,{method:'DELETE'}),
  createPatrolCheckpoint:(patrolId:string,body:any)=>request<any>(`/api/patrols/patrols/${encodeURIComponent(patrolId)}/checkpoints`,{method:'POST',body:JSON.stringify(body)}),

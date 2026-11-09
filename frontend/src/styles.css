@@ -2623,6 +2623,7 @@ button.rel-material-image:focus-visible{outline:3px solid rgba(45,103,216,.3);ou
 
 /* Bitácora: selección de un modelo publicado para crear un protocolo en borrador. */
 .bit-import-modal{width:min(640px,calc(100vw - 32px))}
+.pat-duplicate-modal{width:min(520px,calc(100vw - 32px))}.pat-duplicate-times{display:grid;grid-template-columns:1fr 1fr;gap:10px}.pat-duplicate-times label{display:grid;gap:5px}.pat-duplicate-times label>span{color:#657386;font-size:10px;font-weight:800}.pat-duplicate-times input{width:100%;box-sizing:border-box;border:1px solid #dce5ef;border-radius:8px;background:#fff;color:#23364f;font:inherit;font-size:12px;padding:9px;outline:0}.pat-duplicate-times input:focus{border-color:#87aeea;box-shadow:0 0 0 2px rgba(45,103,216,.08)}
 .bit-import-filters{display:grid;grid-template-columns:minmax(160px,.8fr) minmax(0,1.2fr);gap:8px}
 .bit-import-filters select,.bit-import-filters label{min-width:0;height:36px;box-sizing:border-box;border:1px solid #dce5ef;border-radius:8px;background:#fff;color:#23364f;font-size:12px}
 

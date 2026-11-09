@@ -96,6 +96,8 @@
 20. Pulsar **Crear nueva versión** desde una publicada; verificar que aparece un BORRADOR nuevo con Patrullas/Hitos/Reglas clonados y que la versión publicada permanece intacta.
 21. En el borrador, eliminar una Patrulla con Hitos y confirmar que no existe error de FK.
 22. Validación SQL: confirmar que no existen `patrol_config_definition`, `patrol_config_checkpoint` ni `patrol_config_checkpoint_rule` después de V16.
+23. En un Protocolo BORRADOR, seleccionar una Patrulla Programada y pulsar **Duplicar patrulla**; ingresar una ventana diferente y verificar que se copian definición, Hitos, reglas y Fotos estándar con IDs nuevos.
+24. Confirmar que **Duplicar patrulla** no aparece en una versión publicada, rechaza repetir el mismo horario y respeta el máximo de 15 Patrullas por Protocolo.
 
 ## SER v0.8 — UAT Consignas
 Validar en orden:
