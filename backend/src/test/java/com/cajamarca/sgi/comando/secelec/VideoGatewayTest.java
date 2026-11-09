@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** URL RTSP que Comando registra en el servidor de video: rtsp://usuario:clave@IP:puerto + la ruta de la marca. */
@@ -58,6 +59,17 @@ class VideoGatewayTest {
         assertFalse(g.transcodes(c), "H.264 no se toca");
         c.streamingMode = SecElecComponent.StreamingMode.TRANSCODE;
         assertTrue(g.transcodes(c), "marcada Transcodificar: siempre");
+    }
+
+    /** Probar la misma cámara varias veces (o dos personas a la vez) cae en la misma ruta: una sola conexión con la cámara. */
+    @Test void previewPathIsFixedPerCamera() {
+        String a = VideoGateway.rtspSource("10.150.12.204", 554, "/Streaming/Channels/101", "admin", "Clave1");
+        String p = VideoGateway.previewPath(a);
+        assertTrue(p.matches("live/prueba-[0-9a-f]{24}"), p);
+        assertEquals(p, VideoGateway.previewPath(a), "misma cámara, misma ruta");
+        assertNotEquals(p, VideoGateway.previewPath(VideoGateway.rtspSource("10.150.12.204", 554, "/Streaming/Channels/102", "admin", "Clave1")), "otro stream");
+        assertNotEquals(p, VideoGateway.previewPath(VideoGateway.rtspSource("10.150.12.204", 554, "/Streaming/Channels/101", "admin", "Otra")), "otra clave");
+        assertFalse(p.contains("Clave1"), "la clave no aparece en la ruta");
     }
 
     @Test void onePathPerCamera() {

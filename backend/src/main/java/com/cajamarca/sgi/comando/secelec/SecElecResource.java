@@ -178,13 +178,23 @@ public class SecElecResource {
         String username = required(body.username(), "El usuario de la cámara es obligatorio.", 120);
         if (video.configured()) {
             // En el servidor Comando no llega a la red de cámaras: prueba MediaMTX, que sí llega, y deja la vista previa.
-            VideoGateway.ServerProbe s = video.probeThroughServer(ip, body.port(), path, username, password);
+            // Cámara ya guardada y con los mismos datos: se prueba en su propia ruta (la de la consola), sin abrir otra conexión.
+            SecElecComponent saved = body.componentId() == null ? null
+                : SecElecComponent.<SecElecComponent>findByIdOptional(body.componentId()).filter(c -> pointId.equals(c.pointId) && sameCamera(c, ip, body.port(), path, username, password)).orElse(null);
+            VideoGateway.ServerProbe s = saved != null ? video.probeSaved(saved, password)
+                : video.probeThroughServer(ip, body.port(), path, username, password);
             if (s.ok() && s.codec() != null && body.componentId() != null) saveCodec(body.componentId(), s.codec());
             return new CameraTestResult(s.ok(), s.outcome(), s.message(), s.codec(), path, s.elapsedMs(), s.previewUrl());
         }
         RtspProbe.Result r = PROBE.describe(ip, body.port(), path, username, password);
         if (r.ok() && body.componentId() != null) saveCodec(body.componentId(), r.codec());
         return new CameraTestResult(r.ok(), r.outcome(), r.message(), r.codec(), path, r.elapsedMs(), null);
+    }
+
+    /** Los datos escritos en el formulario son los mismos que tiene guardados la cámara (misma conexión con ella). */
+    private boolean sameCamera(SecElecComponent c, String ip, int port, String path, String username, String password) {
+        return c.family == Family.VIDEO && c.passwordCipher != null && ip.equals(c.ip) && Objects.equals(port, c.port)
+            && path.equals(CameraBrand.pathOf(c)) && username.equals(c.username) && password.equals(cipher.decrypt(c.passwordCipher));
     }
 
     /** Guarda el códec que respondió la cámara (la consola avisa si es H.265, que el navegador no reproduce). */

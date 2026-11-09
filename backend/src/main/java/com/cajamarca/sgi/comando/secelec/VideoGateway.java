@@ -73,6 +73,7 @@ public class VideoGateway {
             if (exists == null) return Optional.empty();
             if (!exists && !registerJson(path, source)) { registered.remove(c.id); return Optional.empty(); }
             registered.put(c.id, new Registration(source, now));
+            registeredAs.put(path, source);
         }
         return Optional.of(browserUrl(path));
     }
@@ -88,7 +89,15 @@ public class VideoGateway {
         Instant now = Instant.now();
         previews.forEach((path, until) -> {
             if (until.isAfter(now)) return;
+            Hit state = liveState(path);
+            if (state.code() == 200 && READY.matcher(state.body()).find()) {
+                // Alguien la sigue mirando: no se le corta; se revisa de nuevo en un minuto.
+                previews.put(path, now.plus(Duration.ofMinutes(1)));
+                return;
+            }
             previews.remove(path);
+            knownCodec.remove(path);
+            registeredAs.remove(path);
             delete(path);
         });
     }
@@ -262,15 +271,80 @@ public class VideoGateway {
      * {@link #PREVIEW_TTL}; si no conectó se borra en el acto.
      */
     public ServerProbe probeThroughServer(String host, int port, String rtspPath, String user, String password) {
-        long start = System.nanoTime();
         removeExpiredPreviews();
-        String path = "live/prueba-" + UUID.randomUUID();
-        // Sin sourceOnDemand: MediaMTX se conecta a la cámara al registrarla, sin esperar a que alguien pida el video
-        // (si MediaMTX rechaza ese pedido, p. ej. en modo prueba con usuario y clave, igual se sabe si llega a la cámara).
-        String error = registerError(path, sourceJson(rtspSource(host, port, rtspPath, user, password), false));
-        if (error != null) return new ServerProbe(RtspProbe.Outcome.PROTOCOL_ERROR, error, null, elapsed(start), null, null);
-        previews.put(path, Instant.now().plus(PREVIEW_TTL));
+        String camera = rtspSource(host, port, rtspPath, user, password);
+        String path = previewPath(camera);
+        ServerProbe p = probe(path, camera, false, host, port);
+        // La vista previa sigue 5 min desde la última prueba; si no conectó, se borra en el acto.
+        if (p.previewUrl() != null) previews.put(path, Instant.now().plus(PREVIEW_TTL));
+        else { previews.remove(path); delete(path); }
+        return p;
+    }
+
+    /**
+     * "Probar conexión" de una cámara ya guardada y sin cambios: usa su misma ruta live/cam-<id>, la que ve la consola.
+     * Quien prueba y quien mira comparten la única conexión de MediaMTX con la cámara.
+     */
+    public ServerProbe probeSaved(SecElecComponent c, String password) {
+        String camera = rtspSource(c.ip, c.port, CameraBrand.pathOf(c), c.username, password);
+        String path = path(c.id);
+        Registration known = registered.get(c.id);
+        if (known != null && c.detectedCodec != null) {
+            // Lo que ya registró la consola: si alguien la está mirando, se reutiliza esa conexión sin tocar la ruta.
+            knownCodec.putIfAbsent(path, c.detectedCodec);
+            registeredAs.putIfAbsent(path, known.source());
+        }
+        ServerProbe p = probe(path, camera, c.streamingMode == SecElecComponent.StreamingMode.TRANSCODE, c.ip, c.port);
+        if (p.ok()) {
+            // Queda registrada igual que la registra liveUrl, así la consola no la vuelve a registrar (ni corta a quien mira).
+            String finalJson = finalJson(camera, p.codec(), c.streamingMode == SecElecComponent.StreamingMode.TRANSCODE);
+            registered.put(c.id, new Registration(finalJson, Instant.now()));
+        } else {
+            registered.remove(c.id);
+        }
+        return p;
+    }
+
+    /**
+     * Ruta de prueba fija por cámara (IP, puerto, ruta, usuario y clave): probar varias veces la misma cámara, o que dos
+     * personas la prueben a la vez, cae en la misma ruta y en la misma conexión con la cámara (las cámaras aceptan pocas).
+     */
+    static String previewPath(String camera) {
+        try {
+            byte[] h = java.security.MessageDigest.getInstance("SHA-256").digest(camera.getBytes(StandardCharsets.UTF_8));
+            return "live/prueba-" + java.util.HexFormat.of().formatHex(h, 0, 12);
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    /** Lo que se registra al final: la conversión a H.264 si corresponde; si no, la cámara directo y solo mientras alguien mira. */
+    String finalJson(String camera, String codec, boolean forceTranscode) {
+        return forceTranscode || (transcodeH265 && isH265(codec)) ? transcodeJson(camera) : sourceJson(camera, true);
+    }
+
+    /** Códec original de cada ruta probada (la conversión muestra H.264 en MediaMTX): evita reconectar si ya se sabe. */
+    private final Map<String, String> knownCodec = new ConcurrentHashMap<>();
+
+    /**
+     * Prueba en la ruta dada. Si ya está registrada y alguien la está mirando, no abre otra conexión: responde con lo que ya se
+     * sabe. Si no, la registra "a pedido" (MediaMTX se conecta recién cuando se pide el video y suelta la cámara 10 s después
+     * de que nadie mira), pide el video para que se conecte, espera a que esté lista y lee el códec. Con H.265 y la
+     * conversión encendida, la pasa a FFmpeg.
+     */
+    private ServerProbe probe(String path, String camera, boolean forceTranscode, String host, int port) {
+        long start = System.nanoTime();
         String url = browserUrl(path);
+        String finalIfKnown = knownCodec.containsKey(path) ? finalJson(camera, knownCodec.get(path), forceTranscode) : null;
+        Hit current = liveState(path);
+        if (finalIfKnown != null && current.code() == 200 && READY.matcher(current.body()).find() && registeredAs(path, finalIfKnown)) {
+            String codec = knownCodec.get(path);
+            LOG.infof("video_probe_reused path=%s codec=%s", path, codec);
+            return new ServerProbe(RtspProbe.Outcome.OK, okMessage(codec, forceTranscode) + " (se reutilizó la conexión que ya estaba abierta)",
+                codec, elapsed(start), path, url);
+        }
+        String error = registerError(path, sourceJson(camera, true));
+        if (error != null) return new ServerProbe(RtspProbe.Outcome.PROTOCOL_ERROR, error, null, elapsed(start), null, null);
         String hls = checkBase(publicUrl.get().replaceAll("/+$", "") + "/" + path + "/index.m3u8?token=" + tokens.sign(path));
         // Además pide el video, como lo haría el navegador; su respuesta va al detalle si la cámara no conecta.
         java.util.concurrent.CompletableFuture<Hit> wake = http.sendAsync(HttpRequest.newBuilder(URI.create(hls)).timeout(PROBE_WAIT).GET().build(),
@@ -285,19 +359,20 @@ public class VideoGateway {
                 java.util.regex.Matcher t = TRACKS.matcher(state.body());
                 String codec = t.find() ? t.group(1) : null;
                 LOG.infof("video_probe_ok path=%s codec=%s", path, codec);
-                if (transcodeH265 && isH265(codec)) {
-                    // El navegador no reproduce H.265: la vista previa pasa a la versión que recodifica FFmpeg (misma ruta y token).
-                    String err = registerError(path, transcodeJson(rtspSource(host, port, rtspPath, user, password)));
-                    if (err == null) return new ServerProbe(RtspProbe.Outcome.OK,
-                        "El servidor de video se conectó a la cámara (H.265: se convierte a H.264 para el navegador).", codec, elapsed(start), path, url);
-                    LOG.warnf("video_probe_transcode_failed path=%s %s", path, err);
+                knownCodec.put(path, codec == null ? "" : codec);
+                String finalJson = finalJson(camera, codec, forceTranscode);
+                if (!finalJson.equals(sourceJson(camera, true))) {
+                    // El navegador no reproduce H.265: la ruta pasa a la versión que recodifica FFmpeg (misma ruta y token).
+                    String err = registerError(path, finalJson);
+                    if (err != null) LOG.warnf("video_probe_transcode_failed path=%s %s", path, err);
                 }
-                return new ServerProbe(RtspProbe.Outcome.OK, "El servidor de video se conectó a la cámara.", codec, elapsed(start), path, url);
+                registeredAs.put(path, finalJson);
+                return new ServerProbe(RtspProbe.Outcome.OK, okMessage(codec, forceTranscode), codec, elapsed(start), path, url);
             }
             try { Thread.sleep(1000); } catch (InterruptedException e) { Thread.currentThread().interrupt(); break; }
         }
-        previews.remove(path);
-        delete(path);
+        knownCodec.remove(path);
+        registeredAs.remove(path);
         Hit video = wake.getNow(new Hit(0, null, "sin respuesta todavía"));
         String detail = "No se pudo conectar: revise IP, usuario, clave o ruta (el servidor de video no recibió imagen en " + PROBE_WAIT.toSeconds()
             + " s). Estado en MediaMTX: " + stateText(state) + ". Pedido del video: " + video.text(hls) + "."
@@ -306,7 +381,18 @@ public class VideoGateway {
         return new ServerProbe(RtspProbe.Outcome.TIMEOUT, detail, null, elapsed(start), path, null);
     }
 
-    private static final java.util.regex.Pattern BYTES = java.util.regex.Pattern.compile("\"bytesReceived\"\\s*:\\s*(\\d+)");
+    /** Lo último que este backend registró en cada ruta probada (para saber si se puede reutilizar sin tocarla). */
+    private final Map<String, String> registeredAs = new ConcurrentHashMap<>();
+
+    private boolean registeredAs(String path, String json) { return json.equals(registeredAs.get(path)); }
+
+    private String okMessage(String codec, boolean forceTranscode) {
+        return forceTranscode || (transcodeH265 && isH265(codec))
+            ? "El servidor de video se conectó a la cámara (" + (codec == null || codec.isBlank() ? "códec desconocido" : codec) + ": se convierte a H.264 para el navegador)."
+            : "El servidor de video se conectó a la cámara.";
+    }
+
+    private static final java.util.regex.Pattern BYTES =java.util.regex.Pattern.compile("\"bytesReceived\"\\s*:\\s*(\\d+)");
     private static final java.util.regex.Pattern SOURCE = java.util.regex.Pattern.compile("\"source\"\\s*:\\s*(null|\\{[^}]*\\})");
 
     /** Lo que MediaMTX dice de la ruta: si está lista, cuántos bytes recibió de la cámara y qué fuente tiene. */
