@@ -927,6 +927,10 @@ function PostsPage({point,onBack}:{point:PointRow;onBack:()=>void}){
 function ConfigurationLanding({point,onBack,onOpenModule}:{point:PointRow;onBack:()=>void;onOpenModule:(module:ConfigModuleKey)=>void}){
   const snapshot=useMemo(()=>snapshotFor(point),[point]);
   const physicalPostCount=point.posts.filter((post:Row)=>post.securityDomain!=='ELECTRONIC').length;
+  /** Unidades de Seguridad Electrónica (OBSINT de SIC:COM): sus consignas se marcan OBSINT en Consignas, aunque el punto no tenga guardias. */
+  const electronicUnitCount=point.posts.length-physicalPostCount;
+  /** Sin puestos físicos solo se abre Consignas, y solo si hay unidades electrónicas (p. ej. Safe Cam). */
+  const physicalModuleOpen=(key:string)=>physicalPostCount>0||(key==='consignas'&&electronicUnitCount>0);
   const [expandedGroups,setExpandedGroups]=useState<Set<string>>(()=>new Set(['physical','electronic']));
   const [electronic,setElectronic]=useState<{
     components:{status:ChecklistStatus;meta:string};obsint:{enabled:boolean;status:ChecklistStatus;meta:string}
@@ -955,7 +959,8 @@ function ConfigurationLanding({point,onBack,onOpenModule}:{point:PointRow;onBack
     {key:'components',title:'Componentes de Seguridad',icon:<Cctv size={18}/>,...electronic.components},
     {key:'obsint',title:'OBSINT',icon:<RadioTower size={18}/>,...electronic.obsint},
   ] as const;
-  const physicalStatus:ChecklistStatus=physicalPostCount===0?'unavailable':groupChecklistStatus(physicalModules.map(module=>modulesByKey.get(module.key)?.status??'unavailable'));
+  const openPhysicalModules=physicalModules.filter(module=>physicalModuleOpen(module.key));
+  const physicalStatus:ChecklistStatus=openPhysicalModules.length===0?'unavailable':groupChecklistStatus(openPhysicalModules.map(module=>modulesByKey.get(module.key)?.status??'unavailable'));
   const electronicStatus=groupChecklistStatus(electronicModules.map(module=>module.status));
   const moduleCount=snapshot.modules.length+electronicModules.length;
   const configProgress=Math.round((snapshot.modules.filter(module=>module.status==='complete').length+electronicModules.filter(module=>module.status==='complete').length)/moduleCount*100);
@@ -1031,8 +1036,10 @@ function ConfigurationLanding({point,onBack,onOpenModule}:{point:PointRow;onBack
         <header><div><h3>Checklist de configuración</h3><span>Configure todos los módulos y actividades requeridas para la operación del punto.</span></div></header>
         <div className="ser-checklist">
           {checklistModule('ats')}
-          {checklistGroup('physical','Seguridad Física',<ShieldCheck size={18}/>,physicalPostCount?'Configuración de puestos y protocolos':'Sin puestos físicos en el punto',physicalStatus,<>
-            {physicalPostCount?physicalModules.map(module=>checklistModule(module.key,module.title)):physicalModules.map(module=>unavailableModule(module.key,module.title,moduleIcon((modulesByKey.get(module.key)?.icon??'posts') as ModuleCard['icon'])))}
+          {checklistGroup('physical','Seguridad Física',<ShieldCheck size={18}/>,physicalPostCount?'Configuración de puestos y protocolos':electronicUnitCount?'Sin puestos físicos · Consignas para OBSINT':'Sin puestos físicos en el punto',physicalStatus,<>
+            {physicalModules.map(module=>physicalModuleOpen(module.key)
+              ?checklistModule(module.key,module.title)
+              :unavailableModule(module.key,module.title,moduleIcon((modulesByKey.get(module.key)?.icon??'posts') as ModuleCard['icon'])))}
           </>)}
           {checklistGroup('electronic','Seguridad Electrónica',<TfiVideoCamera/>,'Componentes y consignas OBSINT',electronicStatus,<>
             {electronicModules.map(electronicRow)}
