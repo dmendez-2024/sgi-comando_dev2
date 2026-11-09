@@ -215,13 +215,13 @@ public class OperatorResource {
                 ArrayNode fields=accreditation.putArray("fields");
                 List<Object[]> fieldRows=em.createNativeQuery("""
                   select id,section,sort_order,name,description,field_type,required,evidence_required,
-                         capture_mode,standard_image_version,standard_image_notes,visint_enabled
+                         capture_mode,standard_image_version,standard_image_notes,visint_enabled,options_json
                   from logbook_protocol_field
                   where instance_country_id=:tenant and accreditation_id=:accreditation
                   order by section,sort_order,name
                   """).setParameter("tenant",tenant.instanceCountryId()).setParameter("accreditation",accreditationId).getResultList();
-                for(Object[] fieldRow:fieldRows) fields.addObject()
-                    .put("fieldId",fieldRow[0].toString())
+                for(Object[] fieldRow:fieldRows) {
+                    ObjectNode field=fields.addObject().put("fieldId",fieldRow[0].toString())
                     .put("section",fieldRow[1].toString())
                     .put("sortOrder",((Number)fieldRow[2]).intValue())
                     .put("name",fieldRow[3].toString())
@@ -233,6 +233,9 @@ public class OperatorResource {
                     .put("standardImageVersion",((Number)fieldRow[9]).intValue())
                     .put("standardImageNotes",fieldRow[10]==null?"":fieldRow[10].toString())
                     .put("visintEnabled",(Boolean)fieldRow[11]);
+                    try { field.set("options",mapper.readTree(fieldRow[12]==null?"[]":fieldRow[12].toString())); }
+                    catch(Exception ignored) { field.putArray("options"); }
+                }
             }
         }
         return result;
@@ -492,16 +495,17 @@ public class OperatorResource {
         if(configuration.isEmpty() || ((Number)configuration.get(0)[0]).intValue()!=protocolVersion) throw new ClientErrorException("El Protocolo de Bitácora cambió; actualiza antes de registrar",409);
         JsonNode values=event.path("fieldValues");
         if(!values.isObject()) throw new BadRequestException("fieldValues debe ser un objeto");
-        @SuppressWarnings("unchecked") List<Object[]> fields=em.createNativeQuery("select id,required,evidence_required,field_type from logbook_protocol_field where instance_country_id=:tenant and accreditation_id=:accreditation")
+        @SuppressWarnings("unchecked") List<Object[]> fields=em.createNativeQuery("select id,required,evidence_required,field_type,options_json from logbook_protocol_field where instance_country_id=:tenant and accreditation_id=:accreditation")
             .setParameter("tenant",tenant.instanceCountryId()).setParameter("accreditation",accreditationId).getResultList();
-        Set<String> allowedFields=new HashSet<>(), requiredEvidence=new HashSet<>();
+        Set<String> allowedFields=new HashSet<>(), requiredEvidence=new HashSet<>();Map<String,Set<String>> selectionOptions=new HashMap<>();
         for(Object[] field:fields) {
             String fieldId=field[0].toString(); allowedFields.add(fieldId);
             boolean evidenceField=Boolean.TRUE.equals(field[2]) || "IMAGEN".equals(field[3].toString());
             if(Boolean.TRUE.equals(field[1]) && !evidenceField && (!values.has(fieldId) || values.path(fieldId).asText("").isBlank())) throw new BadRequestException("Falta un campo obligatorio de la acreditación");
             if(Boolean.TRUE.equals(field[1]) && evidenceField) requiredEvidence.add(fieldId);
+            if("SELECCION".equals(field[3].toString())){Set<String> codes=new HashSet<>();try{for(JsonNode option:mapper.readTree(field[4]==null?"[]":field[4].toString()))codes.add(option.path("code").asText());}catch(Exception ignored){}selectionOptions.put(fieldId,codes);}
         }
-        Iterator<String> names=values.fieldNames(); while(names.hasNext()) if(!allowedFields.contains(names.next())) throw new BadRequestException("Campo no pertenece a la acreditación vigente");
+        Iterator<String> names=values.fieldNames(); while(names.hasNext()){String fieldId=names.next();if(!allowedFields.contains(fieldId))throw new BadRequestException("Campo no pertenece a la acreditación vigente");Set<String> options=selectionOptions.get(fieldId);String value=values.path(fieldId).asText("");if(options!=null&&!value.isBlank()&&!options.contains(value))throw new BadRequestException("La opción seleccionada no pertenece a la configuración vigente");}
         JsonNode evidence=event.path("evidenceFieldIds"); if(!evidence.isArray()) throw new BadRequestException("evidenceFieldIds debe ser un arreglo");
         Set<String> evidenceIds=new HashSet<>(); for(JsonNode item:evidence) { String id=item.asText(); if(!allowedFields.contains(id) || !evidenceIds.add(id)) throw new BadRequestException("Evidencia inválida o duplicada"); }
         if(!evidenceIds.containsAll(requiredEvidence)) throw new BadRequestException("Faltan evidencias obligatorias");
@@ -597,11 +601,11 @@ public class OperatorResource {
           where r.instance_country_id=:tenant order by r.captured_at desc limit 500
           """).setParameter("tenant",tenant.instanceCountryId()).getResultList();
         @SuppressWarnings("unchecked") List<Object[]> configuredFields=em.createNativeQuery("""
-          select accreditation_id,id,name from logbook_protocol_field
+          select accreditation_id,id,name,options_json from logbook_protocol_field
           where instance_country_id=:tenant order by accreditation_id,section,sort_order
           """).setParameter("tenant",tenant.instanceCountryId()).getResultList();
-        Map<String,String> fieldNames=new HashMap<>();
-        for(Object[] field:configuredFields) fieldNames.put(field[0].toString()+":"+field[1].toString(),field[2].toString());
+        Map<String,String> fieldNames=new HashMap<>(),selectionLabels=new HashMap<>();
+        for(Object[] field:configuredFields) {String key=field[0].toString()+":"+field[1].toString();fieldNames.put(key,field[2].toString());try{for(JsonNode option:mapper.readTree(field[3]==null?"[]":field[3].toString()))selectionLabels.put(key+":"+option.path("code").asText(),option.path("label").asText());}catch(Exception ignored){}}
         ArrayNode result=mapper.createArrayNode();
         for(Object[] row:rows) {
             if(operator && !operatorEmployee.toString().equals(row[7].toString())) continue;
@@ -625,9 +629,10 @@ public class OperatorResource {
             Iterator<Map.Entry<String,JsonNode>> valueEntries=fieldValues.fields();
             while(valueEntries.hasNext()) {
                 Map.Entry<String,JsonNode> valueEntry=valueEntries.next();
+                String fieldKey=row[22].toString()+":"+valueEntry.getKey(),rawValue=valueEntry.getValue().asText("");
                 dynamicFields.addObject().put("fieldId",valueEntry.getKey())
-                    .put("name",fieldNames.getOrDefault(row[22].toString()+":"+valueEntry.getKey(),"Campo configurado"))
-                    .put("value",valueEntry.getValue().asText(""));
+                    .put("name",fieldNames.getOrDefault(fieldKey,"Campo configurado"))
+                    .put("value",selectionLabels.getOrDefault(fieldKey+":"+rawValue,rawValue));
             }
             ArrayNode timeline=item.putArray("timeline");
             if(row[20]!=null) timeline.addObject().put("id","exit").put("at",row[20].toString()).put("title","Salida registrada por "+row[21].toString()).put("place",row[11].toString()+" · "+row[12].toString());
