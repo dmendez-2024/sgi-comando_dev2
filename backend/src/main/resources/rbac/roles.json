@@ -13,6 +13,7 @@
     {"code": "ASISTENTE_COORDINACION", "name": "Asistente de Operaciones", "scopeRequirement": "PE"},
     {"code": "SUPERVISOR_SEGURIDAD", "name": "Supervisor de Seguridad", "scopeRequirement": "PE"},
     {"code": "AGENTE_SEGURIDAD", "name": "Agente de Seguridad", "scopeRequirement": "PE"},
+    {"code": "MONITOR", "name": "Monitor", "scopeRequirement": "PE"},
     {"code": "CLIENTE", "name": "Cliente", "scopeRequirement": "PE"},
     {"code": "COORDINADOR", "name": "Coordinador de Compañía", "scopeRequirement": "COMPANY", "status": "INACTIVE"},
     {"code": "DIRECTOR_ZONA", "name": "Director Zona", "scopeRequirement": "ZONE", "status": "INACTIVE"}
