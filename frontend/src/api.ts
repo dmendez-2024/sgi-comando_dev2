@@ -115,6 +115,7 @@ export const api={
  companies:(page=0,size=50)=>request<any>(`/api/companies?page=${page}&size=${size}`),
  documents:()=>request<any[]>('/api/documents'),
  uploadDocument:(form:FormData)=>multipartRequest<any>('/api/documents',form),
+ updateDocumentStatus:(id:string,status:'VIGENTE'|'NO_VIGENTE')=>request<any>(`/api/documents/${encodeURIComponent(id)}/status`,{method:'PATCH',body:JSON.stringify({status})}),
  documentContent:(id:string)=>binaryRequest(`/api/documents/${encodeURIComponent(id)}/content`),
  companyCoreCatalog:()=>request<any[]>('/api/companies/core-catalog'),
  companyResponsibles:(companyId?:string)=>request<any[]>(`/api/companies/responsibles${companyId?`?companyId=${encodeURIComponent(companyId)}`:''}`),

@@ -1,6 +1,7 @@
 package com.cajamarca.sgi.comando.documentation;
 
 import com.cajamarca.sgi.comando.security.TestIdentTokenVerifier;
+import io.restassured.http.ContentType;
 import io.restassured.specification.RequestSpecification;
 import io.quarkus.test.junit.QuarkusTest;
 import org.junit.jupiter.api.Test;
@@ -8,6 +9,7 @@ import org.junit.jupiter.api.Test;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 import static io.restassured.RestAssured.given;
 import static org.hamcrest.Matchers.instanceOf;
@@ -32,6 +34,14 @@ class DocumentationResourceTest {
     void uploadRequiresPdf(){
         asRole("PRESIDENTE").multiPart("name","Reglamento").multiPart("version","v1")
             .multiPart("status","VIGENTE").post("/api/documents").then().statusCode(400);
+    }
+
+    @Test
+    void onlyPresidentCanEditStatus(){
+        String path="/api/documents/"+UUID.randomUUID()+"/status";
+        Map<String,String> body=Map.of("status","NO_VIGENTE");
+        asRole("GERENCIA_GENERAL").contentType(ContentType.JSON).body(body).patch(path).then().statusCode(403);
+        asRole("PRESIDENTE").contentType(ContentType.JSON).body(body).patch(path).then().statusCode(404);
     }
 
     private static RequestSpecification asRole(String role){

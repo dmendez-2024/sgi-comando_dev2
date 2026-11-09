@@ -45,6 +45,7 @@ public class DocumentationResource {
                 document.companyId,document.updatedAt,document.sizeBytes,document.uploadedBy);
         }
     }
+    public record StatusUpdate(String status) {}
 
     @GET
     public List<DocumentView> list(){
@@ -72,8 +73,7 @@ public class DocumentationResource {
                                @RestForm("file") FileUpload file) throws Exception {
         name=required(name,"El nombre del documento es obligatorio",180);
         version=required(version,"La versión es obligatoria",40);
-        status=status==null?"":status.trim().toUpperCase(Locale.ROOT);
-        if(!STATUSES.contains(status))throw new BadRequestException("Estado de documento inválido");
+        status=documentStatus(status);
         if(file==null||file.size()<1)throw new BadRequestException("Seleccione un archivo PDF");
         if(file.size()>maxFileBytes)throw new BadRequestException("El PDF supera el tamaño máximo de 20 MiB");
         if(!isPdf(file))throw new BadRequestException("El archivo no es un PDF válido");
@@ -116,6 +116,19 @@ public class DocumentationResource {
         }
     }
 
+    @PATCH
+    @Path("/{id}/status")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @RolesAllowed("PRESIDENTE")
+    @Transactional
+    public DocumentView updateStatus(@PathParam("id") UUID id,StatusUpdate update){
+        InstitutionalDocument document=visible(id);
+        document.status=documentStatus(update==null?null:update.status());
+        document.updatedAt=Instant.now();
+        em.flush();
+        return DocumentView.of(document);
+    }
+
     @GET
     @Path("/{id}/content")
     @Produces("application/pdf")
@@ -147,6 +160,12 @@ public class DocumentationResource {
         if(normalized.isEmpty())throw new BadRequestException(message);
         if(normalized.length()>max)throw new BadRequestException(message+" (máximo "+max+" caracteres)");
         return normalized;
+    }
+
+    private static String documentStatus(String value){
+        String status=value==null?"":value.trim().toUpperCase(Locale.ROOT);
+        if(!STATUSES.contains(status))throw new BadRequestException("Estado de documento inválido");
+        return status;
     }
 
     private static boolean isPdf(FileUpload file)throws Exception{
