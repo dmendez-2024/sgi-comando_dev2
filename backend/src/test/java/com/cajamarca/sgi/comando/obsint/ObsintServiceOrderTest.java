@@ -177,6 +177,18 @@ class ObsintServiceOrderTest {
 
     /** Nueva versión del protocolo de Consignas activo con una consigna cuyo alcance son esos dispositivos; devuelve su código. */
     String consignmentForDeviceList(List<UUID> devices, String title) {
+        return consignment(title, Map.of("title", title, "instruction", title + ".", "scopeType", "POSTS", "postIds", List.of(),
+            "electronicDeviceIds", devices.stream().map(UUID::toString).toList(), "obsint", true));
+    }
+
+    /** Consigna con la casilla OBSINT y alcance "Todo el Punto" (sin dispositivo); devuelve su código. */
+    String pointWideObsintConsignment(String title) {
+        return consignment(title, Map.of("title", title, "instruction", title + ".", "scopeType", "POINT", "postIds", List.of(),
+            "electronicDeviceIds", List.of(), "obsint", true));
+    }
+
+    /** Nueva versión del protocolo de Consignas activo con una consigna con esos datos; devuelve su código. */
+    String consignment(String title, Map<String, Object> body) {
         String current = QuarkusTransaction.requiringNew().call(() -> {
             List<?> rows = em.createNativeQuery("select cast(id as varchar) from consignment_protocol where point_id=:point and status='ACTIVO'")
                 .setParameter("point", POINT).getResultList();
@@ -188,9 +200,7 @@ class ObsintServiceOrderTest {
                 .post("/api/consignments/protocols").then().statusCode(200).extract().path("id");
         var item = as("coord").contentType(ContentType.JSON).body(Map.of("title", title))
             .post("/api/consignments/protocols/" + protocolId + "/items").then().statusCode(200).extract();
-        as("coord").contentType(ContentType.JSON).body(Map.of("title", title, "instruction", title + ".", "scopeType", "POSTS", "postIds", List.of(),
-                "electronicDeviceIds", devices.stream().map(UUID::toString).toList(), "obsint", true))
-            .put("/api/consignments/items/" + item.path("id")).then().statusCode(200);
+        as("coord").contentType(ContentType.JSON).body(body).put("/api/consignments/items/" + item.path("id")).then().statusCode(200);
         as("coord").post("/api/consignments/protocols/" + protocolId + "/publish").then().statusCode(200);
         as("coord").post("/api/consignments/protocols/" + protocolId + "/activate").then().statusCode(200);
         return item.path("code");
@@ -218,6 +228,27 @@ class ObsintServiceOrderTest {
                 .body("available", is(false)).body("message", containsString("horarios distintos"));
         } finally {
             deviceStatus(a, "INACTIVE"); deviceStatus(b, "INACTIVE"); deviceStatus(c, "INACTIVE");
+        }
+    }
+
+    /** Caso CTO Telconet: consigna con la casilla OBSINT y "Todo el Punto" toma el horario del dispositivo OBSINT del Punto. */
+    @Test void pointWideConsignmentUsesThePointDeviceSchedule() {
+        UUID a = siccomDevice("ACTIVE");
+        UUID b = null;
+        try {
+            shift(a, "04:30", "23:30", 85);
+            String code = pointWideObsintConsignment("Todo el punto");
+            as("coord").get(CONFIG + "/schedule-suggestion?consignmentCode=" + code).then().statusCode(200)
+                .body("available", is(true)).body("slots.dayOfWeek", contains(1, 3, 5, 7)).body("slots[0].start", is("04:30"))
+                .body("slots[0].end", is("23:30")).body("deviceIds", hasSize(0));
+            // Otro dispositivo OBSINT activo con otro horario: ya no se puede saber cuál es; se pide a mano.
+            b = siccomDevice("ACTIVE");
+            shift(b, "09:00", "21:00", 42);
+            as("coord").get(CONFIG + "/schedule-suggestion?consignmentCode=" + code).then().statusCode(200)
+                .body("available", is(false)).body("message", containsString("dispositivos OBSINT del Punto tienen horarios distintos"));
+        } finally {
+            deviceStatus(a, "INACTIVE");
+            if (b != null) deviceStatus(b, "INACTIVE");
         }
     }
 }

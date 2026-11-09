@@ -57,8 +57,9 @@ public class ObsintConfigResource {
     /** enabled=false: el Punto no tiene orden de servicio OBSINT (SEN-01); la fila se muestra deshabilitada. */
     public record Summary(boolean enabled, String status, String meta, Integer activeVersion, int activeConsignas, boolean hasDraft, List<String> warnings) {}
     /**
-     * Horario comercial sugerido para una tarea, únicamente cuando su consigna apunta a un solo dispositivo.
-     * deviceIds: dispositivos de la consigna; la pantalla ofrece solo las cámaras de esos dispositivos.
+     * Horario comercial sugerido para una tarea: el de los dispositivos a los que apunta su consigna o, si no apunta a ninguno,
+     * el de los dispositivos OBSINT activos del Punto. Solo si todos tienen el mismo horario.
+     * deviceIds: dispositivos de la consigna (vacío si no apunta a ninguno); la pantalla ofrece solo las cámaras de esos dispositivos.
      */
     public record ScheduleSuggestion(boolean available, String message, List<SlotView> slots, List<UUID> deviceIds) {}
     /** Resultado de guardar una tarea: la nueva versión activa y el código de la tarea guardada. */
@@ -92,12 +93,19 @@ public class ObsintConfigResource {
         if (!platform.obsintConsignments(pointId).containsKey(consignmentCode.trim()))
             return new ScheduleSuggestion(false, "La consigna no está vigente con alcance OBSINT.", List.of(), List.of());
         List<UUID> deviceIds = consignmentDevices(pointId, consignmentCode.trim());
-        if (deviceIds.isEmpty())
-            return new ScheduleSuggestion(false, "La consigna no está asociada a un dispositivo electrónico; defina el horario manualmente.", List.of(), deviceIds);
-        // Varios dispositivos (por ejemplo, 3 cámaras del mismo producto) sirven si todos tienen el mismo horario contratado.
-        List<ElectronicMonitoringDevice> devices = ElectronicMonitoringDevice.list("id in ?1 and instanceCountryId=?2 and pointId=?3", deviceIds, platform.instanceCountryId(), pointId);
-        if (devices.size() != deviceIds.size() || devices.stream().anyMatch(d -> !"ACTIVE".equalsIgnoreCase(d.commercialStatus)))
-            return new ScheduleSuggestion(false, "El dispositivo asociado no está activo.", List.of(), deviceIds);
+        List<ElectronicMonitoringDevice> devices;
+        if (deviceIds.isEmpty()) {
+            // Consigna con la casilla OBSINT y alcance "Todo el Punto": el horario sale de los dispositivos OBSINT activos del Punto.
+            devices = ElectronicMonitoringDevice.list("instanceCountryId=?1 and pointId=?2 and upper(postType)='OBSINT' and upper(commercialStatus)='ACTIVE' order by code",
+                platform.instanceCountryId(), pointId);
+            if (devices.isEmpty())
+                return new ScheduleSuggestion(false, "El Punto no tiene dispositivos OBSINT activos de SIC:COM; defina el horario manualmente.", List.of(), deviceIds);
+        } else {
+            // Varios dispositivos (por ejemplo, 3 cámaras del mismo producto) sirven si todos tienen el mismo horario contratado.
+            devices = ElectronicMonitoringDevice.list("id in ?1 and instanceCountryId=?2 and pointId=?3", deviceIds, platform.instanceCountryId(), pointId);
+            if (devices.size() != deviceIds.size() || devices.stream().anyMatch(d -> !"ACTIVE".equalsIgnoreCase(d.commercialStatus)))
+                return new ScheduleSuggestion(false, "El dispositivo asociado no está activo.", List.of(), deviceIds);
+        }
         ElectronicMonitoringShift shift = null;
         for (ElectronicMonitoringDevice device : devices) {
             List<ElectronicMonitoringShift> shifts = ElectronicMonitoringShift.list(
@@ -105,7 +113,9 @@ public class ObsintConfigResource {
             if (shifts.size() != 1) return new ScheduleSuggestion(false, "El dispositivo " + device.code + " tiene varios horarios activos; seleccione el horario operativo manualmente.", List.of(), deviceIds);
             ElectronicMonitoringShift own = shifts.getFirst();
             if (shift != null && !(own.startTime.equals(shift.startTime) && own.endTime.equals(shift.endTime) && java.util.Objects.equals(own.dayMask, shift.dayMask)))
-                return new ScheduleSuggestion(false, "Los dispositivos de la consigna tienen horarios distintos; cree una consigna por dispositivo o defina el horario manualmente.", List.of(), deviceIds);
+                return new ScheduleSuggestion(false, deviceIds.isEmpty()
+                    ? "Los dispositivos OBSINT del Punto tienen horarios distintos; marque en la consigna su dispositivo o defina el horario manualmente."
+                    : "Los dispositivos de la consigna tienen horarios distintos; cree una consigna por dispositivo o defina el horario manualmente.", List.of(), deviceIds);
             shift = own;
         }
         if (shift.dayMask == null || shift.dayMask < 1 || shift.dayMask > 127) return new ScheduleSuggestion(false, "El horario comercial tiene días inválidos.", List.of(), deviceIds);
