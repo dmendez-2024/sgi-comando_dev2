@@ -45,6 +45,11 @@ services:
       - "apps.seminter.com.ec:172.18.1.110"
       - "apps.cajamarca.ec:172.18.1.10"
     environment:
+      # Socket cm-socket directo por REST, apagado por defecto.
+      SGI_SOCKET_ENABLED: ${SGI_SOCKET_ENABLED:-false}
+      SGI_SOCKET_URL: ${SGI_SOCKET_URL:-https://apps.cajamarca.ec/dev.socket}
+      SGI_SOCKET_ACK_ALLOWED_IPS: ${SGI_SOCKET_ACK_ALLOWED_IPS:-}
+      SGI_SOCKET_ACK_TOKEN: ${SGI_SOCKET_ACK_TOKEN:-}
       QUARKUS_DATASOURCE_JDBC_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-sgi_comando}
       QUARKUS_DATASOURCE_USERNAME: ${POSTGRES_USER:-sgi}
       QUARKUS_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}

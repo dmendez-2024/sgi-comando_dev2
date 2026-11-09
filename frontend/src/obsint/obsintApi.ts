@@ -18,8 +18,12 @@ export type ObsintTask={id:string;caseId:string;caseCode:string;operator:string;
   /** Punto y cliente de la tarea: un caso junta tareas de varios Puntos. */
   pointName:string|null;clientName:string|null};
 export type ObsintEvidence={id:string;cameraId:string;videoTimeSeconds:number;capturedAt:string;contentType:string;sizeBytes:number};
-/** deliveryStatus: hoy siempre 'TEST' (modo prueba: registrado, NO enviado al agente). 'SENT'/'FAILED' quedan para cuando exista el envío real. */
-export type ObsintMessage={id:string;operator:string;text:string;sentAt:string;deliveryStatus:'TEST'|'SENT'|'FAILED'};
+/** SENT confirma publicación en el socket; DELIVERED y READ son recibos del agente. */
+export type ObsintDeliveryStatus='TEST'|'PENDING'|'SENT'|'DELIVERED'|'READ'|'FAILED';
+export type ObsintTarget='POINT'|'AGENTS';
+export type ObsintAgentOnShift={employeeId:string;fullName:string;postId:string;postName:string;reachable:boolean;online:boolean|null};
+export type ObsintRecipient={employeeId:string;fullName:string;postName:string|null;status:ObsintDeliveryStatus;sentAt:string|null;deliveredAt:string|null;readAt:string|null;readVia:'SOCKET_ACK'|'OPERATOR_API'|null;failureReason:string|null};
+export type ObsintMessage={id:string;operator:string;text:string;sentAt:string;deliveryStatus:ObsintDeliveryStatus;failureReason?:string|null;target:ObsintTarget;counts:{total:number;sent:number;delivered:number;read:number;failed:number};recipients:ObsintRecipient[]};
 /** Máximo de caracteres de la justificación (ObsintCaseTask.JUSTIFICATION_MAX). */
 export const OBSINT_JUSTIFICATION_MAX=500;
 
@@ -62,7 +66,8 @@ export const obsintApi={
   deleteEvidence:(taskId:string,evidenceId:string)=>request<void>(`${task(taskId)}/evidence/${encodeURIComponent(evidenceId)}`,{method:'DELETE'}),
   evidenceImage:(taskId:string,evidenceId:string)=>binaryRequest(`${task(taskId)}/evidence/${encodeURIComponent(evidenceId)}/content`),
   messages:(taskId:string)=>request<ObsintMessage[]>(`${task(taskId)}/messages`),
-  sendMessage:(taskId:string,text:string)=>request<ObsintMessage>(`${task(taskId)}/messages`,{method:'POST',body:JSON.stringify({text})}),
+  agentsOnShift:(taskId:string)=>request<ObsintAgentOnShift[]>(`${task(taskId)}/agents-on-shift`),
+  sendMessage:(taskId:string,text:string,target:ObsintTarget='POINT',employeeIds?:string[])=>request<ObsintMessage>(`${task(taskId)}/messages`,{method:'POST',body:JSON.stringify({text,target,employeeIds})}),
 };
 
 /** Configuración OBSINT del Punto (/api/obsint/config): protocolo versionado, consignas con cámaras y horario, resumen. */
