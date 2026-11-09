@@ -26,6 +26,7 @@ import org.jboss.resteasy.reactive.server.ServerExceptionMapper;
 public class ObsintResource {
     @Inject ObsintService service;
     @Inject ObsintPlatform platform;
+    @Inject com.cajamarca.sgi.comando.socket.SocketPresence presence;
 
     /** Igual que el resto de Comando: el motivo del rechazo viaja como {"message": …} para que la pantalla lo muestre. */
     @ServerExceptionMapper
@@ -66,9 +67,27 @@ public class ObsintResource {
     public record EvidenceView(UUID id, UUID cameraId, double videoTimeSeconds, Instant capturedAt, String contentType, long sizeBytes) {
         static EvidenceView of(ObsintEvidence e) { return new EvidenceView(e.id, e.cameraId, e.videoTimeSeconds, e.capturedAt, e.contentType, e.sizeBytes); }
     }
-    public record MessageRequest(String text) {}
-    public record MessageView(UUID id, String operator, String text, Instant sentAt, String deliveryStatus) {
-        static MessageView of(ObsintAgentMessage m) { return new MessageView(m.id, m.operator, m.text, m.sentAt, m.deliveryStatus); }
+    public record MessageRequest(String text,String target,List<UUID> employeeIds) {}
+    public record Counts(int total,int sent,int delivered,int read,int failed) {}
+    public record RecipientView(UUID employeeId,String fullName,String postName,String status,Instant sentAt,
+        Instant deliveredAt,Instant readAt,String readVia,String failureReason) {}
+    public record MessageView(UUID id, String operator, String text, Instant sentAt, String deliveryStatus, String failureReason,
+        String target,Counts counts,List<RecipientView> recipients) {
+        public static MessageView of(ObsintAgentMessage m) {
+            List<ObsintAgentMessageRecipient> rows=ObsintAgentMessageRecipient.list("messageId=?1 and instanceCountryId=?2 order by createdAt,id",m.id,m.instanceCountryId);
+            var counts=new Counts(rows.size(),(int)rows.stream().filter(r->ObsintAgentMessageRecipient.progress(r.status)>=1).count(),
+                (int)rows.stream().filter(r->ObsintAgentMessageRecipient.progress(r.status)>=2).count(),
+                (int)rows.stream().filter(r->"READ".equals(r.status)).count(),(int)rows.stream().filter(r->"FAILED".equals(r.status)).count());
+            return new MessageView(m.id,m.operator,m.text,m.sentAt,m.deliveryStatus,m.failureReason,m.target,counts,
+                rows.stream().map(r->new RecipientView(r.employeeId,r.fullName==null?r.employeeId.toString():r.fullName,r.postName,r.status,
+                    r.sentAt,r.deliveredAt,r.readAt,r.readVia,"FAILED".equals(r.status)?r.lastError:null)).toList());
+        }
+    }
+    public record AgentView(UUID employeeId,String fullName,UUID postId,String postName,boolean reachable,Boolean online) {}
+    @GET @Path("/tasks/{taskId}/agents-on-shift")
+    public List<AgentView> agentsOnShift(@PathParam("taskId") UUID taskId) {
+        return service.agentsOnShift(taskId).stream().map(a->new AgentView(a.employeeId(),a.fullName()==null?a.employeeId().toString():a.fullName(),
+            a.postId(),a.postName(),a.personaId()!=null,a.personaId()==null?null:presence.online(a.personaId()).orElse(null))).toList();
     }
 
     /**
@@ -137,14 +156,14 @@ public class ObsintResource {
             .header(HttpHeaders.CACHE_CONTROL, "private, no-store").header("X-Content-Type-Options", "nosniff").build();
     }
 
-    @GET @Path("/tasks/{taskId}/messages")
+    @GET @Path("/tasks/{taskId}/messages") @Transactional
     public List<MessageView> messages(@PathParam("taskId") UUID taskId) {
         return service.messages(taskId).stream().map(MessageView::of).toList();
     }
 
-    @POST @Path("/tasks/{taskId}/messages") @Consumes(MediaType.APPLICATION_JSON)
+    @POST @Path("/tasks/{taskId}/messages") @Consumes(MediaType.APPLICATION_JSON) @Transactional
     public MessageView send(@PathParam("taskId") UUID taskId, MessageRequest body) {
         platform.requireMonitor();
-        return MessageView.of(service.send(taskId, body == null ? null : body.text()));
+        return MessageView.of(service.send(taskId, body == null ? null : body.text(),body==null?null:body.target(),body==null?null:body.employeeIds()));
     }
 }

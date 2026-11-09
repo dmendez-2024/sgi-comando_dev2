@@ -14,14 +14,16 @@ public class ObsintAgentMessage extends BaseEntity {
     public static final int TEXT_MAX = 500;
     /** Modo prueba: el mensaje queda registrado, pero no se envía al agente. */
     public static final String STATUS_TEST = "TEST";
+    public static final String STATUS_PENDING="PENDING", STATUS_SENT="SENT", STATUS_DELIVERED="DELIVERED", STATUS_READ="READ", STATUS_FAILED="FAILED";
+    @Column(name="failure_reason", length=60) public String failureReason;
+    @Column(nullable=false,length=10) public String target="POINT";
 
     @Column(name = "task_id", nullable = false) public UUID taskId;
     @Column(nullable = false, length = 160) public String operator;
     @Column(nullable = false, length = TEXT_MAX) public String text;
     @Column(name = "sent_at", nullable = false) public Instant sentAt;
     /**
-     * TEST (modo prueba: registrado, no enviado), SENT o FAILED. Hoy siempre TEST: el envío real al agente (SGI Operador)
-     * aún no existe. SENT y FAILED quedan para cuando exista.
+     * TEST con socket apagado; PENDING, SENT, DELIVERED, READ o FAILED durante el envío real.
      */
     @Column(name = "delivery_status", nullable = false, length = 20) public String deliveryStatus;
 }

@@ -11,6 +11,7 @@ import java.time.Instant;
 import java.time.ZonedDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -28,6 +29,9 @@ public class ObsintService {
 
     @Inject ObsintPlatform platform;
     @Inject EntityManager em;
+    @Inject com.cajamarca.sgi.comando.socket.SocketConfig socket;
+    @Inject ObsintAgentRecipients recipients;
+    @Inject jakarta.enterprise.event.Event<ObsintMessageQueued> queued;
     /** Si es false, cada consigna entra en todos los casos dentro de su horario (útil para demos locales). */
     @ConfigProperty(name = "sgi.obsint.apply-frequency", defaultValue = "true") boolean applyFrequency;
 
@@ -152,26 +156,56 @@ public class ObsintService {
         return ObsintAgentMessage.list("taskId=?1 order by sentAt", taskId);
     }
 
-    /**
-     * Hoy el mensaje solo se registra, en modo prueba (TEST): el envío al agente en sitio (SGI Operador) aún no tiene
-     * interconexión aprobada y no debe parecer entregado.
-     */
     @Transactional
-    public ObsintAgentMessage send(UUID taskId, String text) {
-        ObsintCaseTask task = task(taskId);
-        task.requireInProgress();
-        String value = text == null ? "" : text.trim();
-        if (value.isEmpty()) throw new BadRequestException("Escribe un mensaje antes de enviarlo.");
-        if (value.length() > ObsintAgentMessage.TEXT_MAX) throw new BadRequestException("El mensaje admite hasta " + ObsintAgentMessage.TEXT_MAX + " caracteres.");
-        ObsintAgentMessage m = new ObsintAgentMessage();
-        m.instanceCountryId = task.instanceCountryId;
-        m.taskId = taskId;
-        m.operator = platform.username();
-        m.text = value;
-        m.sentAt = now();
-        m.deliveryStatus = ObsintAgentMessage.STATUS_TEST;
-        m.persist();
-        LOG.infof("obsint_agent_message case=%s task=%s actor=%s", task.obsintCase.code, taskId, m.operator);
+    public List<ObsintAgentRecipients.Recipient> agentsOnShift(UUID taskId) {
+        ObsintCaseTask task=task(taskId);
+        return recipients.onShift(task.instanceCountryId,task.consigna.pointId,now());
+    }
+
+    /** Compatibilidad con consumidores que envían solamente texto. */
+    @Transactional
+    public ObsintAgentMessage send(UUID taskId,String text) { return send(taskId,text,"POINT",null); }
+
+    /** Registra el mensaje y la selección validada en una sola transacción. */
+    @Transactional
+    public ObsintAgentMessage send(UUID taskId,String text,String target,List<UUID> employeeIds) {
+        ObsintCaseTask task=task(taskId); task.requireInProgress();
+        String value=text==null?"":text.trim();
+        if(value.isEmpty()) throw new BadRequestException("Escribe un mensaje antes de enviarlo.");
+        if(value.length()>ObsintAgentMessage.TEXT_MAX) throw new BadRequestException("El mensaje admite hasta 500 caracteres.");
+        String destination=target==null?"POINT":target;
+        if(!Set.of("POINT","AGENTS").contains(destination)) throw new BadRequestException("Destino no válido.");
+        List<ObsintAgentRecipients.Recipient> agents=List.of();
+        if("AGENTS".equals(destination)) {
+            if(employeeIds==null || employeeIds.isEmpty()) throw new BadRequestException("Selecciona al menos un agente.");
+            if(employeeIds.stream().anyMatch(java.util.Objects::isNull)) throw new BadRequestException("Agente no válido.");
+            Set<UUID> selected=new LinkedHashSet<>(employeeIds);
+            if(selected.size()>50) throw new BadRequestException("Selecciona como máximo 50 agentes.");
+            var available=recipients.onShift(task.instanceCountryId,task.consigna.pointId,now());
+            for(UUID id:selected) if(available.stream().noneMatch(a->a.employeeId().equals(id)))
+                throw new BadRequestException(id+" no está de turno en este punto.");
+            agents=available.stream().filter(a->selected.contains(a.employeeId())).toList();
+        } else if(socket.enabled()) agents=recipients.onShift(task.instanceCountryId,task.consigna.pointId,now());
+        ObsintAgentMessage m=new ObsintAgentMessage();
+        m.instanceCountryId=task.instanceCountryId; m.taskId=taskId; m.operator=platform.username();
+        m.text=value; m.sentAt=now(); m.target=destination; m.deliveryStatus=ObsintAgentMessage.STATUS_TEST; m.persist();
+        if(socket.enabled()) {
+            if(agents.isEmpty()) { m.deliveryStatus="FAILED"; m.failureReason="NO_AGENT_ON_SHIFT"; }
+            else {
+                for(var agent:agents) {
+                    ObsintAgentMessageRecipient r=new ObsintAgentMessageRecipient();
+                    r.instanceCountryId=m.instanceCountryId; r.messageId=m.id; r.employeeId=agent.employeeId();
+                    r.assignmentId=agent.assignmentId(); r.postId=agent.postId(); r.personaId=agent.personaId();
+                    r.fullName=agent.fullName(); r.postName=agent.postName(); r.nextAttemptAt=m.sentAt;
+                    r.status=agent.personaId()==null?"FAILED":"PENDING";
+                    if(agent.personaId()==null) r.lastError="NO_PERSONA_LINK";
+                    r.persist();
+                }
+                ObsintAgentMessageRecipient.refresh(m);
+                if(agents.stream().anyMatch(a->a.personaId()!=null)) queued.fire(new ObsintMessageQueued(m.id));
+            }
+        }
+        LOG.infof("obsint_agent_message case=%s task=%s actor=%s target=%s",task.obsintCase.code,taskId,m.operator,destination);
         return m;
     }
 
