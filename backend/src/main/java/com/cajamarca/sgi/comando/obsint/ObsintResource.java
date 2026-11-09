@@ -72,7 +72,7 @@ public class ObsintResource {
     }
 
     /**
-     * Si el usuario puede usar la consola: es monitorista (solo ellos ejecutan casos, SEN-03) y tiene al menos un Punto
+     * Si el usuario puede usar la consola: es monitorista o cargo alto (los que ejecutan casos, SEN-03) y tiene al menos un Punto
      * con orden de servicio OBSINT (SEN-01). La pantalla oculta el botón OBSINT si no.
      */
     public record AccessView(boolean enabled) {}

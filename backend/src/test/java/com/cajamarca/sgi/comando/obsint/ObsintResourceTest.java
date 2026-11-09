@@ -148,15 +148,18 @@ class ObsintResourceTest {
         String caseId = as("monitor").post("/api/obsint/cases").then().statusCode(200).extract().path("id");
         String taskId = as("monitor").get("/api/obsint/cases/" + caseId).then().extract().path("tasks[0].id");
         as("jregional").get("/api/obsint/cases/" + caseId).then().statusCode(404);
-        as("jregional").post("/api/obsint/tasks/" + taskId + "/start").then().statusCode(403);
+        as("jregional").post("/api/obsint/tasks/" + taskId + "/start").then().statusCode(404);
     }
 
-    /** SEN-03: solo los monitoristas ejecutan casos; los demás cargos no inician casos ni ven el botón de la consola. */
-    @Test void onlyMonitorsRunCases() {
+    /** SEN-03: ejecutan casos los monitoristas y los cargos altos; la Coordinación de Compañía no inicia casos ni ve el botón de la consola. */
+    @Test void monitorsAndHighRolesRunCases() {
         activeProtocolWithConsigna();
-        for (String user : List.of("presidente", "dnacional", "coord"))
-            as(user).post("/api/obsint/cases").then().statusCode(403).body("message", containsString("monitoristas"));
-        as("presidente").get("/api/obsint/access").then().statusCode(200).body("enabled", is(false));
+        as("coord").post("/api/obsint/cases").then().statusCode(403).body("message", containsString("monitoristas"));
+        as("coord").get("/api/obsint/access").then().statusCode(200).body("enabled", is(false));
+        as("presidente").get("/api/obsint/access").then().statusCode(200).body("enabled", is(true));
+        finishRunningCase("presidente");
+        as("presidente").post("/api/obsint/cases").then().statusCode(200).body("status", is("IN_PROGRESS"));
+        finishRunningCase("presidente");
         ObsintMonitorShift.monitorUserOnShift();
         as("monitor").get("/api/obsint/access").then().statusCode(200).body("enabled", is(true));
     }
