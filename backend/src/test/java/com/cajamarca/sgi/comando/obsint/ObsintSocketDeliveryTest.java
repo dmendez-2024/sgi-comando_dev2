@@ -77,12 +77,19 @@ class ObsintSocketDeliveryTest {
             assertEquals("Telco actual",receipt.pointName());assertEquals("Garita uno",receipt.postName());
             var published=FakeGateway.received.stream().filter(n->n.path("id").asText().equals(first.recipientId().toString())).findFirst().orElseThrow().path("payload");
             assertEquals("Telco actual",published.path("pointName").asText());assertEquals("Garita uno",published.path("postName").asText());
+            // Del remitente solo llega su cargo: ni su usuario ni su nombre, por REST, recibo ni socket.
+            assertEquals(ObsintSocketFixtures.SENDER_ROLE,first.from());assertEquals(ObsintSocketFixtures.SENDER_ROLE,receipt.from());
+            assertEquals(ObsintSocketFixtures.SENDER_ROLE,published.path("from").asText());
+            assertFalse(published.toString().contains("socket-test"));
+            assertEquals(Set.of("messageId","recipientId","taskId","pointId","postId","from","text","sentAt","replyAllowed","pointName","postName"),
+                iterableToSet(published.fieldNames()));
             // Un Puesto de otra instancia no aporta nombres aunque coincida su UUID.
             em.createNativeQuery("update post set instance_country_id=:other where id=:id").setParameter("other",UUID.randomUUID()).setParameter("id",firstPost).executeUpdate();
             var isolated=own.messages(null).stream().filter(v->v.postId().equals(firstPost)).findFirst().orElseThrow();
             assertNull(isolated.pointName());assertNull(isolated.postName());
         });
     }
+    private static Set<String> iterableToSet(Iterator<String> names) { Set<String> out=new HashSet<>(); names.forEachRemaining(out::add); return out; }
     private ObsintSocketFixtures fixture() { return QuarkusTransaction.requiringNew().call(()->ObsintSocketFixtures.create(em)); }
     private UUID send(ObsintSocketFixtures f,List<ObsintAgentRecipients.Recipient> agents,String target,List<UUID> selected) {
         return QuarkusTransaction.requiringNew().call(()->f.service(em,config,queued,agents).send(f.task(),"Prueba local",target,selected).id);

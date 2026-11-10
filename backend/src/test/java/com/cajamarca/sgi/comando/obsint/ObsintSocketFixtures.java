@@ -8,6 +8,8 @@ import java.util.*;
 
 /** Datos propios de estas pruebas; no dependen de usuarios o catálogos UAT. */
 record ObsintSocketFixtures(UUID tenant,UUID employee,UUID task,UUID point) {
+    /** Cargo del monitorista que envía en estas pruebas; su usuario es "socket-test". */
+    static final String SENDER_ROLE="Agente de Consola de Monitoreo Senior";
     static ObsintSocketFixtures create(EntityManager em) {
         UUID tenant=UUID.randomUUID(),point=UUID.randomUUID();
         ObsintProtocol p=new ObsintProtocol(); p.instanceCountryId=tenant; p.seriesId=UUID.randomUUID();
@@ -24,6 +26,7 @@ record ObsintSocketFixtures(UUID tenant,UUID employee,UUID task,UUID point) {
             public UUID instanceCountryId() { return ObsintSocketFixtures.this.tenant(); }
             public String username() { return "socket-test"; }
         };
+        service.monitorScope=new com.cajamarca.sgi.comando.territory.MonitorShiftScope() { public String cargoNow() { return SENDER_ROLE; } };
         service.recipients=new ObsintAgentRecipients() { public List<Recipient> onShift(UUID tenant,UUID point,Instant now) { return agents; } };
         return service;
     }

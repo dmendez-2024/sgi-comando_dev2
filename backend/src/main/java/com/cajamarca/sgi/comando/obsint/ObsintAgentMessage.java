@@ -20,10 +20,20 @@ public class ObsintAgentMessage extends BaseEntity {
 
     @Column(name = "task_id", nullable = false) public UUID taskId;
     @Column(nullable = false, length = 160) public String operator;
+    /** Cargo del monitorista al enviar; es lo único del remitente que recibe el agente (`from`). */
+    @Column(name = "sender_role", length = 120) public String senderRole;
     @Column(nullable = false, length = TEXT_MAX) public String text;
     @Column(name = "sent_at", nullable = false) public Instant sentAt;
     /**
      * TEST con socket apagado; PENDING, SENT, DELIVERED, READ o FAILED durante el envío real.
      */
     @Column(name = "delivery_status", nullable = false, length = 20) public String deliveryStatus;
+
+    /** Lo que ve el agente cuando no se conoce el cargo del remitente. */
+    public static final String DEFAULT_FROM = "Monitor Consola";
+
+    /** Título del mensaje en SGI Operador: el cargo del monitorista, nunca su nombre ni su usuario. */
+    public static String fromLabel(String senderRole) {
+        return senderRole == null || senderRole.isBlank() ? DEFAULT_FROM : senderRole.trim();
+    }
 }

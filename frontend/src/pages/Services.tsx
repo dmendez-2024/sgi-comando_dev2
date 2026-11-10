@@ -44,6 +44,7 @@ import {
 } from 'lucide-react';
 import {api,ApiError,getUser} from '../api';
 import BitacoraConfig from './BitacoraConfig';
+import AccessControlLists from './AccessControlLists';
 import PatrolConfig from './PatrolConfig';
 import ConsignasConfig from './ConsignasConfig';
 import NexusConfig from './NexusConfig';
@@ -81,7 +82,7 @@ type ModuleCard={
   title:string;summary:string;meta:string;status:ModuleStatus;blocking:boolean;
   icon:'ats'|'posts'|'bitacora'|'patrullas'|'consignas'|'nexus'|'rrhh'|'rrmm'|'historial';
 };
-type ConfigModuleKey=ModuleCard['key']|'components'|'obsint';
+type ConfigModuleKey=ModuleCard['key']|'components'|'obsint'|'whitelist'|'blacklist';
 type Snapshot={version:string;progress:number;blockers:number;warnings:number;updatedAt:string;modules:ModuleCard[];nextActions:string[]};
 type AtsLinkedPost={location:string;code:string;status:'VINCULADO'|'PENDIENTE'};
 type AtsLinkedPatrol={route:string;patrol:string;status:'VINCULADA'|'PENDIENTE'};
@@ -115,7 +116,7 @@ type CommercialWeek={posts:CommercialPost[];shifts:CommercialShift[]};
 type SkillKey=keyof PostSkillSet;
 type AssignmentDestination={companyId:string;code:string;name:string;zoneId?:string|null;regionIds:string[]};
 type ClientOption={id:string;code:string;name:string};
-type View='list'|'config-landing'|'config-ats'|'config-posts'|'config-bitacora'|'config-patrols'|'config-consignas'|'config-nexus'|'config-components'|'config-obsint'|'operation';
+type View='list'|'config-landing'|'config-ats'|'config-posts'|'config-bitacora'|'config-whitelist'|'config-blacklist'|'config-patrols'|'config-consignas'|'config-nexus'|'config-components'|'config-obsint'|'operation';
 
 const PAGE_SIZE=10;
 const TIER_MIN:Record<string,number>={I:6.5,II:7.5,III:8.5,IV:9.5};
@@ -931,7 +932,7 @@ function ConfigurationLanding({point,onBack,onOpenModule}:{point:PointRow;onBack
   const electronicUnitCount=point.posts.length-physicalPostCount;
   /** Sin puestos físicos solo se abre Consignas, y solo si hay unidades electrónicas (p. ej. Safe Cam). */
   const physicalModuleOpen=(key:string)=>physicalPostCount>0||(key==='consignas'&&electronicUnitCount>0);
-  const [expandedGroups,setExpandedGroups]=useState<Set<string>>(()=>new Set(['physical','electronic']));
+  const [expandedGroups,setExpandedGroups]=useState<Set<string>>(()=>new Set(['physical','access','electronic']));
   const [electronic,setElectronic]=useState<{
     components:{status:ChecklistStatus;meta:string};obsint:{enabled:boolean;status:ChecklistStatus;meta:string}
   }>({components:{status:'unavailable',meta:'Cargando…'},obsint:{enabled:false,status:'unavailable',meta:'Cargando…'}});
@@ -1037,9 +1038,13 @@ function ConfigurationLanding({point,onBack,onOpenModule}:{point:PointRow;onBack
         <div className="ser-checklist">
           {checklistModule('ats')}
           {checklistGroup('physical','Seguridad Física',<ShieldCheck size={18}/>,physicalPostCount?'Configuración de puestos y protocolos':electronicUnitCount?'Sin puestos físicos · Consignas para OBSINT':'Sin puestos físicos en el punto',physicalStatus,<>
-            {physicalModules.map(module=>physicalModuleOpen(module.key)
-              ?checklistModule(module.key,module.title)
-              :unavailableModule(module.key,module.title,moduleIcon((modulesByKey.get(module.key)?.icon??'posts') as ModuleCard['icon'])))}
+            {physicalModules.map(module=>module.key==='bitacora'
+              ?checklistGroup('access','Control de Accesos',<LockKeyhole size={18}/>,'Protocolos y listas de acceso','warning',<>
+                {checklistModule('bitacora','Protocolos de Bitácora')}
+                <button type="button" className="ser-check-row warning" onClick={()=>onOpenModule('whitelist')}><span className="ser-check-main"><ChevronRight className="ser-check-chevron" size={15}/><span className="ser-check-icon"><Users size={18}/></span><b>Lista Blanca</b></span><span className="ser-check-meta">Personas autorizadas para el acceso</span><span className="ser-status-tag warning">Por configurar</span></button>
+                <button type="button" className="ser-check-row warning" onClick={()=>onOpenModule('blacklist')}><span className="ser-check-main"><ChevronRight className="ser-check-chevron" size={15}/><span className="ser-check-icon"><AlertTriangle size={18}/></span><b>Lista Negra</b></span><span className="ser-check-meta">Personas con ingreso prohibido</span><span className="ser-status-tag warning">Por configurar</span></button>
+              </>)
+              :physicalModuleOpen(module.key)?checklistModule(module.key,module.title):unavailableModule(module.key,module.title,moduleIcon((modulesByKey.get(module.key)?.icon??'posts') as ModuleCard['icon'])))}
           </>)}
           {checklistGroup('electronic','Seguridad Electrónica',<TfiVideoCamera/>,'Componentes y consignas OBSINT',electronicStatus,<>
             {electronicModules.map(electronicRow)}
@@ -1166,6 +1171,12 @@ export default function Services(){
   if(selectedPoint&&view==='config-bitacora'){
     return <BitacoraConfig point={selectedPoint} onBack={()=>setView('config-landing')}/>;
   }
+  if(selectedPoint&&view==='config-whitelist'){
+    return <AccessControlLists point={selectedPoint} listType="WHITE" onBack={()=>setView('config-landing')}/>;
+  }
+  if(selectedPoint&&view==='config-blacklist'){
+    return <AccessControlLists point={selectedPoint} listType="BLACK" onBack={()=>setView('config-landing')}/>;
+  }
   if(selectedPoint&&view==='config-patrols'){
     return <PatrolConfig point={selectedPoint} onBack={()=>setView('config-landing')}/>;
   }
@@ -1185,7 +1196,7 @@ export default function Services(){
     return <OperationPage point={selectedPoint} onBack={backToList}/>;
   }
   if(selectedPoint&&view==='config-landing'){
-    return <ConfigurationLanding key={selectedPoint.pointId} point={selectedPoint} onBack={backToList} onOpenModule={(module:ConfigModuleKey)=>{if(module==='ats')setView('config-ats');if(module==='puestos')setView('config-posts');if(module==='bitacora')setView('config-bitacora');if(module==='patrullas')setView('config-patrols');if(module==='consignas')setView('config-consignas');if(module==='nexus')setView('config-nexus');if(module==='components')setView('config-components');if(module==='obsint')setView('config-obsint')}}/>;
+    return <ConfigurationLanding key={selectedPoint.pointId} point={selectedPoint} onBack={backToList} onOpenModule={(module:ConfigModuleKey)=>{if(module==='ats')setView('config-ats');if(module==='puestos')setView('config-posts');if(module==='bitacora')setView('config-bitacora');if(module==='whitelist')setView('config-whitelist');if(module==='blacklist')setView('config-blacklist');if(module==='patrullas')setView('config-patrols');if(module==='consignas')setView('config-consignas');if(module==='nexus')setView('config-nexus');if(module==='components')setView('config-components');if(module==='obsint')setView('config-obsint')}}/>;
   }
 
   return <div className="services-v01 services-v02">

@@ -52,10 +52,13 @@ public class OperatorMessageResource {
     private MessageView view(ObsintAgentMessageRecipient r) {
         return queryViews("r.id=:id and r.instance_country_id=:tenant",Map.of("id",r.id,"tenant",r.instanceCountryId)).getFirst();
     }
-    /** Proyección escalar única: no carga entidades ni dispara consultas por cada mensaje. */
+    /**
+     * Proyección escalar única: no carga entidades ni dispara consultas por cada mensaje. Del remitente solo sale su cargo
+     * (`from`); el usuario del monitorista (`m.operator`) queda en Comando para auditoría.
+     */
     private List<MessageView> queryViews(String filter,Map<String,Object> parameters) {
         var query=em.createNativeQuery("""
-            select r.id,m.id,m.task_id,c.point_id,r.post_id,m.text,m.sent_at,r.status,r.delivered_at,r.read_at,pt.name,p.name
+            select r.id,m.id,m.task_id,c.point_id,r.post_id,m.text,m.sent_at,r.status,r.delivered_at,r.read_at,pt.name,p.name,m.sender_role
             from obsint_agent_message_recipient r
             join obsint_agent_message m on m.id=r.message_id and m.instance_country_id=r.instance_country_id
             join obsint_case_task t on t.id=m.task_id and t.instance_country_id=m.instance_country_id
@@ -67,7 +70,7 @@ public class OperatorMessageResource {
         parameters.forEach(query::setParameter);
         List<?> rows=query.getResultList();
         return rows.stream().map(row->{Object[] v=(Object[])row;return new MessageView(
-            (UUID)v[0],(UUID)v[1],(UUID)v[2],(UUID)v[3],(UUID)v[4],"Monitor Consola",(String)v[5],
+            (UUID)v[0],(UUID)v[1],(UUID)v[2],(UUID)v[3],(UUID)v[4],ObsintAgentMessage.fromLabel((String)v[12]),(String)v[5],
             instant(v[6]),(String)v[7],instant(v[8]),instant(v[9]),(String)v[10],(String)v[11]);}).toList();
     }
     private static Instant instant(Object value) {

@@ -64,7 +64,7 @@ public class ObsintMessageDispatcher {
         else {
             ObsintCaseTask task=ObsintCaseTask.findById(m.taskId);
             Map<String,Object> payload=new LinkedHashMap<>(Map.of("messageId",m.id,"recipientId",r.id,"taskId",m.taskId,
-                "pointId",task.consigna.pointId,"postId",r.postId,"from","Monitor Consola","text",m.text,
+                "pointId",task.consigna.pointId,"postId",r.postId,"from",ObsintAgentMessage.fromLabel(m.senderRole),"text",m.text,
                 "sentAt",m.sentAt.toString(),"replyAllowed",false));
             List<?> locations=em.createNativeQuery("""
                 select pt.name,p.name from post p
