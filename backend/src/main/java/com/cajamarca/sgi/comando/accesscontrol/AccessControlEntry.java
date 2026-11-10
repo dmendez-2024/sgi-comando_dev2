@@ -8,6 +8,7 @@ import java.util.UUID;
 @Entity
 @Table(name="access_control_entry")
 public class AccessControlEntry extends BaseEntity {
+    @Column(name="person_id",nullable=false) public UUID personId;
     @Column(name="client_id",nullable=false) public UUID clientId;
     @Column(name="list_type",nullable=false,length=16) public String listType;
     @Column(name="object_type",nullable=false,length=16) public String objectType;

@@ -27,26 +27,29 @@ public class OperatorAccessControlResource {
     @POST @Path("/qr/resolve") @Consumes(MediaType.APPLICATION_JSON)
     public ResolveResponse resolve(ResolveRequest request){
         if(request==null||request.pointId()==null||request.qrValue()==null||request.qrValue().isBlank())throw new BadRequestException("Punto y código QR son obligatorios.");
-        PointEntity point=point(request.pointId());String hash=hashQr(request.qrValue());
-        AccessControlEntry white=AccessControlEntry.find("instanceCountryId=?1 and listType='WHITE' and qrTokenHash=?2",tenant.instanceCountryId(),hash).firstResult();
-        if(white==null||white.qrRevokedAt!=null)return new ResolveResponse("NOT_FOUND","El código QR no corresponde a una autorización vigente.",null);
-        requireClient(point,white.clientId);
-        if(!applies(white.id,point.id))return new ResolveResponse("NOT_APPLICABLE","La autorización no aplica para este Punto.",null);
-        if(!valid(white))return new ResolveResponse("NOT_VALID","La autorización está inactiva o fuera de vigencia.",null);
+        PointEntity point=point(request.pointId());ServiceEntity service=service(point);String hash=hashQr(request.qrValue());
+        AccessControlPerson person=AccessControlPerson.find("instanceCountryId=?1 and qrTokenHash=?2",tenant.instanceCountryId(),hash).firstResult();
+        if(person==null||person.qrRevokedAt!=null)return new ResolveResponse("NOT_FOUND","El código QR no corresponde a una persona con credencial vigente.",null);
+        List<AccessControlEntry> authorizations=AccessControlEntry.list("instanceCountryId=?1 and personId=?2 and clientId=?3 and listType='WHITE'",tenant.instanceCountryId(),person.id,service.clientId);
+        List<AccessControlEntry> applicable=authorizations.stream().filter(row->applies(row.id,point.id)).toList();
+        if(applicable.isEmpty())return new ResolveResponse("NOT_APPLICABLE","La persona no tiene autorización para este Punto.",null);
+        AccessControlEntry white=applicable.stream().filter(this::valid).max(Comparator.comparing(row->row.validUntil)).orElse(null);
+        if(white==null)return new ResolveResponse("NOT_VALID","La persona no tiene una autorización vigente para este Punto.",null);
         AccessControlEntry black=activeBlack(white,point.id);
-        PersonDto person=new PersonDto(white.id,white.identification,white.lastNames,white.firstNames,white.accreditation,white.organizationalReference,white.validUntil);
-        if(black!=null)return new ResolveResponse("DENIED",black.observations==null?"La persona tiene prohibido el ingreso a este Punto.":black.observations,person);
-        return new ResolveResponse("AUTHORIZED","Autorización vigente. Verifique los datos antes de registrar el ingreso.",person);
+        PersonDto result=new PersonDto(white.id,person.identification,person.lastNames,person.firstNames,white.accreditation,white.organizationalReference,white.validUntil);
+        if(black!=null)return new ResolveResponse("DENIED",black.observations==null?"La persona tiene prohibido el ingreso a este Punto.":black.observations,result);
+        return new ResolveResponse("AUTHORIZED","Autorización vigente. Verifique los datos antes de registrar el ingreso.",result);
     }
 
     @GET @Path("/catalog")
     public List<CatalogEntry> catalog(@QueryParam("pointId") UUID pointId){
         PointEntity point=point(pointId);ServiceEntity service=service(point);LocalDate today=LocalDate.now();
-        List<AccessControlEntry> whites=AccessControlEntry.list("instanceCountryId=?1 and clientId=?2 and listType='WHITE' and status='ACTIVE' and qrRevokedAt is null",tenant.instanceCountryId(),service.clientId);
-        return whites.stream().filter(row->row.qrTokenHash!=null&&applies(row.id,point.id)&&!today.isBefore(row.validFrom)&&!today.isAfter(row.validUntil)).map(row->{AccessControlEntry black=activeBlack(row,point.id);return new CatalogEntry(row.qrTokenHash,row.identification,row.lastNames,row.firstNames,row.accreditation,row.organizationalReference,row.validFrom,row.validUntil,black==null?"AUTHORIZED":"DENIED",black==null?"Autorización vigente.":black.observations);}).toList();
+        List<AccessControlEntry> whites=AccessControlEntry.list("instanceCountryId=?1 and clientId=?2 and listType='WHITE' and status='ACTIVE'",tenant.instanceCountryId(),service.clientId);
+        return whites.stream().filter(row->applies(row.id,point.id)&&!today.isBefore(row.validFrom)&&!today.isAfter(row.validUntil)).map(row->new AbstractMap.SimpleEntry<>(row,person(row))).filter(pair->pair.getValue().qrTokenHash!=null&&pair.getValue().qrRevokedAt==null).map(pair->{AccessControlEntry row=pair.getKey();AccessControlPerson person=pair.getValue();AccessControlEntry black=activeBlack(row,point.id);return new CatalogEntry(person.qrTokenHash,person.identification,person.lastNames,person.firstNames,row.accreditation,row.organizationalReference,row.validFrom,row.validUntil,black==null?"AUTHORIZED":"DENIED",black==null?"Autorización vigente.":black.observations);}).toList();
     }
 
-    private AccessControlEntry activeBlack(AccessControlEntry white,UUID pointId){List<AccessControlEntry> rows=AccessControlEntry.list("instanceCountryId=?1 and clientId=?2 and listType='BLACK' and objectType=?3 and identificationNormalized=?4",tenant.instanceCountryId(),white.clientId,white.objectType,white.identificationNormalized);return rows.stream().filter(this::valid).filter(row->applies(row.id,pointId)).findFirst().orElse(null);}
+    private AccessControlEntry activeBlack(AccessControlEntry white,UUID pointId){List<AccessControlEntry> rows=AccessControlEntry.list("instanceCountryId=?1 and clientId=?2 and listType='BLACK' and personId=?3",tenant.instanceCountryId(),white.clientId,white.personId);return rows.stream().filter(this::valid).filter(row->applies(row.id,pointId)).findFirst().orElse(null);}
+    private AccessControlPerson person(AccessControlEntry row){AccessControlPerson person=AccessControlPerson.find("id=?1 and instanceCountryId=?2",row.personId,tenant.instanceCountryId()).firstResult();if(person==null)throw new NotFoundException("Identidad asociada no encontrada.");return person;}
     private boolean valid(AccessControlEntry row){LocalDate today=LocalDate.now();return "ACTIVE".equals(row.status)&&!today.isBefore(row.validFrom)&&!today.isAfter(row.validUntil);}
     private boolean applies(UUID entryId,UUID pointId){return AccessControlEntryPoint.count("entryId=?1 and pointId=?2 and instanceCountryId=?3",entryId,pointId,tenant.instanceCountryId())>0;}
     private PointEntity point(UUID id){if(id==null)throw new BadRequestException("Punto obligatorio.");PointEntity point=PointEntity.find("id=?1 and instanceCountryId=?2",id,tenant.instanceCountryId()).firstResult();if(point==null)throw new NotFoundException("Punto no encontrado.");scope.requireCompanyForCompanyRoles(point.companyId);return point;}

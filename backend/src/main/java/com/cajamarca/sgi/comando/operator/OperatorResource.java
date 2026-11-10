@@ -593,7 +593,7 @@ public class OperatorResource {
         @SuppressWarnings("unchecked") List<Object[]> rows=em.createNativeQuery("""
           select r.id,p.object_type,a.name,r.field_values_json,r.captured_at,r.status,r.comments,r.employee_id,e.full_name,
                  pt.client_name,pt.city,pt.name,po.name,c.code,c.name,pt.company_id,lp.code,lp.name,r.protocol_version,r.username,
-                 r.exited_at,r.exited_by_username,a.id,lp.application_type,r.evidence_refs_json
+                 r.exited_at,coalesce(exit_employee.full_name,r.exited_by_username),a.id,lp.application_type,r.evidence_refs_json
           from operator_logbook_record r
           join logbook_protocol lp on lp.id=r.protocol_id and lp.instance_country_id=r.instance_country_id
           join logbook_accreditation a on a.id=r.accreditation_id and a.instance_country_id=r.instance_country_id
@@ -601,6 +601,7 @@ public class OperatorResource {
           join point pt on pt.id=r.point_id and pt.instance_country_id=r.instance_country_id
           left join company c on c.id=pt.company_id and c.instance_country_id=r.instance_country_id
           left join employee_operational_snapshot e on e.employee_id=r.employee_id and e.instance_country_id=r.instance_country_id
+          left join employee_operational_snapshot exit_employee on exit_employee.employee_id=r.exited_by_employee_id and exit_employee.instance_country_id=r.instance_country_id
           join logbook_protocol p on p.id=r.protocol_id and p.instance_country_id=r.instance_country_id
           where r.instance_country_id=:tenant order by r.captured_at desc limit 500
           """).setParameter("tenant",tenant.instanceCountryId()).getResultList();
@@ -639,10 +640,18 @@ public class OperatorResource {
                     .put("value",selectionLabels.getOrDefault(fieldKey+":"+rawValue,rawValue));
             }
             ArrayNode timeline=item.putArray("timeline");
-            if(row[20]!=null) timeline.addObject().put("id","exit").put("at",row[20].toString()).put("title","Salida registrada por "+row[21].toString()).put("place",row[11].toString()+" · "+row[12].toString());
-            timeline.addObject().put("id","entry").put("at",row[4].toString()).put("title","Ingreso registrado desde SGI Operador").put("place",row[11].toString()+" · "+row[12].toString());
+            if(row[20]!=null) timeline.addObject().put("id","exit").put("at",row[20].toString()).put("title","Salida registrada por "+auditActor(row[21])).put("place",row[11].toString()+" · "+row[12].toString());
+            timeline.addObject().put("id","entry").put("at",row[4].toString()).put("title","Ingreso registrado por "+auditActor(row[8]==null?row[19]:row[8])).put("place",row[11].toString()+" · "+row[12].toString());
         }
         return result;
+    }
+    private static String auditActor(Object value) {
+        if(value==null||value.toString().isBlank())return "Agente de seguridad";
+        String actor=value.toString().trim();
+        try{UUID.fromString(actor);return "Agente de seguridad";}catch(IllegalArgumentException ignored){}
+        if("agente".equalsIgnoreCase(actor))return "Usuario demo Agente";
+        if("supervisor".equalsIgnoreCase(actor))return "Usuario demo Supervisor";
+        return actor;
     }
     @POST @Path("/patrol-executions") @Consumes(MediaType.APPLICATION_JSON) @Transactional
     public ObjectNode submitPatrol(JsonNode event) {
@@ -1221,7 +1230,7 @@ public class OperatorResource {
         actor(); boolean operator=identity.hasRole("AGENTE_SEGURIDAD");
         UUID employee=operator?employee():null;
         Set<UUID> visibleCompanies=operator?Set.of():scope.allowedCompanyIdsForCompanyRoles();
-        @SuppressWarnings("unchecked") List<Object[]> rows=em.createNativeQuery("select r.id,r.post_id,s.employee_id,s.received_at,s.context_json,s.payload_json,s.username,r.inventory_result from operator_relief_submission s join relief_event r on r.id=s.id where s.instance_country_id=:t order by s.received_at desc")
+        @SuppressWarnings("unchecked") List<Object[]> rows=em.createNativeQuery("select r.id,r.post_id,s.employee_id,s.received_at,s.context_json,s.payload_json,coalesce(employee.full_name,s.username),r.inventory_result from operator_relief_submission s join relief_event r on r.id=s.id left join employee_operational_snapshot employee on employee.employee_id=s.employee_id and employee.instance_country_id=s.instance_country_id where s.instance_country_id=:t order by s.received_at desc")
             .setParameter("t",tenant.instanceCountryId()).setMaxResults(500).getResultList();
         ArrayNode result=mapper.createArrayNode();
         for(Object[] row:rows) {
@@ -1236,7 +1245,7 @@ public class OperatorResource {
                 .put("receivedAt",row[3].toString()).put("status","PENDIENTE").put("inventoryStatus",row[7]==null?"PENDING_SOURCE":row[7].toString())
                 .put("inventoryDeliveryStatus",inventory.reportStatus(UUID.fromString(row[0].toString()))).put("validationStatus","PENDING_REVIEW")
                 .put("clientName",point.clientName).put("city",point.city).put("companyCode",company==null?"":company.code)
-                .put("companyName",company==null?"—":company.name).put("submittedBy",row[6].toString()).put("photoCount",photoCount.intValue());
+                .put("companyName",company==null?"—":company.name).put("submittedBy",auditActor(row[6])).put("photoCount",photoCount.intValue());
             n.putObject("inventoryReport").set("items",inventory.reportItems(UUID.fromString(row[0].toString())));
             n.set("context",context);
             if(context.hasNonNull("incomingEmployeeName")) n.put("incomingEmployeeName",context.path("incomingEmployeeName").asText());
