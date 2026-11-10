@@ -201,6 +201,7 @@ function reliefToExecution(item:any):Execution{
   const evidenceCount=Number(item.photoCount||0);
   const unilateral=Boolean(event.unilateral);
   const opening=event.reliefMode==='OPENING_WITHOUT_PREVIOUS_SHIFT';
+  const reliefKind=opening?'Inicio sin turno anterior':unilateral?'Relevo unilateral':'Relevo bilateral';
   return {
     id:`relief-${item.reliefId}`,evidenceEventId:String(item.reliefId),photoCount:evidenceCount,type:'RELIEF',
     inventoryItems:Array.isArray(item.inventoryReport?.items)?item.inventoryReport.items:[],
@@ -214,7 +215,7 @@ function reliefToExecution(item:any):Execution{
       {id:`start-${item.reliefId}`,at,title:'Inicio del relevo',detail:item.postName||context.postName||'Puesto operativo',state:'DONE'},
       {id:`evidence-${item.reliefId}`,at,title:'Evidencias registradas',detail:`${evidenceCount} fotografía${evidenceCount===1?'':'s'}`,state:'DONE'},
       {id:`inventory-${item.reliefId}`,at,title:'Inventario informado',detail:inventoryStatusLabel(item.inventoryStatus),state:'DONE'},
-      {id:`finish-${item.reliefId}`,at:item.receivedAt,title:'Relevo finalizado',detail:item.submittedBy||'SGI Operador',state:'DONE'}
+      {id:`finish-${item.reliefId}`,at:item.receivedAt,title:'Relevo finalizado',detail:`Finalizado por ${item.submittedBy||'Agente de seguridad'} · ${reliefKind}`,state:'DONE'}
     ]
   };
 }

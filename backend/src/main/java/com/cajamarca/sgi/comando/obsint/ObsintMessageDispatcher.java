@@ -63,8 +63,9 @@ public class ObsintMessageDispatcher {
         else if(r.personaId==null) { r.status="FAILED"; r.lastError="NO_PERSONA_LINK"; }
         else {
             ObsintCaseTask task=ObsintCaseTask.findById(m.taskId);
+            com.cajamarca.sgi.comando.communication.CommunicationRoom room=m.roomId==null?null:com.cajamarca.sgi.comando.communication.CommunicationRoom.findById(m.roomId);
             Map<String,Object> payload=new LinkedHashMap<>(Map.of("messageId",m.id,"recipientId",r.id,"taskId",m.taskId,
-                "pointId",task.consigna.pointId,"postId",r.postId,"from",ObsintAgentMessage.fromLabel(m.senderRole),"text",m.text,
+                "pointId",task.consigna.pointId,"postId",r.postId,"from",ObsintAgentMessage.fromLabel(room==null?null:room.name,m.senderRole),"text",m.text,
                 "sentAt",m.sentAt.toString(),"replyAllowed",false));
             List<?> locations=em.createNativeQuery("""
                 select pt.name,p.name from post p
@@ -72,7 +73,7 @@ public class ObsintMessageDispatcher {
                 where p.id=:post and p.instance_country_id=:tenant
                 """).setParameter("post",r.postId).setParameter("tenant",r.instanceCountryId).getResultList();
             Object[] names=locations.isEmpty()?new Object[]{null,null}:(Object[])locations.getFirst();
-            payload.put("pointName",names[0]);payload.put("postName",names[1]);
+            payload.put("pointName",names[0]);payload.put("postName",names[1]);payload.put("roomId",m.roomId);
             var result=publisher.publish(r.id,config.channelFor(r.personaId),payload);
             switch(result.outcome()) {
                 case ACCEPTED -> { r.status="SENT"; r.sentAt=Instant.now(); r.localRecipients=result.localRecipients(); r.lastError=null; }

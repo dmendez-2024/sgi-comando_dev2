@@ -20,8 +20,10 @@ public class ObsintAgentMessage extends BaseEntity {
 
     @Column(name = "task_id", nullable = false) public UUID taskId;
     @Column(nullable = false, length = 160) public String operator;
-    /** Cargo del monitorista al enviar; es lo único del remitente que recibe el agente (`from`). */
+    /** Cargo del monitorista al enviar. El agente ve como remitente (`from`) el nombre de la sala; el cargo, solo si el mensaje no tiene sala. */
     @Column(name = "sender_role", length = 120) public String senderRole;
+    /** Sala de Comunicación del mensaje; los de la Consola OBSINT van a "Monitor Consola". */
+    @Column(name = "room_id") public UUID roomId;
     @Column(nullable = false, length = TEXT_MAX) public String text;
     @Column(name = "sent_at", nullable = false) public Instant sentAt;
     /**
@@ -35,5 +37,13 @@ public class ObsintAgentMessage extends BaseEntity {
     /** Título del mensaje en SGI Operador: el cargo del monitorista, nunca su nombre ni su usuario. */
     public static String fromLabel(String senderRole) {
         return senderRole == null || senderRole.isBlank() ? DEFAULT_FROM : senderRole.trim();
+    }
+
+    /**
+     * Remitente que ve el agente: si el mensaje está en una sala de Comunicación, el nombre de la sala (p. ej. "Monitor
+     * Consola"); si no, el cargo del monitorista. El cargo queda guardado en Comando (`sender_role`) para auditoría.
+     */
+    public static String fromLabel(String roomName, String senderRole) {
+        return roomName == null || roomName.isBlank() ? fromLabel(senderRole) : roomName.trim();
     }
 }

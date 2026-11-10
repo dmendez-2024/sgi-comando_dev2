@@ -77,11 +77,25 @@ class ObsintSocketDeliveryTest {
             assertEquals("Telco actual",receipt.pointName());assertEquals("Garita uno",receipt.postName());
             var published=FakeGateway.received.stream().filter(n->n.path("id").asText().equals(first.recipientId().toString())).findFirst().orElseThrow().path("payload");
             assertEquals("Telco actual",published.path("pointName").asText());assertEquals("Garita uno",published.path("postName").asText());
-            // Del remitente solo llega su cargo: ni su usuario ni su nombre, por REST, recibo ni socket.
-            assertEquals(ObsintSocketFixtures.SENDER_ROLE,first.from());assertEquals(ObsintSocketFixtures.SENDER_ROLE,receipt.from());
-            assertEquals(ObsintSocketFixtures.SENDER_ROLE,published.path("from").asText());
-            assertFalse(published.toString().contains("socket-test"));
-            assertEquals(Set.of("messageId","recipientId","taskId","pointId","postId","from","text","sentAt","replyAllowed","pointName","postName"),
+            // En la sala "Monitor Consola" el remitente es el nombre de la sala: ni el cargo, ni el usuario, ni el nombre
+            // del monitorista, por REST, recibo ni socket.
+            assertEquals("Monitor Consola",first.from());assertEquals("Monitor Consola",receipt.from());
+            assertEquals("Monitor Consola",published.path("from").asText());
+            assertFalse(published.toString().contains("socket-test"));assertFalse(published.toString().contains(ObsintSocketFixtures.SENDER_ROLE));
+            // Los mensajes de la Consola OBSINT van a la sala por defecto "Monitor Consola" (0037).
+            var rooms=own.rooms();assertEquals(1,rooms.size());
+            var room=rooms.getFirst();
+            assertEquals("MONITOR_CONSOLA",room.code());assertEquals("Monitor Consola",room.name());assertTrue(room.defaultRoom());
+            assertTrue(views.stream().allMatch(v->room.roomId().equals(v.roomId())));
+            assertEquals(room.roomId().toString(),published.path("roomId").asText());
+            assertEquals(2,room.unreadCount());assertEquals("Prueba de nombres",room.lastMessageText());
+            assertEquals("Monitor Consola",room.lastMessageFrom());
+            // Otro agente ve la sala, pero vacía: no hay mensajes ajenos ni conteos.
+            var stranger=OperatorMessagesTestAccess.resource(em,config,receipts,f.tenant(),UUID.randomUUID()).rooms().getFirst();
+            assertEquals(room.roomId(),stranger.roomId());assertNull(stranger.lastMessageAt());assertNull(stranger.lastMessageText());assertEquals(0,stranger.unreadCount());
+            // Por ahora "Monitor Consola" es solo del Agente: el Supervisor de Seguridad no la recibe, ni siendo el destinatario.
+            assertTrue(OperatorMessagesTestAccess.resource(em,config,receipts,f.tenant(),f.employee(),false).rooms().isEmpty());
+            assertEquals(Set.of("messageId","recipientId","taskId","pointId","postId","from","text","sentAt","replyAllowed","pointName","postName","roomId"),
                 iterableToSet(published.fieldNames()));
             // Un Puesto de otra instancia no aporta nombres aunque coincida su UUID.
             em.createNativeQuery("update post set instance_country_id=:other where id=:id").setParameter("other",UUID.randomUUID()).setParameter("id",firstPost).executeUpdate();

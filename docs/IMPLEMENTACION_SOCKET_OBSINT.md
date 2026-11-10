@@ -39,6 +39,7 @@ POST /api/internal/socket/acks --> recibo SOCKET_ACK
 
 SGI Operador con IDENT
   GET /api/v1/operator/messages
+  GET /api/v1/operator/messages/rooms
   POST /api/v1/operator/messages/{recipientId}/receipt
         |
         v
@@ -70,12 +71,15 @@ Ejemplo ilustrativo de publicación; los UUID y el texto son de muestra:
     "from": "Monitor Consola",
     "text": "Mensaje de prueba",
     "sentAt": "2026-11-09T17:00:00Z",
-    "replyAllowed": false
+    "replyAllowed": false,
+    "pointName": "Telco",
+    "postName": "Garita uno",
+    "roomId": "ffffffff-ffff-4fff-8fff-ffffffffffff"
   }
 }
 ```
 
-`from` es el cargo del monitorista al enviar (`obsint_agent_message.sender_role`, tomado de `employee_operational_snapshot.role_code`); si no se conoce, `Monitor Consola`. Es lo único del remitente que llega al agente: ni nombre, ni usuario, ni identificadores. Lo mismo devuelve `GET /api/v1/operator/messages` (0033) y el recibo (0034).
+`from` es el nombre de la sala del mensaje: en los de la Consola OBSINT, `Monitor Consola`. Si el mensaje no tuviera sala, sale el cargo del monitorista (`obsint_agent_message.sender_role`, tomado de `employee_operational_snapshot.role_code`), o `Monitor Consola` si no se conoce. El cargo queda guardado en Comando para auditoría; al agente no le llega ni el nombre, ni el usuario, ni identificadores del monitorista. Lo mismo devuelve `GET /api/v1/operator/messages` (0033) y el recibo (0034).
 
 El canal utiliza `employee_operational_snapshot.persona_id`, no el UUID `employee_id`, ni la identidad del Monitor. No se fija el canal 9428 en el código: cada agente de turno aporta su persona.
 
@@ -95,6 +99,10 @@ wss://apps.cajamarca.ec/dev.socket/ws?channels=persona.9428
 ```
 
 Esa URL corresponde al receptor. No debe utilizarse como `SGI_SOCKET_URL` en Comando. La configuración del publicador solo admite bases HTTP/HTTPS sin credenciales, query ni fragmento.
+
+## Salas de chat
+
+Cada mensaje al agente pertenece a una sala de Comunicación (`communication_room`, migración V125). Todos los mensajes de la Consola OBSINT van a la sala predeterminada **Monitor Consola** (`code = MONITOR_CONSOLA`, `source = OBSINT_CONSOLE`): la migración la crea para la instancia y le asigna los mensajes anteriores; si falta, `CommunicationRooms.monitorConsole` la crea al enviar. El mensaje lleva `roomId` en 0033, 0034 y `obsint.mensaje`, y la 0037 (`SGI_OPR_SGI_COM_0037`, por registrar en CORE) lista las salas. Por ahora las salas de la Consola OBSINT (Monitor Consola) solo se listan al Agente de Seguridad (`AGENTE_SEGURIDAD`); el Supervisor de Seguridad no las recibe en la 0037. La web de SGI: Comando no cambia. SGI Operador todavía muestra un solo chat; la lista de salas en la app queda pendiente.
 
 ## Selección del agente
 
@@ -160,6 +168,7 @@ SOCKET_ACK identifica la confirmación recibida desde el gateway, cuyo contrato 
 | `POST /api/obsint/tasks/{taskId}/messages` | Body `{text,target,employeeIds}`; mantiene compatibilidad con solo `{text}`. |
 | `GET /api/obsint/tasks/{taskId}/messages` | Mensajes, destino, estado, contadores y detalle por agente. |
 | `GET /api/v1/operator/messages?since=<ISO-8601>` | Mensajes propios dentro de la ventana de sincronización, incluidos PENDING y FAILED por EXPIRED. |
+| `GET /api/v1/operator/messages/rooms` (0037) | Salas de chat de Comunicación de la instancia, con el último mensaje propio (`lastMessageAt`, `lastMessageFrom` = nombre de la sala, `lastMessageText`) y `unreadCount`. La predeterminada, Monitor Consola, va primero aunque esté vacía. Por ahora Monitor Consola solo la ve el Agente de Seguridad: al Supervisor de Seguridad no se le lista (recibe `[]` mientras no haya otras salas). |
 | `POST /api/v1/operator/messages/{recipientId}/receipt` | DELIVERED o READ, con la identidad de SGI Operador. REJECTED devuelve 400; otro propietario devuelve 404. |
 | `POST /api/internal/socket/acks` | Callback del gateway, disponible únicamente si el socket está habilitado. |
 
