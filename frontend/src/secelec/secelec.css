@@ -75,6 +75,7 @@
 .sec-form-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .sec-form-row.three{grid-template-columns:2fr 1fr 1fr}
 .sec-form-row.one{grid-template-columns:1fr}
+.sec-form-row.ip-port{grid-template-columns:2fr 1fr}
 .sec-form-row>.sec-field{min-width:0}
 .sec-form-row input{width:100%;min-width:0;box-sizing:border-box}
 .sec-password{display:flex}
@@ -97,7 +98,7 @@
 .sec-form-actions .sec-primary{flex:1;justify-content:center}
 .sec-form-actions{flex-wrap:wrap}
 @media (max-width:1400px){.sec-layout{grid-template-columns:260px minmax(0,1fr)}.sec-detail{grid-column:1/-1}}
-@media (max-width:900px){.sec-layout,.sec-kpis{grid-template-columns:1fr}.sec-form-row,.sec-form-row.three{grid-template-columns:1fr}}
+@media (max-width:900px){.sec-layout,.sec-kpis{grid-template-columns:1fr}.sec-form-row,.sec-form-row.three,.sec-form-row.ip-port{grid-template-columns:1fr}}
 
 .sec-hint{display:block;margin-top:5px;color:#7b8ba4;font-size:11px;font-weight:400;line-height:1.4}
 /* Vista previa de "Probar conexión" */

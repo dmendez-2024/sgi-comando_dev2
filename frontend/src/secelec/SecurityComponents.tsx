@@ -133,8 +133,10 @@ function Detail({c,brands,devices,onEdit,onDelete}:{c:SecurityComponent;brands:B
   else rows.push(['Marca / Modelo',c.brandModel]);
   rows.push(['Cobertura',c.coverage]);
   if(video){
-    rows.push(['Dirección IP',c.ip],['Puerto',c.port==null?null:String(c.port)],['Canal',c.channel==null?null:String(c.channel)],
-      ['Ruta del video',c.streamPath],['Códec',c.detectedCodec],
+    rows.push(['Dirección IP',c.ip],['Puerto',c.port==null?null:String(c.port)]);
+    // Con la marca "Otra" el canal no se usa (va dentro de la ruta escrita a mano): mostrarlo confunde.
+    if(c.cameraBrand!=='OTHER')rows.push(['Canal',c.channel==null?null:String(c.channel)]);
+    rows.push(['Ruta del video',c.streamPath],['Códec',c.detectedCodec],
       ['Usuario',c.username],['Contraseña',c.hasPassword?'Guardada (cifrada)':'—'],
       ['Coordenadas',c.latitude==null||c.longitude==null?null:`${c.latitude}, ${c.longitude}`],
       ['Streaming',c.streamingEnabled==null?null:c.streamingEnabled?'Activo':'Desactivado']);
@@ -213,11 +215,12 @@ function ComponentForm({pointId,family,brands,devices,initial,onSaved,onCancel}:
       </div>
       {needsPath&&<Field label="Ruta del video *"><input value={form.rtspPath} onChange={e=>set('rtspPath',e.target.value)} required maxLength={300}
         pattern="/\S*" title="Empieza con / y sin espacios" placeholder="/stream1 (está en el manual de la cámara)"/></Field>}
-      <div className="sec-form-row three">
+      <div className={`sec-form-row${needsPath?' ip-port':' three'}`}>
         <Field label="Dirección IP *"><input value={form.ip} onChange={e=>set('ip',e.target.value)} required maxLength={255} placeholder="192.168.1.10"/></Field>
         <Field label="Puerto *"><input type="number" min={1} max={65535} value={form.port??''} onChange={e=>set('port',num(e.target.value))} required/></Field>
-        <Field label="Canal *"><input type="number" min={1} max={256} value={form.channel??''} onChange={e=>set('channel',num(e.target.value))} required
-          title="1 si es una cámara sola; el número de cámara si es un grabador (NVR/DVR)"/></Field>
+        {/* Con la marca "Otra" el canal va dentro de la ruta escrita a mano (p. ej. /Streaming/Channels/102): no se pide aparte. */}
+        {!needsPath&&<Field label="Canal *"><input type="number" min={1} max={256} value={form.channel??''} onChange={e=>set('channel',num(e.target.value))} required
+          title="1 si es una cámara sola; el número de cámara si es un grabador (NVR/DVR)"/></Field>}
       </div>
       <div className="sec-form-row">
         <Field label="Usuario *"><input value={form.username} onChange={e=>set('username',e.target.value)} required maxLength={120} autoComplete="off"/></Field>
