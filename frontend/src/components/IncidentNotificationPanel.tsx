@@ -4,7 +4,6 @@ import {
   FileText, ImagePlus, Info, MapPin, OctagonAlert, Save, Send, ShieldAlert,
   Trash2, UserCheck, Users, X
 } from 'lucide-react';
-import {INCIDENT_TAXONOMY} from '../data/incidentTaxonomy';
 import {api} from '../api';
 import SearchableSelect from './SearchableSelect';
 
@@ -13,15 +12,27 @@ export type IncidentSeverity='INFORMATIVE'|'MINOR'|'MODERATE'|'MAJOR'|'CRITICAL'
 export type IncidentLifecycle='DRAFT'|'FINALIZED';
 export type AttachmentMeta={id:string;name:string;size:number;type:string;stored?:boolean;file?:File};
 export type LocationOption={clientId:string;client:string;pointId:string;point:string;postId:string;post:string;companyId:string|null;company:string;companyCode:string;city:string};
+type IncidentCatalogType={id:string;name:string};
+type IncidentCatalogSubcategory={id:string;name:string;incidentTypes:IncidentCatalogType[]};
+type IncidentCatalogCategory={id:string;systemKey:string;name:string;subcategories:IncidentCatalogSubcategory[]};
+type IncidentCatalogSeverity={id:string;systemKey:string;name:string};
+type IncidentCatalog={categories:IncidentCatalogCategory[];severities:IncidentCatalogSeverity[]};
 
 export type IncidentRecord={
   id:string;
+  operationalReportId:string;
   code:string;
   title:string;
+  categoryCatalogId:string;
   category:IncidentCategory|'';
+  categoryName:string;
+  subcategoryCatalogId:string;
   subcategory:string;
+  incidentTypeCatalogId:string;
   incidentType:string;
+  severityCatalogId:string;
   severity:IncidentSeverity|'';
+  severityName:string;
   client:string;
   clientId?:string;
   point:string;
@@ -69,22 +80,24 @@ type CoverageOptions={currentShift:CoverageShift|null;nextShifts:CoverageShift[]
 
 type CollaboratorRow={employeeId:string;fullName:string;roleCode:string;postName:string;lastAt:string;source:'EXECUTION'|'PUBLISHED_SHIFT'|'CURRENT_SHIFT'|'UPCOMING_SHIFT'};
 
-const CATEGORY_META:Record<IncidentCategory,{label:string;icon:ReactNode;description:string}>={
-  SERVICE:{label:'Servicio',icon:<ClipboardCheck size={24}/>,description:'Cumplimiento del servicio y desempeño operativo.'},
-  SECURITY:{label:'Seguridad',icon:<ShieldAlert size={24}/>,description:'Eventos que afectan personas, bienes o instalaciones.'},
-  ADMINISTRATIVE:{label:'Administrativo',icon:<FileText size={24}/>,description:'Asuntos administrativos, logísticos o tecnológicos.'}
+const CATEGORY_META:Record<IncidentCategory,{icon:ReactNode;description:string}>={
+  SERVICE:{icon:<ClipboardCheck size={24}/>,description:'Cumplimiento del servicio y desempeño operativo.'},
+  SECURITY:{icon:<ShieldAlert size={24}/>,description:'Eventos que afectan personas, bienes o instalaciones.'},
+  ADMINISTRATIVE:{icon:<FileText size={24}/>,description:'Asuntos administrativos, logísticos o tecnológicos.'}
 };
 
-const SEVERITIES:{value:IncidentSeverity;label:string;tone:string;icon:ReactNode}[]=[
-  {value:'INFORMATIVE',label:'Informativo',tone:'informative',icon:<Info size={26}/>},
-  {value:'MINOR',label:'Menor',tone:'minor',icon:<CheckCircle2 size={26}/>},
-  {value:'MODERATE',label:'Moderado',tone:'moderate',icon:<AlertTriangle size={26}/>},
-  {value:'MAJOR',label:'Mayor',tone:'major',icon:<CircleAlert size={26}/>},
-  {value:'CRITICAL',label:'Crítico',tone:'critical',icon:<OctagonAlert size={26}/>},
-];
+const SEVERITY_META:Record<IncidentSeverity,{tone:string;icon:ReactNode}>={
+  INFORMATIVE:{tone:'informative',icon:<Info size={26}/>},
+  MINOR:{tone:'minor',icon:<CheckCircle2 size={26}/>},
+  MODERATE:{tone:'moderate',icon:<AlertTriangle size={26}/>},
+  MAJOR:{tone:'major',icon:<CircleAlert size={26}/>},
+  CRITICAL:{tone:'critical',icon:<OctagonAlert size={26}/>},
+};
+const categoryMeta=(key:string)=>CATEGORY_META[key as IncidentCategory]??{icon:<ClipboardCheck size={24}/>,description:'Clasificación operativa del incidente.'};
+const severityMeta=(key:string)=>SEVERITY_META[key as IncidentSeverity]??{tone:'informative',icon:<Info size={26}/>};
 
 const emptyRecord=(nextCode:string):IncidentRecord=>({
-  id:'',code:nextCode,title:'',category:'',subcategory:'',incidentType:'',severity:'',client:'',clientId:'',point:'',pointId:'',post:'',postId:'',company:'',companyId:'',companyCode:'',city:'',
+  id:'',operationalReportId:'',code:nextCode,title:'',categoryCatalogId:'',category:'',categoryName:'',subcategoryCatalogId:'',subcategory:'',incidentTypeCatalogId:'',incidentType:'',severityCatalogId:'',severity:'',severityName:'',client:'',clientId:'',point:'',pointId:'',post:'',postId:'',company:'',companyId:'',companyCode:'',city:'',
   collaboratorIds:[],collaboratorNames:[],description:'',descriptionImages:[],resolution:'',resolutionImages:[],sanction:false,
   sanctionDescription:'',absenceMode:'',targetShiftId:'',targetShiftLabel:'',replacementEmployeeId:'',replacementEmployeeName:'',
   status:'DRAFT',createdAt:'',updatedAt:''
@@ -99,6 +112,19 @@ const fmtShift=(shift:CoverageShift,prefix:string)=>{
   return `${prefix} · ${date(shift.startsAt)}–${date(shift.endsAt)}`;
 };
 
+function reconcileCatalog(record:IncidentRecord,catalog:IncidentCatalog):IncidentRecord{
+  const category=catalog.categories.find(item=>item.id===record.categoryCatalogId)||catalog.categories.find(item=>item.systemKey===record.category);
+  const subcategory=category?.subcategories.find(item=>item.id===record.subcategoryCatalogId)||category?.subcategories.find(item=>item.name===record.subcategory);
+  const incidentType=subcategory?.incidentTypes.find(item=>item.id===record.incidentTypeCatalogId)||subcategory?.incidentTypes.find(item=>item.name===record.incidentType);
+  const severity=catalog.severities.find(item=>item.id===record.severityCatalogId)||catalog.severities.find(item=>item.systemKey===record.severity);
+  return {...record,
+    categoryCatalogId:category?.id??'',category:category?(category.systemKey as IncidentCategory):record.category,categoryName:category?.name??record.categoryName,
+    subcategoryCatalogId:subcategory?.id??'',subcategory:subcategory?.name??record.subcategory,
+    incidentTypeCatalogId:incidentType?.id??'',incidentType:incidentType?.name??record.incidentType,
+    severityCatalogId:severity?.id??'',severity:severity?(severity.systemKey as IncidentSeverity):record.severity,severityName:severity?.name??record.severityName,
+  };
+}
+
 export default function IncidentNotificationPanel({initial,nextCode,locations,locationsLoading,locationsError,onRetryLocations,onCancel,onSave}:Props){
   const [form,setForm]=useState<IncidentRecord>(initial?{...emptyRecord(nextCode),...structuredClone(initial)}:emptyRecord(nextCode));
   const [error,setError]=useState('');
@@ -112,7 +138,25 @@ export default function IncidentNotificationPanel({initial,nextCode,locations,lo
   const [coverageLoading,setCoverageLoading]=useState(false);
   const [coverageError,setCoverageError]=useState('');
   const [coverageRefresh,setCoverageRefresh]=useState(0);
+  const [catalog,setCatalog]=useState<IncidentCatalog|null>(null);
+  const [catalogLoading,setCatalogLoading]=useState(true);
+  const [catalogError,setCatalogError]=useState('');
+  const [catalogRefresh,setCatalogRefresh]=useState(0);
 
+  useEffect(()=>{
+    let current=true;
+    setCatalogLoading(true);setCatalogError('');
+    void api.incidentCatalog().then(value=>{
+      if(!current)return;
+      const next=value as IncidentCatalog;
+      if(!next.categories?.length||!next.severities?.length)throw new Error('El catálogo de incidentes no tiene registros activos.');
+      setCatalog(next);
+    }).catch(error=>{if(current){setCatalog(null);setCatalogError(error instanceof Error?error.message:'No se pudo cargar el catálogo de incidentes.')}})
+      .finally(()=>{if(current)setCatalogLoading(false)});
+    return ()=>{current=false};
+  },[catalogRefresh]);
+
+  useEffect(()=>{if(catalog)setForm(previous=>reconcileCatalog(previous,catalog))},[catalog]);
 
   useEffect(()=>{
     if(!form.pointId){setCollaborators([]);setCollaboratorsError('');setCollaboratorsLoading(false);return;}
@@ -139,8 +183,12 @@ export default function IncidentNotificationPanel({initial,nextCode,locations,lo
   const clients=useMemo(()=>Array.from(new Map(locations.map(x=>[x.clientId,{id:x.clientId,name:x.client}])).values()),[locations]);
   const points=useMemo(()=>Array.from(new Map(locations.filter(x=>x.clientId===form.clientId).map(x=>[x.pointId,{id:x.pointId,name:x.point}])).values()),[locations,form.clientId]);
   const posts=useMemo(()=>locations.filter(x=>x.pointId===form.pointId).map(x=>({id:x.postId,name:x.post})),[locations,form.pointId]);
-  const subcategories=form.category?Object.keys(INCIDENT_TAXONOMY[form.category]):[];
-  const incidentTypes=form.category&&form.subcategory?(INCIDENT_TAXONOMY[form.category][form.subcategory]??[]):[];
+  const categories=catalog?.categories??[];
+  const selectedCategory=categories.find(item=>item.id===form.categoryCatalogId);
+  const subcategories=selectedCategory?.subcategories??[];
+  const selectedSubcategory=subcategories.find(item=>item.id===form.subcategoryCatalogId);
+  const incidentTypes=selectedSubcategory?.incidentTypes??[];
+  const severities=catalog?.severities??[];
   const absenceMode=absenceModeFromIncidentType(form.incidentType);
   const coverageApplied=!!form.coverageAssignmentId;
 
@@ -149,7 +197,7 @@ export default function IncidentNotificationPanel({initial,nextCode,locations,lo
   const replacementCandidates=(targetShift?.candidates??[]).filter(person=>!form.collaboratorIds.includes(person.employeeId));
 
   function patch<K extends keyof IncidentRecord>(key:K,value:IncidentRecord[K]){setForm(prev=>({...prev,[key]:value}));}
-  function chooseCategory(value:IncidentCategory){setForm(prev=>({...prev,category:value,subcategory:'',incidentType:'',absenceMode:'',targetShiftId:'',targetShiftLabel:'',replacementEmployeeId:'',replacementEmployeeName:''}));}
+  function chooseCategory(value:string){const selected=categories.find(item=>item.id===value);if(!selected)return;setForm(prev=>({...prev,categoryCatalogId:selected.id,category:selected.systemKey as IncidentCategory,categoryName:selected.name,subcategoryCatalogId:'',subcategory:'',incidentTypeCatalogId:'',incidentType:'',absenceMode:'',targetShiftId:'',targetShiftLabel:'',replacementEmployeeId:'',replacementEmployeeName:''}));}
   function chooseClient(value:string){const loc=locations.find(x=>x.clientId===value);setForm(prev=>({...prev,clientId:value,client:loc?.client??'',pointId:'',point:'',postId:'',post:'',collaboratorIds:[],collaboratorNames:[],companyId:'',company:'',companyCode:'',city:'',replacementEmployeeId:'',replacementEmployeeName:'',targetShiftId:'',targetShiftLabel:''}));}
   function choosePoint(value:string){
     const loc=locations.find(x=>x.clientId===form.clientId&&x.pointId===value);
@@ -163,12 +211,14 @@ export default function IncidentNotificationPanel({initial,nextCode,locations,lo
     });
   }
   function chooseSubcategory(value:string){
-    setForm(prev=>({...prev,subcategory:value,incidentType:'',absenceMode:'',targetShiftId:'',targetShiftLabel:'',replacementEmployeeId:'',replacementEmployeeName:''}));
+    const selected=subcategories.find(item=>item.id===value);
+    setForm(prev=>({...prev,subcategoryCatalogId:selected?.id??'',subcategory:selected?.name??'',incidentTypeCatalogId:'',incidentType:'',absenceMode:'',targetShiftId:'',targetShiftLabel:'',replacementEmployeeId:'',replacementEmployeeName:''}));
   }
   function chooseIncidentType(value:string){
-    const mode=absenceModeFromIncidentType(value);
-    setForm(prev=>({...prev,incidentType:value,absenceMode:mode,targetShiftId:'',targetShiftLabel:'',replacementEmployeeId:'',replacementEmployeeName:''}));
+    const selected=incidentTypes.find(item=>item.id===value);const mode=absenceModeFromIncidentType(selected?.name??'');
+    setForm(prev=>({...prev,incidentTypeCatalogId:selected?.id??'',incidentType:selected?.name??'',absenceMode:mode,targetShiftId:'',targetShiftLabel:'',replacementEmployeeId:'',replacementEmployeeName:''}));
   }
+  function chooseSeverity(value:string){const selected=severities.find(item=>item.id===value);if(!selected)return;setForm(prev=>({...prev,severityCatalogId:selected.id,severity:selected.systemKey as IncidentSeverity,severityName:selected.name}));}
   function chooseShift(value:string){
     const shift=coverage?.nextShifts.find(x=>x.id===value);
     setForm(prev=>({...prev,targetShiftId:value,targetShiftLabel:shift?fmtShift(shift,'Turno a cubrir'):'',replacementEmployeeId:'',replacementEmployeeName:''}));
@@ -186,11 +236,13 @@ export default function IncidentNotificationPanel({initial,nextCode,locations,lo
   }
   function removeImage(key:'descriptionImages'|'resolutionImages',id:string){patch(key,form[key].filter(x=>x.id!==id) as IncidentRecord[typeof key]);}
   function validateFinal(){
+    if(catalogLoading)return 'Espere a que termine de cargar el catálogo de incidentes.';
+    if(catalogError)return 'No se puede finalizar mientras el catálogo de incidentes no esté disponible.';
     if(!form.title.trim())return 'Ingrese un título.';
-    if(!form.category)return 'Seleccione una categoría.';
-    if(!form.subcategory)return 'Seleccione una subcategoría.';
-    if(!form.incidentType)return 'Seleccione el tipo de incidente.';
-    if(!form.severity)return 'Seleccione una criticidad.';
+    if(!form.categoryCatalogId)return 'Seleccione una categoría.';
+    if(!form.subcategoryCatalogId)return 'Seleccione una subcategoría.';
+    if(!form.incidentTypeCatalogId)return 'Seleccione el tipo de incidente.';
+    if(!form.severityCatalogId)return 'Seleccione una criticidad.';
     if(!form.client||!form.point)return 'Cliente y Punto son obligatorios.';
     if(!form.collaboratorIds.length)return 'Seleccione uno o más colaboradores involucrados.';
     if(!form.description.trim())return 'Ingrese la descripción del incidente.';
@@ -243,13 +295,13 @@ export default function IncidentNotificationPanel({initial,nextCode,locations,lo
     <div className="csl-incident-scroll">
       <Field label="Título *"><input value={form.title} maxLength={140} onChange={e=>patch('title',e.target.value)} placeholder="Título del incidente"/></Field>
 
-      <section className="csl-incident-section"><SectionTitle step="1" title="Categoría"/><div className="csl-incident-categories">{(Object.keys(CATEGORY_META) as IncidentCategory[]).map(value=>{const meta=CATEGORY_META[value];return <button type="button" key={value} className={form.category===value?'selected':''} disabled={coverageApplied} onClick={()=>chooseCategory(value)}><span className="csl-category-symbol" aria-hidden="true">{meta.icon}</span><strong>{meta.label}</strong><small>{meta.description}</small><i aria-hidden="true"/></button>})}</div></section>
+      <section className="csl-incident-section"><SectionTitle step="1" title="Categoría"/>{catalogLoading&&<div className="csl-inline-empty"><ClipboardCheck size={17}/>Cargando catálogo de incidentes…</div>}{catalogError&&<div className="csl-incident-error"><AlertTriangle size={16}/>{catalogError}<button type="button" onClick={()=>setCatalogRefresh(value=>value+1)}>Reintentar</button></div>}<div className="csl-incident-categories">{categories.map(item=>{const meta=categoryMeta(item.systemKey);return <button type="button" key={item.id} className={form.categoryCatalogId===item.id?'selected':''} disabled={coverageApplied||catalogLoading||!!catalogError} onClick={()=>chooseCategory(item.id)}><span className="csl-category-symbol" aria-hidden="true">{meta.icon}</span><strong>{item.name}</strong><small>{meta.description}</small><i aria-hidden="true"/></button>})}</div></section>
 
-      <section className="csl-incident-section"><SectionTitle step="2" title="Subcategoría"/><Field label=""><select value={form.subcategory} disabled={!form.category||coverageApplied} onChange={e=>chooseSubcategory(e.target.value)}><option value="">{form.category?'Seleccione una subcategoría':'Seleccione primero una categoría'}</option>{subcategories.map(x=><option key={x} value={x}>{x}</option>)}</select></Field></section>
+      <section className="csl-incident-section"><SectionTitle step="2" title="Subcategoría"/><Field label=""><select value={form.subcategoryCatalogId} disabled={!form.categoryCatalogId||coverageApplied||catalogLoading||!!catalogError} onChange={e=>chooseSubcategory(e.target.value)}><option value="">{form.categoryCatalogId?'Seleccione una subcategoría':'Seleccione primero una categoría'}</option>{subcategories.map(item=><option key={item.id} value={item.id}>{item.name}</option>)}</select></Field></section>
 
-      <section className="csl-incident-section"><SectionTitle step="3" title="Incidente"/><Field label=""><select value={form.incidentType} disabled={!form.subcategory||coverageApplied} onChange={e=>chooseIncidentType(e.target.value)}><option value="">{form.subcategory?'Seleccione el incidente':'Seleccione primero una subcategoría'}</option>{incidentTypes.map(x=><option key={x} value={x}>{x}</option>)}</select></Field>{form.category==='SERVICE'&&form.subcategory==='Asistencia y Puntualidad'&&<p className="csl-incident-hint">Según el Excel vigente, Inasistencia programada e Inasistencia efectiva son tipos de incidente dentro de Asistencia y Puntualidad; ambos activan el flujo especial de cobertura/reasignación.</p>}</section>
+      <section className="csl-incident-section"><SectionTitle step="3" title="Incidente"/><Field label=""><select value={form.incidentTypeCatalogId} disabled={!form.subcategoryCatalogId||coverageApplied||catalogLoading||!!catalogError} onChange={e=>chooseIncidentType(e.target.value)}><option value="">{form.subcategoryCatalogId?'Seleccione el incidente':'Seleccione primero una subcategoría'}</option>{incidentTypes.map(item=><option key={item.id} value={item.id}>{item.name}</option>)}</select></Field>{form.category==='SERVICE'&&form.subcategory==='Asistencia y Puntualidad'&&<p className="csl-incident-hint">Inasistencia programada e Inasistencia efectiva activan el flujo especial de cobertura/reasignación.</p>}</section>
 
-      <section className="csl-incident-section"><SectionTitle step="4" title="Criticidad"/><div className="csl-severity-grid">{SEVERITIES.map(item=><button key={item.value} type="button" className={`${item.tone} ${form.severity===item.value?'selected':''}`} aria-pressed={form.severity===item.value} onClick={()=>patch('severity',item.value)}><span className="csl-severity-icon" aria-hidden="true">{item.icon}</span><strong>{item.label}</strong><i className="csl-severity-dot" aria-hidden="true"/></button>)}</div></section>
+      <section className="csl-incident-section"><SectionTitle step="4" title="Criticidad"/><div className="csl-severity-grid">{severities.map(item=>{const meta=severityMeta(item.systemKey);return <button key={item.id} type="button" className={`${meta.tone} ${form.severityCatalogId===item.id?'selected':''}`} aria-pressed={form.severityCatalogId===item.id} disabled={catalogLoading||!!catalogError} onClick={()=>chooseSeverity(item.id)}><span className="csl-severity-icon" aria-hidden="true">{meta.icon}</span><strong>{item.name}</strong><i className="csl-severity-dot" aria-hidden="true"/></button>})}</div></section>
 
       <section className="csl-incident-section"><SectionTitle step="5" title="Ubicación"/>{locationsError&&<div className="csl-incident-error"><AlertTriangle size={16}/>{locationsError}<button type="button" onClick={onRetryLocations}>Reintentar</button></div>}<div className="csl-incident-grid two"><Field label="Cliente *"><SearchableSelect ariaLabel="Cliente" value={form.clientId??''} disabled={coverageApplied||locationsLoading||!!locationsError} onChange={chooseClient} searchPlaceholder="Buscar cliente…" options={[{value:'',label:locationsLoading?'Cargando clientes…':locationsError?'Clientes no disponibles':clients.length?'Seleccione cliente':'No hay clientes en su alcance'},...clients.map(x=>({value:x.id,label:x.name}))]}/></Field><Field label="Punto *"><SearchableSelect ariaLabel="Punto" value={form.pointId??''} disabled={coverageApplied||!form.clientId||locationsLoading||!!locationsError} onChange={choosePoint} searchPlaceholder="Buscar punto…" options={[{value:'',label:form.clientId?'Seleccione punto':'Seleccione cliente primero'},...points.map(x=>({value:x.id,label:x.name}))]}/></Field></div><Field label={absenceMode?'Puesto *':'Puesto (opcional)'}><SearchableSelect ariaLabel="Puesto" value={form.postId??''} disabled={coverageApplied||!form.pointId||locationsLoading||!!locationsError} onChange={choosePost} searchPlaceholder="Buscar puesto…" options={[{value:'',label:'Todos / No aplica'},...posts.map(x=>({value:x.id,label:x.name}))]}/></Field></section>
 
@@ -294,7 +346,7 @@ export default function IncidentNotificationPanel({initial,nextCode,locations,lo
       {error&&<div className="csl-incident-error"><AlertTriangle size={16}/>{error}</div>}
     </div>
 
-    <div className="csl-incident-footer"><button type="button" className="draft" disabled={saving||coverageApplied} onClick={()=>void submit('DRAFT')}><Save size={16}/>{saving?'Guardando…':'Guardar borrador'}</button><button type="button" className="finalize" disabled={saving} onClick={()=>void submit('FINALIZED')}><Send size={16}/>{initial?.status==='FINALIZED'?'Guardar finalizado':'Finalizar'}</button></div>
+    <div className="csl-incident-footer"><button type="button" className="draft" disabled={saving||coverageApplied||catalogLoading||!!catalogError} onClick={()=>void submit('DRAFT')}><Save size={16}/>{saving?'Guardando…':'Guardar borrador'}</button><button type="button" className="finalize" disabled={saving||catalogLoading||!!catalogError} onClick={()=>void submit('FINALIZED')}><Send size={16}/>{initial?.status==='FINALIZED'?'Guardar finalizado':'Finalizar'}</button></div>
   </aside>
 }
 

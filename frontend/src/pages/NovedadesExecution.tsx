@@ -11,7 +11,7 @@ import SearchableSelect from '../components/SearchableSelect';
 import FilterAccordion from '../components/FilterAccordion';
 
 type NoveltyType='FINDING'|'VULNERABILITY'|'INCIDENT';
-type NoveltyStatus='PENDING'|'CONFIRMED'|'APPROVED'|'DISCARDED';
+type NoveltyStatus='PENDING'|'CONFIRMED'|'APPROVED'|'FINALIZED'|'DISCARDED';
 type ReporterRole='AGENT'|'SUPERVISOR';
 
 type AuditEvent={
@@ -175,7 +175,7 @@ const EMPTY_FILTERS:Filters={type:'ALL',query:'',city:'',company:'ALL',client:''
 type OperatorReport={reportId:string;type:NoveltyType;category:string;subcategory?:string;title:string;description:string;severity:'LOW'|'MEDIUM'|'HIGH'|'CRITICAL';status:string;occurredAt:string;createdAt:string;username:string;pointName:string;postName:string;clientName?:string;city?:string;companyCode?:string;companyName?:string;latitude?:number;longitude?:number;accuracyM?:number;photoCount?:number};
 function fromOperatorReport(row:OperatorReport):Novelty{return {
   id:row.reportId,code:`OPR-${row.reportId.slice(0,8).toUpperCase()}`,type:row.type,subcategory:row.subcategory||row.category,
-  status:row.status==='APPROVED'?'APPROVED':row.status==='DISCARDED'?'DISCARDED':row.status==='CONFIRMED'?'CONFIRMED':'PENDING',critical:row.severity==='CRITICAL',
+  status:row.status==='FINALIZED'?'FINALIZED':row.status==='APPROVED'?'APPROVED':row.status==='DISCARDED'?'DISCARDED':row.status==='CONFIRMED'?'CONFIRMED':'PENDING',critical:row.severity==='CRITICAL',
   company:row.companyName||'—',companyCode:row.companyCode||'',client:row.clientName||'—',city:row.city||'—',point:row.pointName||'—',post:row.postName||'—',zone:'',region:'',
   reportedBy:row.username||'Operador',reporterRole:'AGENT',createdAt:row.occurredAt||row.createdAt,description:row.description,
   latitude:row.latitude??null,longitude:row.longitude??null,accuracyM:row.accuracyM??null,photoCount:row.photoCount||0,reviewComment:'',reviewedBy:null,reviewedAt:null,clientVisible:false,sourceSystem:'SGI_OPR',
@@ -184,9 +184,9 @@ function fromOperatorReport(row:OperatorReport):Novelty{return {
 
 const typeLabel=(type:NoveltyType)=>type==='FINDING'?'Hallazgo':type==='VULNERABILITY'?'Vulnerabilidad':'Incidente';
 const typeClass=(type:NoveltyType)=>type==='FINDING'?'finding':type==='VULNERABILITY'?'vulnerability':'incident';
-const statusLabel=(status:NoveltyStatus)=>status==='PENDING'?'Pendiente':status==='CONFIRMED'?'Confirmada':status==='APPROVED'?'Aprobada':'Descartada';
+const statusLabel=(status:NoveltyStatus)=>status==='PENDING'?'Pendiente':status==='CONFIRMED'?'Confirmada':status==='APPROVED'?'Aprobada':status==='FINALIZED'?'Finalizada':'Descartada';
 const roleLabel=(role:ReporterRole)=>role==='SUPERVISOR'?'Supervisor':'Agente de Seguridad';
-const statusClass=(status:NoveltyStatus)=>status==='PENDING'?'pending':status==='CONFIRMED'?'confirmed':status==='APPROVED'?'approved':'discarded';
+const statusClass=(status:NoveltyStatus)=>status==='PENDING'?'pending':status==='CONFIRMED'?'confirmed':status==='APPROVED'?'approved':status==='FINALIZED'?'finalized':'discarded';
 const iconForType=(type:NoveltyType)=>type==='FINDING'?<Eye size={16}/>:type==='VULNERABILITY'?<ShieldCheck size={16}/>:<AlertTriangle size={16}/>;
 const dateOnly=(value:string)=>value.slice(0,10);
 const formatDateTime=(value:string)=>new Intl.DateTimeFormat('es-EC',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}).format(new Date(value));
@@ -264,7 +264,7 @@ export default function NovedadesExecution(){
   function openModal(row:Novelty){
     setSelectedId(row.id);setEditing(false);setDraft(draftFrom(row));setReviewComment('');setModalError('');
     void api.operationalReportHistory(row.id).then((history:any[])=>setRecords(current=>current.map(item=>item.id!==row.id?item:{...item,audit:[item.audit[0],...history.map(event=>({
-      id:String(event.id),at:String(event.createdAt),title:event.action==='CONFIRM'?'Novedad confirmada':event.action==='APPROVE'?'Novedad aprobada':'Novedad descartada',
+      id:String(event.id),at:String(event.createdAt),title:event.action==='CONFIRM'?'Novedad confirmada':event.action==='APPROVE'?'Novedad aprobada':event.action==='FINALIZE'?'Novedad finalizada':'Novedad descartada',
       detail:event.comment||statusLabel(event.resultingStatus as NoveltyStatus),actor:`${event.actor} · ${roleLabelFromCode(event.actorRole)}`
     }))]}))).catch(()=>setModalError('No fue posible consultar la trazabilidad completa de la novedad.'))
   }
@@ -325,7 +325,7 @@ export default function NovedadesExecution(){
           <Field label="Punto"><SearchableSelect ariaLabel="Punto" value={filters.point} onChange={setPoint} disabled={!filters.client} searchPlaceholder="Buscar punto…" options={[{value:'',label:filters.client?'Todos':'Seleccione cliente primero'},...points.map(x=>({value:x,label:x}))]}/></Field>
           <Field label="Puesto"><SearchableSelect ariaLabel="Puesto" value={filters.post} onChange={value=>set('post',value)} disabled={!filters.point} searchPlaceholder="Buscar puesto…" options={[{value:'',label:filters.point?'Todos':'Seleccione punto primero'},...posts.map(x=>({value:x,label:x}))]}/></Field>
           <Field label="Tipo de novedad"><select value={filters.type} onChange={e=>set('type',e.target.value as Filters['type'])}><option value="ALL">Todos</option><option value="FINDING">Hallazgos</option><option value="VULNERABILITY">Vulnerabilidades</option><option value="INCIDENT">Incidentes</option></select></Field>
-          <Field label="Estado"><select value={filters.status} onChange={e=>set('status',e.target.value as Filters['status'])}><option value="ALL">Todos</option><option value="PENDING">Pendiente</option><option value="CONFIRMED">Confirmada</option><option value="APPROVED">Aprobada</option><option value="DISCARDED">Descartada</option></select></Field>
+          <Field label="Estado"><select value={filters.status} onChange={e=>set('status',e.target.value as Filters['status'])}><option value="ALL">Todos</option><option value="PENDING">Pendiente</option><option value="CONFIRMED">Confirmada</option><option value="APPROVED">Aprobada</option><option value="FINALIZED">Finalizada</option><option value="DISCARDED">Descartada</option></select></Field>
           <Field label="Reportado por"><SearchableSelect ariaLabel="Reportado por" value={filters.reporter} onChange={value=>set('reporter',value)} disabled={filters.company==='ALL'} searchPlaceholder="Buscar persona…" options={[{value:'',label:filters.company!=='ALL'?'Todos':'Seleccione compañía primero'},...reporters.map(x=>({value:x,label:x}))]}/></Field>
           <Field label="Fecha inicio"><input type="date" value={filters.dateFrom} onChange={e=>set('dateFrom',e.target.value)}/></Field>
           <Field label="Fecha fin"><input type="date" value={filters.dateTo} onChange={e=>set('dateTo',e.target.value)}/></Field>
@@ -390,6 +390,7 @@ export default function NovedadesExecution(){
             :<ModalField label="Comentario de revisión"><div className={`nov-readonly-copy${selected.reviewComment?'':' empty'}`}>{selected.reviewComment||'Sin revisión registrada.'}</div></ModalField>}
           {selected.status==='CONFIRMED'&&<div className="nov-publication confirmed"><CheckCircle2 size={16}/><span>Confirmada: pendiente de aprobación por Asistente de Operaciones o Coordinador de Compañía.</span></div>}
           {selected.status==='APPROVED'&&<div className="nov-publication approved"><CheckCircle2 size={16}/><span>Aprobada: esta novedad está habilitada para SGI: Cliente.</span></div>}
+          {selected.status==='FINALIZED'&&<div className="nov-publication finalized"><CheckCircle2 size={16}/><span>Finalizada: STC confirmó el cierre de la tarea asociada.</span></div>}
           {selected.status==='DISCARDED'&&<div className="nov-publication discarded"><Trash2 size={16}/><span>Descartada: se conserva en histórico y no se publica a SGI: Cliente.</span></div>}
           {modalError&&<div className="nov-modal-error"><AlertTriangle size={15}/>{modalError}</div>}
     </OperationalDrawer>}

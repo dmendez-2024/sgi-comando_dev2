@@ -14,6 +14,11 @@ public class IncidentNotificationEntity extends BaseEntity {
     @Column(name = "company_id") public UUID companyId;
     @Column(name = "point_id") public UUID pointId;
     @Column(name = "post_id") public UUID postId;
+    @Column(name = "operational_report_id") public UUID operationalReportId;
+    @Column(name = "category_catalog_id") public UUID categoryCatalogId;
+    @Column(name = "subcategory_catalog_id") public UUID subcategoryCatalogId;
+    @Column(name = "incident_type_catalog_id") public UUID incidentTypeCatalogId;
+    @Column(name = "severity_catalog_id") public UUID severityCatalogId;
     @Column(name = "created_by", nullable = false, length = 160) public String createdBy;
     @Column(name = "updated_by", nullable = false, length = 160) public String updatedBy;
     @Column(name = "payload_json", nullable = false, columnDefinition = "text") public String payloadJson;

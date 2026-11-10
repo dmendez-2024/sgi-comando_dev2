@@ -39,6 +39,8 @@ public final class InterconnectionIds {
     public static final String DHO_MASTER_EVENTS = "SIC_DHO_SGI_COM_0001_v001";
     public static final String DHO_UNAVAILABILITY_EVENTS = "SIC_DHO_SGI_COM_0002_v001";
     public static final String DHO_PAYROLL_SHIFT_QUERY = "SIC_DHO_SGI_COM_0003_v001";
+    /** Consulta puntual SGI:Comando -> SIC:DHO del correo laboral por persona_id. */
+    public static final String DHO_EMPLOYEE_EMAIL = "SGI_COM_SIC_DHO_0002_v001";
     public static final String TRANSITIONAL_RRHH_MASTER_EVENTS = "SIC_RRHH_SGI_COM_0001_v001";
 	public static final String RRHH_MASTER_EVENTS = "SIC_RRHH_SGI_COM_0001_v001";
 
@@ -54,6 +56,8 @@ public final class InterconnectionIds {
 
     public static final String STC_CREATE_CASE = "SGI_COM_STC_0001_v001";
     public static final String STC_CASE_STATUS = "SGI_COM_STC_0002_v001";
+    /** Callback STC -> SGI:Comando para finalizar una novedad por taskCode. */
+    public static final String STC_NOVELTY_STATUS = "STC_SGI_COM_0001_v001";
 
     public static final String VISINT_REVIEW_REQUEST = "SGI_COM_VISINT_0001_v002";
     public static final String VISINT_REVIEW_RESULT = "SGI_COM_VISINT_0002_v001";

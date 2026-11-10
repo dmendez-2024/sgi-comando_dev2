@@ -457,6 +457,50 @@
     ]
   },
   {
+    "interconnectionRef": "SGI_COM_SIC_DHO_0002",
+    "interconnectionId": "SGI_COM_SIC_DHO_0002_v001",
+    "sourceProgramId": "SGI_COM",
+    "targetProgramId": "SIC_DHO",
+    "purpose": "Obtain an employee email from SIC:DHO by Instancia PE and persona_id.",
+    "interactionType": "REST_API",
+    "mode": "SYNC",
+    "protocol": "HTTP",
+    "contractVersion": "v1",
+    "dataOwnerProgramId": "SIC_DHO",
+    "criticality": "MEDIUM",
+    "legacyTarget": true,
+    "targetImplementationStatus": "READY",
+    "status": "UAT",
+    "interfaces": [
+      {
+        "interfaceId": "SGI_COM_SIC_DHO_0002_IF01",
+        "method": "POST",
+        "path": "/ops.api.dho/ws/sgi/obtenerCorreo",
+        "purpose": "Resolve the employee email used in the STC task payload.",
+        "contentType": "application/json",
+        "request": {
+          "headers": [
+            "Authorization",
+            "X-Correlation-Id",
+            "X-Interconnection-Id",
+            "Idempotency-Key"
+          ],
+          "fields": [
+            "instanceCountryId",
+            "personaId"
+          ]
+        },
+        "response": {
+          "fields": [
+            "personaId",
+            "correo"
+          ]
+        }
+      }
+    ],
+    "legacyConnectionIds": []
+  },
+  {
     "interconnectionRef": "SIC_DHO_SGI_COM_0001",
     "interconnectionId": "SIC_DHO_SGI_COM_0001_v001",
     "sourceProgramId": "SIC_DHO",
@@ -1049,44 +1093,70 @@
     "interconnectionId": "SGI_COM_STC_0001_v001",
     "sourceProgramId": "SGI_COM",
     "targetProgramId": "STC",
-    "purpose": "Create a work/case in STC for Incidents, Requirements and Activities while preserving SGI origin.",
+    "purpose": "Create an STC legacy task when an SGI novelty is approved.",
     "interactionType": "REST_API",
-    "mode": "ASYNC",
+    "mode": "SYNC",
     "protocol": "HTTPS",
     "contractVersion": "v1",
     "dataOwnerProgramId": "SGI_COM",
     "criticality": "HIGH",
     "legacyTarget": true,
-    "targetImplementationStatus": "MANUAL_PENDING",
-    "status": "DESIGN",
+    "targetImplementationStatus": "READY",
+    "status": "UAT",
     "interfaces": [
       {
         "interfaceId": "SGI_COM_STC_0001_IF01",
         "method": "POST",
-        "path": "/api/v1/tasks",
-        "purpose": "Create idempotent STC work case from SGI origin",
+        "path": "/ms-core-integration/integration/v1.0/task/create",
+        "purpose": "Create the STC task and return its taskCodeList before committing the SGI approval.",
         "contentType": "application/json",
         "request": {
+          "headers": [
+            "app",
+            "channel",
+            "user",
+            "ktoken",
+            "Idempotency-Key",
+            "X-Correlation-Id",
+            "X-Interconnection-Id"
+          ],
           "fields": [
-            "eventId",
-            "instanceCountryId",
-            "originType",
-            "originId",
-            "author",
-            "clientId",
-            "serviceId",
-            "pointId",
-            "postId",
+            "assignedTask",
+            "category",
+            "code",
+            "createDate",
             "description",
-            "priority",
-            "evidenceRefs",
-            "occurredAt"
+            "documentDescriptionList",
+            "endDate",
+            "name",
+            "owner",
+            "photoUrl",
+            "recurrence",
+            "stakeholderTask",
+            "startDate",
+            "taskReference",
+            "categoriaId",
+            "subcategoriaId",
+            "indicenteId",
+            "categoryK",
+            "subCategoryK",
+            "incidenteK",
+            "severityLevel",
+            "statusId",
+            "enterprise",
+            "requestTaskDate",
+            "idCompany",
+            "nameCompany",
+            "nameClient",
+            "point",
+            "platform"
           ]
         },
         "response": {
           "fields": [
-            "stcTaskId",
-            "status"
+            "code",
+            "message",
+            "taskCodeList"
           ]
         }
       }
@@ -1668,6 +1738,35 @@
       "contentType": "application/json",
       "request": {"fields": ["exitOperationId","assignmentId","expectedVersion","exitedAt"]},
       "response": {"fields": ["recordId","status","pointVersion","recordVersion","exitedAt","exitedBy","idempotentReplay"]}
+    }],
+    "legacyConnectionIds": []
+  },
+  {
+    "interconnectionRef": "STC_SGI_COM_0001",
+    "interconnectionId": "STC_SGI_COM_0001_v001",
+    "sourceProgramId": "STC",
+    "targetProgramId": "SGI_COM",
+    "purpose": "Finalize an SGI novelty when STC reports the associated task as finalized.",
+    "interactionType": "REST_API",
+    "mode": "SYNC",
+    "protocol": "HTTPS",
+    "contractVersion": "v1",
+    "dataOwnerProgramId": "STC",
+    "criticality": "HIGH",
+    "legacyTarget": false,
+    "targetImplementationStatus": "READY",
+    "status": "UAT",
+    "interfaces": [{
+      "interfaceId": "STC_SGI_COM_0001_IF01",
+      "method": "POST",
+      "path": "/api/v1/inbound/stc/task-status",
+      "purpose": "Change an approved novelty to FINALIZED using the STC task code.",
+      "contentType": "application/json",
+      "request": {
+        "headers": ["Authorization"],
+        "fields": ["taskCode", "status"]
+      },
+      "response": {"fields": ["message"]}
     }],
     "legacyConnectionIds": []
   }

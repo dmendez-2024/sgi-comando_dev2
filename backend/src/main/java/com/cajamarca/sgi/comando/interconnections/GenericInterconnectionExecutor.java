@@ -7,6 +7,7 @@ import jakarta.inject.Inject;
 import org.jboss.logging.Logger;
 
 import java.net.URI;
+import java.net.http.HttpTimeoutException;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -51,7 +52,8 @@ public class GenericInterconnectionExecutor {
         }
         validateProtocol(cfg);
         String uri = buildUri(cfg, input.pathParams, input.queryParams);
-        int maxAttempts = Math.max(1, 1 + cfg.effectiveMaxRetries());
+        int retries = input.maxRetriesOverride == null ? cfg.effectiveMaxRetries() : Math.max(0, input.maxRetriesOverride);
+        int maxAttempts = Math.max(1, 1 + retries);
         RuntimeException last = null;
 
         for (int attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -60,7 +62,8 @@ public class GenericInterconnectionExecutor {
                 HttpRequest request = buildRequest(cfg, input, uri, correlationId);
                 HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
                 long elapsed = (System.nanoTime() - started) / 1_000_000L;
-                if (response.statusCode() >= 500 && attempt < maxAttempts && retryAllowed(cfg.method, input.idempotencyKey)) {
+                if (response.statusCode() >= 500 && input.retryServerErrors && attempt < maxAttempts
+                        && retryAllowed(cfg.method, input.idempotencyKey)) {
                     LOG.warnf("integration_retry id=%s interface=%s attempt=%d status=%d corr=%s", interconnectionId, interfaceId, attempt, response.statusCode(), correlationId);
                     sleepBackoff(attempt);
                     continue;
@@ -75,8 +78,11 @@ public class GenericInterconnectionExecutor {
             } catch (InterconnectionException e) {
                 throw e;
             } catch (Exception e) {
-                last = new InterconnectionException("TRANSPORT_FAILURE", "Interconnection transport failed", e);
-                if (attempt < maxAttempts && retryAllowed(cfg.method, input.idempotencyKey)) {
+                boolean timeout = isTimeout(e);
+                last = new InterconnectionException(timeout ? "TRANSPORT_TIMEOUT" : "TRANSPORT_FAILURE",
+                    timeout ? "Interconnection timed out" : "Interconnection transport failed", e);
+                boolean retryTransport = input.retryTransportErrors && (!input.retryOnlyTimeouts || timeout);
+                if (retryTransport && attempt < maxAttempts && retryAllowed(cfg.method, input.idempotencyKey)) {
                     LOG.warnf(e, "integration_transport_retry id=%s interface=%s attempt=%d corr=%s", interconnectionId, interfaceId, attempt, correlationId);
                     sleepBackoff(attempt);
                     continue;
@@ -163,6 +169,12 @@ public class GenericInterconnectionExecutor {
     private static boolean retryAllowed(String method, String idempotencyKey) {
         String m = method == null ? "" : method.toUpperCase();
         return "GET".equals(m) || "PUT".equals(m) || "DELETE".equals(m) || (idempotencyKey != null && !idempotencyKey.isBlank());
+    }
+    private static boolean isTimeout(Throwable error) {
+        for (Throwable current = error; current != null; current = current.getCause()) {
+            if (current instanceof HttpTimeoutException || current instanceof java.net.SocketTimeoutException) return true;
+        }
+        return false;
     }
     private static void sleepBackoff(int attempt) {
         try { Thread.sleep(Math.min(1000L, 100L * (1L << Math.min(attempt - 1, 3)))); }

@@ -23,10 +23,42 @@ import static org.junit.jupiter.api.Assertions.*;
 @TestProfile(ObsintSocketDeliveryTest.Profile.class)
 class ObsintSocketDeliveryTest {
     public static class Profile implements QuarkusTestProfile {
-        public Map<String,String> getConfigOverrides() { return Map.of(
-            "sgi.socket.enabled","true","sgi.socket.url","http://localhost:8081/test-socket",
-            "sgi.socket.dispatch-every","1h","sgi.socket.presence-enabled","true",
-            "sgi.socket.ack.token","ack-test","sgi.socket.ack.allowed-ips","127.0.0.1/32,::1/128","sgi.smc.enabled","false"); }
+        public Map<String,String> getConfigOverrides() {
+            Map<String,String> overrides=new HashMap<>(Map.of(
+                "sgi.socket.enabled","true","sgi.socket.url","http://localhost:8081/test-socket",
+                "sgi.socket.dispatch-every","1h","sgi.socket.presence-enabled","true",
+                "sgi.socket.ack.token","ack-test","sgi.socket.ack.allowed-ips","127.0.0.1/32,::1/128","sgi.smc.enabled","false"));
+            // Push FCM contra un FCM local: cuenta de servicio sintética cuyo token_uri también es local.
+            overrides.put("sgi.push.enabled","true");
+            overrides.put("sgi.push.fcm-url","http://localhost:8081/test-fcm");
+            overrides.put("sgi.push.credentials-json",FakeFcm.serviceAccount());
+            return overrides;
+        }
+    }
+    /** FCM HTTP v1 y el endpoint OAuth de Google, locales. */
+    @Path("/test-fcm") @PermitAll @Produces(MediaType.APPLICATION_JSON)
+    public static class FakeFcm {
+        public static volatile int code=200;
+        public static final List<JsonNode> received=new CopyOnWriteArrayList<>();
+        public static final List<String> authorizations=new CopyOnWriteArrayList<>();
+        static String serviceAccount() {
+            try {
+                var generator=java.security.KeyPairGenerator.getInstance("RSA");generator.initialize(2048);
+                String pem="-----BEGIN PRIVATE KEY-----\n"+Base64.getMimeEncoder(64,"\n".getBytes()).encodeToString(generator.generateKeyPair().getPrivate().getEncoded())+"\n-----END PRIVATE KEY-----\n";
+                return new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(Map.of("type","service_account","project_id","sgi-push-test",
+                    "private_key_id","test-key","private_key",pem,"client_email","push-test@sgi-push-test.iam.gserviceaccount.com",
+                    "client_id","1","token_uri","http://localhost:8081/test-fcm/token"));
+            } catch(Exception e) { throw new IllegalStateException(e); }
+        }
+        @POST @Path("/token") @Consumes(MediaType.APPLICATION_FORM_URLENCODED)
+        public Map<String,Object> token(String form) { return Map.of("access_token","push-test-token","token_type","Bearer","expires_in",3600); }
+        @POST @Path("/v1/projects/{project}/{action}") @Consumes(MediaType.APPLICATION_JSON)
+        public Response send(@PathParam("project") String project,@PathParam("action") String action,@HeaderParam("Authorization") String authorization,JsonNode body) {
+            if(!"sgi-push-test".equals(project) || !"messages:send".equals(action)) return Response.status(404).build();
+            received.add(body);authorizations.add(String.valueOf(authorization));
+            return code==200?Response.ok(Map.of("name","projects/sgi-push-test/messages/"+received.size())).build()
+                :Response.status(code).entity(Map.of("error",Map.of("code",code,"status","INTERNAL"))).build();
+        }
     }
     @Path("/test-socket") @PermitAll @Produces(MediaType.APPLICATION_JSON)
     public static class FakeGateway {
@@ -102,6 +134,36 @@ class ObsintSocketDeliveryTest {
             var isolated=own.messages(null).stream().filter(v->v.postId().equals(firstPost)).findFirst().orElseThrow();
             assertNull(isolated.pointName());assertNull(isolated.postName());
         });
+    }
+    @Test void pushFcmAlTopicDelAgenteSinCambiarElEstado() throws Exception {
+        FakeGateway.code=202;FakeGateway.connections=0;FakeFcm.code=200;
+        var f=fixture();var agents=f.agents();
+        UUID message=send(f,agents,"POINT",null);awaitState(message,"SENT");
+        var recipients=rows(message);assertEquals(2,recipients.size());
+        for(var r:recipients) {
+            var pushes=FakeFcm.received.stream().filter(n->n.path("message").path("data").path("recipientId").asText().equals(r.id.toString())).toList();
+            assertEquals(1,pushes.size());
+            var push=pushes.getFirst().path("message");
+            // Solo datos, al topic del agente (el mismo nombre del canal del socket) y con prioridad alta.
+            assertEquals("persona."+r.personaId,push.path("topic").asText());
+            assertTrue(push.path("notification").isMissingNode());
+            assertEquals("HIGH",push.path("android").path("priority").asText());
+            assertEquals(config.messageTtl().toSeconds()+"s",push.path("android").path("ttl").asText());
+            var data=push.path("data");
+            assertEquals("obsint.mensaje",data.path("event").asText());assertEquals("persona."+r.personaId,data.path("channel").asText());
+            var payload=new com.fasterxml.jackson.databind.ObjectMapper().readTree(data.path("payload").asText());
+            assertEquals(r.id.toString(),payload.path("recipientId").asText());assertEquals("Prueba local",payload.path("text").asText());
+            assertEquals("Monitor Consola",payload.path("from").asText());assertEquals(payload.path("roomId").asText(),data.path("roomId").asText());
+            assertFalse(push.toString().contains("socket-test"));assertFalse(push.toString().contains(ObsintSocketFixtures.SENDER_ROLE));
+            assertNotNull(r.pushSentAt);assertNull(r.pushError);
+        }
+        assertTrue(FakeFcm.authorizations.stream().allMatch("Bearer push-test-token"::equals));
+        // Si FCM falla, el mensaje sigue su curso por el socket y la 0033: solo queda el motivo para auditoría.
+        FakeFcm.code=500;
+        try {
+            UUID failed=send(f,agents,"POINT",null);awaitState(failed,"SENT");
+            for(var r:rows(failed)) { assertEquals("SENT",r.status);assertNull(r.pushSentAt);assertEquals("FCM_HTTP_500 INTERNAL",r.pushError); }
+        } finally { FakeFcm.code=200; }
     }
     private static Set<String> iterableToSet(Iterator<String> names) { Set<String> out=new HashSet<>(); names.forEachRemaining(out::add); return out; }
     private ObsintSocketFixtures fixture() { return QuarkusTransaction.requiringNew().call(()->ObsintSocketFixtures.create(em)); }

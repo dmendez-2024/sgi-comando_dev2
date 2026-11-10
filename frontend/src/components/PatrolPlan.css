@@ -15,10 +15,13 @@
 .pat-plan-dialog .pat-plan-toolbar{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;flex-shrink:0}
 .patrol-config-page .pat-plan-dialog>header{height:auto!important;min-height:0!important;padding:0 0 8px!important;margin:0;border-bottom:1px solid #e4e9ef;gap:8px}
 .pat-plan-dialog header h3{font-size:16px}.pat-plan-dialog header p{font-size:12px;margin:3px 0 0}.pat-plan-dialog button{padding:6px 10px;font-size:12px;min-height:32px}
-.pat-plan-dialog .pat-plan-toolbar nav{margin-left:auto;gap:6px;flex-wrap:nowrap}.pat-plan-dialog .pat-plan-toolbar nav span{font-size:12px;min-width:38px;text-align:center}
+.pat-plan-dialog .pat-plan-toolbar nav{margin-left:auto;display:flex;align-items:center;gap:6px;flex:0 0 auto;flex-wrap:nowrap;white-space:nowrap}.pat-plan-dialog .pat-plan-toolbar nav span{font-size:12px;min-width:0;text-align:center}
 .pat-plan-dialog .pat-plan-create-actions{gap:6px}.pat-plan-dialog footer{gap:8px}
 
-.pat-plan-dialog .pat-plan-zoom-input{display:inline-flex;align-items:center;gap:2px;font-size:12px}.pat-plan-dialog .pat-plan-zoom-input input{width:52px;height:32px;border:1px solid #cbd8eb;border-radius:7px;padding:3px 5px;text-align:right;font:inherit;color:#244577;box-sizing:border-box}.pat-plan-dialog .pat-plan-zoom-input input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}.pat-plan-dialog .pat-plan-zoom-input input[type=number]{appearance:textfield;-moz-appearance:textfield}
+.pat-plan-dialog .pat-plan-toolbar .pat-plan-zoom-input{display:inline-flex;flex-direction:row;align-items:center;gap:4px;width:auto;min-width:0;margin:0;font-size:12px;white-space:nowrap}.pat-plan-dialog .pat-plan-zoom-input input{flex:0 0 58px;width:58px;height:32px;border:1px solid #cbd8eb;border-radius:7px;padding:3px 7px;text-align:right;font:inherit;color:#244577;box-sizing:border-box}.pat-plan-dialog .pat-plan-zoom-input input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}.pat-plan-dialog .pat-plan-zoom-input input[type=number]{appearance:textfield;-moz-appearance:textfield}
+.pat-plan-dialog .pat-plan-toolbar nav>button{flex:0 0 auto;white-space:nowrap}.pat-plan-dialog .pat-plan-toolbar nav>button[aria-label^="Reducir"],.pat-plan-dialog .pat-plan-toolbar nav>button[aria-label^="Aumentar"]{width:36px;padding-inline:0;display:grid;place-items:center}
+
+@media(max-width:640px){.pat-plan-dialog{width:100vw;height:100dvh;max-height:100dvh;border-radius:0;padding:10px}.pat-plan-dialog .pat-plan-toolbar{align-items:flex-start}.pat-plan-dialog .pat-plan-toolbar nav{width:100%;margin-left:0;justify-content:flex-end}.pat-plan-dialog .pat-plan-zoom-input input{flex-basis:52px;width:52px}}
 
 .con-plan-location{margin-top:12px;border:1px solid #dbe4ec;border-radius:10px;padding:10px;display:grid;gap:8px;min-width:0}
 .con-plan-location-head{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}

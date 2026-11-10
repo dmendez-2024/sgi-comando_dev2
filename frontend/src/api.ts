@@ -86,6 +86,7 @@ export const api={
  supervisionSanctionImage:(id:string,position:number)=>binaryRequest(`/api/supervision/evaluations/${encodeURIComponent(id)}/sanction-images/${position}`),
  operationExecutions:(pointId:string)=>request<any[]>(`/api/operation/executions?pointId=${encodeURIComponent(pointId)}`),
  operationCollaborators:(pointId:string)=>request<any[]>(`/api/operation/points/${encodeURIComponent(pointId)}/collaborators`),
+ incidentCatalog:()=>request<any>('/api/incidents/catalog'),
  incidents:()=>request<any[]>('/api/incidents'),
  createIncident:(record:any)=>request<any>('/api/incidents',{method:'POST',body:JSON.stringify(record)}),
  updateIncident:(id:string,record:any)=>request<any>(`/api/incidents/${encodeURIComponent(id)}`,{method:'PUT',body:JSON.stringify(record)}),
