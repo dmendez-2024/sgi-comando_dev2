@@ -70,6 +70,20 @@ public class MonitorShiftScope {
         return rows.isEmpty() ? null : uuids(rows).iterator().next();
     }
 
+    /**
+     * Cargo (role_code del empleado) de quien usa la consola, para firmar los mensajes al agente; null si no se le conoce
+     * la persona o el empleado. Sirve también para los cargos altos, que envían mensajes sin rol MONITOR.
+     */
+    public String cargoNow() {
+        if (identity.isAnonymous()) return null;
+        Long persona = persona();
+        if (persona == null) return null;
+        @SuppressWarnings("unchecked")
+        List<Object> rows = em.createNativeQuery("select role_code from employee_operational_snapshot where instance_country_id=:tenant and persona_id=:persona and role_code is not null")
+            .setParameter("tenant", tenant.instanceCountryId()).setParameter("persona", persona).setMaxResults(1).getResultList();
+        return rows.isEmpty() ? null : rows.get(0).toString().trim();
+    }
+
     /** De esos empleados, los que están de turno en ese momento en algún puesto de Monitoreo. */
     public Set<UUID> employeesOnShift(UUID tenantId, Collection<UUID> employeeIds, Instant now) {
         if (employeeIds.isEmpty()) return Set.of();

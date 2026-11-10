@@ -75,6 +75,8 @@ Ejemplo ilustrativo de publicación; los UUID y el texto son de muestra:
 }
 ```
 
+`from` es el cargo del monitorista al enviar (`obsint_agent_message.sender_role`, tomado de `employee_operational_snapshot.role_code`); si no se conoce, `Monitor Consola`. Es lo único del remitente que llega al agente: ni nombre, ni usuario, ni identificadores. Lo mismo devuelve `GET /api/v1/operator/messages` (0033) y el recibo (0034).
+
 El canal utiliza `employee_operational_snapshot.persona_id`, no el UUID `employee_id`, ni la identidad del Monitor. No se fija el canal 9428 en el código: cada agente de turno aporta su persona.
 
 El contrato proporcionado indica que el gateway no autentica las publicaciones ni almacena mensajes. El código no envía Authorization Bearer; envía `source=sgi-comando`. Ese source debe estar habilitado en el gateway.

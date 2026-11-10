@@ -32,6 +32,7 @@ public class ObsintService {
     @Inject com.cajamarca.sgi.comando.socket.SocketConfig socket;
     @Inject ObsintAgentRecipients recipients;
     @Inject jakarta.enterprise.event.Event<ObsintMessageQueued> queued;
+    @Inject com.cajamarca.sgi.comando.territory.MonitorShiftScope monitorScope;
     /** Si es false, cada consigna entra en todos los casos dentro de su horario (útil para demos locales). */
     @ConfigProperty(name = "sgi.obsint.apply-frequency", defaultValue = "true") boolean applyFrequency;
 
@@ -188,6 +189,7 @@ public class ObsintService {
         } else if(socket.enabled()) agents=recipients.onShift(task.instanceCountryId,task.consigna.pointId,now());
         ObsintAgentMessage m=new ObsintAgentMessage();
         m.instanceCountryId=task.instanceCountryId; m.taskId=taskId; m.operator=platform.username();
+        m.senderRole=monitorScope.cargoNow();
         m.text=value; m.sentAt=now(); m.target=destination; m.deliveryStatus=ObsintAgentMessage.STATUS_TEST; m.persist();
         if(socket.enabled()) {
             if(agents.isEmpty()) { m.deliveryStatus="FAILED"; m.failureReason="NO_AGENT_ON_SHIFT"; }
