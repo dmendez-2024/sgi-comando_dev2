@@ -97,6 +97,9 @@ export default function BitacoraGlobal(){
   const companyOptions=useMemo(()=>Array.from(new Map(scopedData.map(r=>[r.companyCode,r.company])).values()),[scopedData]);
   const cityOptions=useMemo(()=>Array.from(new Set(scopedData.map(r=>r.city))).sort(),[scopedData]);
   const clientOptions=useMemo(()=>Array.from(new Set(scopedData.map(r=>r.client))).sort(),[scopedData]);
+  const pointOptions=useMemo(()=>Array.from(new Set(scopedData
+    .filter(record=>record.client===filters.client)
+    .map(record=>record.point))).sort(),[scopedData,filters.client]);
 
   const rows=useMemo(()=>scopedData.filter(record=>{
     if(filters.type!=='ALL' && record.type!==filters.type) return false;
@@ -111,7 +114,7 @@ export default function BitacoraGlobal(){
     if(filters.city && record.city!==filters.city) return false;
     if(filters.client && record.client!==filters.client) return false;
     if(filters.company!=='ALL' && record.company!==filters.company) return false;
-    if(filters.point && !record.point.toLowerCase().includes(filters.point.toLowerCase())) return false;
+    if(filters.point && record.point!==filters.point) return false;
     if(filters.status!=='ALL' && record.status!==filters.status) return false;
     if(filters.dateFrom && dateOnly(record.at) < filters.dateFrom) return false;
     if(filters.dateTo && dateOnly(record.at) > filters.dateTo) return false;
@@ -177,8 +180,8 @@ export default function BitacoraGlobal(){
           <div className="bit-global-filter-grid nov-filter-grid operational-filter-grid">
             <Field label="Ciudad"><SearchableSelect ariaLabel="Ciudad" value={filters.city} onChange={value=>set('city',value)} searchPlaceholder="Buscar ciudad…" options={[{value:'',label:'Todas'},...cityOptions.map(c=>({value:c,label:c}))]}/></Field>
             <Field label="Compañía"><SearchableSelect ariaLabel="Compañía" value={filters.company} onChange={value=>set('company',value)} searchPlaceholder="Buscar compañía…" options={[{value:'ALL',label:'Todas'},...companyOptions.map(c=>({value:c,label:c}))]}/></Field>
-            <Field label="Cliente"><SearchableSelect ariaLabel="Cliente" value={filters.client} onChange={value=>set('client',value)} searchPlaceholder="Buscar cliente…" options={[{value:'',label:'Todos'},...clientOptions.map(c=>({value:c,label:c}))]}/></Field>
-            <Field label="Punto"><input value={filters.point} onChange={e=>set('point',e.target.value)} placeholder="Ej. Acceso Principal"/></Field>
+            <Field label="Cliente"><SearchableSelect ariaLabel="Cliente" value={filters.client} onChange={value=>setFilters(previous=>({...previous,client:value,point:''}))} searchPlaceholder="Buscar cliente…" options={[{value:'',label:'Todos'},...clientOptions.map(c=>({value:c,label:c}))]}/></Field>
+            <Field label="Punto"><SearchableSelect ariaLabel="Punto" value={filters.point} onChange={value=>set('point',value)} disabled={!filters.client} placeholder={filters.client?'Seleccione un punto':'Seleccione un cliente primero'} searchPlaceholder="Buscar punto…" options={[{value:'',label:'Todos los puntos'},...pointOptions.map(point=>({value:point,label:point}))]}/></Field>
             <Field label="Estado / Resultado"><select value={filters.status} onChange={e=>set('status',e.target.value as Filters['status'])}><option value="ALL">Todos</option><option value="AUTHORIZED">Autorizado</option><option value="REGISTERED">Registrado</option><option value="RELEASED">Liberado</option><option value="UNDER_REVIEW">En revisión</option><option value="RETAINED">Retenido</option></select></Field>
             <Field label="Nombres"><input value={filters.firstName} onChange={e=>set('firstName',e.target.value)} placeholder="Ej. Juan"/></Field>
             <Field label="Apellidos"><input value={filters.lastName} onChange={e=>set('lastName',e.target.value)} placeholder="Ej. Pérez"/></Field>
