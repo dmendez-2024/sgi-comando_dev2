@@ -123,8 +123,10 @@ class SecElecResourceTest {
     /** Lista "Marca" del formulario: cada marca con su plantilla de ruta; "Otra" sin plantilla (la ruta se escribe). */
     @Test void cameraBrands() {
         as("coord").get("/api/secelec/camera-brands").then().statusCode(200)
-            .body("code", hasItems("HIKVISION", "DAHUA", "OTHER"))
+            .body("code", contains("HIKVISION", "DAHUA", "TPLINK", "OTHER"))
             .body("find{it.code=='DAHUA'}.pathTemplate", is("/cam/realmonitor?channel={canal}&subtype=0"))
+            .body("find{it.code=='DAHUA'}.subPathTemplate", is("/cam/realmonitor?channel={canal}&subtype=1"))
+            .body("find{it.code=='HIKVISION'}.subPathTemplate", is("/Streaming/Channels/{canal}02"))
             .body("find{it.code=='DAHUA'}.requiresPath", is(false))
             .body("find{it.code=='OTHER'}.requiresPath", is(true))
             .body("defaultPort", everyItem(is(554)));
@@ -142,6 +144,13 @@ class SecElecResourceTest {
         as("coord").contentType(ContentType.JSON).body(dahua).post("/api/secelec/points/" + POINT + "/components")
             .then().statusCode(200).body("cameraBrand", is("DAHUA")).body("rtspPath", nullValue())
             .body("streamPath", is("/cam/realmonitor?channel=2&subtype=0"));
+
+        // Calidad secundaria: Hikvision canal 1 arma /102 (antes había que usar "Otra" y escribirla); sin elegir = principal.
+        Map<String, Object> sub = camera();
+        sub.put("streamQuality", "SUB");
+        as("coord").contentType(ContentType.JSON).body(sub).post("/api/secelec/points/" + POINT + "/components")
+            .then().statusCode(200).body("cameraBrand", is("HIKVISION")).body("streamQuality", is("SUB"))
+            .body("streamPath", is("/Streaming/Channels/102"));
 
         Map<String, Object> other = camera();
         other.put("cameraBrand", "OTHER");

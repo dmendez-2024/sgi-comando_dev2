@@ -6,23 +6,25 @@ export type ComponentStatus='ACTIVE'|'OBSERVED'|'INACTIVE';
 /** COPY: el servidor de video reenvía el flujo tal cual. TRANSCODE: lo recodifica (p. ej. H.265 → H.264). */
 export type StreamingMode='COPY'|'TRANSCODE';
 /** Marca de la cámara: define la ruta RTSP del video. OTHER ("Otra") lleva la ruta escrita a mano (rtspPath). */
-export type CameraBrand='HIKVISION'|'DAHUA'|'UNIVIEW'|'REOLINK'|'AXIS'|'TPLINK'|'OTHER';
+export type CameraBrand='HIKVISION'|'DAHUA'|'TPLINK'|'OTHER';
+/** Calidad del video: MAIN = stream principal (alta calidad), SUB = secundario (liviano, recomendado para la consola). */
+export type StreamQuality='MAIN'|'SUB';
 /** Opción de la lista "Marca" (GET /api/secelec/camera-brands). requiresPath: hay que escribir la ruta (solo "Otra"). */
-export type BrandOption={code:CameraBrand;label:string;defaultPort:number;pathTemplate:string|null;requiresPath:boolean};
+export type BrandOption={code:CameraBrand;label:string;defaultPort:number;pathTemplate:string|null;subPathTemplate:string|null;requiresPath:boolean};
 /** channel, latitude, longitude y streaming* solo vienen en cámaras (VIDEO); en otras familias son null. */
 export type SecurityComponent={id:string;pointId:string;family:Family;componentType:string;code:string;name:string;location:string|null;coverage:string|null;
   brandModel:string|null;status:ComponentStatus;observations:string|null;ip:string|null;port:number|null;channel:number|null;
-  cameraBrand:CameraBrand|null;rtspPath:string|null;streamPath:string|null;detectedCodec:string|null;latitude:number|null;
+  cameraBrand:CameraBrand|null;streamQuality:StreamQuality|null;rtspPath:string|null;streamPath:string|null;detectedCodec:string|null;latitude:number|null;
   longitude:number|null;streamingEnabled:boolean|null;streamingMode:StreamingMode|null;username:string|null;hasPassword:boolean;
   streamUrl:string|null;electronicDeviceId:string|null;updatedBy:string;updatedAt:string};
 /** password: obligatoria al crear una cámara; al editar, vacía conserva la actual. latitude y longitude van juntas o ambas null. */
 export type ComponentSave={family:Family;componentType:string;name:string;location:string;coverage:string;brandModel:string;status:ComponentStatus;
-  observations:string;ip:string;port:number|null;channel:number|null;cameraBrand:CameraBrand;rtspPath:string;latitude:number|null;longitude:number|null;streamingEnabled:boolean;
+  observations:string;ip:string;port:number|null;channel:number|null;cameraBrand:CameraBrand;streamQuality:StreamQuality;rtspPath:string;latitude:number|null;longitude:number|null;streamingEnabled:boolean;
   streamingMode:StreamingMode;username:string;password:string;streamUrl:string;electronicDeviceId:string|null};
 /** Dispositivo OBSINT que SIC:COM envió para el Punto (la línea contratada) con su horario y cuántas cámaras tiene asignadas. */
 export type ElectronicDevice={id:string;code:string;name:string;product:string|null;commercialStatus:string;schedule:string;cameras:number};
 /** "Probar conexión": datos del formulario. password vacía + componentId usa la contraseña guardada de esa cámara. */
-export type CameraTestRequest={componentId?:string;ip:string;port:number|null;channel:number|null;cameraBrand:CameraBrand;rtspPath:string;username:string;password:string};
+export type CameraTestRequest={componentId?:string;ip:string;port:number|null;channel:number|null;cameraBrand:CameraBrand;streamQuality:StreamQuality;rtspPath:string;username:string;password:string};
 export type CameraTestOutcome='OK'|'AUTH_FAILED'|'NOT_FOUND'|'UNREACHABLE'|'TIMEOUT'|'PROTOCOL_ERROR';
 /** Siempre llega con 200: ok=false trae el motivo en message. codec: 'H.264', 'H.265'… o null. */
 /** previewUrl: video en vivo para el formulario (null sin servidor de video); vive unos minutos. */

@@ -29,6 +29,8 @@ public class SecElecComponent extends BaseEntity {
     public Integer channel;
     /** Marca: define la ruta RTSP (ver {@link CameraBrand}). null en cámaras anteriores = Hikvision. */
     @Enumerated(EnumType.STRING) @Column(name = "camera_brand", length = 24) public CameraBrand cameraBrand;
+    /** Calidad del video: MAIN (principal) o SUB (secundario, liviano). null en cámaras anteriores = MAIN. No aplica a "Otra". */
+    @Enumerated(EnumType.STRING) @Column(name = "stream_quality", length = 8) public CameraBrand.StreamQuality streamQuality;
     /** Ruta RTSP escrita a mano; solo con marca OTHER ("Otra"). */
     @Column(name = "rtsp_path", length = 300) public String rtspPath;
     /** Códec del video según la última "Probar conexión" (H.264, H.265…). */

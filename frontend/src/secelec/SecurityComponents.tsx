@@ -1,7 +1,7 @@
 import {useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode} from 'react';
 import {attachStream, goLive, liveDelay, LIVE_BEHIND_S} from '../obsint/liveStream';
 import {AlertTriangle, ArrowLeft, Bell, Camera, CheckCircle2, ChevronRight, Edit3, Eye, EyeOff, Flame, Fingerprint, Lightbulb, PlugZap, Plus, Radio, ShieldCheck, ShieldHalf, Trash2, X} from 'lucide-react';
-import {errorText, FAMILIES, familyLabel, secelecApi, statusLabel, type BrandOption, type CameraBrand, type ComponentSave, type ElectronicDevice, type Family, type PointContext,
+import {errorText, FAMILIES, familyLabel, secelecApi, statusLabel, type BrandOption, type CameraBrand, type ComponentSave, type StreamQuality, type ElectronicDevice, type Family, type PointContext,
   type SecurityComponent, type CameraTestResult} from './secelecApi';
 import './secelec.css';
 
@@ -135,7 +135,8 @@ function Detail({c,brands,devices,onEdit,onDelete}:{c:SecurityComponent;brands:B
   if(video){
     rows.push(['Dirección IP',c.ip],['Puerto',c.port==null?null:String(c.port)]);
     // Con la marca "Otra" el canal no se usa (va dentro de la ruta escrita a mano): mostrarlo confunde.
-    if(c.cameraBrand!=='OTHER')rows.push(['Canal',c.channel==null?null:String(c.channel)]);
+    if(c.cameraBrand!=='OTHER')rows.push(['Canal',c.channel==null?null:String(c.channel)],
+      ['Calidad',c.streamQuality==='SUB'?'Secundaria (liviana)':'Principal (alta calidad)']);
     rows.push(['Ruta del video',c.streamPath],['Códec',c.detectedCodec],
       ['Usuario',c.username],['Contraseña',c.hasPassword?'Guardada (cifrada)':'—'],
       ['Coordenadas',c.latitude==null||c.longitude==null?null:`${c.latitude}, ${c.longitude}`],
@@ -158,7 +159,8 @@ function ComponentForm({pointId,family,brands,devices,initial,onSaved,onCancel}:
   const [form,setForm]=useState<ComponentSave>(()=>({family,componentType:initial?.componentType??types[0]??'',name:initial?.name??'',location:initial?.location??'',
     coverage:initial?.coverage??'',brandModel:initial?.brandModel??'',status:initial?.status??'ACTIVE',observations:initial?.observations??'',
     ip:initial?.ip??'',port:initial?.port??(family==='VIDEO'?554:null),channel:initial?.channel??(family==='VIDEO'?1:null),
-    cameraBrand:initial?.cameraBrand??'HIKVISION',rtspPath:initial?.rtspPath??'',
+    // Cámara nueva: secundaria (liviana, la que mejor anda en la consola). Las guardadas conservan la suya (antes, siempre principal).
+    cameraBrand:initial?.cameraBrand??'HIKVISION',streamQuality:initial?.streamQuality??(initial?'MAIN':'SUB'),rtspPath:initial?.rtspPath??'',
     latitude:initial?.latitude??null,longitude:initial?.longitude??null,streamingEnabled:initial?.streamingEnabled??true,streamingMode:initial?.streamingMode??'COPY',
     username:initial?.username??'',password:'',streamUrl:initial?.streamUrl??'',electronicDeviceId:initial?.electronicDeviceId??(devices.length===1?devices[0].id:null)}));
   const [showPassword,setShowPassword]=useState(false);
@@ -170,6 +172,9 @@ function ComponentForm({pointId,family,brands,devices,initial,onSaved,onCancel}:
   /** Solo con la marca "Otra" se escribe la ruta del video; las demás la arman solas en el backend. */
   const brand=brands.find(b=>b.code===form.cameraBrand);
   const needsPath=brand?.requiresPath??form.cameraBrand==='OTHER';
+  /** Ruta que se va a pedir a la cámara con la marca, el canal y la calidad elegidos (con "Otra", la escrita). */
+  const template=form.streamQuality==='SUB'?brand?.subPathTemplate:brand?.pathTemplate;
+  const routePreview=needsPath?form.rtspPath:template?template.split('{canal}').join(String(form.channel??1)):null;
   function chooseBrand(code:CameraBrand){
     const next=brands.find(b=>b.code===code);
     setForm(prev=>({...prev,cameraBrand:code,port:prev.port??next?.defaultPort??554}));
@@ -181,7 +186,7 @@ function ComponentForm({pointId,family,brands,devices,initial,onSaved,onCancel}:
   async function testConnection(){
     setTesting(true);setTest(null);setError('');
     try{const result=await secelecApi.testCamera(pointId,{componentId:initial?.id,ip:form.ip,port:form.port,channel:form.channel,cameraBrand:form.cameraBrand,
-      rtspPath:form.rtspPath,username:form.username,password:form.password});
+      streamQuality:form.streamQuality,rtspPath:form.rtspPath,username:form.username,password:form.password});
       setTest(result);
       // H.265 no se ve en el navegador: se guarda para que el servidor de video la convierta a H.264.
       if(result.ok&&/H\.?265|HEVC/i.test(result.codec??''))set('streamingMode','TRANSCODE');}
@@ -222,6 +227,11 @@ function ComponentForm({pointId,family,brands,devices,initial,onSaved,onCancel}:
         {!needsPath&&<Field label="Canal *"><input type="number" min={1} max={256} value={form.channel??''} onChange={e=>set('channel',num(e.target.value))} required
           title="1 si es una cámara sola; el número de cámara si es un grabador (NVR/DVR)"/></Field>}
       </div>
+      {/* Calidad: con "Otra" va dentro de la ruta escrita. */}
+      {!needsPath&&<Field label="Calidad del video *"><select value={form.streamQuality} onChange={e=>{set('streamQuality',e.target.value as StreamQuality);setTest(null)}} required>
+        <option value="SUB">Secundaria (liviana, recomendada para la Consola)</option>
+        <option value="MAIN">Principal (alta calidad, más pesada)</option></select></Field>}
+      {routePreview&&<p className="sec-route-preview">Ruta del video: <code>{routePreview}</code></p>}
       <div className="sec-form-row">
         <Field label="Usuario *"><input value={form.username} onChange={e=>set('username',e.target.value)} required maxLength={120} autoComplete="off"/></Field>
         <Field label={initial?.hasPassword?'Contraseña':'Contraseña *'}><span className="sec-password">

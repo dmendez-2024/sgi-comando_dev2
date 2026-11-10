@@ -37,26 +37,29 @@ public class SecElecResource {
 
     public record ComponentView(UUID id, UUID pointId, Family family, String componentType, String code, String name, String location,
                                 String coverage, String brandModel, Status status, String observations, String ip, Integer port,
-                                Integer channel, CameraBrand cameraBrand, String rtspPath, String streamPath, String detectedCodec,
+                                Integer channel, CameraBrand cameraBrand, CameraBrand.StreamQuality streamQuality, String rtspPath, String streamPath, String detectedCodec,
                                 BigDecimal latitude, BigDecimal longitude, Boolean streamingEnabled, StreamingMode streamingMode,
                                 String username, boolean hasPassword, String streamUrl, UUID electronicDeviceId, String updatedBy, java.time.Instant updatedAt) {
         static ComponentView of(SecElecComponent c) {
             boolean video = c.family == Family.VIDEO;
             return new ComponentView(c.id, c.pointId, c.family, c.componentType, c.code, c.name, c.location, c.coverage, c.brandModel, c.status,
                 c.observations, c.ip, c.port, c.channel, video ? (c.cameraBrand == null ? CameraBrand.HIKVISION : c.cameraBrand) : null,
+                video ? (c.streamQuality == null ? CameraBrand.StreamQuality.MAIN : c.streamQuality) : null,
                 c.rtspPath, video ? CameraBrand.pathOf(c) : null, c.detectedCodec, c.latitude, c.longitude, c.streamingEnabled, c.streamingMode,
                 c.username, c.passwordCipher != null, c.streamUrl, c.electronicDeviceId, c.updatedBy, c.updatedAt);
         }
     }
     /**
      * password: obligatoria al crear una cámara; al editar, vacía o null conserva la actual.
-     * channel (1 por defecto), cameraBrand (HIKVISION por defecto), rtspPath (obligatoria y solo con cameraBrand OTHER),
+     * channel (1 por defecto), cameraBrand (HIKVISION por defecto), streamQuality (MAIN por defecto; no aplica a OTHER),
+     * rtspPath (obligatoria y solo con cameraBrand OTHER),
      * streamingEnabled (sí por defecto) y streamingMode (COPY por defecto) solo aplican a cámaras.
      * latitude y longitude son opcionales, pero van juntas.
      * electronicDeviceId: dispositivo OBSINT de SIC:COM del mismo Punto al que pertenece la cámara (opcional).
      */
     public record SaveRequest(Family family, String componentType, String name, String location, String coverage, String brandModel,
-                              Status status, String observations, String ip, Integer port, Integer channel, CameraBrand cameraBrand, String rtspPath,
+                              Status status, String observations, String ip, Integer port, Integer channel, CameraBrand cameraBrand,
+                              CameraBrand.StreamQuality streamQuality, String rtspPath,
                               BigDecimal latitude, BigDecimal longitude,
                               Boolean streamingEnabled, StreamingMode streamingMode, String username, String password, String streamUrl,
                               UUID electronicDeviceId) {}
@@ -64,10 +67,13 @@ public class SecElecResource {
     /** Dispositivo OBSINT que SIC:COM envió para el Punto (la línea contratada) y su horario, para elegirlo en la cámara. */
     public record DeviceView(UUID id, String code, String name, String product, String commercialStatus, String schedule, int cameras) {}
     /** Datos del formulario para "Probar conexión". password vacía + componentId usa la contraseña guardada de esa cámara. */
-    public record CameraTestRequest(UUID componentId, String ip, Integer port, Integer channel, CameraBrand cameraBrand, String rtspPath,
-                                    String username, String password) {}
-    /** Opción de la lista "Marca" del formulario. pathTemplate null = "Otra": la ruta se escribe a mano (requiresPath). */
-    public record BrandView(CameraBrand code, String label, int defaultPort, String pathTemplate, boolean requiresPath) {}
+    public record CameraTestRequest(UUID componentId, String ip, Integer port, Integer channel, CameraBrand cameraBrand,
+                                    CameraBrand.StreamQuality streamQuality, String rtspPath, String username, String password) {}
+    /**
+     * Opción de la lista "Marca" del formulario. pathTemplate null = "Otra": la ruta se escribe a mano (requiresPath).
+     * subPathTemplate: ruta del stream secundario ({canal} se reemplaza por el canal), para mostrar la ruta que se usará.
+     */
+    public record BrandView(CameraBrand code, String label, int defaultPort, String pathTemplate, String subPathTemplate, boolean requiresPath) {}
     /** previewUrl: video en vivo para ver en el formulario (solo si conectó y hay servidor de video); vive unos minutos. */
     public record CameraTestResult(boolean ok, RtspProbe.Outcome outcome, String message, String codec, String streamPath, long elapsedMs,
                                    String previewUrl) {}
@@ -78,7 +84,7 @@ public class SecElecResource {
     @GET @Path("/camera-brands")
     public List<BrandView> brands() {
         return Arrays.stream(CameraBrand.values())
-            .map(b -> new BrandView(b, b.label, CameraBrand.DEFAULT_PORT, b.pathTemplate, b.pathTemplate == null)).toList();
+            .map(b -> new BrandView(b, b.label, CameraBrand.DEFAULT_PORT, b.pathTemplate, b.subPathTemplate, b.pathTemplate == null)).toList();
     }
 
     /** Dispositivos OBSINT del Punto enviados por SIC:COM, con su horario y cuántas cámaras tienen asignadas. */
@@ -174,7 +180,7 @@ public class SecElecResource {
         int channel = body.channel() == null ? 1 : body.channel();
         if (channel < 1 || channel > 256) throw new BadRequestException("El canal debe estar entre 1 y 256.");
         CameraBrand brand = body.cameraBrand() == null ? CameraBrand.HIKVISION : body.cameraBrand();
-        String path = brand.path(channel, rtspPath(brand, body.rtspPath()));
+        String path = brand.path(channel, quality(body.streamQuality()), rtspPath(brand, body.rtspPath()));
         String username = required(body.username(), "El usuario de la cámara es obligatorio.", 120);
         if (video.configured()) {
             // En el servidor Comando no llega a la red de cámaras: prueba MediaMTX, que sí llega, y deja la vista previa.
@@ -255,9 +261,12 @@ public class SecElecResource {
             c.channel = body.channel() == null ? 1 : body.channel();
             CameraBrand brand = body.cameraBrand() == null ? CameraBrand.HIKVISION : body.cameraBrand();
             String path = rtspPath(brand, body.rtspPath());
-            // Otra marca, ruta o canal: el códec guardado ya no vale hasta volver a probar.
-            if (brand != c.cameraBrand || !Objects.equals(path, c.rtspPath) || !Objects.equals(c.channel, previousChannel)) c.detectedCodec = null;
+            CameraBrand.StreamQuality quality = quality(body.streamQuality());
+            // Otra marca, ruta, canal o calidad: el códec guardado ya no vale hasta volver a probar.
+            if (brand != c.cameraBrand || !Objects.equals(path, c.rtspPath) || !Objects.equals(c.channel, previousChannel)
+                    || quality != (c.streamQuality == null ? CameraBrand.StreamQuality.MAIN : c.streamQuality)) c.detectedCodec = null;
             c.cameraBrand = brand;
+            c.streamQuality = quality;
             c.rtspPath = path;
             c.latitude = coordinate(body.latitude(), 90, "La latitud debe estar entre -90 y 90.");
             c.longitude = coordinate(body.longitude(), 180, "La longitud debe estar entre -180 y 180.");
@@ -273,7 +282,7 @@ public class SecElecResource {
             c.electronicDeviceId = null;
             c.ip = null; c.port = null; c.username = null; c.passwordCipher = null; c.streamUrl = null;
             c.channel = null; c.latitude = null; c.longitude = null; c.streamingEnabled = null; c.streamingMode = null;
-            c.cameraBrand = null; c.rtspPath = null; c.detectedCodec = null;
+            c.cameraBrand = null; c.streamQuality = null; c.rtspPath = null; c.detectedCodec = null;
         }
         c.updatedBy = platform.username();
     }
@@ -303,6 +312,11 @@ public class SecElecResource {
         if (url == null) return null;
         if (url.contains(":") && !url.startsWith("http://") && !url.startsWith("https://")) throw new BadRequestException("La URL de video debe ser http(s) o una ruta relativa.");
         return url;
+    }
+
+    /** Calidad del video; sin elegir = principal (lo que usaban las cámaras antes de existir la opción). */
+    static CameraBrand.StreamQuality quality(CameraBrand.StreamQuality value) {
+        return value == null ? CameraBrand.StreamQuality.MAIN : value;
     }
 
     /**

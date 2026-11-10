@@ -128,3 +128,5 @@
 .sec-device-list article.missing{border-color:#f0c36d;background:#fffaf0}
 .sec-device-list article.missing em{color:#9a6200}
 .sec-no-device{color:#9a6200;font-style:normal}
+.sec-route-preview{margin:-2px 0 4px;font-size:12px;color:#667085}
+.sec-route-preview code{font-family:ui-monospace,Consolas,monospace;color:#344054;background:#f2f4f7;border-radius:5px;padding:1px 6px}

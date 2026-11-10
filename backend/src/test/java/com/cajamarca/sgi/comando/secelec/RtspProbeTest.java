@@ -53,13 +53,19 @@ class RtspProbeTest {
         }
     }
 
+    /** Principal y secundario de cada marca segura; "Otra" usa la ruta escrita (ya trae canal y calidad). */
     @Test void brandPaths() {
+        var MAIN = CameraBrand.StreamQuality.MAIN;
+        var SUB = CameraBrand.StreamQuality.SUB;
         assertEquals("/Streaming/Channels/301", CameraBrand.HIKVISION.path(3, null));
-        assertEquals("/unicast/c3/s0/live", CameraBrand.UNIVIEW.path(3, null));
-        assertEquals("/h264Preview_03_main", CameraBrand.REOLINK.path(3, null));
-        assertEquals("/axis-media/media.amp?camera=3", CameraBrand.AXIS.path(3, null));
-        assertEquals("/stream1", CameraBrand.TPLINK.path(3, null));
-        assertEquals("/live/ch0", CameraBrand.OTHER.path(3, "/live/ch0"));
+        assertEquals("/Streaming/Channels/101", CameraBrand.HIKVISION.path(1, MAIN, null));
+        assertEquals("/Streaming/Channels/102", CameraBrand.HIKVISION.path(1, SUB, null), "canal 1, secundario");
+        assertEquals("/Streaming/Channels/1002", CameraBrand.HIKVISION.path(10, SUB, null), "NVR canal 10, secundario");
+        assertEquals("/cam/realmonitor?channel=2&subtype=0", CameraBrand.DAHUA.path(2, MAIN, null));
+        assertEquals("/cam/realmonitor?channel=2&subtype=1", CameraBrand.DAHUA.path(2, SUB, null));
+        assertEquals("/stream1", CameraBrand.TPLINK.path(3, MAIN, null));
+        assertEquals("/stream2", CameraBrand.TPLINK.path(3, SUB, null));
+        assertEquals("/live/ch0", CameraBrand.OTHER.path(3, SUB, "/live/ch0"));
     }
 
     @Test void digestWithQopAndCodecParsing() {
