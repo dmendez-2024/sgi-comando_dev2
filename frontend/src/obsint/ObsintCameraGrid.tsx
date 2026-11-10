@@ -1,8 +1,8 @@
 import {useCallback, useEffect, useRef, useState, type MouseEvent} from 'react';
-import {Crosshair, Maximize2, Pause, Play, Video, VideoOff} from 'lucide-react';
+import {Crosshair, Maximize2, Pause, Play, Radio, Video, VideoOff} from 'lucide-react';
 import {formatDateTime, streamSrc} from './obsint';
 import type {ObsintCamera} from './obsintApi';
-import {attachStream, streamKind, type RenewUrl, type StreamStatus} from './liveStream';
+import {attachStream, goLive, liveDelay, LIVE_BEHIND_S, streamKind, type RenewUrl, type StreamStatus} from './liveStream';
 
 type Props={
   cameras:ObsintCamera[];
@@ -55,6 +55,8 @@ function Feed({camera,index,now,selected,onSelect,registerVideo,onSettled,renew}
   const renewRef=useRef(renew);
   renewRef.current=renew;
   const [paused,setPaused]=useState(false);
+  /** El video quedó atrasado respecto al en vivo (por pausa o red lenta): se ofrece volver al momento actual. */
+  const [behind,setBehind]=useState(false);
   const [status,setStatus]=useState<StreamStatus|'no-signal'>(camera.streamUrl?'connecting':'no-signal');
   const boxRef=useRef<HTMLDivElement|null>(null);
   const videoRef=useRef<HTMLVideoElement|null>(null);
@@ -84,6 +86,17 @@ function Feed({camera,index,now,selected,onSelect,registerVideo,onSettled,renew}
     const video=videoRef.current;if(!video)return;
     if(video.paused){void video.play();setPaused(false)}else{video.pause();setPaused(true)}
   }
+  // Revisa cada segundo cuánto va atrasado el video en vivo.
+  useEffect(()=>{
+    if(!live||status!=='playing'){setBehind(false);return}
+    const id=setInterval(()=>{const video=videoRef.current;if(video)setBehind(video.paused||liveDelay(video)>LIVE_BEHIND_S)},1000);
+    return()=>clearInterval(id);
+  },[live,status]);
+  function toLive(e:MouseEvent){
+    e.stopPropagation();
+    const video=videoRef.current;if(!video)return;
+    goLive(video);setPaused(false);setBehind(false);
+  }
   function fullscreen(e:MouseEvent){e.stopPropagation();void boxRef.current?.requestFullscreen?.();}
 
   return <div ref={boxRef} className={`obs-feed${selected?' selected':''}`} onClick={onSelect}>
@@ -93,11 +106,13 @@ function Feed({camera,index,now,selected,onSelect,registerVideo,onSettled,renew}
       {status==='no-signal'&&<small>Video en vivo pendiente de conexión</small>}
     </div>}
     <div className="obs-feed-title"><Video size={16}/><div><b>{camera.name||`Cámara ${String(index+1).padStart(2,'0')}`}</b><span>{camera.location??camera.code}</span>{selected&&<em>Seleccionada para evidencia</em>}</div></div>
-    <div className={`obs-feed-badge ${live&&status==='playing'?'live':''}`}><i/>{live?'EN VIVO':'GRABACIÓN'}</div>
+    <div className={`obs-feed-badge ${live&&status==='playing'&&!behind?'live':''}`}><i/>{!live?'GRABACIÓN':behind?'ATRASADO':'EN VIVO'}</div>
     <div className="obs-feed-time">{formatDateTime(now)}</div>
     {status==='playing'&&<div className="obs-feed-controls">
       <button type="button" title="Usar para evidencia" aria-label="Usar para evidencia" onClick={e=>{e.stopPropagation();onSelect()}}><Crosshair size={15}/></button>
       <button type="button" title={paused?'Reproducir':'Pausar'} aria-label={paused?'Reproducir':'Pausar'} onClick={togglePlay}>{paused?<Play size={15}/>:<Pause size={15}/>}</button>
+      {live&&<button type="button" className={`obs-go-live${behind?' behind':''}`} title={behind?'Ir al en vivo':'Estás viendo el en vivo'}
+        aria-label="Ir al en vivo" onClick={toLive}><Radio size={14}/>En vivo</button>}
       <button type="button" title="Pantalla completa" aria-label="Pantalla completa" onClick={fullscreen}><Maximize2 size={15}/></button>
     </div>}
   </div>;

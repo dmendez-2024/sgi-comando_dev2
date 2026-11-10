@@ -61,6 +61,20 @@ public class VideoToken {
             ? null : "firma inválida (otra llave u otra ruta)";
     }
 
+    /**
+     * Huella secreta de un texto (24 hex, HMAC con la llave de Comando): nombra la ruta de cada cámara sin exponer su IP ni
+     * su clave, y sin que se pueda adivinar la clave probando (un hash simple sí se podría).
+     */
+    public String fingerprint(String data) {
+        try {
+            Mac m = Mac.getInstance("HmacSHA256");
+            m.init(new SecretKeySpec(key, "HmacSHA256"));
+            return java.util.HexFormat.of().formatHex(m.doFinal(("camara|" + data).getBytes(StandardCharsets.UTF_8)), 0, 12);
+        } catch (Exception e) {
+            throw new IllegalStateException("No se pudo nombrar la ruta de video", e);
+        }
+    }
+
     private String mac(String data) {
         try {
             Mac m = Mac.getInstance("HmacSHA256");

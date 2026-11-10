@@ -47,7 +47,8 @@ public class VideoGateway {
     private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(3)).build();
     /** Lo que se registró por cámara y cuándo se confirmó por última vez. */
     private record Registration(String source, Instant checkedAt) {}
-    private final Map<UUID, Registration> registered = new ConcurrentHashMap<>();
+    /** Lo que este backend registró en cada ruta (una por cámara) y cuándo lo revisó. */
+    private final Map<String, Registration> registered = new ConcurrentHashMap<>();
 
     public boolean configured() {
         return apiUrl.filter(v -> !v.isBlank()).isPresent() && publicUrl.filter(v -> !v.isBlank()).isPresent();
@@ -60,20 +61,25 @@ public class VideoGateway {
     public Optional<String> liveUrl(SecElecComponent c) {
         if (!configured() || c.family != SecElecComponent.Family.VIDEO || Boolean.FALSE.equals(c.streamingEnabled)
                 || c.ip == null || c.port == null || c.username == null || c.passwordCipher == null) return Optional.empty();
-        String path = path(c.id);
         String camera = rtspSource(c.ip, c.port, CameraBrand.pathOf(c), c.username, cipher.decrypt(c.passwordCipher));
+        // Una ruta por cámara (no por componente): dos componentes con la misma cámara comparten la conexión.
+        String path = cameraPath(camera);
         // Lo registrado depende del modo: si cambia (p. ej. se detectó H.265), se vuelve a registrar.
         String source = transcodes(c) ? transcodeJson(camera) : sourceJson(camera, true);
-        Registration known = registered.get(c.id);
+        Registration known = registered.get(path);
         Instant now = Instant.now();
         boolean changed = known == null || !known.source().equals(source);
         if (changed || known.checkedAt().plus(CHECK_EVERY).isBefore(now)) {
-            // Si cambió la fuente (IP, marca, canal, ruta, clave…) o MediaMTX ya no la tiene (p. ej. se reinició), se vuelve a registrar.
-            Boolean exists = changed ? Boolean.FALSE : exists(path);
+            // Si MediaMTX ya no la tiene (p. ej. se reinició) o cambió el modo, se registra. Pero registrar de nuevo una ruta
+            // reinicia la conexión y corta a quien mira: si alguien la está viendo, se deja como está.
+            Boolean exists = exists(path);
             if (exists == null) return Optional.empty();
-            if (!exists && !registerJson(path, source)) { registered.remove(c.id); return Optional.empty(); }
-            registered.put(c.id, new Registration(source, now));
-            registeredAs.put(path, source);
+            boolean keep = exists && (!changed || watching(path));
+            if (!keep && !registerJson(path, source)) { registered.remove(path); return Optional.empty(); }
+            // Se dejó sin tocar algo que este backend no registró: se marca para revisarlo cuando nadie mire.
+            String recorded = keep && changed ? (known == null ? UNKNOWN : known.source()) : source;
+            registered.put(path, new Registration(recorded, now));
+            registeredAs.put(path, recorded);
         }
         return Optional.of(browserUrl(path));
     }
@@ -89,13 +95,14 @@ public class VideoGateway {
         Instant now = Instant.now();
         previews.forEach((path, until) -> {
             if (until.isAfter(now)) return;
-            Hit state = liveState(path);
-            if (state.code() == 200 && READY.matcher(state.body()).find()) {
+            if (watching(path)) {
                 // Alguien la sigue mirando: no se le corta; se revisa de nuevo en un minuto.
                 previews.put(path, now.plus(Duration.ofMinutes(1)));
                 return;
             }
             previews.remove(path);
+            // La misma cámara la usa la consola: la ruta se queda (sin nadie mirando no tiene conexión abierta con la cámara).
+            if (registered.containsKey(path)) return;
             knownCodec.remove(path);
             registeredAs.remove(path);
             delete(path);
@@ -273,11 +280,12 @@ public class VideoGateway {
     public ServerProbe probeThroughServer(String host, int port, String rtspPath, String user, String password) {
         removeExpiredPreviews();
         String camera = rtspSource(host, port, rtspPath, user, password);
-        String path = previewPath(camera);
+        // La misma ruta que la consola usa para esa cámara: probar no abre otra conexión con ella.
+        String path = cameraPath(camera);
         ServerProbe p = probe(path, camera, false, host, port);
-        // La vista previa sigue 5 min desde la última prueba; si no conectó, se borra en el acto.
+        // La vista previa sigue 5 min desde la última prueba; si no conectó, se borra en el acto (salvo que la use la consola).
         if (p.previewUrl() != null) previews.put(path, Instant.now().plus(PREVIEW_TTL));
-        else { previews.remove(path); delete(path); }
+        else { previews.remove(path); if (!registered.containsKey(path)) delete(path); }
         return p;
     }
 
@@ -287,8 +295,8 @@ public class VideoGateway {
      */
     public ServerProbe probeSaved(SecElecComponent c, String password) {
         String camera = rtspSource(c.ip, c.port, CameraBrand.pathOf(c), c.username, password);
-        String path = path(c.id);
-        Registration known = registered.get(c.id);
+        String path = cameraPath(camera);
+        Registration known = registered.get(path);
         if (known != null && c.detectedCodec != null) {
             // Lo que ya registró la consola: si alguien la está mirando, se reutiliza esa conexión sin tocar la ruta.
             knownCodec.putIfAbsent(path, c.detectedCodec);
@@ -298,24 +306,25 @@ public class VideoGateway {
         if (p.ok()) {
             // Queda registrada igual que la registra liveUrl, así la consola no la vuelve a registrar (ni corta a quien mira).
             String finalJson = finalJson(camera, p.codec(), c.streamingMode == SecElecComponent.StreamingMode.TRANSCODE);
-            registered.put(c.id, new Registration(finalJson, Instant.now()));
-        } else {
-            registered.remove(c.id);
+            registered.put(path, new Registration(finalJson, Instant.now()));
         }
         return p;
     }
 
     /**
-     * Ruta de prueba fija por cámara (IP, puerto, ruta, usuario y clave): probar varias veces la misma cámara, o que dos
-     * personas la prueben a la vez, cae en la misma ruta y en la misma conexión con la cámara (las cámaras aceptan pocas).
+     * Ruta fija por cámara (IP, puerto, ruta, usuario y clave): la consola, "Probar conexión" y dos componentes con la misma
+     * cámara caen en la misma ruta y en la misma conexión con la cámara (las cámaras aceptan pocas). Otra clave = otra ruta,
+     * así una prueba con datos errados no toca la que funciona. El nombre es una huella secreta: no revela IP ni clave.
      */
-    static String previewPath(String camera) {
-        try {
-            byte[] h = java.security.MessageDigest.getInstance("SHA-256").digest(camera.getBytes(StandardCharsets.UTF_8));
-            return "live/prueba-" + java.util.HexFormat.of().formatHex(h, 0, 12);
-        } catch (java.security.NoSuchAlgorithmException e) {
-            throw new IllegalStateException(e);
-        }
+    String cameraPath(String camera) { return "live/cam-" + tokens.fingerprint(camera); }
+
+    /** Registro que este backend no hizo (p. ej. tras reiniciarse) y no tocó porque alguien miraba. */
+    private static final String UNKNOWN = "?";
+
+    /** La ruta está entregando video (alguien la está mirando o la cámara está conectada). */
+    private boolean watching(String path) {
+        Hit state = liveState(path);
+        return state.code() == 200 && READY.matcher(state.body()).find();
     }
 
     /** Lo que se registra al final: la conversión a H.264 si corresponde; si no, la cámara directo y solo mientras alguien mira. */
@@ -337,7 +346,15 @@ public class VideoGateway {
         String url = browserUrl(path);
         String finalIfKnown = knownCodec.containsKey(path) ? finalJson(camera, knownCodec.get(path), forceTranscode) : null;
         Hit current = liveState(path);
-        if (finalIfKnown != null && current.code() == 200 && READY.matcher(current.body()).find() && registeredAs(path, finalIfKnown)) {
+        boolean ready = current.code() == 200 && READY.matcher(current.body()).find();
+        if (ready && (finalIfKnown == null || !registeredAs(path, finalIfKnown))) {
+            // Ya entrega video con estos mismos datos (la ruta depende de la clave): volver a registrarla cortaría a quien mira.
+            String codec = knownCodec.get(path);
+            LOG.infof("video_probe_reused_untouched path=%s codec=%s", path, codec);
+            return new ServerProbe(RtspProbe.Outcome.OK, "El servidor de video ya está conectado a la cámara (se reutilizó la conexión abierta).",
+                codec == null || codec.isBlank() ? null : codec, elapsed(start), path, url);
+        }
+        if (ready) {
             String codec = knownCodec.get(path);
             LOG.infof("video_probe_reused path=%s codec=%s", path, codec);
             return new ServerProbe(RtspProbe.Outcome.OK, okMessage(codec, forceTranscode) + " (se reutilizó la conexión que ya estaba abierta)",
@@ -531,9 +548,11 @@ public class VideoGateway {
             + checkUrl.filter(v -> !v.isBlank()).map(v -> " · el backend pide el video en " + v).orElse("") + " · protocolo " + protocol;
     }
 
-    /** Quita la cámara del servidor de video (al eliminarla o pasarla a otra fuente). */
+    /**
+     * Al eliminar la cámara: borra su ruta antigua (live/cam-<id>). La ruta por cámara se deja, porque otro componente puede
+     * usar la misma cámara; sin nadie mirando no tiene conexión abierta con ella.
+     */
     public void remove(UUID cameraId) {
-        registered.remove(cameraId);
         delete(path(cameraId));
     }
 
@@ -546,6 +565,7 @@ public class VideoGateway {
         }
     }
 
+    /** Ruta antigua, una por componente (antes de compartir por cámara): solo para borrarla. */
     static String path(UUID cameraId) { return "live/cam-" + cameraId; }
 
     /** rtsp://usuario:clave@host:puerto/ruta (la de la marca, ver CameraBrand), con usuario y clave codificados (pueden tener @, : o /). */

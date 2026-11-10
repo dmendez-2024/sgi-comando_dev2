@@ -61,18 +61,35 @@ class VideoGatewayTest {
         assertTrue(g.transcodes(c), "marcada Transcodificar: siempre");
     }
 
-    /** Probar la misma cámara varias veces (o dos personas a la vez) cae en la misma ruta: una sola conexión con la cámara. */
-    @Test void previewPathIsFixedPerCamera() {
-        String a = VideoGateway.rtspSource("10.150.12.204", 554, "/Streaming/Channels/101", "admin", "Clave1");
-        String p = VideoGateway.previewPath(a);
-        assertTrue(p.matches("live/prueba-[0-9a-f]{24}"), p);
-        assertEquals(p, VideoGateway.previewPath(a), "misma cámara, misma ruta");
-        assertNotEquals(p, VideoGateway.previewPath(VideoGateway.rtspSource("10.150.12.204", 554, "/Streaming/Channels/102", "admin", "Clave1")), "otro stream");
-        assertNotEquals(p, VideoGateway.previewPath(VideoGateway.rtspSource("10.150.12.204", 554, "/Streaming/Channels/101", "admin", "Otra")), "otra clave");
-        assertFalse(p.contains("Clave1"), "la clave no aparece en la ruta");
+    static VideoGateway gateway(String key) {
+        VideoToken t = new VideoToken();
+        t.configuredKey = java.util.Optional.of(key);
+        t.ttl = java.time.Duration.ofHours(2);
+        t.init();
+        VideoGateway g = new VideoGateway();
+        g.tokens = t;
+        return g;
     }
 
+    /**
+     * Una ruta por cámara: la consola, "Probar conexión" y dos componentes con la misma cámara caen en la misma ruta, así
+     * comparten una sola conexión con la cámara (las cámaras aceptan pocas).
+     */
     @Test void onePathPerCamera() {
+        VideoGateway g = gateway("llave-de-prueba");
+        String a = VideoGateway.rtspSource("10.150.12.204", 554, "/Streaming/Channels/101", "admin", "Clave1");
+        String p = g.cameraPath(a);
+        assertTrue(p.matches("live/cam-[0-9a-f]{24}"), p);
+        assertEquals(p, g.cameraPath(a), "misma cámara, misma ruta (aunque esté en dos componentes)");
+        assertNotEquals(p, g.cameraPath(VideoGateway.rtspSource("10.150.12.204", 554, "/Streaming/Channels/102", "admin", "Clave1")), "otro stream");
+        assertNotEquals(p, g.cameraPath(VideoGateway.rtspSource("10.150.12.204", 554, "/Streaming/Channels/101", "admin", "Otra")),
+            "otra clave: una prueba con datos errados no toca la ruta que funciona");
+        assertFalse(p.contains("Clave1"), "la clave no aparece en la ruta");
+        assertNotEquals(p, gateway("otra-llave").cameraPath(a), "el nombre depende de la llave de Comando: no se puede adivinar la clave");
+    }
+
+    /** La ruta antigua (una por componente) solo se usa para borrarla. */
+    @Test void oldPathPerComponent() {
         UUID id = UUID.fromString("64a021bc-bb13-486f-8349-8743626d0696");
         assertEquals("live/cam-64a021bc-bb13-486f-8349-8743626d0696", VideoGateway.path(id));
     }
