@@ -1,6 +1,6 @@
 import {useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode} from 'react';
-import {attachStream} from '../obsint/liveStream';
-import {AlertTriangle, ArrowLeft, Bell, Camera, CheckCircle2, ChevronRight, Edit3, Eye, EyeOff, Flame, Fingerprint, Lightbulb, PlugZap, Plus, ShieldCheck, ShieldHalf, Trash2, X} from 'lucide-react';
+import {attachStream, goLive, liveDelay, LIVE_BEHIND_S} from '../obsint/liveStream';
+import {AlertTriangle, ArrowLeft, Bell, Camera, CheckCircle2, ChevronRight, Edit3, Eye, EyeOff, Flame, Fingerprint, Lightbulb, PlugZap, Plus, Radio, ShieldCheck, ShieldHalf, Trash2, X} from 'lucide-react';
 import {errorText, FAMILIES, familyLabel, secelecApi, statusLabel, type BrandOption, type CameraBrand, type ComponentSave, type ElectronicDevice, type Family, type PointContext,
   type SecurityComponent, type CameraTestResult} from './secelecApi';
 import './secelec.css';
@@ -266,15 +266,32 @@ function ComponentForm({pointId,family,brands,devices,initial,onSaved,onCancel}:
 function LivePreview({url}:{url:string}){
   const ref=useRef<HTMLVideoElement>(null);
   const [failed,setFailed]=useState(false);
+  const [playing,setPlaying]=useState(false);
+  /** El video quedó atrasado respecto al en vivo (pausa o red lenta): se ofrece volver al momento actual, igual que en la Consola. */
+  const [behind,setBehind]=useState(false);
   useEffect(()=>{
     const video=ref.current;
     if(!video)return;
-    setFailed(false);
+    setFailed(false);setPlaying(false);
     // attachStream informa cada estado (conectando, reproduciendo…); solo los finales sin video cuentan como "Sin señal".
-    return attachStream(video,url,status=>{if(status==='failed'||status==='denied')setFailed(true)});
+    return attachStream(video,url,status=>{setPlaying(status==='playing');if(status==='failed'||status==='denied')setFailed(true)});
   },[url]);
+  // Revisa cada segundo cuánto va atrasado el video.
+  useEffect(()=>{
+    if(!playing){setBehind(false);return}
+    const id=setInterval(()=>{const video=ref.current;if(video)setBehind(video.paused||liveDelay(video)>LIVE_BEHIND_S)},1000);
+    return()=>clearInterval(id);
+  },[playing]);
+  function toLive(){const video=ref.current;if(video){goLive(video);setBehind(false)}}
   return <div className="sec-preview">
-    <span>Vista previa</span>
+    <div className="sec-preview-head">
+      <span>Vista previa</span>
+      {playing&&!failed&&<>
+        <em className={`sec-preview-badge${behind?' behind':''}`}>{behind?'ATRASADO':'EN VIVO'}</em>
+        <button type="button" className={`sec-go-live${behind?' behind':''}`} title={behind?'Ir al en vivo':'Estás viendo el en vivo'}
+          aria-label="Ir al en vivo" onClick={toLive}><Radio size={13}/>En vivo</button>
+      </>}
+    </div>
     {failed?<div className="sec-preview-fail"><AlertTriangle size={16}/>Sin señal: la cámara conectó, pero el video no llegó al navegador.</div>
       :<video ref={ref} autoPlay muted playsInline controls/>}
   </div>;

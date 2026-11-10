@@ -46,7 +46,7 @@ public class AccessControlListResource {
     public List<PointDto> points(@QueryParam("clientId") UUID clientId){requireClient(clientId);return pointsForClient(clientId).stream().map(p->new PointDto(p.id,p.code,p.name)).toList();}
 
     @POST @Consumes(MediaType.APPLICATION_JSON) @Transactional
-    public EntryDto create(SaveRequest request){validate(request,null);validateWhiteAgainstBlack(request);AccessControlEntry row=new AccessControlEntry();row.id=UUID.randomUUID();row.instanceCountryId=tenant.instanceCountryId();apply(row,request,true);row.createdByUsername=user();row.updatedByUsername=user();if("WHITE".equals(row.listType))generateQr(row);row.persist();replacePoints(row,request.pointIds());return dto(row);}
+    public EntryDto create(SaveRequest request){validate(request,null);validateWhiteAgainstBlack(request);AccessControlEntry row=new AccessControlEntry();row.id=UUID.randomUUID();row.instanceCountryId=tenant.instanceCountryId();apply(row,request,true);row.createdByUsername=user();row.updatedByUsername=user();if("WHITE".equals(row.listType))generateQr(row);row.persistAndFlush();replacePoints(row,request.pointIds());return dto(row);}
 
     @PUT @Path("/{id}") @Consumes(MediaType.APPLICATION_JSON) @Transactional
     public EntryDto update(@PathParam("id") UUID id,SaveRequest request){AccessControlEntry row=entry(id);validate(request,row);validateWhiteAgainstBlack(request);apply(row,request,false);row.updatedByUsername=user();replacePoints(row,request.pointIds());return dto(row);}

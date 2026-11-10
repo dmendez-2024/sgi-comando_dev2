@@ -47,10 +47,10 @@ public class VideoAuthResource {
         if (!"api".equals(r.action())) {
             // Lo que llega de MediaMTX, sin el token (guía de Infra, 5.1): el diagnóstico lo usa para saber si MediaMTX pregunta.
             log.add(new VideoAuthLog.Entry(Instant.now(), r.action(), r.path(), r.protocol(), r.ip(), token != null, ok, problem));
-            if (!ok) LOG.infof("video_auth_denied action=%s path=%s protocol=%s ip=%s token=%s motivo=%s",
+            if (!ok) LOG.infof("[SGI-VIDEO] video_auth_denied action=%s path=%s protocol=%s ip=%s token=%s motivo=%s",
                 r.action(), r.path(), r.protocol(), r.ip(), token != null ? "sí" : "no", problem);
         } else if (!ok) {
-            LOG.infof("video_auth_denied action=api user=%s ip=%s", r.user(), r.ip());
+            LOG.infof("[SGI-VIDEO] video_auth_denied action=api user=%s ip=%s", r.user(), r.ip());
         }
         return Response.status(ok ? 200 : 401).build();
     }
