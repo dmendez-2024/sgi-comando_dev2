@@ -77,10 +77,11 @@ class ObsintSocketDeliveryTest {
             assertEquals("Telco actual",receipt.pointName());assertEquals("Garita uno",receipt.postName());
             var published=FakeGateway.received.stream().filter(n->n.path("id").asText().equals(first.recipientId().toString())).findFirst().orElseThrow().path("payload");
             assertEquals("Telco actual",published.path("pointName").asText());assertEquals("Garita uno",published.path("postName").asText());
-            // Del remitente solo llega su cargo: ni su usuario ni su nombre, por REST, recibo ni socket.
-            assertEquals(ObsintSocketFixtures.SENDER_ROLE,first.from());assertEquals(ObsintSocketFixtures.SENDER_ROLE,receipt.from());
-            assertEquals(ObsintSocketFixtures.SENDER_ROLE,published.path("from").asText());
-            assertFalse(published.toString().contains("socket-test"));
+            // En la sala "Monitor Consola" el remitente es el nombre de la sala: ni el cargo, ni el usuario, ni el nombre
+            // del monitorista, por REST, recibo ni socket.
+            assertEquals("Monitor Consola",first.from());assertEquals("Monitor Consola",receipt.from());
+            assertEquals("Monitor Consola",published.path("from").asText());
+            assertFalse(published.toString().contains("socket-test"));assertFalse(published.toString().contains(ObsintSocketFixtures.SENDER_ROLE));
             // Los mensajes de la Consola OBSINT van a la sala por defecto "Monitor Consola" (0037).
             var rooms=own.rooms();assertEquals(1,rooms.size());
             var room=rooms.getFirst();
@@ -88,7 +89,7 @@ class ObsintSocketDeliveryTest {
             assertTrue(views.stream().allMatch(v->room.roomId().equals(v.roomId())));
             assertEquals(room.roomId().toString(),published.path("roomId").asText());
             assertEquals(2,room.unreadCount());assertEquals("Prueba de nombres",room.lastMessageText());
-            assertEquals(ObsintSocketFixtures.SENDER_ROLE,room.lastMessageFrom());
+            assertEquals("Monitor Consola",room.lastMessageFrom());
             // Otro agente ve la sala, pero vacía: no hay mensajes ajenos ni conteos.
             var stranger=OperatorMessagesTestAccess.resource(em,config,receipts,f.tenant(),UUID.randomUUID()).rooms().getFirst();
             assertEquals(room.roomId(),stranger.roomId());assertNull(stranger.lastMessageAt());assertNull(stranger.lastMessageText());assertEquals(0,stranger.unreadCount());

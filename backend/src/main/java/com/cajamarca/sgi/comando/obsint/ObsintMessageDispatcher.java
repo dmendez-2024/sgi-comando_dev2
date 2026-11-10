@@ -63,8 +63,9 @@ public class ObsintMessageDispatcher {
         else if(r.personaId==null) { r.status="FAILED"; r.lastError="NO_PERSONA_LINK"; }
         else {
             ObsintCaseTask task=ObsintCaseTask.findById(m.taskId);
+            com.cajamarca.sgi.comando.communication.CommunicationRoom room=m.roomId==null?null:com.cajamarca.sgi.comando.communication.CommunicationRoom.findById(m.roomId);
             Map<String,Object> payload=new LinkedHashMap<>(Map.of("messageId",m.id,"recipientId",r.id,"taskId",m.taskId,
-                "pointId",task.consigna.pointId,"postId",r.postId,"from",ObsintAgentMessage.fromLabel(m.senderRole),"text",m.text,
+                "pointId",task.consigna.pointId,"postId",r.postId,"from",ObsintAgentMessage.fromLabel(room==null?null:room.name,m.senderRole),"text",m.text,
                 "sentAt",m.sentAt.toString(),"replyAllowed",false));
             List<?> locations=em.createNativeQuery("""
                 select pt.name,p.name from post p

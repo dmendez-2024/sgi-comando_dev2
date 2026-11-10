@@ -16,7 +16,7 @@ import java.util.*;
 
 /**
  * Comunicación en SGI Operador: mensajes propios del agente autenticado (0033), sus recibos (0034) y las salas de chat
- * donde se agrupan (0037). Solo se exponen mensajes dirigidos a ese agente; del remitente, solo su cargo.
+ * donde se agrupan (0037). Solo se exponen mensajes dirigidos a ese agente; como remitente, el nombre de la sala (o el cargo si no tiene sala).
  */
 @Path("/api/v1/operator/messages")
 @Authenticated
@@ -36,7 +36,7 @@ public class OperatorMessageResource {
     public record Receipt(String status) {}
     /**
      * Sala de chat del agente: último mensaje que le llegó en la ventana de sincronización (o null si no hay) y cuántos
-     * aún no ha leído. Del remitente, solo su cargo (`lastMessageFrom`).
+     * aún no ha leído. Como remitente (`lastMessageFrom`), el nombre de la sala.
      */
     public record RoomView(UUID roomId,String code,String name,boolean defaultRoom,Instant lastMessageAt,
         String lastMessageFrom,String lastMessageText,int unreadCount) {}
@@ -88,7 +88,7 @@ public class OperatorMessageResource {
             UUID id=v[0] instanceof UUID u?u:UUID.fromString(v[0].toString());
             Instant last=v[4]==null?null:instant(v[4]);
             return new RoomView(id,(String)v[1],(String)v[2],Boolean.TRUE.equals(v[3]),last,
-                last==null?null:ObsintAgentMessage.fromLabel((String)v[5]),(String)v[6],((Number)v[7]).intValue());}).toList();
+                last==null?null:ObsintAgentMessage.fromLabel((String)v[2],(String)v[5]),(String)v[6],((Number)v[7]).intValue());}).toList();
     }
     @POST @Path("/{recipientId}/receipt") @Transactional
     public MessageView receipt(@PathParam("recipientId") UUID id,Receipt body) {
@@ -105,14 +105,15 @@ public class OperatorMessageResource {
         return queryViews("r.id=:id and r.instance_country_id=:tenant",Map.of("id",r.id,"tenant",r.instanceCountryId)).getFirst();
     }
     /**
-     * Proyección escalar única: no carga entidades ni dispara consultas por cada mensaje. Del remitente solo sale su cargo
-     * (`from`); el usuario del monitorista (`m.operator`) queda en Comando para auditoría.
+     * Proyección escalar única: no carga entidades ni dispara consultas por cada mensaje. Como remitente (`from`) sale el
+     * nombre de la sala, o el cargo si el mensaje no tiene sala; el usuario del monitorista (`m.operator`) queda en Comando para auditoría.
      */
     private List<MessageView> queryViews(String filter,Map<String,Object> parameters) {
         var query=em.createNativeQuery("""
-            select r.id,m.id,m.task_id,c.point_id,r.post_id,m.text,m.sent_at,r.status,r.delivered_at,r.read_at,pt.name,p.name,m.sender_role,m.room_id
+            select r.id,m.id,m.task_id,c.point_id,r.post_id,m.text,m.sent_at,r.status,r.delivered_at,r.read_at,pt.name,p.name,m.sender_role,m.room_id,cr.name
             from obsint_agent_message_recipient r
             join obsint_agent_message m on m.id=r.message_id and m.instance_country_id=r.instance_country_id
+            left join communication_room cr on cr.id=m.room_id and cr.instance_country_id=m.instance_country_id
             join obsint_case_task t on t.id=m.task_id and t.instance_country_id=m.instance_country_id
             join obsint_consigna c on c.id=t.consigna_id and c.instance_country_id=t.instance_country_id
             left join post p on p.id=r.post_id and p.instance_country_id=r.instance_country_id
@@ -122,7 +123,7 @@ public class OperatorMessageResource {
         parameters.forEach(query::setParameter);
         List<?> rows=query.getResultList();
         return rows.stream().map(row->{Object[] v=(Object[])row;return new MessageView(
-            (UUID)v[0],(UUID)v[1],(UUID)v[2],(UUID)v[3],(UUID)v[4],ObsintAgentMessage.fromLabel((String)v[12]),(String)v[5],
+            (UUID)v[0],(UUID)v[1],(UUID)v[2],(UUID)v[3],(UUID)v[4],ObsintAgentMessage.fromLabel((String)v[14],(String)v[12]),(String)v[5],
             instant(v[6]),(String)v[7],instant(v[8]),instant(v[9]),(String)v[10],(String)v[11],(UUID)v[13]);}).toList();
     }
     private static Instant instant(Object value) {
