@@ -35,7 +35,8 @@ function attachFile(video:HTMLVideoElement,src:string,onStatus:(status:StreamSta
 }
 
 /**
- * HLS con hls.js (se carga recién cuando hace falta). Los fallos de red y los congelamientos reinician la sesión;
+ * HLS con hls.js (se carga recién cuando hace falta). hls.js reintenta cada petición; los errores fatales y los
+ * congelamientos reinician la sesión esperando cada vez más (2 s… 30 s);
  * un 403 detiene los reintentos. Un 401 (permiso de la URL vencido o inválido) pide una URL nueva una vez; si la nueva
  * también es rechazada antes de reproducir, se detiene. Safari usa HLS nativo con la misma vigilancia de progreso.
  */
@@ -43,7 +44,11 @@ function attachHls(video:HTMLVideoElement,initialSrc:string,onStatus:(status:Str
   let src=initialSrc;
   let renewing=false;
   let renewedWithoutPlay=false;
-  const RETRY_MS=3000;
+  /** Espera antes de reiniciar: 2 s, 4 s, 8 s… hasta 30 s, para no saturar al servidor cuando la red falla. */
+  const RETRY_MS=2000;
+  const RETRY_MAX_MS=30000;
+  let failures=0;
+  const backoff=()=>Math.min(RETRY_MS*2**failures++,RETRY_MAX_MS);
   const START_TIMEOUT_MS=12000;
   const STALL_TIMEOUT_MS=10000;
   let closed=false;
@@ -69,7 +74,7 @@ function attachHls(video:HTMLVideoElement,initialSrc:string,onStatus:(status:Str
     if(retryTimer){clearTimeout(retryTimer);retryTimer=null}
     detach();onStatus('denied');
   };
-  const retry=(delay=RETRY_MS)=>{
+  const retry=(delay=backoff())=>{
     if(closed||denied||retryTimer)return;
     clearStall();onStatus('retrying');
     retryTimer=setTimeout(()=>{retryTimer=null;start()},delay);
@@ -95,10 +100,10 @@ function attachHls(video:HTMLVideoElement,initialSrc:string,onStatus:(status:Str
   const checkNativeAccess=()=>{
     void fetch(src,{method:'HEAD'}).then(res=>{if(!rejected(res.status))retry()}).catch(()=>retry());
   };
-  const onPlaying=()=>{if(closed||denied)return;hasPlayed=true;renewedWithoutPlay=false;lastProgress=Date.now();lastTime=video.currentTime;clearStall();onStatus('playing')};
+  const onPlaying=()=>{if(closed||denied)return;hasPlayed=true;renewedWithoutPlay=false;failures=0;lastProgress=Date.now();lastTime=video.currentTime;clearStall();onStatus('playing')};
   const onTimeUpdate=()=>{if(Math.abs(video.currentTime-lastTime)>.05){lastTime=video.currentTime;lastProgress=Date.now()}};
   const onWaiting=()=>{if(closed||denied||!hasPlayed||video.paused||stallTimer)return;
-    onStatus('retrying');stallTimer=setTimeout(()=>{stallTimer=null;retry(0)},RETRY_MS)};
+    onStatus('retrying');stallTimer=setTimeout(()=>{stallTimer=null;retry()},RETRY_MS)};
   const onVideoError=()=>{if(closed||denied||renewing)return;if(native)checkNativeAccess();else retry()};
   video.addEventListener('playing',onPlaying);
   video.addEventListener('timeupdate',onTimeUpdate);
@@ -121,12 +126,17 @@ function attachHls(video:HTMLVideoElement,initialSrc:string,onStatus:(status:Str
       native=true;video.src=src;video.load();void video.play().catch(()=>undefined);return;
     }
     native=false;
-    const player=new HlsClass({lowLatencyMode:true,manifestLoadingMaxRetry:0,levelLoadingMaxRetry:0,fragLoadingMaxRetry:0});
+    // Sin baja latencia: peticiones normales que no quedan abiertas esperando. hls.js reintenta solo cada petición
+    // (con pausa) y la sesión se reinicia únicamente cuando el error es fatal.
+    const player=new HlsClass({lowLatencyMode:false,
+      manifestLoadingMaxRetry:2,manifestLoadingRetryDelay:1000,
+      levelLoadingMaxRetry:3,levelLoadingRetryDelay:1000,
+      fragLoadingMaxRetry:3,fragLoadingRetryDelay:1000});
     hls=player;
     player.on(HlsClass.Events.ERROR,(_event,data)=>{
       if(closed||denied||renewing)return;
       if(rejected(data.response?.code??data.networkDetails?.status))return;
-      if(data.type===HlsClass!.ErrorTypes.NETWORK_ERROR||data.fatal)retry();
+      if(data.fatal)retry();
     });
     player.loadSource(src);player.attachMedia(video);
   }
