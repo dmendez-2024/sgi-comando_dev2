@@ -13,6 +13,9 @@ import {
   Upload,
   UserPlus,
   X,
+  Check,
+  ChevronDown,
+  ImagePlus,
 } from "lucide-react";
 import { api, ApiError } from "../api";
 
@@ -93,14 +96,17 @@ export default function AccessControlLists({
   const [rows, setRows] = useState<Entry[]>([]),
     [points, setPoints] = useState<Point[]>([]),
     [loading, setLoading] = useState(true),
-    [error, setError] = useState("");
+    [error, setError] = useState(""),
+    [notice, setNotice] = useState("");
   const [q, setQ] = useState(""),
     [pointFilter, setPointFilter] = useState(""),
     [statusFilter, setStatusFilter] = useState("");
   const [drawer, setDrawer] = useState(false),
     [mode, setMode] = useState<"individual" | "file">("individual"),
     [draft, setDraft] = useState<Draft>(() => empty(point.pointId)),
-    [saving, setSaving] = useState(false);
+    [saving, setSaving] = useState(false),
+    [formError, setFormError] = useState(""),
+    [pointsOpen, setPointsOpen] = useState(false);
   const title = white ? "Lista Blanca" : "Lista Negra";
   const load = async () => {
     setLoading(true);
@@ -128,11 +134,17 @@ export default function AccessControlLists({
     void load();
   }, [listType, point.clientId]);
   const openNew = () => {
+    setNotice("");
     setDraft(empty(point.pointId));
+    setFormError("");
+    setPointsOpen(false);
     setMode("individual");
     setDrawer(true);
   };
   const edit = (row: Entry) => {
+    setNotice("");
+    setFormError("");
+    setPointsOpen(false);
     setDraft({
       id: row.id,
       identification: row.identification,
@@ -163,7 +175,7 @@ export default function AccessControlLists({
   const save = async () => {
     if (!valid || saving) return;
     setSaving(true);
-    setError("");
+    setFormError("");
     try {
       const body = {
         ...draft,
@@ -171,13 +183,16 @@ export default function AccessControlLists({
         listType,
         objectType: "PAX",
       };
-      draft.id
+      const saved = draft.id
         ? await api.updateAccessControlEntry(draft.id, body)
         : await api.createAccessControlEntry(body);
       setDrawer(false);
+      setNotice(
+        `${saved.firstNames} ${saved.lastNames} se guardó correctamente en ${title}.`,
+      );
       await load();
     } catch (e) {
-      setError(
+      setFormError(
         e instanceof ApiError ? e.body : "No fue posible guardar el registro.",
       );
     } finally {
@@ -187,9 +202,14 @@ export default function AccessControlLists({
   const photo = (file?: File) => {
     if (!file) return;
     if (file.size > 5 * 1024 * 1024) {
-      setError("La fotografía no puede superar 5 MB.");
+      setFormError("La fotografía no puede superar 5 MB.");
       return;
     }
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+      setFormError("Seleccione una fotografía JPG, PNG o WebP.");
+      return;
+    }
+    setFormError("");
     const reader = new FileReader();
     reader.onload = () =>
       setDraft((current) => ({
@@ -222,6 +242,9 @@ export default function AccessControlLists({
         ? current.pointIds.filter((value) => value !== id)
         : [...current.pointIds, id],
     }));
+  const selectedPoints = points.filter((item) =>
+    draft.pointIds.includes(item.id),
+  );
   return (
     <div className="acl-page">
       <div className="acl-breadcrumb">
@@ -268,6 +291,7 @@ export default function AccessControlLists({
           sobre la Lista Blanca.
         </div>
       )}
+      {notice && <div className="acl-success">{notice}</div>}
       {error && <div className="acl-error">{error}</div>}
       <section className="acl-filters">
         <label>
@@ -496,19 +520,58 @@ export default function AccessControlLists({
                     />
                   </label>
                 </div>
-                <fieldset>
-                  <legend>Puntos permitidos / restringidos *</legend>
-                  {points.map((item) => (
-                    <label key={item.id}>
-                      <input
-                        type="checkbox"
-                        checked={draft.pointIds.includes(item.id)}
-                        onChange={() => togglePoint(item.id)}
-                      />
-                      {item.name}
-                    </label>
-                  ))}
-                </fieldset>
+                <div className="acl-point-picker">
+                  <span>{white ? "Puntos permitidos" : "Puntos restringidos"} *</span>
+                  <button
+                    type="button"
+                    className="acl-point-trigger"
+                    aria-expanded={pointsOpen}
+                    onClick={() => setPointsOpen((current) => !current)}
+                  >
+                    <span>
+                      {selectedPoints.length
+                        ? `${selectedPoints.length} punto${selectedPoints.length === 1 ? "" : "s"} seleccionado${selectedPoints.length === 1 ? "" : "s"}`
+                        : "Seleccione uno o varios puntos"}
+                    </span>
+                    <ChevronDown size={16} />
+                  </button>
+                  {selectedPoints.length > 0 && (
+                    <div className="acl-selected-points">
+                      {selectedPoints.map((item) => (
+                        <span key={item.id}>
+                          {item.name}
+                          <button
+                            type="button"
+                            title={`Quitar ${item.name}`}
+                            onClick={() => togglePoint(item.id)}
+                          >
+                            <X size={12} />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  {pointsOpen && (
+                    <div className="acl-point-options">
+                      {points.map((item) => {
+                        const selected = draft.pointIds.includes(item.id);
+                        return (
+                          <button
+                            type="button"
+                            className={selected ? "selected" : ""}
+                            key={item.id}
+                            onClick={() => togglePoint(item.id)}
+                          >
+                            <span className="acl-option-check">
+                              {selected && <Check size={13} />}
+                            </span>
+                            <span>{item.name}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
                 <div className="two">
                   <label>
                     Inicio de vigencia *
@@ -550,11 +613,18 @@ export default function AccessControlLists({
                   </label>
                   <label>
                     Fotografía (opcional)
-                    <input
-                      type="file"
-                      accept="image/jpeg,image/png,image/webp"
-                      onChange={(e) => photo(e.target.files?.[0])}
-                    />
+                    <span className="acl-photo-picker">
+                      <input
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp"
+                        onChange={(e) => photo(e.target.files?.[0])}
+                      />
+                      <ImagePlus size={18} />
+                      <span>
+                        <b>{draft.photoFilename || "Seleccionar fotografía"}</b>
+                        <small>JPG, PNG o WebP · máximo 5 MB</small>
+                      </span>
+                    </span>
                   </label>
                 </div>
                 <label>
@@ -575,6 +645,11 @@ export default function AccessControlLists({
                       Al crear el registro se generará un QR individual,
                       revocable y sin datos personales visibles.
                     </span>
+                  </div>
+                )}
+                {formError && (
+                  <div className="acl-form-error" role="alert">
+                    {formError}
                   </div>
                 )}
               </div>
