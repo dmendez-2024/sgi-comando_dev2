@@ -16,13 +16,47 @@ import java.util.UUID;
 @ApplicationScoped
 public class SmcFactSources {
     @Inject EntityManager em;
-    static final List<String> TYPES = List.of("PATROL_EXECUTION", "CONSIGNMENT_COMPLIANCE");
+    static final List<String> TYPES = List.of("PATROL_EXECUTION", "CONSIGNMENT_COMPLIANCE", "IMPULSE_EVALUATION");
     public record Candidate(SmcFact fact, Instant changedAt) {}
 
     public List<Candidate> candidates(UUID tenant, String sourceType, Instant since, UUID afterId, Instant until, int limit) {
         if (!TYPES.contains(sourceType)) throw new IllegalArgumentException("Fuente SMC desconocida");
         List<Candidate> facts = new ArrayList<>();
         UUID after = afterId == null ? new UUID(0,0) : afterId;
+        if ("IMPULSE_EVALUATION".equals(sourceType)) {
+            List<?> rows = em.createNativeQuery("""
+                select e.id, e.employee_id, e.occurred_at, e.evaluated_at, e.rule_code,
+                       e.source_type, e.source_id, employee.persona_id, so.post_id, oa.shift_occurrence_id
+                from impulse_evaluation e
+                left join employee_operational_snapshot employee on employee.employee_id=e.employee_id
+                    and employee.instance_country_id=e.instance_country_id
+                left join operational_assignment oa on oa.id=e.assignment_id and oa.instance_country_id=e.instance_country_id
+                left join shift_occurrence so on so.id=oa.shift_occurrence_id and so.instance_country_id=oa.instance_country_id
+                where e.instance_country_id=:tenant and e.evaluated_at>=:since and e.evaluated_at<:until
+                  and (e.evaluated_at>:since or :includeBoundary or e.id>:after)
+                  and e.decision in ('AWARDED','NO_AWARD')
+                  and e.rule_code in ('REL_A_TIEMPO','REL_FOTO_CUERPO','BIT_CA_CORRECTO','PAT_CORRECTA','CON_CORRECTA')
+                  and not exists(select 1 from smc_fact_delivery d where d.instance_country_id=e.instance_country_id
+                      and d.source_type='IMPULSE_EVALUATION' and d.source_id=e.id)
+                order by e.evaluated_at,e.id
+                """).setParameter("tenant", tenant).setParameter("since", since).setParameter("until", until)
+                .setParameter("includeBoundary", afterId == null).setParameter("after", after).setMaxResults(limit).getResultList();
+            for (Object row : rows) {
+                Object[] r = (Object[]) row;
+                String factType = switch (r[4].toString()) {
+                    case "REL_A_TIEMPO" -> "RELIEF_COMPLETED_ON_TIME";
+                    case "REL_FOTO_CUERPO" -> "RELIEF_FULL_BODY_PHOTO";
+                    case "BIT_CA_CORRECTO" -> "ACCESS_CONTROL_OK";
+                    case "PAT_CORRECTA" -> "PATROL_OK";
+                    case "CON_CORRECTA" -> "CONSIGNMENT_OK";
+                    default -> throw new IllegalStateException("Regla de impulso desconocida");
+                };
+                facts.add(new Candidate(new SmcFact(tenant, sourceType, uuid(r[0]), uuid(r[1]), factType,
+                    instant(r[2]), BigDecimal.ONE, null, uuid(r[8]), uuid(r[9]),
+                    Map.of("source", r[5].toString(), "sourceId", r[6].toString()), personaId(r[7])), instant(r[3])));
+            }
+            return facts;
+        }
         if ("PATROL_EXECUTION".equals(sourceType)) {
         List<?> patrols = em.createNativeQuery("""
             select pe.id, pe.employee_id, pe.finished_at, pd.point_id,
