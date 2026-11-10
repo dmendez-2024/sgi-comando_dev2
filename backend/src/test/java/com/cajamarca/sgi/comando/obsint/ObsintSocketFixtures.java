@@ -27,6 +27,7 @@ record ObsintSocketFixtures(UUID tenant,UUID employee,UUID task,UUID point) {
             public String username() { return "socket-test"; }
         };
         service.monitorScope=new com.cajamarca.sgi.comando.territory.MonitorShiftScope() { public String cargoNow() { return SENDER_ROLE; } };
+        service.rooms=new com.cajamarca.sgi.comando.communication.CommunicationRooms();
         service.recipients=new ObsintAgentRecipients() { public List<Recipient> onShift(UUID tenant,UUID point,Instant now) { return agents; } };
         return service;
     }

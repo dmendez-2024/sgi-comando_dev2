@@ -72,7 +72,7 @@ public class ObsintMessageDispatcher {
                 where p.id=:post and p.instance_country_id=:tenant
                 """).setParameter("post",r.postId).setParameter("tenant",r.instanceCountryId).getResultList();
             Object[] names=locations.isEmpty()?new Object[]{null,null}:(Object[])locations.getFirst();
-            payload.put("pointName",names[0]);payload.put("postName",names[1]);
+            payload.put("pointName",names[0]);payload.put("postName",names[1]);payload.put("roomId",m.roomId);
             var result=publisher.publish(r.id,config.channelFor(r.personaId),payload);
             switch(result.outcome()) {
                 case ACCEPTED -> { r.status="SENT"; r.sentAt=Instant.now(); r.localRecipients=result.localRecipients(); r.lastError=null; }

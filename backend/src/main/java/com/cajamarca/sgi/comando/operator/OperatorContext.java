@@ -39,6 +39,11 @@ public class OperatorContext {
         return employees.employeeOf(identity);
     }
 
+    /** Agente de Seguridad (Rol AGENTE_SEGURIDAD del token). El Supervisor de Seguridad que no sea también Agente da false. */
+    public boolean isAgent() {
+        return identity!=null && identity.hasRole("AGENTE_SEGURIDAD");
+    }
+
     public Assignment assignment(UUID id,UUID employee) {
         OperationalAssignmentEntity a=OperationalAssignmentEntity.find("id=?1 and instanceCountryId=?2",id,tenant.instanceCountryId()).firstResult();
         if(a==null || "REMOVED".equals(a.status) || !employee.equals(a.effectiveEmployeeId())) throw new ForbiddenException("Asignación no autorizada");

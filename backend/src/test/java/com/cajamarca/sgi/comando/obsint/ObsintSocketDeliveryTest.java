@@ -81,7 +81,20 @@ class ObsintSocketDeliveryTest {
             assertEquals(ObsintSocketFixtures.SENDER_ROLE,first.from());assertEquals(ObsintSocketFixtures.SENDER_ROLE,receipt.from());
             assertEquals(ObsintSocketFixtures.SENDER_ROLE,published.path("from").asText());
             assertFalse(published.toString().contains("socket-test"));
-            assertEquals(Set.of("messageId","recipientId","taskId","pointId","postId","from","text","sentAt","replyAllowed","pointName","postName"),
+            // Los mensajes de la Consola OBSINT van a la sala por defecto "Monitor Consola" (0037).
+            var rooms=own.rooms();assertEquals(1,rooms.size());
+            var room=rooms.getFirst();
+            assertEquals("MONITOR_CONSOLA",room.code());assertEquals("Monitor Consola",room.name());assertTrue(room.defaultRoom());
+            assertTrue(views.stream().allMatch(v->room.roomId().equals(v.roomId())));
+            assertEquals(room.roomId().toString(),published.path("roomId").asText());
+            assertEquals(2,room.unreadCount());assertEquals("Prueba de nombres",room.lastMessageText());
+            assertEquals(ObsintSocketFixtures.SENDER_ROLE,room.lastMessageFrom());
+            // Otro agente ve la sala, pero vacía: no hay mensajes ajenos ni conteos.
+            var stranger=OperatorMessagesTestAccess.resource(em,config,receipts,f.tenant(),UUID.randomUUID()).rooms().getFirst();
+            assertEquals(room.roomId(),stranger.roomId());assertNull(stranger.lastMessageAt());assertNull(stranger.lastMessageText());assertEquals(0,stranger.unreadCount());
+            // Por ahora "Monitor Consola" es solo del Agente: el Supervisor de Seguridad no la recibe, ni siendo el destinatario.
+            assertTrue(OperatorMessagesTestAccess.resource(em,config,receipts,f.tenant(),f.employee(),false).rooms().isEmpty());
+            assertEquals(Set.of("messageId","recipientId","taskId","pointId","postId","from","text","sentAt","replyAllowed","pointName","postName","roomId"),
                 iterableToSet(published.fieldNames()));
             // Un Puesto de otra instancia no aporta nombres aunque coincida su UUID.
             em.createNativeQuery("update post set instance_country_id=:other where id=:id").setParameter("other",UUID.randomUUID()).setParameter("id",firstPost).executeUpdate();

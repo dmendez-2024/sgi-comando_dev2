@@ -22,6 +22,8 @@ public class ObsintAgentMessage extends BaseEntity {
     @Column(nullable = false, length = 160) public String operator;
     /** Cargo del monitorista al enviar; es lo único del remitente que recibe el agente (`from`). */
     @Column(name = "sender_role", length = 120) public String senderRole;
+    /** Sala de Comunicación del mensaje; los de la Consola OBSINT van a "Monitor Consola". */
+    @Column(name = "room_id") public UUID roomId;
     @Column(nullable = false, length = TEXT_MAX) public String text;
     @Column(name = "sent_at", nullable = false) public Instant sentAt;
     /**
