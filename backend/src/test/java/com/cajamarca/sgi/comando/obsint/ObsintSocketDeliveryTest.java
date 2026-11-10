@@ -44,11 +44,7 @@ class ObsintSocketDeliveryTest {
         static String serviceAccount() {
             try {
                 var generator=java.security.KeyPairGenerator.getInstance("RSA");generator.initialize(2048);
-                String pem="-----BEGIN PRIVATE KEY-----
-"+Base64.getMimeEncoder(64,"
-".getBytes()).encodeToString(generator.generateKeyPair().getPrivate().getEncoded())+"
------END PRIVATE KEY-----
-";
+                String pem="-----BEGIN PRIVATE KEY-----\n"+Base64.getMimeEncoder(64,"\n".getBytes()).encodeToString(generator.generateKeyPair().getPrivate().getEncoded())+"\n-----END PRIVATE KEY-----\n";
                 return new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(Map.of("type","service_account","project_id","sgi-push-test",
                     "private_key_id","test-key","private_key",pem,"client_email","push-test@sgi-push-test.iam.gserviceaccount.com",
                     "client_id","1","token_uri","http://localhost:8081/test-fcm/token"));
