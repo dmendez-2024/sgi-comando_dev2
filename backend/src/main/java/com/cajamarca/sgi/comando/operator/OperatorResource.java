@@ -290,6 +290,10 @@ public class OperatorResource {
                     List<Object[]> ruleRows=em.createNativeQuery("select sort_order,rule_type,required,evidence_required from patrol_checkpoint_rule where instance_country_id=:tenant and checkpoint_id=:checkpoint order by sort_order")
                         .setParameter("tenant",tenant.instanceCountryId()).setParameter("checkpoint",UUID.fromString(cp[0].toString())).getResultList();
                     for(Object[] rule:ruleRows) rules.addObject().put("sortOrder",((Number)rule[0]).intValue()).put("ruleType",rule[1].toString()).put("required",(Boolean)rule[2]).put("evidenceRequired",(Boolean)rule[3]);
+                    var images=com.cajamarca.sgi.comando.storage.StandardReferenceImage.of(com.cajamarca.sgi.comando.storage.StandardReferenceImage.PATROL_CHECKPOINT,UUID.fromString(cp[0].toString()));
+                    checkpoint.put("hasStandardImage",!images.isEmpty());
+                    ArrayNode standardImages=checkpoint.putArray("standardImages");
+                    images.forEach(i->standardImages.addObject().put("id",i.id.toString()).put("position",i.position));
                 }
             }
         }

@@ -1,14 +1,20 @@
 # Entrega de hechos SGI Comando -> SMC
 
 Primera entrega, 2026-10-27. Contrato de entrada SMC-002v0.5 del 2026-10-27.
-Activación controlada por `SGI_SMC_ENABLED`. No adjudica Impulsos, calcula el ID ni modifica tablas operativas.
+Activación controlada por `SGI_SMC_ENABLED`. La publicación no adjudica Impulsos, calcula el ID ni modifica tablas operativas.
 
 ## Alcance
 
 - `ROUTE_COMPLETION`: ejecución finalizada `COMPLETA`/`INCOMPLETA`, patrulla `CLOSED` y `PROGRAMMED`, al menos un hito configurado. Valor = hitos distintos `CUMPLIDO` / hitos configurados * 100, HALF_UP a dos decimales. Un 100 también se entrega como evidencia.
 - `CONSIGNMENT_NOT_DONE`: registro explícito `consignment_compliance.result=NO_CUMPLIDA`, valor 1. La ausencia de registro, `CON_NOVEDAD`, `CUMPLIDA` y `NO_APLICA` no generan hechos.
 - Cada origen se registra una vez en `smc_fact_delivery`; no se usa la bandeja SQLite del teléfono ni el outbox general de Comando.
-- No incluye `NO_EJECUTADA`, francos trabajados, Impulsos, cierre de ocurrencias ni consulta del ID de SMC. No se alteran las rutas de ingreso de Operador.
+- No incluye `NO_EJECUTADA`, francos trabajados, cierre de ocurrencias ni consulta del ID de SMC. No se alteran las rutas de ingreso de Operador.
+
+### Hechos para Impulsos (SMC-002v0.5)
+
+La fuente incremental `IMPULSE_EVALUATION` toma evaluaciones locales elegibles (`AWARDED` o `NO_AWARD`) de las reglas `REL_A_TIEMPO`, `REL_FOTO_CUERPO`, `BIT_CA_CORRECTO`, `PAT_CORRECTA` y `CON_CORRECTA`. Envía respectivamente `RELIEF_COMPLETED_ON_TIME`, `RELIEF_FULL_BODY_PHOTO`, `ACCESS_CONTROL_OK`, `PATROL_OK` y `CONSIGNMENT_OK`, cada uno con `value: 1`. La decisión aleatoria y el monto local no se envían; `NOT_ELIGIBLE` no se publica. Se mantienen las condiciones locales de elegibilidad y VISINT de la evaluación existente; validar con negocio su correspondencia con SMC.
+
+El identificador estable se deriva del ID de la evaluación; las dos reglas del mismo relevo son hechos distintos. El cursor se inicializa como las demás fuentes: sin fecha inicial explícita, no carga evaluaciones anteriores a su inicialización. El contrato nuevo denomina `personId` al identificador de persona, mientras el payload existente usa `persona_id`; verificar compatibilidad con SMC antes de desplegar. Los otros cuatro tipos del contrato no están implementados.
 
 Patrullas lee el cierre de `/api/v1/operator/patrol-executions` y sus resultados `patrol_checkpoint_execution`. También permite resolver la definición por `patrol_execution.patrol_definition_id` si existe; exige siempre cierre y resultado final. El registro individual en `task_execution` no es por sí solo una patrulla finalizada y no se transforma en un cierre artificial ni en demérito.
 
