@@ -73,8 +73,8 @@ public class OperatorReportResource {
             if(existing[22]!=null && !payloadHash.equals(existing[22].toString())) throw new ClientErrorException("El reporte ya existe con un contenido diferente",409);
             return response(existing,true);
         }
-        String routingTarget=("INCIDENT".equals(type)||"VULNERABILITY".equals(type))?"STC":"NONE";
-        String routingStatus="NONE".equals(routingTarget)?"NOT_APPLICABLE":"PENDING_INTEGRATION";
+        String routingTarget="STC";
+        String routingStatus="PENDING_INTEGRATION";
         Instant now=Instant.now();
         em.createNativeQuery("""
           insert into operator_operational_report
@@ -176,7 +176,7 @@ public class OperatorReportResource {
           select r.id,r.employee_id,r.report_type,r.category,r.subcategory,r.title,r.description,r.severity,r.status,
                  r.occurred_at,r.created_at,r.assignment_id,r.point_id,r.post_id,coalesce(employee.full_name,r.username),p.name,coalesce(po.name,'—'),
                  p.client_name,p.city,p.company_id,co.code,co.name,r.payload_hash,r.routing_target,r.routing_status,r.routing_reference_id,r.photo_count,
-                 ev.latitude,ev.longitude,ev.accuracy_m
+                 ev.latitude,ev.longitude,ev.accuracy_m,r.stc_start_date,r.stc_end_date
           from operator_operational_report r join point p on p.id=r.point_id and p.instance_country_id=r.instance_country_id
           left join employee_operational_snapshot employee on employee.employee_id=r.employee_id and employee.instance_country_id=r.instance_country_id
           left join post po on po.id=r.post_id and po.instance_country_id=r.instance_country_id
@@ -219,6 +219,8 @@ public class OperatorReportResource {
         if(r[26]!=null)x.put("photoCount",((Number)r[26]).intValue());
         if(r[27]!=null&&r[28]!=null)x.put("latitude",((Number)r[27]).doubleValue()).put("longitude",((Number)r[28]).doubleValue());
         if(r[29]!=null)x.put("accuracyM",((Number)r[29]).doubleValue());
+        if(r.length>30&&r[30]!=null)x.put("stcStartDate",r[30].toString());
+        if(r.length>31&&r[31]!=null)x.put("stcEndDate",r[31].toString());
         if(r[4]!=null)x.put("subcategory",r[4].toString()); if(r[13]!=null)x.put("postId",r[13].toString()); return x;
     }
     static String normalizeType(String value) { if(value==null||value.isBlank())return null; String x=value.trim().toUpperCase(Locale.ROOT); if(!TYPES.contains(x))throw new BadRequestException("Tipo de reporte inválido"); return x; }

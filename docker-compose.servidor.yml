@@ -37,6 +37,11 @@ services:
       SGI_SMC_INTERFACE_ID: ${SGI_SMC_INTERFACE_ID:-SGI_COM_SMC_0001_IF01}
       # Solo si CORE usa OAUTH2_CLIENT_CREDENTIALS. El client_id no es secreto.
       SGI_M2M_CLIENT_SMC: ${SGI_M2M_CLIENT_SMC:-}
+      # Secretos legados: definirlos únicamente en .env.secretos del servidor.
+      SGI_CREDENTIAL_SGI_COM_SIC_DHO_0001_V001: ${SGI_CREDENTIAL_SGI_COM_SIC_DHO_0001_V001:?Falta el SERVICE_TOKEN compartido con SIC_DHO en .env.secretos}
+      SGI_COM_STC_0001_V001: ${SGI_COM_STC_0001_V001:?Falta el ktoken de STC en .env.secretos}
+      SGI_STC_INBOUND_CREDENTIAL_REF: ${SGI_STC_INBOUND_CREDENTIAL_REF:-STC_SGI_COM_0001_v001}
+      SGI_CREDENTIAL_STC_SGI_COM_0001_V001: ${SGI_CREDENTIAL_STC_SGI_COM_0001_V001:?Falta el SERVICE_TOKEN compartido con STC en .env.secretos}
     volumes:
       - /run/secrets/openbao-sgi-com:/run/secrets/openbao-sgi-com:ro
   frontend:

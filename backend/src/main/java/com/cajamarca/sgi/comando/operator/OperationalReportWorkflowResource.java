@@ -23,6 +23,7 @@ public class OperationalReportWorkflowResource {
     @Inject TenantContext tenant;
     @Inject SecurityIdentity identity;
     @Inject OperationalScopeService scope;
+    @Inject NoveltyStcApprovalService stcApproval;
 
     public record DecisionRequest(String comment) {}
     public record DecisionResponse(UUID reportId,String status,String message) {}
@@ -37,8 +38,22 @@ public class OperationalReportWorkflowResource {
         if("APPROVED".equals(report.status())) return new DecisionResponse(id,"APPROVED","La novedad ya había sido aprobada.");
         if(!"CONFIRMED".equals(report.status()))
             throw new ClientErrorException("Solo una novedad confirmada puede aprobarse.",409);
+        Instant approvedAt=Instant.now();
+        final NoveltyStcApprovalService.ApprovalResult created;
+        try { created=stcApproval.createTask(id,approvedAt); }
+        catch(NoveltyIntegrationException error) { throw integrationError(error); }
         transition(report,"APPROVE","APPROVED",clean(body==null?null:body.comment()),null,null,null);
-        return new DecisionResponse(id,"APPROVED","Novedad aprobada correctamente.");
+        int updated=em.createNativeQuery("""
+            update operator_operational_report
+               set routing_target='STC',routing_status='CREATED',routing_reference_id=:task,
+                   stc_start_date=:startDate,stc_end_date=:endDate,stc_attempts=:attempts,
+                   updated_at=current_timestamp
+             where id=:id and instance_country_id=:tenant and status='APPROVED'
+            """).setParameter("task",created.taskCode()).setParameter("startDate",created.startDate())
+            .setParameter("endDate",created.endDate()).setParameter("attempts",created.attempts())
+            .setParameter("id",id).setParameter("tenant",tenant.instanceCountryId()).executeUpdate();
+        if(updated!=1) throw new InternalServerErrorException("No se pudo guardar la referencia creada en STC.");
+        return new DecisionResponse(id,"APPROVED","Novedad aprobada y tarea creada en STC correctamente.");
     }
 
     @POST
@@ -110,4 +125,10 @@ public class OperationalReportWorkflowResource {
     private static UUID uuid(Object value){return value instanceof UUID x?x:UUID.fromString(value.toString());}
     private static String clean(String value){return value==null||value.isBlank()?null:value.trim();}
     private static String required(String value,String message){if(value==null||value.isBlank())throw new BadRequestException(message);return value.trim().substring(0,Math.min(1000,value.trim().length()));}
+    private static WebApplicationException integrationError(NoveltyIntegrationException error){
+        return new WebApplicationException(jakarta.ws.rs.core.Response.status(error.status())
+            .type(MediaType.APPLICATION_JSON)
+            .entity(Map.of("code",error.code(),"message",error.getMessage()))
+            .build());
+    }
 }

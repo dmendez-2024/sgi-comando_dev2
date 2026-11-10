@@ -34,6 +34,12 @@ public class IncidentNotificationResource {
     @Inject IncidentEvidenceResource images;
     @Inject AssignmentResource assignments;
     @Inject IncidentCoverageRolePolicy coverageRolePolicy;
+    @Inject IncidentCatalogService catalog;
+
+    @GET @Path("/catalog")
+    public ObjectNode catalog() {
+        return catalog.catalog();
+    }
 
     @GET
     public List<ObjectNode> list() throws JsonProcessingException {
@@ -78,6 +84,7 @@ public class IncidentNotificationResource {
         String status = text(body, "status");
         if (!Set.of("DRAFT", "FINALIZED").contains(status)) throw new BadRequestException("Estado de incidente inválido");
         JsonNode previous = record.payloadJson == null ? mapper.createObjectNode() : mapper.readTree(record.payloadJson);
+        IncidentCatalogService.Selection selection = catalog.canonicalize(body, "FINALIZED".equals(status));
         String appliedAssignmentId = text(previous, "coverageAssignmentId");
         body.remove("coverageAssignmentId");
         body.remove("coverageAppliedAt");
@@ -95,6 +102,20 @@ public class IncidentNotificationResource {
             body.put("coverageAppliedAt", text(previous,"coverageAppliedAt"));
         }
         UUID pointId = uuid(body, "pointId"), postId = uuid(body, "postId");
+        UUID operationalReportId = uuid(body, "operationalReportId");
+        if (operationalReportId != null) {
+            @SuppressWarnings("unchecked") List<Object> linked = em.createNativeQuery("""
+                select id from operator_operational_report
+                 where id=:id and instance_country_id=:tenant and report_type='INCIDENT'
+                """).setParameter("id", operationalReportId).setParameter("tenant", tenant.instanceCountryId()).getResultList();
+            if (linked.isEmpty()) throw new BadRequestException("La novedad relacionada no existe o no es un incidente");
+            if (record.operationalReportId != null && !record.operationalReportId.equals(operationalReportId))
+                throw new BadRequestException("La novedad relacionada de un incidente existente no puede cambiarse");
+            body.put("operationalReportId", operationalReportId.toString());
+        } else if (record.operationalReportId != null) {
+            operationalReportId = record.operationalReportId;
+            body.put("operationalReportId", operationalReportId.toString());
+        }
         PointEntity point = null;
         PostEntity post = null;
         if (pointId != null) {
@@ -162,7 +183,12 @@ public class IncidentNotificationResource {
         record.status = status;
         record.pointId = pointId;
         record.postId = postId;
+        record.operationalReportId = operationalReportId;
         record.companyId = point == null ? null : point.companyId;
+        record.categoryCatalogId = selection.category() == null ? null : selection.category().id();
+        record.subcategoryCatalogId = selection.subcategory() == null ? null : selection.subcategory().id();
+        record.incidentTypeCatalogId = selection.incidentType() == null ? null : selection.incidentType().id();
+        record.severityCatalogId = selection.severity() == null ? null : selection.severity().id();
         record.updatedBy = scope.username();
         try { images.normalize(record, body); }
         catch (java.io.IOException e) { throw new InternalServerErrorException("No se pudieron validar las imágenes", e); }
@@ -178,6 +204,11 @@ public class IncidentNotificationResource {
         data.put("companyId", record.companyId == null ? "" : record.companyId.toString());
         data.put("pointId", record.pointId == null ? "" : record.pointId.toString());
         data.put("postId", record.postId == null ? "" : record.postId.toString());
+        data.put("operationalReportId", record.operationalReportId == null ? "" : record.operationalReportId.toString());
+        data.put("categoryCatalogId", record.categoryCatalogId == null ? "" : record.categoryCatalogId.toString());
+        data.put("subcategoryCatalogId", record.subcategoryCatalogId == null ? "" : record.subcategoryCatalogId.toString());
+        data.put("incidentTypeCatalogId", record.incidentTypeCatalogId == null ? "" : record.incidentTypeCatalogId.toString());
+        data.put("severityCatalogId", record.severityCatalogId == null ? "" : record.severityCatalogId.toString());
         data.put("createdAt", record.createdAt.toString());
         data.put("updatedAt", record.updatedAt.toString());
         return data;
