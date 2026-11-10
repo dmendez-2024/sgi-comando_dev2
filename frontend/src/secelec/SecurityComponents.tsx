@@ -286,11 +286,12 @@ function LivePreview({url}:{url:string}){
   return <div className="sec-preview">
     <div className="sec-preview-head">
       <span>Vista previa</span>
-      {playing&&!failed&&<>
+      {/* Siempre ocupan su lugar (se ocultan, no se quitan): así la vista previa no salta cuando el video reconecta. */}
+      {!failed&&<div className={`sec-preview-live${playing?'':' idle'}`} aria-hidden={!playing}>
         <em className={`sec-preview-badge${behind?' behind':''}`}>{behind?'ATRASADO':'EN VIVO'}</em>
         <button type="button" className={`sec-go-live${behind?' behind':''}`} title={behind?'Ir al en vivo':'Estás viendo el en vivo'}
-          aria-label="Ir al en vivo" onClick={toLive}><Radio size={13}/>En vivo</button>
-      </>}
+          aria-label="Ir al en vivo" onClick={toLive} disabled={!playing} tabIndex={playing?0:-1}><Radio size={13}/>En vivo</button>
+      </div>}
     </div>
     {failed?<div className="sec-preview-fail"><AlertTriangle size={16}/>Sin señal: la cámara conectó, pero el video no llegó al navegador.</div>
       :<video ref={ref} autoPlay muted playsInline controls/>}

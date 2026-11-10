@@ -103,7 +103,10 @@
 /* Vista previa de "Probar conexión" */
 .sec-preview{display:flex;flex-direction:column;gap:6px;margin-top:10px}
 .sec-preview>span{font-size:12px;font-weight:600;color:#475467}
-.sec-preview-head{display:flex;align-items:center;gap:8px}
+.sec-preview-head{display:flex;align-items:center;gap:8px;min-height:26px}
+.sec-preview-live{display:flex;align-items:center;gap:8px}
+.sec-preview-live.idle{visibility:hidden}
+.sec-preview-badge{min-width:66px;text-align:center}
 .sec-preview-head>span{font-size:12px;font-weight:600;color:#475467;margin-right:auto}
 .sec-preview-badge{font-style:normal;font-size:10px;font-weight:800;letter-spacing:.04em;padding:3px 7px;border-radius:999px;background:#e9f8ef;color:#1c8c49}
 .sec-preview-badge.behind{background:#fdecec;color:#b42318}
