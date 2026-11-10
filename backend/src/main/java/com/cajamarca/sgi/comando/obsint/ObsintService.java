@@ -8,6 +8,7 @@ import jakarta.ws.rs.BadRequestException;
 import jakarta.ws.rs.NotFoundException;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
@@ -58,7 +59,8 @@ public class ObsintService {
         Optional<ObsintCase> running = current();
         if (running.isPresent()) return running.get();
         UUID tenantId = platform.instanceCountryId();
-        ZonedDateTime local = now().atZone(ObsintPlatform.ZONE);
+        ZoneId zone = platform.zone();
+        ZonedDateTime local = now().atZone(zone);
         List<ObsintConsigna> scheduled = ObsintConsigna.<ObsintConsigna>list(
                 "instanceCountryId=?1 and active=true and protocolId in (select p.id from ObsintProtocol p where p.status='ACTIVO' and p.instanceCountryId=?1) order by pointId, position, code", tenantId)
             .stream().filter(c -> c.scheduledAt(local.getDayOfWeek().getValue(), local.toLocalTime())).toList();
@@ -69,7 +71,7 @@ public class ObsintService {
         List<ObsintConsigna> consignas = scheduled.stream().filter(c -> visible.contains(c.pointId))
             .filter(c -> c.consignmentCode == null || Optional.ofNullable(linked.getOrDefault(c.pointId, Map.of()).get(c.consignmentCode))
                 .filter(source -> source.validAt(at)).isPresent())
-            .filter(c -> due(c.frequency, lastAnswers.get(c.pointId + "|" + c.code), at))
+            .filter(c -> due(c.frequency, lastAnswers.get(c.pointId + "|" + c.code), at, zone))
             .toList();
         if (consignas.isEmpty()) throw new ObsintRuleException("No hay consignas OBSINT pendientes en este horario en las Compañías de su alcance. Las ya revisadas vuelven según su frecuencia.");
         long number = ((Number) em.createNativeQuery("select nextval('obsint_case_code_seq')").getSingleResult()).longValue();
@@ -223,11 +225,14 @@ public class ObsintService {
     static final Map<String, Duration> FREQUENCY_INTERVAL = Map.of("EVERY_SHIFT", Duration.ofHours(12), "EVERY_2_HOURS", Duration.ofHours(2),
         "EVERY_4_HOURS", Duration.ofHours(4));
 
-    /** ¿Toca de nuevo? Nunca respondida, o pasó su intervalo; "Una vez al día" vuelve al día siguiente (hora de Ecuador). */
-    static boolean due(String frequency, Instant lastAnswer, Instant now) {
+    /** ¿Toca de nuevo? Nunca respondida, o pasó su intervalo; "Una vez al día" vuelve al día siguiente (hora local de la Instancia PE). */
+    static boolean due(String frequency, Instant lastAnswer, Instant now) { return due(frequency, lastAnswer, now, ObsintPlatform.DEFAULT_ZONE); }
+
+    /** Igual, con la zona de la Instancia PE: "Una vez al día" cambia de día a la medianoche local. */
+    static boolean due(String frequency, Instant lastAnswer, Instant now, ZoneId zone) {
         if (lastAnswer == null) return true;
         if ("DAILY".equals(frequency))
-            return !lastAnswer.atZone(ObsintPlatform.ZONE).toLocalDate().equals(now.atZone(ObsintPlatform.ZONE).toLocalDate());
+            return !lastAnswer.atZone(zone).toLocalDate().equals(now.atZone(zone).toLocalDate());
         return !now.isBefore(lastAnswer.plus(FREQUENCY_INTERVAL.getOrDefault(frequency, Duration.ofHours(12))));
     }
 

@@ -33,6 +33,7 @@ public class ObsintReportResource {
     static final int MAX_DAYS = 366;
 
     @Inject ObsintDailyReport reports;
+    @Inject ObsintPlatform platform;
 
     public record ReportView(UUID pointId, LocalDate date, String client, String point, int executed, Double compliance) {
         static ReportView of(ObsintDailyReport.Row r) { return new ReportView(r.pointId(), r.date(), r.client(), r.point(), r.executed(), r.compliance()); }
@@ -41,7 +42,7 @@ public class ObsintReportResource {
     /** Informes entre from y to (yyyy-MM-dd, incluidos). Por defecto, los últimos 30 días. */
     @GET @Produces(MediaType.APPLICATION_JSON) @Transactional
     public List<ReportView> list(@QueryParam("from") String from, @QueryParam("to") String to) {
-        LocalDate end = to == null || to.isBlank() ? LocalDate.now(ObsintPlatform.ZONE) : date(to);
+        LocalDate end = to == null || to.isBlank() ? LocalDate.now(platform.zone()) : date(to);
         LocalDate start = from == null || from.isBlank() ? end.minusDays(29) : date(from);
         if (start.isAfter(end)) throw new BadRequestException("La fecha inicial no puede ser posterior a la final.");
         if (start.plusDays(MAX_DAYS).isBefore(end)) throw new BadRequestException("El rango no puede superar " + MAX_DAYS + " días.");

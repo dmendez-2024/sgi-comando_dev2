@@ -6,6 +6,7 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.*;
 import java.util.stream.Collectors;
 import org.jboss.logging.Logger;
@@ -18,7 +19,6 @@ import org.jboss.logging.Logger;
 @ApplicationScoped
 public class ObsintDailyReport {
     /** Nombre del producto OBSINT (diapositiva 2 de "OBSINT Estructura"); va en "Servicio" del informe, no el servicio de guardias del Punto. */
-    static final String PRODUCT_NAME = "Servicio de Auditoría OBSINT";
     private static final Logger LOG = Logger.getLogger(ObsintDailyReport.class);
     static final Map<String, String> CATEGORY = Map.of("SSO", "Seguridad y salud ocupacional", "PRODUCTION", "Producción industrial",
         "LOGISTICS", "Logística y almacenamiento", "CLEANING", "Orden y limpieza", "MOBILITY", "Movilidad y tránsito interno",
@@ -35,7 +35,7 @@ public class ObsintDailyReport {
     /** photo/photoType null = el monitorista no capturó evidencia. */
     public record Failure(String code, String title, Instant answeredAt, String location, String observation, byte[] photo, String photoType) {}
     public record Report(LocalDate date, String client, String point, String service, Instant generatedAt, Summary summary,
-                         List<ConsignaLine> consignas, List<Failure> failures, String observations) {}
+                         List<ConsignaLine> consignas, List<Failure> failures, String observations, ZoneId zone) {}
 
     /** Filas de la lista entre esas fechas (incluidas), la más reciente primero. */
     public List<Row> rows(LocalDate from, LocalDate to) {
@@ -75,8 +75,8 @@ public class ObsintDailyReport {
         }).toList();
 
         List<Failure> failures = tasks.stream().filter(t -> t.decision == ObsintCaseTask.Decision.NO).map(this::failure).toList();
-        return Optional.of(new Report(date, point.clientName, point.name, PRODUCT_NAME, Instant.now(),
-            summary, lines, failures, observations(summary, lines)));
+        return Optional.of(new Report(date, point.clientName, point.name, platform.productName(pointId), Instant.now(),
+            summary, lines, failures, observations(summary, lines), platform.zone()));
     }
 
     private Failure failure(ObsintCaseTask t) {
@@ -128,10 +128,11 @@ public class ObsintDailyReport {
         return (int) tasks.stream().filter(t -> t.decision == decision).count();
     }
 
-    private static LocalDate day(Instant at) { return at.atZone(ObsintPlatform.ZONE).toLocalDate(); }
+    private LocalDate day(Instant at) { return at.atZone(platform.zone()).toLocalDate(); }
 
     private List<ObsintCaseTask> answered(LocalDate from, LocalDate to) {
-        Instant start = from.atStartOfDay(ObsintPlatform.ZONE).toInstant(), end = to.plusDays(1).atStartOfDay(ObsintPlatform.ZONE).toInstant();
+        ZoneId zone = platform.zone();
+        Instant start = from.atStartOfDay(zone).toInstant(), end = to.plusDays(1).atStartOfDay(zone).toInstant();
         return ObsintCaseTask.list("instanceCountryId=?1 and answeredAt>=?2 and answeredAt<?3", platform.instanceCountryId(), start, end);
     }
 

@@ -9,6 +9,8 @@ import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
 import org.apache.pdfbox.text.PDFTextStripper;
 import org.junit.jupiter.api.Test;
+import jakarta.inject.Inject;
+import jakarta.persistence.EntityManager;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -24,6 +26,7 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 @QuarkusTest
 class ObsintReportResourceTest {
+    @Inject EntityManager em;
 
     @Test void frequencyDecidesWhenAConsignaComesBack() {
         Instant now = Instant.parse("2026-10-28T15:00:00Z");
@@ -84,15 +87,24 @@ class ObsintReportResourceTest {
             finishRunningCase("monitor");
         } else assertEquals(409, next.statusCode());
 
-        String today = LocalDate.now(ObsintPlatform.ZONE).toString();
+        String today = LocalDate.now(ObsintPlatform.DEFAULT_ZONE).toString();
         as("presidente").get("/api/obsint/reports?from=" + today + "&to=" + today).then().statusCode(200)
             .body("findAll { it.pointId == '" + POINT + "' && it.date == '" + today + "' }.size()", is(1));
         byte[] pdf = as("presidente").get("/api/obsint/reports/points/" + POINT + "/days/" + today + "/pdf").then().statusCode(200)
             .contentType("application/pdf").extract().asByteArray();
+        // El producto sale del dispositivo OBSINT de SIC:COM del Punto (si no tiene, el nombre por defecto).
+        String product = io.quarkus.narayana.jta.QuarkusTransaction.requiringNew().call(() -> {
+            List<?> rows = em.createNativeQuery("""
+                select coalesce(nullif(trim(d.product), ''), nullif(trim(d.name), '')) from electronic_monitoring_post d
+                where d.point_id=cast(:point as uuid) and upper(d.post_type)='OBSINT'
+                order by case when upper(d.commercial_status)='ACTIVE' then 0 else 1 end, d.code limit 1""")
+                .setParameter("point", POINT).getResultList();
+            return rows.isEmpty() || rows.get(0) == null ? ObsintPlatform.DEFAULT_PRODUCT : rows.get(0).toString();
+        });
         try (PDDocument doc = Loader.loadPDF(pdf)) {
             String text = new PDFTextStripper().getText(doc).replaceAll("\\s+", " ");
             for (String expected : List.of("Informe Diario de Consignas", "Resumen General", "Desempeño por Consigna", "Incumplimientos (",
-                    "Observaciones Generales", "VERIFICABILIDAD", "INCIERTAS", code, "Se observa un veh", "Servicio de Auditoría OBSINT"))
+                    "Observaciones Generales", "VERIFICABILIDAD", "INCIERTAS", code, "Se observa un veh", product.replaceAll("\\s+", " ")))
                 assertTrue(text.contains(expected), "falta en el PDF: " + expected);
             long images = 0;
             for (var page : doc.getPages())

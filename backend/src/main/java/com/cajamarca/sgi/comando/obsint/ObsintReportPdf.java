@@ -25,7 +25,8 @@ final class ObsintReportPdf {
         SOFT = new Color(0xF4F6F9), GREEN = new Color(0x1E9E52), RED = new Color(0xD9343A), AMBER = new Color(0xE5A11A), PINK = new Color(0xFDECEC),
         WHITE = Color.WHITE, HEAD_MUTED = new Color(0xB8C2D0);
     private static final DateTimeFormatter LONG_DATE = DateTimeFormatter.ofPattern("d 'de' MMMM 'de' yyyy", Locale.forLanguageTag("es-EC"));
-    private static final DateTimeFormatter SHORT = DateTimeFormatter.ofPattern("d MMM yyyy, HH:mm", Locale.forLanguageTag("es-EC")).withZone(ObsintPlatform.ZONE);
+    /** Fecha y hora en la zona de la Instancia PE del reporte. */
+    private final DateTimeFormatter SHORT;
     private static final DateTimeFormatter SHORT_DATE = DateTimeFormatter.ofPattern("d MMM yyyy", Locale.forLanguageTag("es-EC"));
 
     private final PDDocument doc = new PDDocument();
@@ -39,6 +40,8 @@ final class ObsintReportPdf {
 
     private ObsintReportPdf(ObsintDailyReport.Report report) throws IOException {
         this.r = report;
+        this.SHORT = DateTimeFormatter.ofPattern("d MMM yyyy, HH:mm", Locale.forLanguageTag("es-EC"))
+            .withZone(report.zone() == null ? ObsintPlatform.DEFAULT_ZONE : report.zone());
         try (InputStream in = ObsintReportPdf.class.getResourceAsStream("/obsint/sgi-comando-logo.png")) {
             logo = in == null ? null : PDImageXObject.createFromByteArray(doc, in.readAllBytes(), "logo");
         }

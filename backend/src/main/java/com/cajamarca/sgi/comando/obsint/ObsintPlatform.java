@@ -35,8 +35,10 @@ import java.util.stream.Collectors;
  */
 @ApplicationScoped
 public class ObsintPlatform {
-    /** Zona horaria de los horarios de las consignas (la misma que usa Comando para códigos y fechas operativas). */
-    public static final ZoneId ZONE = ZoneId.of("America/Guayaquil");
+    /** Zona horaria si CORE todavía no sincronizó la Instancia PE (core_instance_country_snapshot sin fila o con zona inválida). */
+    public static final ZoneId DEFAULT_ZONE = ZoneId.of("America/Guayaquil");
+    /** Nombre del producto si el Punto no tiene dispositivo OBSINT de SIC:COM con nombre. */
+    public static final String DEFAULT_PRODUCT = "Servicio de Auditoría OBSINT";
     /** Rol de IDENT para los cargos de monitoreo; da acceso solo a la consola. */
     public static final String MONITOR_ROLE = MonitorShiftScope.MONITOR_ROLE;
 
@@ -50,6 +52,46 @@ public class ObsintPlatform {
 
     public UUID instanceCountryId() { return tenant.instanceCountryId(); }
     public String username() { return scope.username(); }
+
+    /** Zona por Instancia PE y cuándo se leyó: CORE casi nunca la cambia, se relee cada 10 minutos. */
+    private record CachedZone(ZoneId zone, Instant readAt) {}
+    private final Map<UUID, CachedZone> zones = new java.util.concurrent.ConcurrentHashMap<>();
+    private static final java.time.Duration ZONE_TTL = java.time.Duration.ofMinutes(10);
+
+    /**
+     * Zona horaria de los horarios de las consignas y de los días del reporte: la de la Instancia PE según CORE
+     * (core_instance_country_snapshot.timezone). Así, en otro país, los horarios se calculan con su hora local.
+     */
+    public ZoneId zone() {
+        UUID tenantId = tenant.instanceCountryId();
+        CachedZone cached = zones.get(tenantId);
+        if (cached != null && cached.readAt().plus(ZONE_TTL).isAfter(Instant.now())) return cached.zone();
+        ZoneId zone = DEFAULT_ZONE;
+        @SuppressWarnings("unchecked")
+        List<Object> rows = em.createNativeQuery("select timezone from core_instance_country_snapshot where instance_country_id=:tenant")
+            .setParameter("tenant", tenantId).getResultList();
+        if (!rows.isEmpty() && rows.get(0) != null) {
+            try { zone = ZoneId.of(rows.get(0).toString().trim()); }
+            catch (java.time.DateTimeException e) { org.jboss.logging.Logger.getLogger(ObsintPlatform.class)
+                .warnf("obsint_zone_invalid tenant=%s timezone=%s; se usa %s", tenantId, rows.get(0), DEFAULT_ZONE); }
+        }
+        zones.put(tenantId, new CachedZone(zone, Instant.now()));
+        return zone;
+    }
+
+    /**
+     * Nombre del producto OBSINT del Punto para el reporte: el del dispositivo OBSINT que envía SIC:COM (producto o, si no
+     * trae, su nombre), prefiriendo uno activo. Sin dispositivo, el nombre por defecto.
+     */
+    public String productName(UUID pointId) {
+        @SuppressWarnings("unchecked")
+        List<Object> rows = em.createNativeQuery("""
+            select coalesce(nullif(trim(d.product), ''), nullif(trim(d.name), '')) from electronic_monitoring_post d
+            where d.instance_country_id=:tenant and d.point_id=:point and upper(d.post_type)='OBSINT'
+            order by case when upper(d.commercial_status)='ACTIVE' then 0 else 1 end, d.code limit 1""")
+            .setParameter("tenant", tenant.instanceCountryId()).setParameter("point", pointId).getResultList();
+        return rows.isEmpty() || rows.get(0) == null ? DEFAULT_PRODUCT : rows.get(0).toString();
+    }
 
     /**
      * El Punto existe en el tenant, el usuario puede gestionar su Compañía (misma regla que Consignas)
