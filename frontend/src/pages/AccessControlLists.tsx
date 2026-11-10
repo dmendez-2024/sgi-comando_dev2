@@ -14,8 +14,10 @@ import {
   UserPlus,
   X,
   Check,
+  CheckCircle2,
   ChevronDown,
   ImagePlus,
+  CalendarPlus,
 } from "lucide-react";
 import { api, ApiError } from "../api";
 
@@ -63,6 +65,11 @@ type Draft = {
   photoFilename?: string;
 };
 const today = () => new Date().toISOString().slice(0, 10);
+const dayAfter = (value: string) => {
+  const date = new Date(`${value}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + 1);
+  return date.toISOString().slice(0, 10);
+};
 const empty = (pointId: string): Draft => ({
   identification: "",
   lastNames: "",
@@ -115,7 +122,7 @@ export default function AccessControlLists({
       const [entries, available] = await Promise.all([
         api.accessControlEntries(point.clientId, listType, {
           q,
-          pointId: pointFilter,
+          pointId: point.pointId,
           status: statusFilter,
         }),
         api.accessControlPoints(point.clientId),
@@ -132,7 +139,7 @@ export default function AccessControlLists({
   };
   useEffect(() => {
     void load();
-  }, [listType, point.clientId]);
+  }, [listType, point.clientId, point.pointId]);
   const openNew = () => {
     setNotice("");
     setDraft(empty(point.pointId));
@@ -156,6 +163,25 @@ export default function AccessControlLists({
       validUntil: row.validUntil,
       status: row.status,
       observations: row.observations ?? "",
+      pointIds: row.pointIds,
+    });
+    setMode("individual");
+    setDrawer(true);
+  };
+  const renew = (row: Entry) => {
+    setNotice("");
+    setFormError("");
+    setPointsOpen(false);
+    setDraft({
+      identification: row.identification,
+      lastNames: row.lastNames,
+      firstNames: row.firstNames,
+      accreditation: row.accreditation,
+      organizationalReference: row.organizationalReference ?? "",
+      validFrom: row.validUntil >= today() ? dayAfter(row.validUntil) : today(),
+      validUntil: "",
+      status: "ACTIVE",
+      observations: "",
       pointIds: row.pointIds,
     });
     setMode("individual");
@@ -245,6 +271,27 @@ export default function AccessControlLists({
   const selectedPoints = points.filter((item) =>
     draft.pointIds.includes(item.id),
   );
+  const sharedPoints = useMemo(() => {
+    const linkedIds = new Set(rows.flatMap((row) => row.pointIds));
+    return points.filter(
+      (item) => item.id !== point.pointId && linkedIds.has(item.id),
+    );
+  }, [point.pointId, points, rows]);
+  const visibleRows = useMemo(
+    () =>
+      pointFilter
+        ? rows.filter((row) => row.pointIds.includes(pointFilter))
+        : rows,
+    [pointFilter, rows],
+  );
+  useEffect(() => {
+    if (
+      pointFilter &&
+      !sharedPoints.some((item) => item.id === pointFilter)
+    ) {
+      setPointFilter("");
+    }
+  }, [pointFilter, sharedPoints]);
   return (
     <div className="acl-page">
       <div className="acl-breadcrumb">
@@ -291,7 +338,12 @@ export default function AccessControlLists({
           sobre la Lista Blanca.
         </div>
       )}
-      {notice && <div className="acl-success">{notice}</div>}
+      {notice && (
+        <div className="posts-notice">
+          <CheckCircle2 size={15} />
+          <span>{notice}</span>
+        </div>
+      )}
       {error && <div className="acl-error">{error}</div>}
       <section className="acl-filters">
         <label>
@@ -306,10 +358,10 @@ export default function AccessControlLists({
           value={pointFilter}
           onChange={(e) => setPointFilter(e.target.value)}
         >
-          <option value="">Todos los puntos</option>
-          {points.map((item) => (
+          <option value="">Todos los accesos de {point.pointName}</option>
+          {sharedPoints.map((item) => (
             <option key={item.id} value={item.id}>
-              {item.name}
+              También con acceso a {item.name}
             </option>
           ))}
         </select>
@@ -328,7 +380,7 @@ export default function AccessControlLists({
       </section>
       <section className="acl-table-card">
         <h3>
-          {white ? "Autorizaciones" : "Restricciones"} ({rows.length})
+          {white ? "Autorizaciones" : "Restricciones"} ({visibleRows.length})
         </h3>
         <div className="acl-table-wrap">
           <table>
@@ -346,7 +398,7 @@ export default function AccessControlLists({
             </thead>
             <tbody>
               {!loading &&
-                rows.map((row) => (
+                visibleRows.map((row) => (
                   <tr key={row.id}>
                     <td>
                       <b>{row.identification}</b>
@@ -395,13 +447,20 @@ export default function AccessControlLists({
                       >
                         <Edit3 size={16} />
                       </button>
+                      <button
+                        className="icon"
+                        title="Crear una nueva vigencia"
+                        onClick={() => renew(row)}
+                      >
+                        <CalendarPlus size={16} />
+                      </button>
                     </td>
                   </tr>
                 ))}
             </tbody>
           </table>
           {loading && <div className="acl-empty">Consultando registros…</div>}
-          {!loading && !rows.length && (
+          {!loading && !visibleRows.length && (
             <div className="acl-empty">
               No hay registros con los filtros aplicados.
             </div>
@@ -472,6 +531,8 @@ export default function AccessControlLists({
                     Identificación *
                     <input
                       value={draft.identification}
+                      disabled={Boolean(draft.id)}
+                      title={draft.id ? "La identificación no puede modificarse" : undefined}
                       onChange={(e) =>
                         setDraft({ ...draft, identification: e.target.value })
                       }
