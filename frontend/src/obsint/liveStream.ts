@@ -11,6 +11,27 @@ export function streamKind(url:string):StreamKind{
   return 'file';
 }
 
+/** Segundos de retraso para considerar que el video ya no está "en vivo" (pausa, congelamiento o red lenta). */
+export const LIVE_BEHIND_S=10;
+
+/** Cuántos segundos va atrasado el video respecto al último momento disponible del en vivo; 0 si no se sabe. */
+export function liveDelay(video:HTMLVideoElement):number{
+  const s=video.seekable;
+  if(!s.length)return 0;
+  return Math.max(0,s.end(s.length-1)-video.currentTime);
+}
+
+/** Salta al momento actual del video en vivo (como "En vivo" de YouTube) y lo reproduce. */
+export function goLive(video:HTMLVideoElement){
+  const s=video.seekable;
+  if(s.length){
+    const end=s.end(s.length-1);
+    // Un par de segundos antes del borde, para que no se quede esperando el siguiente trozo.
+    if(end-video.currentTime>2)video.currentTime=Math.max(s.start(s.length-1),end-2);
+  }
+  void video.play().catch(()=>undefined);
+}
+
 /** Pide a Comando una URL de video nueva (con un permiso vigente); null si ya no hay video para esa cámara. */
 export type RenewUrl=()=>Promise<string|null>;
 
@@ -62,11 +83,19 @@ function attachHls(video:HTMLVideoElement,initialSrc:string,onStatus:(status:Str
   let lastProgress=attemptAt;
   let lastTime=video.currentTime;
   let hasPlayed=false;
+  /** El usuario pausó con los controles: no se le vuelve a dar play solo. */
+  let userPaused=false;
 
   const clearStall=()=>{if(stallTimer){clearTimeout(stallTimer);stallTimer=null}};
   const detach=()=>{
     hls?.destroy();hls=null;
     video.removeAttribute('src');video.load();
+  };
+  /** autoPlay no basta con hls.js (a veces queda en pausa): se pide play explícito, silenciado para que el navegador lo permita. */
+  const kick=()=>{
+    if(closed||denied||userPaused||!video.paused)return;
+    video.muted=true;
+    void video.play().catch(()=>undefined);
   };
   const deny=()=>{
     if(closed||denied)return;
@@ -104,15 +133,24 @@ function attachHls(video:HTMLVideoElement,initialSrc:string,onStatus:(status:Str
   const onTimeUpdate=()=>{if(Math.abs(video.currentTime-lastTime)>.05){lastTime=video.currentTime;lastProgress=Date.now()}};
   const onWaiting=()=>{if(closed||denied||!hasPlayed||video.paused||stallTimer)return;
     onStatus('retrying');stallTimer=setTimeout(()=>{stallTimer=null;retry()},RETRY_MS)};
+  const onCanPlay=()=>kick();
+  // El evento pause llega después de detach(): si ya no hay reproductor conectado, la pausa la causó un reinicio, no el usuario.
+  const onPause=()=>{if(!closed&&(native?!!video.getAttribute('src'):!!hls))userPaused=true};
+  const onPlay=()=>{userPaused=false};
   const onVideoError=()=>{if(closed||denied||renewing)return;if(native)checkNativeAccess();else retry()};
   video.addEventListener('playing',onPlaying);
   video.addEventListener('timeupdate',onTimeUpdate);
   video.addEventListener('waiting',onWaiting);
   video.addEventListener('stalled',onWaiting);
   video.addEventListener('error',onVideoError);
+  video.addEventListener('canplay',onCanPlay);
+  video.addEventListener('pause',onPause);
+  video.addEventListener('play',onPlay);
   const watchdog=setInterval(()=>{
     if(closed||denied||retryTimer||renewing)return;
     const now=Date.now();
+    // Con imagen cargada pero en pausa no falta reiniciar: falta play (o el usuario la pausó).
+    if(!hasPlayed&&video.paused&&video.readyState>=3){kick();return}
     if(!hasPlayed&&now-attemptAt>START_TIMEOUT_MS)retry();
     else if(hasPlayed&&!video.paused&&now-lastProgress>STALL_TIMEOUT_MS)retry();
   },2000);
@@ -133,6 +171,7 @@ function attachHls(video:HTMLVideoElement,initialSrc:string,onStatus:(status:Str
       levelLoadingMaxRetry:3,levelLoadingRetryDelay:1000,
       fragLoadingMaxRetry:3,fragLoadingRetryDelay:1000});
     hls=player;
+    player.on(HlsClass.Events.MANIFEST_PARSED,kick);
     player.on(HlsClass.Events.ERROR,(_event,data)=>{
       if(closed||denied||renewing)return;
       if(rejected(data.response?.code??data.networkDetails?.status))return;
@@ -149,6 +188,9 @@ function attachHls(video:HTMLVideoElement,initialSrc:string,onStatus:(status:Str
     video.removeEventListener('waiting',onWaiting);
     video.removeEventListener('stalled',onWaiting);
     video.removeEventListener('error',onVideoError);
+    video.removeEventListener('canplay',onCanPlay);
+    video.removeEventListener('pause',onPause);
+    video.removeEventListener('play',onPlay);
     detach();
   };
 }
