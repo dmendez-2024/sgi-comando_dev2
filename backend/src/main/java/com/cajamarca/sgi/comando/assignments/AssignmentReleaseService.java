@@ -20,6 +20,7 @@ public class AssignmentReleaseService {
     private static final String EMPLOYEE_INACTIVATION_REASON = "Empleado inactivado por SIC:RRHH";
 
     @Inject ObjectMapper mapper;
+    @Inject PointResponsibilityService pointResponsibilities;
 
     public int releaseForCompanyTransfer(
         UUID tenantId,
@@ -99,6 +100,7 @@ public class AssignmentReleaseService {
             .collect(Collectors.toMap(plan -> plan.id, Function.identity()));
 
         int released = 0;
+        Set<UUID> changedPlans = new java.util.HashSet<>();
         for (OperationalAssignmentEntity assignment : assignments) {
             ShiftOccurrenceEntity shift = shifts.get(assignment.shiftOccurrenceId);
             AssignmentPlanEntity plan = plansById.get(assignment.assignmentPlanId);
@@ -119,7 +121,10 @@ public class AssignmentReleaseService {
                 payload
             );
             released++;
+            changedPlans.add(plan.id);
         }
+        changedPlans.stream().sorted().map(plansById::get)
+            .forEach(plan -> pointResponsibilities.synchronizeAfterRelease(plan, actorUsername));
         return released;
     }
 

@@ -166,3 +166,18 @@ Para que una persona ingrese a SGI: Comando desde **SIC: RRHH**, SIC: RRHH debe 
 
 ## ASI-DEC-058 — Guardia de transición cuando SER mueve un Servicio
 Cuando SER retira un Servicio hacia Kaibil y conserva un turno actualmente en ejecución, el Punto puede definir `operational_transition_until`. Si el Servicio es reasignado a una nueva Compañía antes de ese corte, ASI no debe permitir cobertura nueva sobre turnos que comiencen antes de dicha fecha/hora. La misma regla debe aplicarse en vista semanal, asignación manual, cobertura y publicación para evitar doble cobertura mientras finaliza el turno heredado de la Compañía anterior.
+
+## ASI-DEC-059 — Responsable de Punto aleatorio por turno/relevo
+
+Decisión funcional confirmada por el usuario el 2026-11-10. La documentación anterior no definía una persona responsable por Punto. La nueva función no cambia el cargo laboral de RRHH ni la Compañía responsable activa.
+
+- La duración acompaña al turno/relevo, no al día ni a la semana. La semana agrupa la planificación; `OperationalAssignment` vincula una persona con un Puesto y turno, y `ReliefEvent` determina la asistencia real (SGI-06 y SGI-07). La designación publicada es **planificada**, no prueba de asistencia.
+- Al publicar se elige un responsable entre los colaboradores con cargo asignable, estado activo, pertenencia a la Compañía y asignación efectiva en el Punto que cubra todo el intervalo, sin indisponibilidad activa solapada. No se exige el cargo RRHH «Responsable de Punto». Los Puestos de Coordinación quedan fuera.
+- Los límites de inicio/fin de los turnos del Punto determinan los intervalos. Si todos los Puestos comparten horario, hay una designación por turno. Horarios escalonados producen intervalos comunes sin nombrar a nadie fuera de su asignación. Un turno nocturno mantiene su intervalo real y no se corta por medianoche.
+- Se prioriza el menor número de designaciones históricas en ese Punto y se sortea uniformemente entre los empatados. No se repite mientras exista otro elegible con menos participaciones. Ausentes no bloquean la ronda; un único elegible puede repetir. Quien se incorpora o regresa conserva su prioridad según su historial.
+- ID de SMC, IC y promedios no participan en la selección. El historial cruza semanas y Compañías sucesivas del mismo Punto; no cruza Puntos ni Instancias-País. Incluye designaciones futuras ya publicadas y reemplazos, porque mide nombramientos planificados, no minutos de asistencia.
+- Se guarda el resultado y un evento con candidatos, conteos previos, regla, actor e intervalo. Consultar, actualizar la pantalla o repetir la publicación no vuelve a sortear.
+- Una asignación/reasignación posterior a publicación conserva al elegido si sigue elegible; si sale del intervalo, se sortea reemplazo y se conserva la auditoría. No se modifica el snapshot original publicado ni se reordenan otras elecciones válidas. Los intervalos finalizados se conservan.
+- Sin elegibles, el intervalo queda explícitamente «Sin agentes elegibles»; no se inventa un responsable ni se bloquea la publicación parcial permitida por SGI-06.
+
+Alcance de esta entrega: planificación en Asignaciones. No convierte automáticamente un relevo recibido con estado `PENDIENTE` en asistencia validada; el flujo de Relevo conserva su propia fuente de verdad. Los cambios de disponibilidad de RRHH se toman en la siguiente escritura de asignación/reasignación; la consulta no altera sorteos. Planes publicados anteriores a esta entrega conservan su snapshot y no se resortean por abrirlos.
