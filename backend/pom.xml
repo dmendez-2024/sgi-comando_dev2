@@ -47,6 +47,8 @@
     <dependency><groupId>io.minio</groupId><artifactId>minio</artifactId><version>8.5.17</version></dependency>
     <!-- Informe Diario OBSINT en PDF (tablas, colores, fotos de evidencia). -->
     <dependency><groupId>org.apache.pdfbox</groupId><artifactId>pdfbox</artifactId><version>3.0.3</version></dependency>
+    <!-- Push FCM a SGI Operador (HTTP v1): solo el token OAuth de la cuenta de servicio de Firebase, sin el Admin SDK. -->
+    <dependency><groupId>com.google.auth</groupId><artifactId>google-auth-library-oauth2-http</artifactId><version>1.39.1</version></dependency>
     <dependency><groupId>io.quarkus</groupId><artifactId>quarkus-junit5</artifactId><scope>test</scope></dependency>
     <dependency><groupId>io.rest-assured</groupId><artifactId>rest-assured</artifactId><scope>test</scope></dependency>
   </dependencies>

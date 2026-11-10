@@ -19,6 +19,7 @@ public class ObsintMessageDispatcher {
     private static final Logger LOG=Logger.getLogger(ObsintMessageDispatcher.class);
     @Inject SocketConfig config;
     @Inject SocketPublisher publisher;
+    @Inject com.cajamarca.sgi.comando.push.PushPublisher push;
     @Inject EntityManager em;
     private final AtomicBoolean running=new AtomicBoolean();
     void queued(@Observes(during=TransactionPhase.AFTER_SUCCESS) ObsintMessageQueued event) {
@@ -31,7 +32,7 @@ public class ObsintMessageDispatcher {
             // El mismo bloqueo protege vencimientos y publicaciones en varias réplicas.
             QuarkusTransaction.requiringNew().run(this::expire);
             for(int i=0;i<config.dispatchBatchSize();i++) {
-                if(!QuarkusTransaction.requiringNew().timeout((int)config.httpTimeout().toSeconds()+10).call(this::deliverOne)) break;
+                if(!QuarkusTransaction.requiringNew().timeout(transactionSeconds()).call(this::deliverOne)) break;
             }
         } catch(RuntimeException e) { LOG.warn("Despacho OBSINT pendiente; se reintentará en el siguiente ciclo"); }
         finally { running.set(false); }
@@ -76,13 +77,29 @@ public class ObsintMessageDispatcher {
             payload.put("pointName",names[0]);payload.put("postName",names[1]);payload.put("roomId",m.roomId);
             var result=publisher.publish(r.id,config.channelFor(r.personaId),payload);
             switch(result.outcome()) {
-                case ACCEPTED -> { r.status="SENT"; r.sentAt=Instant.now(); r.localRecipients=result.localRecipients(); r.lastError=null; }
+                case ACCEPTED -> { r.status="SENT"; r.sentAt=Instant.now(); r.localRecipients=result.localRecipients(); r.lastError=null; notifyPush(r,payload); }
                 case REJECTED -> { r.status="FAILED"; r.lastError=result.reason(); }
                 case UNAVAILABLE -> { r.attempts++; r.nextAttemptAt=Instant.now().plus(backoff(r.attempts)); r.lastError=result.reason(); }
             }
         }
         ObsintAgentMessageRecipient.refresh(m);
         return true;
+    }
+    /**
+     * Push FCM al topic del agente, para la app en segundo plano o cerrada (en pantalla ya lo recibe por el socket y la
+     * app no repite el aviso). Sale una vez, cuando el gateway acepta; si falla, solo queda en push_error.
+     */
+    private void notifyPush(ObsintAgentMessageRecipient r,Map<String,Object> payload) {
+        if(!push.enabled()) return;
+        var result=push.send(config.channelFor(r.personaId),config.event(),r.id,payload,config.messageTtl());
+        r.pushSentAt=result.sent()?Instant.now():null;
+        r.pushError=result.error();
+    }
+    /** Publicación al gateway, más el token OAuth y el envío a FCM si el push está encendido. */
+    private int transactionSeconds() {
+        long seconds=config.httpTimeout().toSeconds()+10;
+        if(push.enabled()) seconds+=2*push.timeout().toSeconds();
+        return (int)seconds;
     }
     public static Duration backoff(int attempts) { return Duration.ofSeconds(Math.min(300,5L*(1L<<Math.min(6,Math.max(0,attempts-1))))); }
 }
