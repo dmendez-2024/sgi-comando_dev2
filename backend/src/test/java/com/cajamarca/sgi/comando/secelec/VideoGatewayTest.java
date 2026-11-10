@@ -71,6 +71,16 @@ class VideoGatewayTest {
         return g;
     }
 
+    /** Comando sabe si MediaMTX convierte la ruta (FFmpeg) o la entrega directa leyendo su configuración: así no promete conversión que no hay. */
+    @Test void detectsWhetherMediamtxConverts() {
+        String camera = VideoGateway.rtspSource("10.150.12.204", 554, "/Streaming/Channels/102", "admin", "Clave1");
+        assertTrue(VideoGateway.RUN_FFMPEG.matcher(VideoGateway.transcodeJson(camera)).find(), "registro con FFmpeg = convierte");
+        assertFalse(VideoGateway.RUN_FFMPEG.matcher(VideoGateway.sourceJson(camera, true)).find(), "registro directo = no convierte");
+        // Lo que devuelve la API de MediaMTX trae espacios y otros campos: igual se reconoce.
+        assertTrue(VideoGateway.RUN_FFMPEG.matcher("{\"name\":\"live/x\", \"runOnDemand\": \"ffmpeg -hide_banner ...\"}").find());
+        assertFalse(VideoGateway.RUN_FFMPEG.matcher("{\"name\":\"live/x\",\"runOnDemand\":\"\"}").find());
+    }
+
     /**
      * Una ruta por cámara: la consola, "Probar conexión" y dos componentes con la misma cámara caen en la misma ruta, así
      * comparten una sola conexión con la cámara (las cámaras aceptan pocas).

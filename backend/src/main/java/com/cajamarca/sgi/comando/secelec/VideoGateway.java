@@ -64,8 +64,11 @@ public class VideoGateway {
         String camera = rtspSource(c.ip, c.port, CameraBrand.pathOf(c), c.username, cipher.decrypt(c.passwordCipher));
         // Una ruta por cámara (no por componente): dos componentes con la misma cámara comparten la conexión.
         String path = cameraPath(camera);
-        // Lo registrado depende del modo: si cambia (p. ej. se detectó H.265), se vuelve a registrar.
-        String source = transcodes(c) ? transcodeJson(camera) : sourceJson(camera, true);
+        cameraByPath.put(path, camera);
+        // Lo registrado depende del modo: si cambia (p. ej. se detectó H.265), se vuelve a registrar. El códec puede venir de la
+        // cámara guardada o de lo que este backend ya vio en MediaMTX (knownCodec), así no se arranca en directo una H.265 conocida.
+        boolean transcode = transcodes(c) || (transcodeH265 && isH265(knownCodec.get(path)));
+        String source = transcode ? transcodeJson(camera) : sourceJson(camera, true);
         Registration known = registered.get(path);
         Instant now = Instant.now();
         boolean changed = known == null || !known.source().equals(source);
@@ -73,9 +76,26 @@ public class VideoGateway {
             // Si MediaMTX ya no la tiene (p. ej. se reinició) o cambió el modo, se registra. Pero registrar de nuevo una ruta
             // reinicia la conexión y corta a quien mira: si alguien la está viendo, se deja como está.
             Boolean exists = exists(path);
-            if (exists == null) return Optional.empty();
-            boolean keep = exists && (!changed || watching(path));
-            if (!keep && !registerJson(path, source)) { registered.remove(path); return Optional.empty(); }
+            if (exists == null) {
+                LOG.warnf("[SGI-VIDEO] video_sin_senal path=%s camara=%s motivo=api_mediamtx_no_responde", path, c.code);
+                return Optional.empty();
+            }
+            boolean watched = exists && changed && watching(path);
+            // Excepción a "no cortar a quien mira": H.265 en directo solo lo ven algunos navegadores; el resto queda en negro.
+            // Si hay que convertir y MediaMTX la tiene en directo, se pasa a H.264 igual (corte de unos segundos).
+            boolean forceSwitch = watched && transcode && Boolean.FALSE.equals(remoteTranscodes(path));
+            if (forceSwitch) watched = false;
+            boolean keep = exists && (!changed || watched);
+            if (!keep && !registerJson(path, source)) {
+                registered.remove(path);
+                LOG.warnf("[SGI-VIDEO] video_sin_senal path=%s camara=%s motivo=mediamtx_no_acepto_el_registro", path, c.code);
+                return Optional.empty();
+            }
+            if (!keep) LOG.infof("[SGI-VIDEO] video_ruta_registrada path=%s camara=%s modo=%s motivo=%s", path, c.code,
+                transcode ? "transcodifica" : "directo", !exists ? "mediamtx_no_la_tenia" : forceSwitch ? "h265_en_directo_se_pasa_a_h264_aunque_miren"
+                    : known == null ? "primera_vez_en_este_backend" : "cambio_el_modo");
+            else if (changed) LOG.infof("[SGI-VIDEO] video_ruta_conservada path=%s camara=%s motivo=%s", path, c.code,
+                watched ? "alguien_la_mira_no_se_corta" : "ya_estaba_igual_en_mediamtx");
             // Se dejó sin tocar algo que este backend no registró: se marca para revisarlo cuando nadie mire.
             String recorded = keep && changed ? (known == null ? UNKNOWN : known.source()) : source;
             registered.put(path, new Registration(recorded, now));
@@ -88,6 +108,56 @@ public class VideoGateway {
     static final Duration PREVIEW_TTL = Duration.ofMinutes(5);
     /** Vistas previas registradas y cuándo se borran. */
     private final Map<String, Instant> previews = new ConcurrentHashMap<>();
+    /** Revisiones seguidas en que una vista previa vencida no tuvo uso. */
+    private final Map<String, Integer> previewMisses = new ConcurrentHashMap<>();
+    /** URL RTSP (con su clave, solo en memoria) de cada ruta en uso: para pasarla a H.264 sin volver a leer la cámara de la base. */
+    private final Map<String, String> cameraByPath = new ConcurrentHashMap<>();
+
+    /** La ruta está en uso: alguien la mira (lectores en MediaMTX) o está entregando video. */
+    private boolean inUse(String path) {
+        Hit state = liveState(path);
+        if (state.code() != 200) return false;
+        java.util.regex.Matcher r = READERS.matcher(state.body());
+        boolean readers = r.find() && r.group(1).contains("{");
+        return readers || READY.matcher(state.body()).find();
+    }
+
+    /** Cómo está registrada la ruta en MediaMTX ahora: true = convierte con FFmpeg, false = cámara directa, null = no se sabe. */
+    private Boolean remoteTranscodes(String path) {
+        try {
+            HttpResponse<String> r = http.send(request("/v3/config/paths/get/" + path).GET().build(), HttpResponse.BodyHandlers.ofString());
+            if (r.statusCode() != 200 || r.body() == null) return null;
+            return RUN_FFMPEG.matcher(r.body()).find();
+        } catch (Exception e) {
+            LOG.debugf("[SGI-VIDEO] video_config_unreachable path=%s %s", path, e.getMessage());
+            return null;
+        }
+    }
+    static final java.util.regex.Pattern RUN_FFMPEG = java.util.regex.Pattern.compile("\"runOnDemand\"\\s*:\\s*\"ffmpeg");
+
+    /**
+     * Si la ruta está en directo entregando H.265 y la conversión está encendida, la pasa a H.264 (FFmpeg) aunque alguien mire:
+     * el directo H.265 solo lo ven algunos navegadores. Devuelve true si la cambió.
+     */
+    private boolean switchToH264IfNeeded(String path, String liveBody, String origen) {
+        if (!transcodeH265 || liveBody == null) return false;
+        java.util.regex.Matcher t = TRACKS.matcher(liveBody);
+        String codec = t.find() ? t.group(1) : null;
+        if (!isH265(codec)) return false;
+        knownCodec.put(path, codec);
+        String camera = cameraByPath.get(path);
+        if (camera == null || !Boolean.FALSE.equals(remoteTranscodes(path))) return false;
+        String json = transcodeJson(camera);
+        String err = registerError(path, json);
+        if (err != null) {
+            LOG.warnf("[SGI-VIDEO] video_paso_a_h264 path=%s resultado=fallo origen=%s %s", path, origen, err);
+            return false;
+        }
+        registered.computeIfPresent(path, (k, v) -> new Registration(json, Instant.now()));
+        registeredAs.put(path, json);
+        LOG.warnf("[SGI-VIDEO] video_paso_a_h264 path=%s resultado=ok origen=%s motivo=h265_en_directo_solo_lo_ven_algunos_navegadores", path, origen);
+        return true;
+    }
 
     /** Borra de MediaMTX las vistas previas vencidas (cada minuto y en cada nueva vista previa). */
     @io.quarkus.scheduler.Scheduled(every = "1m", delayed = "1m")
@@ -95,18 +165,82 @@ public class VideoGateway {
         Instant now = Instant.now();
         previews.forEach((path, until) -> {
             if (until.isAfter(now)) return;
-            if (watching(path)) {
+            if (inUse(path)) {
                 // Alguien la sigue mirando: no se le corta; se revisa de nuevo en un minuto.
+                previewMisses.remove(path);
                 previews.put(path, now.plus(Duration.ofMinutes(1)));
                 return;
             }
+            // Un instante sin video (la cámara o FFmpeg se reconectan) no basta: se borra solo tras 2 revisiones seguidas sin uso.
+            if (previewMisses.merge(path, 1, Integer::sum) < 2) {
+                LOG.infof("[SGI-VIDEO] video_vista_previa_vencida path=%s accion=se_espera motivo=sin_uso_en_una_revision", path);
+                previews.put(path, now.plus(Duration.ofMinutes(1)));
+                return;
+            }
+            previewMisses.remove(path);
             previews.remove(path);
             // La misma cámara la usa la consola: la ruta se queda (sin nadie mirando no tiene conexión abierta con la cámara).
-            if (registered.containsKey(path)) return;
+            if (registered.containsKey(path)) {
+                LOG.infof("[SGI-VIDEO] video_vista_previa_vencida path=%s accion=se_conserva motivo=la_usa_la_consola", path);
+                return;
+            }
             knownCodec.remove(path);
             registeredAs.remove(path);
+            LOG.infof("[SGI-VIDEO] video_vista_previa_vencida path=%s accion=se_borra motivo=nadie_la_mira", path);
             delete(path);
         });
+    }
+
+    /** Lo último que se vio de cada cámara en uso, para registrar solo los cambios. */
+    record Watch(boolean ready, int readers, long bytes, boolean stalled) {}
+    private final Map<String, Watch> lastWatch = new ConcurrentHashMap<>();
+    private static final java.util.regex.Pattern READERS = java.util.regex.Pattern.compile("\"readers\"\\s*:\\s*\\[(.*?)\\]", java.util.regex.Pattern.DOTALL);
+
+    /**
+     * Vigila cada 30 s las cámaras en uso (consola y vistas previas) y deja en el log solo lo que cambia: se conectó, se cayó,
+     * cuántos miran, o la cámara dejó de mandar video estando "lista". Así, ante un corte, el log dice la hora y qué pasó.
+     * Buscar con: docker logs <backend> 2>&1 | grep SGI-VIDEO
+     */
+    @io.quarkus.scheduler.Scheduled(every = "30s", delayed = "30s")
+    void watchCameras() {
+        if (!configured()) return;
+        java.util.Set<String> paths = new java.util.HashSet<>(registered.keySet());
+        paths.addAll(previews.keySet());
+        lastWatch.keySet().retainAll(paths);
+        for (String path : paths) {
+            Hit state = liveState(path);
+            Watch before = lastWatch.get(path);
+            if (state.code() != 200) {
+                if (before == null || before.ready() || before.readers() > 0)
+                    LOG.warnf("[SGI-VIDEO] video_estado path=%s evento=sin_datos_de_mediamtx respuesta=%d %s", path, state.code(),
+                        state.error() == null ? "" : state.error());
+                lastWatch.put(path, new Watch(false, 0, before == null ? 0 : before.bytes(), false));
+                continue;
+            }
+            String body = state.body();
+            boolean ready = READY.matcher(body).find();
+            // Cámara nueva conectada en directo que resultó H.265: se pasa a H.264 para que la vean todos.
+            if (ready && switchToH264IfNeeded(path, body, "vigilancia")) { lastWatch.remove(path); continue; }
+            java.util.regex.Matcher r = READERS.matcher(body), b = BYTES.matcher(body);
+            int readers = r.find() ? (int) r.group(1).chars().filter(ch -> ch == '{').count() : 0;
+            long bytes = b.find() ? Long.parseLong(b.group(1)) : 0;
+            // Lista y con gente mirando, pero sin bytes nuevos desde la vuelta anterior: la cámara dejó de mandar video.
+            boolean stalled = before != null && ready && readers > 0 && before.ready() && bytes == before.bytes();
+            Watch now = new Watch(ready, readers, bytes, stalled);
+            if (before == null || before.ready() != ready || before.readers() != readers || before.stalled() != stalled) {
+                String evento = before == null ? "en_uso"
+                    : stalled && !before.stalled() ? "camara_no_manda_video"
+                    : !stalled && before.stalled() ? "camara_volvio_a_mandar_video"
+                    : !before.ready() && ready ? "conectada_con_la_camara"
+                    : before.ready() && !ready ? "desconectada_de_la_camara"
+                    : "cambio_de_espectadores";
+                String text = "[SGI-VIDEO] video_estado path=%s evento=%s lista=%s mirando=%d recibido_mb=%d";
+                if (evento.equals("camara_no_manda_video") || evento.equals("desconectada_de_la_camara") && readers > 0)
+                    LOG.warnf(text, path, evento, ready, readers, bytes / 1_000_000);
+                else LOG.infof(text, path, evento, ready, readers, bytes / 1_000_000);
+            }
+            lastWatch.put(path, now);
+        }
     }
 
     /** URL para el navegador con el permiso firmado (?token=…): sin él, MediaMTX no entrega el video (ver VideoAuthResource). */
@@ -344,21 +478,35 @@ public class VideoGateway {
     private ServerProbe probe(String path, String camera, boolean forceTranscode, String host, int port) {
         long start = System.nanoTime();
         String url = browserUrl(path);
-        String finalIfKnown = knownCodec.containsKey(path) ? finalJson(camera, knownCodec.get(path), forceTranscode) : null;
+        cameraByPath.put(path, camera);
         Hit current = liveState(path);
         boolean ready = current.code() == 200 && READY.matcher(current.body()).find();
-        if (ready && (finalIfKnown == null || !registeredAs(path, finalIfKnown))) {
-            // Ya entrega video con estos mismos datos (la ruta depende de la clave): volver a registrarla cortaría a quien mira.
-            String codec = knownCodec.get(path);
-            LOG.infof("video_probe_reused_untouched path=%s codec=%s", path, codec);
-            return new ServerProbe(RtspProbe.Outcome.OK, "El servidor de video ya está conectado a la cámara (se reutilizó la conexión abierta).",
-                codec == null || codec.isBlank() ? null : codec, elapsed(start), path, url);
-        }
         if (ready) {
-            String codec = knownCodec.get(path);
-            LOG.infof("video_probe_reused path=%s codec=%s", path, codec);
-            return new ServerProbe(RtspProbe.Outcome.OK, okMessage(codec, forceTranscode) + " (se reutilizó la conexión que ya estaba abierta)",
-                codec, elapsed(start), path, url);
+            // Ya entrega video con estos mismos datos (la ruta depende de la clave): se reutiliza esa conexión. El mensaje dice
+            // lo que MediaMTX está haciendo de verdad (convierte o directo), no lo que debería hacer.
+            Boolean converting = remoteTranscodes(path);
+            java.util.regex.Matcher t = TRACKS.matcher(current.body());
+            String seen = t.find() ? t.group(1) : null;
+            // Convirtiendo, MediaMTX muestra H.264 (la salida de FFmpeg): el códec real de la cámara es el que ya se conocía.
+            String codec = Boolean.TRUE.equals(converting) && knownCodec.get(path) != null ? knownCodec.get(path) : seen;
+            if (codec != null && !Boolean.TRUE.equals(converting)) knownCodec.put(path, codec);
+            boolean needsH264 = forceTranscode || (transcodeH265 && isH265(codec));
+            if (needsH264 && Boolean.FALSE.equals(converting)) {
+                if (switchToH264IfNeeded(path, current.body(), "probar_conexion") || forceTranscode && registerJson(path, transcodeJson(camera))) {
+                    LOG.infof("[SGI-VIDEO] video_probe_reused path=%s codec=%s accion=paso_a_h264", path, codec);
+                    return new ServerProbe(RtspProbe.Outcome.OK, "El servidor de video ya estaba conectado a la cámara en " + codec
+                        + " sin convertir: se pasó a H.264 para que la vean todos los navegadores (quien estaba mirando tiene un corte de unos segundos).",
+                        codec, elapsed(start), path, url);
+                }
+                LOG.warnf("[SGI-VIDEO] video_probe_reused path=%s codec=%s accion=no_se_pudo_pasar_a_h264", path, codec);
+                return new ServerProbe(RtspProbe.Outcome.OK, "El servidor de video está conectado a la cámara en " + codec
+                    + " sin convertir y no se pudo pasar a H.264: algunos navegadores no la verán.", codec, elapsed(start), path, url);
+            }
+            LOG.infof("[SGI-VIDEO] video_probe_reused path=%s codec=%s convierte=%s", path, codec, converting);
+            String what = Boolean.TRUE.equals(converting)
+                ? "El servidor de video ya está conectado a la cámara (" + (codec == null ? "códec desconocido" : codec) + ": se convierte a H.264 para el navegador)."
+                : "El servidor de video ya está conectado a la cámara" + (codec == null ? "" : " (" + codec + ")") + ".";
+            return new ServerProbe(RtspProbe.Outcome.OK, what + " Se reutilizó la conexión abierta.", codec, elapsed(start), path, url);
         }
         String error = registerError(path, sourceJson(camera, true));
         if (error != null) return new ServerProbe(RtspProbe.Outcome.PROTOCOL_ERROR, error, null, elapsed(start), null, null);
@@ -375,13 +523,18 @@ public class VideoGateway {
             if (state.code() == 200 && READY.matcher(state.body()).find()) {
                 java.util.regex.Matcher t = TRACKS.matcher(state.body());
                 String codec = t.find() ? t.group(1) : null;
-                LOG.infof("video_probe_ok path=%s codec=%s", path, codec);
+                LOG.infof("[SGI-VIDEO] video_probe_ok path=%s codec=%s", path, codec);
                 knownCodec.put(path, codec == null ? "" : codec);
                 String finalJson = finalJson(camera, codec, forceTranscode);
                 if (!finalJson.equals(sourceJson(camera, true))) {
                     // El navegador no reproduce H.265: la ruta pasa a la versión que recodifica FFmpeg (misma ruta y token).
                     String err = registerError(path, finalJson);
-                    if (err != null) LOG.warnf("video_probe_transcode_failed path=%s %s", path, err);
+                    if (err != null) {
+                        LOG.warnf("[SGI-VIDEO] video_probe_transcode_failed path=%s %s", path, err);
+                        registeredAs.put(path, sourceJson(camera, true));
+                        return new ServerProbe(RtspProbe.Outcome.OK, "El servidor de video se conectó a la cámara (" + codec
+                            + "), pero no se pudo activar la conversión a H.264: algunos navegadores no la verán. " + err, codec, elapsed(start), path, url);
+                    }
                 }
                 registeredAs.put(path, finalJson);
                 return new ServerProbe(RtspProbe.Outcome.OK, okMessage(codec, forceTranscode), codec, elapsed(start), path, url);
@@ -394,7 +547,7 @@ public class VideoGateway {
         String detail = "No se pudo conectar: revise IP, usuario, clave o ruta (el servidor de video no recibió imagen en " + PROBE_WAIT.toSeconds()
             + " s). Estado en MediaMTX: " + stateText(state) + ". Pedido del video: " + video.text(hls) + "."
             + " Si los datos son correctos, MediaMTX no llega a " + host + ":" + port + " (pedir a Infra: docker logs sgi-mediamtx).";
-        LOG.infof("video_probe_timeout path=%s host=%s state=%s video=%s", path, host, state == null ? null : state.body(), video);
+        LOG.infof("[SGI-VIDEO] video_probe_timeout path=%s host=%s state=%s video=%s", path, host, state == null ? null : state.body(), video);
         return new ServerProbe(RtspProbe.Outcome.TIMEOUT, detail, null, elapsed(start), path, null);
     }
 
@@ -430,7 +583,7 @@ public class VideoGateway {
             HttpResponse<String> r = http.send(request("/v3/paths/get/" + path).GET().build(), HttpResponse.BodyHandlers.ofString());
             return new Hit(r.statusCode(), r.statusCode() == 200 ? r.body() : shorten(r.body()), null);
         } catch (Exception e) {
-            LOG.debugf("video_probe_state_unreachable path=%s %s", path, e.getMessage());
+            LOG.debugf("[SGI-VIDEO] video_probe_state_unreachable path=%s %s", path, e.getMessage());
             return new Hit(0, null, describe(e));
         }
     }
@@ -449,7 +602,7 @@ public class VideoGateway {
                 last = new Hit(r.statusCode(), shorten(r.body()), null);
                 if (r.statusCode() == 401) return last;
             } catch (Exception e) {
-                LOG.warnf("video_diagnostic_playlist_unreachable %s", e.getMessage());
+                LOG.warnf("[SGI-VIDEO] video_diagnostic_playlist_unreachable %s", e.getMessage());
                 last = new Hit(0, null, describe(e));
             }
             try { Thread.sleep(2000); } catch (InterruptedException e) { Thread.currentThread().interrupt(); return last; }
@@ -471,7 +624,7 @@ public class VideoGateway {
             HttpResponse<String> r = http.send(HttpRequest.newBuilder(URI.create(url)).timeout(timeout).GET().build(), HttpResponse.BodyHandlers.ofString());
             return new Hit(r.statusCode(), r.statusCode() / 100 == 2 ? null : shorten(r.body()), null);
         } catch (Exception e) {
-            LOG.warnf("video_gateway_check_unreachable url=%s %s", hideToken(url), e.getMessage());
+            LOG.warnf("[SGI-VIDEO] video_gateway_check_unreachable url=%s %s", hideToken(url), e.getMessage());
             return new Hit(0, null, describe(e));
         }
     }
@@ -559,9 +712,11 @@ public class VideoGateway {
     private void delete(String path) {
         if (!configured()) return;
         try {
-            http.send(request("/v3/config/paths/delete/" + path).DELETE().build(), HttpResponse.BodyHandlers.discarding());
+            int status = http.send(request("/v3/config/paths/delete/" + path).DELETE().build(), HttpResponse.BodyHandlers.discarding()).statusCode();
+            // Cualquier borrado de una ruta deja huella: si alguien estaba mirando, aquí se ve que lo cortó Comando.
+            if (!path.startsWith("live/diagnostico-")) LOG.infof("[SGI-VIDEO] video_ruta_borrada path=%s respuesta=%d", path, status);
         } catch (Exception e) {
-            LOG.warnf("video_gateway_remove_failed path=%s %s", path, e.getMessage());
+            LOG.warnf("[SGI-VIDEO] video_gateway_remove_failed path=%s %s", path, e.getMessage());
         }
     }
 
@@ -621,12 +776,12 @@ public class VideoGateway {
             if (r.statusCode() / 100 == 2) return null;
             String body = r.body() == null ? "" : r.body().replaceAll("rtsp://[^@/\\s\"]*@", "rtsp://***@").strip();
             if (body.length() > 300) body = body.substring(0, 300) + "…";
-            LOG.warnf("video_gateway_register_failed path=%s status=%d body=%s", path, r.statusCode(), body);
+            LOG.warnf("[SGI-VIDEO] video_gateway_register_failed path=%s status=%d body=%s", path, r.statusCode(), body);
             return "La API de MediaMTX (" + apiUrl.get() + ") respondió " + r.statusCode()
                 + (r.statusCode() == 401 ? " (rechazó el usuario y la clave de Comando)" : r.statusCode() == 403 ? " (nginx no deja entrar desde esta IP)" : "")
                 + (body.isEmpty() ? "." : ": " + body);
         } catch (Exception e) {
-            LOG.warnf("video_gateway_unreachable path=%s %s", path, e.getMessage());
+            LOG.warnf("[SGI-VIDEO] video_gateway_unreachable path=%s %s", path, e.getMessage());
             return "La API de MediaMTX (" + apiUrl.get() + ") no respondió: " + describe(e) + ".";
         }
     }
@@ -637,12 +792,12 @@ public class VideoGateway {
             int status = http.send(request("/v3/config/paths/get/" + path).GET().build(), HttpResponse.BodyHandlers.discarding()).statusCode();
             if (status == 200) return true;
             if (status == 404) {
-                LOG.infof("video_gateway_reregister path=%s (MediaMTX ya no la tenía)", path);
+                LOG.infof("[SGI-VIDEO] video_gateway_reregister path=%s (MediaMTX ya no la tenía)", path);
                 return false;
             }
-            LOG.warnf("video_gateway_check_failed path=%s status=%d", path, status);
+            LOG.warnf("[SGI-VIDEO] video_gateway_check_failed path=%s status=%d", path, status);
         } catch (Exception e) {
-            LOG.warnf("video_gateway_unreachable path=%s %s", path, e.getMessage());
+            LOG.warnf("[SGI-VIDEO] video_gateway_unreachable path=%s %s", path, e.getMessage());
         }
         return null;
     }

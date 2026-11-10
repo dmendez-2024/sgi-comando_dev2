@@ -60,7 +60,7 @@ public class VideoDiagnosticResource {
         String path = brand.path(channel, SecElecResource.rtspPath(brand, body.rtspPath()));
         String username = required(body.username(), "El usuario de la cámara es obligatorio.");
         if (body.password() == null || body.password().isEmpty()) throw new BadRequestException("La contraseña de la cámara es obligatoria.");
-        LOG.infof("video_diagnostic_camera host=%s port=%d path=%s", ip, port, path);
+        LOG.infof("[SGI-VIDEO] video_diagnostic_camera host=%s port=%d path=%s", ip, port, path);
         return video.diagnoseCamera(ip, port, path, username, body.password());
     }
 

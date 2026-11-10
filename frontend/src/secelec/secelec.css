@@ -103,6 +103,13 @@
 /* Vista previa de "Probar conexión" */
 .sec-preview{display:flex;flex-direction:column;gap:6px;margin-top:10px}
 .sec-preview>span{font-size:12px;font-weight:600;color:#475467}
+.sec-preview-head{display:flex;align-items:center;gap:8px}
+.sec-preview-head>span{font-size:12px;font-weight:600;color:#475467;margin-right:auto}
+.sec-preview-badge{font-style:normal;font-size:10px;font-weight:800;letter-spacing:.04em;padding:3px 7px;border-radius:999px;background:#e9f8ef;color:#1c8c49}
+.sec-preview-badge.behind{background:#fdecec;color:#b42318}
+.sec-go-live{display:flex;align-items:center;gap:5px;height:26px;padding:0 9px;border:1px solid #dfe4ea;border-radius:7px;background:#fff;color:#667085;font-size:11px;font-weight:800;cursor:pointer}
+.sec-go-live.behind{background:#dc2626;border-color:#dc2626;color:#fff}
+.sec-go-live.behind:hover{background:#b91c1c}
 .sec-preview video{width:100%;aspect-ratio:16/9;background:#0f172a;border-radius:9px;object-fit:contain}
 .sec-preview-fail{display:flex;gap:8px;align-items:center;padding:10px 12px;border-radius:9px;background:#fff7e6;border:1px solid #f5d38a;color:#8a5a00;font-size:13px}
 .sec-preview-note{margin:8px 0 0;font-size:12px;color:#667085}
