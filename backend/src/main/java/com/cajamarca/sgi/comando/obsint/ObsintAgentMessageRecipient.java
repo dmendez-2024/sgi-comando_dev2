@@ -28,6 +28,9 @@ public class ObsintAgentMessageRecipient extends BaseEntity {
     @Column(name="sent_at") public Instant sentAt;
     @Column(name="delivered_at") public Instant deliveredAt;
     @Column(name="read_at") public Instant readAt;
+    /** Push FCM: cuándo lo aceptó FCM, o por qué no salió (auditoría; no cambia el estado del destinatario). */
+    @Column(name="push_sent_at") public Instant pushSentAt;
+    @Column(name="push_error", length=120) public String pushError;
     public static int progress(String status) {
         return switch(status) { case PENDING -> 0; case SENT -> 1; case DELIVERED -> 2; case READ -> 3; default -> -1; };
     }

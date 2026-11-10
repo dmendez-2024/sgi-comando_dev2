@@ -11,6 +11,11 @@ services:
       SGI_SOCKET_URL: ${SGI_SOCKET_URL:-https://apps.cajamarca.ec/dev.socket}
       SGI_SOCKET_ACK_ALLOWED_IPS: ${SGI_SOCKET_ACK_ALLOWED_IPS:-}
       SGI_SOCKET_ACK_TOKEN: ${SGI_SOCKET_ACK_TOKEN:-}
+      # Push FCM a SGI Operador, apagado por defecto. La cuenta de servicio de Firebase va como secreto (nunca en Git):
+      # ruta a un archivo montado o el JSON completo en una sola línea.
+      SGI_PUSH_ENABLED: ${SGI_PUSH_ENABLED:-false}
+      SGI_PUSH_CREDENTIALS_PATH: ${SGI_PUSH_CREDENTIALS_PATH:-}
+      SGI_PUSH_CREDENTIALS_JSON: ${SGI_PUSH_CREDENTIALS_JSON:-}
       SGI_INTERCONNECTIONS_CORE_RESOLVER_URL: ${SGI_INTERCONNECTIONS_CORE_RESOLVER_URL:?Falta SGI_INTERCONNECTIONS_CORE_RESOLVER_URL en .env.openbao}
       SGI_INTERCONNECTIONS_ENVIRONMENT: ${SGI_INTERCONNECTIONS_ENVIRONMENT:?Falta SGI_INTERCONNECTIONS_ENVIRONMENT en .env.openbao}
       SGI_CORE_CATALOG_BASE_URL: ${SGI_CORE_CATALOG_BASE_URL:?Falta SGI_CORE_CATALOG_BASE_URL en .env.openbao}

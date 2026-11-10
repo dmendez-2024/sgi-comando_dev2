@@ -104,6 +104,17 @@ Esa URL corresponde al receptor. No debe utilizarse como `SGI_SOCKET_URL` en Com
 
 Cada mensaje al agente pertenece a una sala de Comunicación (`communication_room`, migración V125). Todos los mensajes de la Consola OBSINT van a la sala predeterminada **Monitor Consola** (`code = MONITOR_CONSOLA`, `source = OBSINT_CONSOLE`): la migración la crea para la instancia y le asigna los mensajes anteriores; si falta, `CommunicationRooms.monitorConsole` la crea al enviar. El mensaje lleva `roomId` en 0033, 0034 y `obsint.mensaje`, y la 0037 (`SGI_OPR_SGI_COM_0037`, por registrar en CORE) lista las salas. Por ahora las salas de la Consola OBSINT (Monitor Consola) solo se listan al Agente de Seguridad (`AGENTE_SEGURIDAD`); el Supervisor de Seguridad no las recibe en la 0037. La web de SGI: Comando no cambia. SGI Operador todavía muestra un solo chat; la lista de salas en la app queda pendiente.
 
+## Push FCM (app en segundo plano o cerrada)
+
+El socket solo llega con la app en pantalla. Para avisar con la app en segundo plano o cerrada, Comando envía además un push de Firebase Cloud Messaging (HTTP v1, proyecto `sgi-operador-bae31`) con `push/PushPublisher`:
+
+- **Cuándo:** una vez por destinatario, en `ObsintMessageDispatcher.deliverOne`, cuando el gateway acepta la publicación (SENT). Requiere `SGI_SOCKET_ENABLED=true` y `SGI_PUSH_ENABLED=true`; con el socket apagado los mensajes quedan TEST y no sale push.
+- **A quién:** al topic `persona.<persona_id>`, el mismo nombre del canal del socket. La app se suscribe al iniciar sesión el Agente y se desuscribe al cerrar o expirar la sesión.
+- **Qué:** mensaje de solo datos (sin bloque `notification`), `android.priority=HIGH` y `ttl` = `SGI_SOCKET_MESSAGE_TTL_MINUTES`. En `data`: `event` (`obsint.mensaje`), `channel`, `recipientId`, `roomId` y `payload` (el mismo payload del socket, como JSON). La app no duplica el mensaje (por `recipientId`) y no muestra el aviso si está en pantalla.
+- **Mejor esfuerzo:** si FCM falla, el destinatario conserva su estado y el mensaje sigue llegando por el socket y por la 0033. Queda auditado en `obsint_agent_message_recipient.push_sent_at` / `push_error` (migración V126). Los logs no incluyen el contenido.
+- **Autenticación:** token OAuth de la cuenta de servicio de Firebase (`google-auth-library-oauth2-http`, alcance `firebase.messaging`), cargada al primer envío y renovada al vencer.
+- **Seguridad:** el topic no tiene autenticación; quien conozca un `persona_id` podría suscribirse desde la app. Si se requiere más, registrar el token del dispositivo en Comando con una interconexión nueva.
+
 ## Selección del agente
 
 La resolución cruza asignación operativa, turno y Puesto del Punto de la consigna. Usa el empleado efectivo (`actual_employee_id` o, en su ausencia, `employee_id`), descarta REMOVED y exige `starts_at <= ahora < ends_at`, en la misma instancia-país.
@@ -215,6 +226,12 @@ Sin restricciones de origen configuradas, el callback acepta cualquier origen mi
 | SGI_SOCKET_PRESENCE_ENABLED | true |
 | SGI_SOCKET_ACK_ALLOWED_IPS | Vacío |
 | SGI_SOCKET_ACK_TOKEN | Vacío |
+| SGI_PUSH_ENABLED | false |
+| SGI_PUSH_CREDENTIALS_PATH | Vacío (ruta al JSON de la cuenta de servicio, montado como secreto) |
+| SGI_PUSH_CREDENTIALS_JSON | Vacío (alternativa: el JSON completo) |
+| SGI_PUSH_PROJECT_ID | Vacío (usa el `project_id` de la cuenta de servicio) |
+| SGI_PUSH_FCM_URL | https://fcm.googleapis.com |
+| SGI_PUSH_HTTP_TIMEOUT_SECONDS | 5 |
 
 Docker Compose declara activación, URL y controles del ACK. El resto se lee desde el entorno del backend. Se quitaron el token Bearer de publicación, los tiempos de reconexión/ack WebSocket y la dependencia `quarkus-websockets-next`.
 
@@ -229,7 +246,7 @@ Invoke-RestMethod http://localhost:8080/q/health/ready
 
 El grupo `socket` expone `enabled`, `reachable`, `url` y `lastPublishOk`. Ya no hay `connected`: no existe conexión permanente desde Comando. Apagado es UP; encendido usa la salud HTTP del gateway. Este grupo no participa en readiness, aunque el endpoint de salud global puede reflejar el DOWN del grupo.
 
-Métricas: `sgi_socket_publish_total{result=accepted|rejected|unavailable}` y `sgi_socket_last_publish_ok`. Los logs no incluyen el texto ni el payload. El registro por agente se consulta en los destinatarios persistidos y en la respuesta de Mensajes.
+Métricas: `sgi_socket_publish_total{result=accepted|rejected|unavailable}`, `sgi_socket_last_publish_ok` y `sgi_push_send_total{result=sent|failed}`. Los logs no incluyen el texto ni el payload. El registro por agente se consulta en los destinatarios persistidos y en la respuesta de Mensajes.
 
 ## Componentes del cambio
 
@@ -238,6 +255,7 @@ Bajo `backend/src/main/java/com/cajamarca/sgi/comando/`:
 - `socket/SocketConfig`, `SocketPublisher`, `SocketPresence`, `SocketHealthCheck`, `SocketAckResource`.
 - `obsint/ObsintAgentMessage`, `ObsintAgentMessageRecipient`, `ObsintAgentRecipients`, `ObsintMessageDispatcher`, `ObsintMessageQueued`, `ObsintMessageReceipts`, `ObsintService`, `ObsintResource`.
 - `operator/OperatorMessageResource`.
+- `push/PushConfig`, `PushCredentials`, `PushPublisher` (push FCM).
 
 Se eliminaron `SocketClient`, `SocketProtocol` y la excepción de indisponibilidad del cliente anterior. Las respuestas del publicador REST clasifican el resultado sin lanzar errores de red al despachador.
 
@@ -269,6 +287,8 @@ Se comparó además el acceso de red mediante consultas GET de salud, sin public
 El equipo de cm-socket debe configurar `CM_SOCKET_SERVICE_SGI_COMANDO_ACK_URL` hacia `/api/internal/socket/acks` de Comando y permitir `sgi-comando` como source. Si se configura token en Comando, el gateway debe enviar `X-Socket-Ack-Token`. Según el contrato entregado, el gateway no reintenta el callback; el REST de Operador cubre la pérdida de esa confirmación.
 
 La app debe suscribirse a `persona.<su persona_id>`, reconocer `obsint.mensaje`, deduplicar por id, emitir DELIVERED y READ con `ref=recipientId`, y confirmar READ también por REST con IDENT. Debe sincronizar al abrirse, reconectar o volver de segundo plano. No se implementaron esos cambios Android en este repositorio.
+
+Para el push FCM: generar en la consola de Firebase (proyecto `sgi-operador-bae31` → Configuración → Cuentas de servicio) una clave privada, montarla como secreto en el backend (`SGI_PUSH_CREDENTIALS_PATH`) y permitir salida HTTPS a `fcm.googleapis.com` y `oauth2.googleapis.com`. Registrar el canal SGI_COM → FCM → SGI_OPR donde corresponda (CORE/SITC).
 
 ## Preparación local y repositorio
 
