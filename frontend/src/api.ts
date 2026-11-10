@@ -136,6 +136,13 @@ export const api={
  atsDownload:(pointId:string)=>binaryRequest(`/api/points/${encodeURIComponent(pointId)}/ats/download`),
 
  bitacoraProtocols:(pointId:string)=>request<any[]>(`/api/bitacora/protocols?pointId=${encodeURIComponent(pointId)}`),
+  accessControlEntries:(clientId:string,listType:'WHITE'|'BLACK',filters:Record<string,string>={})=>request<any[]>(`/api/access-control-lists?${new URLSearchParams({clientId,listType,...Object.fromEntries(Object.entries(filters).filter(([,v])=>v))})}`),
+  accessControlPoints:(clientId:string)=>request<any[]>(`/api/access-control-lists/points?clientId=${encodeURIComponent(clientId)}`),
+  createAccessControlEntry:(body:any)=>request<any>('/api/access-control-lists',{method:'POST',body:JSON.stringify(body)}),
+  updateAccessControlEntry:(id:string,body:any)=>request<any>(`/api/access-control-lists/${encodeURIComponent(id)}`,{method:'PUT',body:JSON.stringify(body)}),
+  regenerateAccessControlQr:(id:string)=>request<any>(`/api/access-control-lists/${encodeURIComponent(id)}/qr/regenerate`,{method:'POST'}),
+  revokeAccessControlQr:(id:string)=>request<any>(`/api/access-control-lists/${encodeURIComponent(id)}/qr`,{method:'DELETE'}),
+  accessControlQr:(id:string)=>binaryRequest(`/api/access-control-lists/${encodeURIComponent(id)}/qr`),
  createBitacoraProtocol:(body:any)=>request<any>('/api/bitacora/protocols',{method:'POST',body:JSON.stringify(body)}),
  saveBitacoraProtocol:(protocolId:string,body:any)=>request<any>(`/api/bitacora/protocols/${encodeURIComponent(protocolId)}`,{method:'PUT',body:JSON.stringify(body)}),
  bitacoraProtocolScope:(protocolId:string,applicablePostIds:string[])=>request<any>(`/api/bitacora/protocols/${encodeURIComponent(protocolId)}/scope`,{method:'PUT',body:JSON.stringify({applicablePostIds})}),
