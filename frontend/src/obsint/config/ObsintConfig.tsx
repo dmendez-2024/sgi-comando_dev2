@@ -323,8 +323,10 @@ function ConsignaForm({pointId,initial,cameras,linkable,defaultCategory,onSaved,
       <Field label="Descripción" required><textarea className="obs-cfg-description-input" value={form.description} onChange={e=>set('description',e.target.value)} required maxLength={1000} rows={4} placeholder="Describa lo que se debe observar en el punto."/></Field>
       <Field label="Tiempo máximo de ejecución" required><select value={form.timeLimitSeconds} onChange={e=>set('timeLimitSeconds',Number(e.target.value))}>{timeLimits.map(s=><option key={s} value={s}>{timeLimitLabel(s)}</option>)}</select></Field>
     </div>
-    <ObsintScheduleEditor value={week} onChange={setWeek}/>
-    {scheduleHint&&<p className="obs-cfg-hint"><Info size={13}/>{scheduleHint}</p>}
+    <div className="obs-cfg-form-schedule">
+      <ObsintScheduleEditor value={week} onChange={setWeek}/>
+      {scheduleHint&&<p className="obs-cfg-hint"><Info size={13}/><span>{scheduleHint}</span></p>}
+    </div>
 
     <fieldset className="obs-cfg-fieldset"><legend>Cámaras asociadas<RequiredMark/> <small>{form.cameraIds.length}/4</small></legend>
       <p className="obs-cfg-camera-hint">{deviceIds.length?'Cámaras del servicio OBSINT de esta consigna (se asignan en Componentes de Seguridad).':'Seleccione las cámaras desde los componentes de seguridad configurados.'}</p>

@@ -128,6 +128,9 @@
 .obs-cfg-form{display:flex;flex-direction:column;gap:10px}
 .obs-cfg-form>header{margin-bottom:0}
 .obs-cfg-form-main{display:grid;grid-template-columns:minmax(0,1fr);gap:10px;align-items:start;min-width:0}
+.obs-cfg-form-schedule{display:flex;flex-direction:column;gap:10px;min-width:0}
+.obs-cfg-form-schedule>.obs-cfg-hint{align-items:flex-start;overflow-wrap:anywhere}
+.obs-cfg-form-schedule>.obs-cfg-hint svg{flex:none;margin-top:2px}
 .obs-cfg-form-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;min-width:0}
 .obs-cfg-form-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .obs-cfg-field{display:flex;flex-direction:column;gap:5px;min-width:0;font-size:12px;font-weight:700;color:#45556f}
