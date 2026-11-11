@@ -17,7 +17,7 @@ import java.util.UUID;
 @ApplicationScoped
 public class SmcFactSources {
     @Inject EntityManager em;
-    static final List<String> TYPES = List.of("PATROL_EXECUTION", "CONSIGNMENT_COMPLIANCE", "IMPULSE_EVALUATION", "PATROL_DISTANCE", "NOVELTY_APPROVAL");
+    static final List<String> TYPES = List.of("PATROL_EXECUTION", "CONSIGNMENT_COMPLIANCE", "IMPULSE_EVALUATION", "PATROL_DISTANCE", "NOVELTY_APPROVAL", "PATROL_NOT_EXECUTED", "DAY_OFF_WORKED");
     public record Candidate(SmcFact fact, Instant changedAt) {}
 
     // Una evaluación local puede haberse apoyado en VISINT mock durante UAT.
@@ -54,6 +54,73 @@ public class SmcFactSources {
         if (!TYPES.contains(sourceType)) throw new IllegalArgumentException("Fuente SMC desconocida");
         List<Candidate> facts = new ArrayList<>();
         UUID after = afterId == null ? new UUID(0,0) : afterId;
+        if ("DAY_OFF_WORKED".equals(sourceType)) {
+            List<?> rows=em.createNativeQuery("""
+                select a.id,a.employee_id,a.occurred_at,a.point_id,a.post_id,a.shift_id,
+                       employee.persona_id,a.accredited_at,a.assignment_id,a.rest_date
+                from day_off_worked_accreditation a
+                left join employee_operational_snapshot employee on employee.employee_id=a.employee_id
+                    and employee.instance_country_id=a.instance_country_id
+                where a.instance_country_id=:tenant and a.accredited_at>=:since and a.accredited_at<:until
+                  and (a.accredited_at>:since or :includeBoundary or a.id>:after)
+                  and not exists(select 1 from smc_fact_delivery d where d.instance_country_id=a.instance_country_id
+                      and d.source_type='DAY_OFF_WORKED' and d.source_id=a.id)
+                order by a.accredited_at,a.id
+                """).setParameter("tenant",tenant).setParameter("since",since).setParameter("until",until)
+                .setParameter("includeBoundary",afterId==null).setParameter("after",after).setMaxResults(limit).getResultList();
+            for(Object row:rows) { Object[] r=(Object[])row;
+                facts.add(new Candidate(new SmcFact(tenant,sourceType,uuid(r[0]),uuid(r[1]),"DAY_OFF_WORKED",
+                    instant(r[2]),BigDecimal.ONE,uuid(r[3]),uuid(r[4]),uuid(r[5]),
+                    Map.of("source","day_off_worked_accreditation","sourceId",r[0].toString(),
+                        "assignmentId",r[8].toString(),"restDate",r[9].toString()),personaId(r[6])),instant(r[7])));
+            }
+            return facts;
+        }
+        if ("PATROL_NOT_EXECUTED".equals(sourceType)) {
+            List<?> rows=em.createNativeQuery("""
+                select o.id,responsible.employee_id,o.window_end,pd.point_id,pp.post_id,
+                       responsible.shift_occurrence_id,employee.persona_id,o.updated_at,pd.version_no,
+                       o.window_start,responsible.id
+                from patrol_occurrence o
+                join patrol_plan pp on pp.id=o.patrol_plan_id and pp.instance_country_id=o.instance_country_id
+                join patrol_definition pd on pd.id=pp.patrol_definition_id and pd.instance_country_id=o.instance_country_id
+                join lateral (
+                    select a.id,coalesce(a.actual_employee_id,a.employee_id) employee_id,a.shift_occurrence_id,
+                           count(*) over () candidate_count
+                    from operational_assignment a
+                    join shift_occurrence s on s.id=a.shift_occurrence_id and s.instance_country_id=a.instance_country_id
+                    join assignment_plan ap on ap.id=a.assignment_plan_id and ap.instance_country_id=a.instance_country_id
+                    where a.instance_country_id=o.instance_country_id and s.post_id=pp.post_id
+                      and a.status<>'REMOVED' and ap.status in ('PUBLISHED','CLOSED')
+                      and coalesce(a.actual_employee_id,a.employee_id) is not null
+                      and s.starts_at<=o.window_start and s.ends_at>=o.window_end
+                      and coalesce(a.actual_assigned_at,a.assigned_at,a.created_at)<=o.window_start
+                ) responsible on responsible.candidate_count=1
+                left join employee_operational_snapshot employee on employee.employee_id=responsible.employee_id
+                    and employee.instance_country_id=o.instance_country_id
+                where o.instance_country_id=:tenant and o.status='NO_EJECUTADA' and o.execution_id is null
+                  and o.window_start<o.window_end and o.window_end<:until and o.updated_at>=o.window_end
+                  and o.updated_at>=:since and o.updated_at<:until
+                  and (o.updated_at>:since or :includeBoundary or o.id>:after)
+                  and pd.structure_type='CLOSED' and pd.schedule_type='PROGRAMMED'
+                  and not exists(select 1 from patrol_execution pe where pe.instance_country_id=o.instance_country_id
+                      and (pe.occurrence_id=o.id or (pe.assignment_id=responsible.id
+                          and (pe.patrol_plan_id=pp.id or pe.patrol_definition_id=pd.id)
+                          and pe.started_at>=o.window_start and pe.started_at<o.window_end)))
+                  and not exists(select 1 from smc_fact_delivery d where d.instance_country_id=o.instance_country_id
+                      and d.source_type='PATROL_NOT_EXECUTED' and d.source_id=o.id)
+                order by o.updated_at,o.id
+                """).setParameter("tenant",tenant).setParameter("since",since).setParameter("until",until)
+                .setParameter("includeBoundary",afterId==null).setParameter("after",after).setMaxResults(limit).getResultList();
+            for(Object row:rows) { Object[] r=(Object[])row;
+                facts.add(new Candidate(new SmcFact(tenant,sourceType,uuid(r[0]),uuid(r[1]),"ROUTE_COMPLETION",
+                    instant(r[2]),BigDecimal.ZERO,uuid(r[3]),uuid(r[4]),uuid(r[5]),
+                    Map.of("source","patrol_occurrence","sourceId",r[0].toString(),"result","NO_EJECUTADA",
+                        "protocolVersion",r[8],"windowStart",instant(r[9]).toString(),
+                        "assignmentId",r[10].toString()),personaId(r[6])),instant(r[7])));
+            }
+            return facts;
+        }
         if ("NOVELTY_APPROVAL".equals(sourceType)) {
             List<?> rows=em.createNativeQuery("""
                 select r.id,r.employee_id,a.approved_at,r.point_id,r.post_id,oa.shift_occurrence_id,
@@ -163,7 +230,7 @@ public class SmcFactSources {
                    (select count(distinct x.checkpoint_id) from patrol_checkpoint_execution x
                     join patrol_checkpoint k on k.id=x.checkpoint_id and k.instance_country_id=x.instance_country_id
                     where x.patrol_execution_id=pe.id and x.instance_country_id=pe.instance_country_id
-                      and k.patrol_definition_id=pd.id and x.result='CUMPLIDO'), pd.version_no, employee.persona_id, pe.updated_at
+                      and k.patrol_definition_id=pd.id and x.result='CUMPLIDO'), pd.version_no, employee.persona_id, pe.updated_at,pe.result
             from patrol_execution pe
             left join patrol_plan pp on pp.id=pe.patrol_plan_id and pp.instance_country_id=pe.instance_country_id
             join patrol_definition pd on pd.id=coalesce(pe.patrol_definition_id, pp.patrol_definition_id)
@@ -175,10 +242,10 @@ public class SmcFactSources {
             where pe.instance_country_id=:tenant and pe.finished_at is not null
               and pe.updated_at>=:since and pe.updated_at<:until
               and (pe.updated_at>:since or :includeBoundary or pe.id>:after)
-              and pe.result in ('COMPLETA','INCOMPLETA') and pe.employee_id is not null
+              and pe.result in ('COMPLETA','INCOMPLETA','NO_EJECUTADA') and pe.employee_id is not null
               and pd.structure_type='CLOSED' and pd.schedule_type='PROGRAMMED'
-              and exists(select 1 from patrol_checkpoint k where k.patrol_definition_id=pd.id
-                         and k.instance_country_id=pe.instance_country_id)
+              and (pe.result='NO_EJECUTADA' or exists(select 1 from patrol_checkpoint k where k.patrol_definition_id=pd.id
+                         and k.instance_country_id=pe.instance_country_id))
               and not exists(select 1 from smc_fact_delivery d where d.instance_country_id=pe.instance_country_id
                   and d.source_type='PATROL_EXECUTION' and d.source_id=pe.id)
             and not (
@@ -189,10 +256,11 @@ public class SmcFactSources {
         for (Object row : patrols) {
             Object[] r = (Object[]) row;
             long total = ((Number) r[6]).longValue(), completed = ((Number) r[7]).longValue();
+            boolean notExecuted="NO_EJECUTADA".equals(r[11]);
             facts.add(new Candidate(new SmcFact(tenant, "PATROL_EXECUTION", uuid(r[0]), uuid(r[1]), "ROUTE_COMPLETION",
-                instant(r[2]), SmcFact.percentage(completed, total), uuid(r[3]), uuid(r[4]), uuid(r[5]),
+                instant(r[2]), notExecuted?BigDecimal.ZERO:SmcFact.percentage(completed, total), uuid(r[3]), uuid(r[4]), uuid(r[5]),
                 Map.of("source", "patrol_execution", "sourceId", r[0].toString(),
-                    "hitosCumplidos", completed, "hitosTotales", total, "protocolVersion", r[8]), personaId(r[9])), instant(r[10])));
+                    "hitosCumplidos", notExecuted?0L:completed, "hitosTotales", total, "protocolVersion", r[8]), personaId(r[9])), instant(r[10])));
         }
         return facts;
         }

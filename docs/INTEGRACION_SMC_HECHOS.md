@@ -8,7 +8,7 @@ Activación controlada por `SGI_SMC_ENABLED`. La publicación no adjudica Impuls
 - `ROUTE_COMPLETION`: ejecución finalizada `COMPLETA`/`INCOMPLETA`, patrulla `CLOSED` y `PROGRAMMED`, al menos un hito configurado. Valor = hitos distintos `CUMPLIDO` / hitos configurados * 100, HALF_UP a dos decimales. Un 100 también se entrega como evidencia.
 - `CONSIGNMENT_NOT_DONE`: registro explícito `consignment_compliance.result=NO_CUMPLIDA`, valor 1. La ausencia de registro, `CON_NOVEDAD`, `CUMPLIDA` y `NO_APLICA` no generan hechos.
 - Cada origen se registra una vez en `smc_fact_delivery`; no se usa la bandeja SQLite del teléfono ni el outbox general de Comando.
-- No incluye `NO_EJECUTADA`, francos trabajados, cierre de ocurrencias ni consulta del ID de SMC. No se alteran las rutas de ingreso de Operador.
+- Alcance inicial: no incluía `NO_EJECUTADA` ni francos trabajados. La ampliación V141 incorpora cierres explícitos de patrulla y acreditaciones auditadas de franco trabajado; ver `SMC_ID_PATRULLAS_FRANCOS.md`. No incluye cierre automático de ocurrencias ni consulta del ID de SMC. No se alteran las rutas de ingreso de Operador.
 
 ### Hechos para Impulsos (SMC-002v0.5)
 
