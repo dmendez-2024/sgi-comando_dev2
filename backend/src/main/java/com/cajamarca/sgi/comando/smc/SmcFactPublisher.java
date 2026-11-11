@@ -32,7 +32,7 @@ public class SmcFactPublisher {
 
     public record Publication(boolean enabled, boolean busy, int enqueued, int attempted, int requeued) {}
 
-    @Scheduled(every="${sgi.smc.publish-every-seconds:30}s", delayed="30s",
+    @Scheduled(every="${sgi.smc.publish-every-seconds:3600}s", delayed="${sgi.smc.publish-every-seconds:3600}s",
         concurrentExecution=Scheduled.ConcurrentExecution.SKIP)
     void tick() {
         if (!enabled) return;

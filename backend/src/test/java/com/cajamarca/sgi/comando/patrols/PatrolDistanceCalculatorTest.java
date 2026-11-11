@@ -7,7 +7,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class PatrolDistanceCalculatorTest {
     final Instant start=Instant.parse("2026-11-11T10:00:00Z");
-    final PatrolDistanceCalculator.Policy policy=new PatrolDistanceCalculator.Policy(20,180);
+    final PatrolDistanceCalculator.Policy policy=new PatrolDistanceCalculator.Policy(25,180);
     PatrolDistanceCalculator.Sample at(int seconds,double longitude,Double accuracy,Double speed) {
         return new PatrolDistanceCalculator.Sample(start.plusSeconds(seconds),0,longitude,accuracy,speed);
     }
@@ -32,5 +32,10 @@ class PatrolDistanceCalculatorTest {
     @Test void requiresExplicitPositiveQualityLimits() {
         assertThrows(IllegalArgumentException.class,()->new PatrolDistanceCalculator.Policy(0,180));
         assertThrows(IllegalArgumentException.class,()->new PatrolDistanceCalculator.Policy(20,0));
+    }
+    @Test void acceptsApprovedLimitsInclusivelyAndRejectsSamplesAboveThem() {
+        assertEquals(1,PatrolDistanceCalculator.calculate(List.of(at(0,0,25d,null),at(180,0.0009,25d,null)),start,start.plusSeconds(180),policy).acceptedSegments());
+        assertEquals(0,PatrolDistanceCalculator.calculate(List.of(at(0,0,25.01d,null),at(180,0.0009,25d,null)),start,start.plusSeconds(180),policy).acceptedSegments());
+        assertEquals(0,PatrolDistanceCalculator.calculate(List.of(at(0,0,25d,null),at(181,0.0009,25d,null)),start,start.plusSeconds(181),policy).acceptedSegments());
     }
 }

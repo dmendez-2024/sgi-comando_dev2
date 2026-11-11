@@ -28,7 +28,7 @@ Aplicar Flyway hasta V93 en una base UAT antes de activar. V91 crea las entregas
 SGI_SMC_ENABLED=false
 SGI_SMC_INTERCONNECTION_ID=SGI_COM_SMC__0001_v001
 SGI_SMC_INTERFACE_ID=SGI_COM_SMC_0001_IF01
-SGI_SMC_PUBLISH_EVERY_SECONDS=30
+SGI_SMC_PUBLISH_EVERY_SECONDS=3600
 SGI_SMC_BATCH_SIZE=100
 # No hace falta SGI_SMC_FACTS_SINCE para la operación normal.
 ```
@@ -168,3 +168,75 @@ Para el despliegue normal, quitar o dejar vacía `SGI_SMC_FACTS_SINCE` **antes**
 - PostgreSQL y MinIO temporales; CORE/SMC dobles HTTP locales. Para JDK 25 se usó `JAVA_TOOL_OPTIONS=--add-opens=java.base/java.lang=ALL-UNNAMED` en los contenedores de pruebas.
 - Postman CLI no pudo iniciar por una política corporativa de Private Cloud; la prueba HTTP usa `HttpServer` local y el resolver/ejecutor reales de Comando, con credencial exclusivamente de prueba.
 - Pendiente: validación contra CORE/IDENT/SMC reales en UAT, reconocimiento de empleados, periodos y efecto de valoración en SMC.
+
+
+## Intervalo configurable del publicador (2026-11-11)
+
+El intervalo predeterminado es una hora (3600 segundos). SGI_SMC_PUBLISH_EVERY_SECONDS
+configura tanto la espera inicial tras arrancar como la frecuencia posterior. Aplica
+a todas las fuentes del publicador SMC, incluidos los kilómetros. Ejemplos:
+1800 = 30 minutos; 3600 = una hora; 7200 = dos horas. Al cambiar una variable del
+contenedor se debe recrear el backend. Los reintentos HTTP internos de una llamada
+y el backoff de las entregas no cambian; las entregas solo se revisan en cada ciclo
+automático o mediante publicación manual.
+
+## Novedades aprobadas y pendientes operativos (2026-11-11)
+
+`NOVELTY_APPROVED` se obtiene directamente del flujo formal de Novedades. Requiere
+estado `APPROVED` y una decisión auditada `APPROVE` con resultado `APPROVED` del
+mismo tenant. Incluye incidentes, hallazgos y vulnerabilidades. `PENDING`,
+`CONFIRMED`, `DISCARDED` y registros sin auditoría de aprobación no se publican.
+
+El beneficiario es `operator_operational_report.employee_id`, nunca el aprobador.
+El valor es 1 y `occurredAt` es la fecha de la primera aprobación auditada. No
+exige fotografías adicionales, sorteo ni una adjudicación de la regla local
+`NOV_APROBADA`. La aprobación conserva sus validaciones y transacción existentes.
+Su tarea STC debe crearse correctamente para que la aprobación se confirme.
+
+La fuente es `NOVELTY_APPROVAL`, con el ID de la novedad como `source_id`.
+Repetir la aprobación o reintentar el envío conserva el mismo `eventId` y
+`Idempotency-Key`. La bandeja `smc_fact_delivery` guarda el payload de entrega;
+los ciclos usan el intervalo horario configurable existente. V140 amplía la
+restricción del cursor y agrega un índice de decisiones; debe aplicarse después
+de V139 antes de ejecutar el publicador actualizado. No reinicia cursores.
+
+Como en las demás fuentes, sin `SGI_SMC_FACTS_SINCE` el primer ciclo inicializa
+el cursor en el momento de arranque y no recupera aprobaciones anteriores.
+Una fecha inicial explícita solo afecta cursores aún no creados; no cambia uno
+existente. Una recuperación histórica debe coordinarse con el periodo abierto
+de SMC; no se reinician cursores automáticamente.
+
+`PATROL_KM` conserva precisión máxima de 25 m, separación máxima de 180 s,
+captura cada 120 s y velocidad máxima de 5 km/h. Los límites de 25 m y 180 s
+son valores iniciales aprobados para UAT; no se presentan como reglas originales
+de SMC. V137 crea la medición y V139 admite su fuente en el cursor.
+
+`POINT_RESPONSIBLE` sigue pendiente. El usuario definió contar únicamente agentes
+con asistencia validada, excluyendo al responsable. La designación de
+`point_responsibility` es planificada (ASI-DEC-059). El ingreso actual de relevo
+guarda `relief_event.status='PENDIENTE'`; no hay un flujo implementado que confirme
+asistencia/identidad. Las revisiones VISINT actuales son de fotos del puesto y
+no acreditan esa asistencia. Por ello no se exporta un número de agentes
+planificados como si fueran asistentes validados y no se crea una aprobación
+manual nueva. Para completar este hecho falta disponer de la fuente real de
+asistencia validada y acordar cómo cerrar el conteo ante validaciones tardías.
+
+Las pruebas usan PostgreSQL temporal y HTTP local. No demuestran recepción ni
+valoración en SMC real. La APK de Operador y la captura GPS con pantalla apagada
+y reconexión siguen pendientes de compilación con JDK 17/Android SDK y UAT física.
+
+### Evidencia de esta ampliación
+
+23 pruebas aprobadas, 0 fallos y 0 errores: PatrolDistanceCalculatorTest (6),
+PatrolDistanceDatabaseTest (4), SmcImpulseFactsDatabaseTest (3),
+SmcApprovalFactsDatabaseTest (3), SmcImpulseHttpTest (1) y SmcOpenBaoTest (6).
+Se verificaron límites GPS inclusivos de 25 m/180 s y configuración efectiva,
+aprobación auditada, beneficiario original, exclusión de otros estados/tenants,
+paginación con fechas iguales, deduplicación y HTTP local con idempotencia.
+La cadena real V93 + V122 + V139 + V140 pasó la prueba SQL aislada, conservando
+cursores y rechazando fuentes desconocidas. No se conectó a SMC real.
+
+Una comprobación de solo lectura en PostgreSQL local encontró 121 relevos,
+todos PENDIENTE, y ninguna tabla específica de asistencia validada. En esa base
+no aparecían migraciones V137 o posteriores en flyway_schema_history al momento
+de consultar. Esta sesión no aplica migraciones ni despliega el backend allí.

@@ -31,17 +31,22 @@ No se usan lecturas anteriores al START ni posteriores al FINISH. Reintentar un
 FINISH ya confirmado conserva el estado y no recalcula recompensas.
 Clientes antiguos sin gpsSamples cierran igual, pero no producen kilómetros.
 
-## Política pendiente y cálculo
+## Política inicial UAT y cálculo
 
-Se deben definir expresamente ambas variables del ambiente:
+Configuración inicial solicitada el 2026-11-11, ajustable por ambiente:
 
+```dotenv
+SGI_PATROL_DISTANCE_MAX_ACCURACY_M=25
+SGI_PATROL_DISTANCE_MAX_GAP_SECONDS=180
 ```
-SGI_PATROL_DISTANCE_MAX_ACCURACY_M=<metros aprobados>
-SGI_PATROL_DISTANCE_MAX_GAP_SECONDS=<segundos aprobados>
-```
 
-Vacías o inválidas: se guardan muestras sin crear un hecho PATROL_KM. No se
-detiene el cierre operativo ni se eligen números de negocio por defecto.
+Comando usa esos valores por defecto si no se suministran las variables.
+Se conservan 120 segundos de muestreo y 5 km/h, documentados previamente.
+Los 25 m son la precisión máxima adoptada para UAT; los 180 s son tolerancia
+operacional propuesta para el muestreo, no un umbral encontrado en la documentación
+original. Una configuración inválida no genera mediciones ni bloquea el cierre.
+Los valores requieren validación en recorridos conocidos y pruebas en reposo;
+la precisión Android es una incertidumbre estimada, no un error máximo garantizado.
 
 Con política válida se ordenan muestras por fecha y se suman segmentos usando
 Haversine. Se rechaza un tramo con precisión faltante/excesiva, tiempo cero o
@@ -74,3 +79,24 @@ snapshot y conversión a PATROL_KM con PostgreSQL aislado. La captura con pantal
 apagada, permisos revocados, cierre de sesión y FINISH offline requieren UAT en
 dispositivo físico. Las reglas de recompensa antiguas siguen pendientes de
 reconciliación con SMC; este cambio solo entrega distancia.
+
+## Resultado de validación local
+
+18 pruebas de backend aprobadas, sin fallos ni errores: cálculo, PostgreSQL temporal,
+fuentes de Impulsos y transporte/autenticación simulados. No se usó SMC real.
+La compilación de Operador se intentó offline y con resolución de dependencias;
+se detuvo porque el entorno usa Java 8 y las dependencias requieren una JVM más
+reciente. No se generó APK ni se verificó el servicio GPS en dispositivo físico.
+
+## Corrección del cursor SMC (V139)
+
+La fuente PATROL_DISTANCE también requiere ampliar la restricción
+smc_source_cursor_source_type_check. V137 no lo hacía; V122 solo admitía las
+otras tres fuentes y el publicador fallaba cada 30 segundos con SQLState 23514.
+V139 amplía la lista sin reiniciar cursores ni tocar entregas existentes.
+
+La prueba src/test/resources/smc_patrol_distance_cursor_regression.sql reproduce
+el fallo sobre V93 + V122 reales y verifica V139 en una base vacía aislada:
+cuatro fuentes válidas, conservación de changed_at/last_source_id y rechazo de
+una fuente desconocida. Se ejecutó con éxito y terminó con ROLLBACK.
+Aplicar V139 en la misma base del backend antes de reanudar la publicación.

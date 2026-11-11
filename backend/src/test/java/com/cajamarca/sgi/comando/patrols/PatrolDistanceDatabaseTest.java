@@ -15,6 +15,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class PatrolDistanceDatabaseTest {
     @Inject EntityManager em;
     @Inject SmcFactSources sources;
+    @Inject PatrolDistanceService configuredDistance;
     final UUID tenant=UUID.randomUUID(),run=UUID.randomUUID(),employee=UUID.randomUUID();
     final Instant start=Instant.now().truncatedTo(java.time.temporal.ChronoUnit.MICROS).minusSeconds(3600),end=start.plusSeconds(120);
     void fixtures() {
@@ -28,7 +29,7 @@ class PatrolDistanceDatabaseTest {
             .setParameter("run",run).setParameter("tenant",tenant).setParameter("employee",employee).setParameter("start",start).setParameter("end",end).executeUpdate();
     }
     PatrolDistanceService service(boolean configured) {
-        var service=new PatrolDistanceService();service.em=em;service.maxAccuracy=configured?Optional.of(20d):Optional.empty();service.maxGap=configured?Optional.of(180L):Optional.empty();return service;
+        var service=new PatrolDistanceService();service.em=em;service.maxAccuracy=configured?Optional.of(25d):Optional.empty();service.maxGap=configured?Optional.of(180L):Optional.empty();return service;
     }
     com.fasterxml.jackson.databind.JsonNode samples() {
         var mapper=new ObjectMapper();var points=mapper.createArrayNode();
@@ -37,6 +38,11 @@ class PatrolDistanceDatabaseTest {
         return points;
     }
     long count(String table){return ((Number)em.createNativeQuery("select count(*) from "+table).getSingleResult()).longValue();}
+
+    @Test void applicationConfigurationUsesApprovedInitialGpsLimits() {
+        var policy=configuredDistance.policy().orElseThrow();
+        assertEquals(25d,policy.maxAccuracyM());assertEquals(180L,policy.maxGapSeconds());
+    }
 
     @Test void missingPolicyKeepsSamplesButNeverCreatesRewardThenCanMeasureExplicitly() {
         QuarkusTransaction.requiringNew().run(()->{

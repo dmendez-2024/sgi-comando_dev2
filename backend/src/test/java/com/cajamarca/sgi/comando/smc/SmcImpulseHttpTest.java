@@ -15,7 +15,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class SmcImpulseHttpTest {
     @TempDir Path directory;
 
-    @Test void sendsFiveRawImpulseOccurrencesWithServiceTokenAndStableIdempotency() throws Exception {
+    @Test void sendsImpulseOccurrencesApprovalAndKilometersWithServiceTokenAndStableIdempotency() throws Exception {
         String key="sgi.m2m.client-id.SMC",previous=System.getProperty(key);
         System.setProperty(key,"sgi-com-to-smc-local-test");
         try(var h=new SmcOpenBaoTest.Harness(directory,"OAUTH2_CLIENT_CREDENTIALS","vault:kv/data/local-test/smc")) {
@@ -27,13 +27,15 @@ class SmcImpulseHttpTest {
                 sent.set(new String(exchange.getRequestBody().readAllBytes(),StandardCharsets.UTF_8));
                 SmcOpenBaoTest.reply(exchange,201,"{\"accepted\":true,\"smcFactId\":\"1024\"}");
             });
-            for(String type:new String[]{"RELIEF_COMPLETED_ON_TIME","RELIEF_FULL_BODY_PHOTO","ACCESS_CONTROL_OK","PATROL_OK","CONSIGNMENT_OK"}) {
-                var fact=new SmcFact(h.pe,"IMPULSE_EVALUATION",UUID.randomUUID(),UUID.randomUUID(),type,
-                    Instant.now(),BigDecimal.ONE,null,null,null,Map.of("source","impulse_evaluation"),123L);
+            for(String type:new String[]{"RELIEF_COMPLETED_ON_TIME","RELIEF_FULL_BODY_PHOTO","ACCESS_CONTROL_OK","PATROL_OK","CONSIGNMENT_OK","NOVELTY_APPROVED","PATROL_KM"}) {
+                String source=switch(type){case "NOVELTY_APPROVED"->"NOVELTY_APPROVAL";case "PATROL_KM"->"PATROL_DISTANCE";default->"IMPULSE_EVALUATION";};
+                BigDecimal value="PATROL_KM".equals(type)?new BigDecimal("0.100075"):BigDecimal.ONE;
+                var fact=new SmcFact(h.pe,source,UUID.randomUUID(),UUID.randomUUID(),type,
+                    Instant.now(),value,null,null,null,Map.of("source",source),123L);
                 for(int attempt=0;attempt<2;attempt++) {
                     assertEquals("SENT",SmcDeliveryOutcome.from(h.adapter.send(h.pe,fact.payload())).status());
                     var body=h.json.readTree(sent.get());assertEquals(type,body.path("factType").asText());
-                    assertEquals(1,body.path("value").asInt());assertEquals(fact.eventId().toString(),eventKey.get());
+                    assertEquals(0,value.compareTo(body.path("value").decimalValue()));assertEquals(fact.eventId().toString(),eventKey.get());
                     assertFalse(body.has("amount"));assertFalse(body.has("draw"));
                 }
             }

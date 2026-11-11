@@ -12,17 +12,48 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-/** Solo lectura. El resultado CUMPLIDO procede del cierre operativo existente. */
+/** Fuentes operacionales de solo lectura; no adjudica premios ni altera aprobaciones. */
 @ApplicationScoped
 public class SmcFactSources {
     @Inject EntityManager em;
-    static final List<String> TYPES = List.of("PATROL_EXECUTION", "CONSIGNMENT_COMPLIANCE", "IMPULSE_EVALUATION", "PATROL_DISTANCE");
+    static final List<String> TYPES = List.of("PATROL_EXECUTION", "CONSIGNMENT_COMPLIANCE", "IMPULSE_EVALUATION", "PATROL_DISTANCE", "NOVELTY_APPROVAL");
     public record Candidate(SmcFact fact, Instant changedAt) {}
 
     public List<Candidate> candidates(UUID tenant, String sourceType, Instant since, UUID afterId, Instant until, int limit) {
         if (!TYPES.contains(sourceType)) throw new IllegalArgumentException("Fuente SMC desconocida");
         List<Candidate> facts = new ArrayList<>();
         UUID after = afterId == null ? new UUID(0,0) : afterId;
+        if ("NOVELTY_APPROVAL".equals(sourceType)) {
+            List<?> rows=em.createNativeQuery("""
+                select r.id,r.employee_id,a.approved_at,r.point_id,r.post_id,oa.shift_occurrence_id,
+                       employee.persona_id,r.report_type,a.decision_id
+                from operator_operational_report r
+                join lateral (
+                    select d.created_at approved_at,d.id decision_id
+                    from operator_operational_report_decision d
+                    where d.instance_country_id=r.instance_country_id and d.report_id=r.id
+                      and d.action='APPROVE' and d.resulting_status='APPROVED'
+                    order by d.created_at,d.id limit 1
+                ) a on true
+                left join operational_assignment oa on oa.id=r.assignment_id and oa.instance_country_id=r.instance_country_id
+                left join employee_operational_snapshot employee on employee.employee_id=r.employee_id
+                    and employee.instance_country_id=r.instance_country_id
+                where r.instance_country_id=:tenant and r.status='APPROVED' and r.employee_id is not null
+                  and a.approved_at>=:since and a.approved_at<:until
+                  and (a.approved_at>:since or :includeBoundary or r.id>:after)
+                  and not exists(select 1 from smc_fact_delivery d where d.instance_country_id=r.instance_country_id
+                      and d.source_type='NOVELTY_APPROVAL' and d.source_id=r.id)
+                order by a.approved_at,r.id
+                """).setParameter("tenant",tenant).setParameter("since",since).setParameter("until",until)
+                .setParameter("includeBoundary",afterId==null).setParameter("after",after).setMaxResults(limit).getResultList();
+            for(Object row:rows) { Object[] r=(Object[])row;
+                facts.add(new Candidate(new SmcFact(tenant,sourceType,uuid(r[0]),uuid(r[1]),"NOVELTY_APPROVED",
+                    instant(r[2]),BigDecimal.ONE,uuid(r[3]),uuid(r[4]),uuid(r[5]),
+                    Map.of("source","operator_operational_report","sourceId",r[0].toString(),
+                        "approvalDecisionId",r[8].toString(),"reportType",r[7].toString()),personaId(r[6])),instant(r[2])));
+            }
+            return facts;
+        }
         if ("PATROL_DISTANCE".equals(sourceType)) {
             List<?> rows=em.createNativeQuery("""
                 select m.id,m.employee_id,m.occurred_at,m.measured_at,m.kilometers,m.sample_count,
