@@ -21,12 +21,18 @@ public class SmcPublishResource {
     @Inject SmcFactPublisher publisher;
     @Inject EntityManager em;
     @Inject TenantContext tenant;
+    @Inject com.cajamarca.sgi.comando.patrols.PatrolDistanceService distance;
     @Inject SecurityIdentity identity;
 
     @POST @Path("/publish")
     public SmcFactPublisher.Publication publish(@QueryParam("retryRejected") @DefaultValue("false") boolean retryRejected) {
         activeTenant();
         return publisher.publish(retryRejected);
+    }
+
+    @POST @Path("/patrol-distance/measure")
+    public Map<String,Integer> measurePatrols() {
+        return QuarkusTransaction.requiringNew().call(() -> Map.of("measured",distance.measurePending(tenant.instanceCountryId(),100)));
     }
 
     @GET @Path("/deliveries")

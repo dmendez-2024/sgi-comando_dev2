@@ -16,13 +16,40 @@ import java.util.UUID;
 @ApplicationScoped
 public class SmcFactSources {
     @Inject EntityManager em;
-    static final List<String> TYPES = List.of("PATROL_EXECUTION", "CONSIGNMENT_COMPLIANCE", "IMPULSE_EVALUATION");
+    static final List<String> TYPES = List.of("PATROL_EXECUTION", "CONSIGNMENT_COMPLIANCE", "IMPULSE_EVALUATION", "PATROL_DISTANCE");
     public record Candidate(SmcFact fact, Instant changedAt) {}
 
     public List<Candidate> candidates(UUID tenant, String sourceType, Instant since, UUID afterId, Instant until, int limit) {
         if (!TYPES.contains(sourceType)) throw new IllegalArgumentException("Fuente SMC desconocida");
         List<Candidate> facts = new ArrayList<>();
         UUID after = afterId == null ? new UUID(0,0) : afterId;
+        if ("PATROL_DISTANCE".equals(sourceType)) {
+            List<?> rows=em.createNativeQuery("""
+                select m.id,m.employee_id,m.occurred_at,m.measured_at,m.kilometers,m.sample_count,
+                       m.accepted_segments,m.rejected_segments,m.max_accuracy_m,m.max_gap_seconds,m.algorithm_version,
+                       employee.persona_id,p.point_id,so.post_id,oa.shift_occurrence_id
+                from patrol_distance_measurement m
+                join patrol_execution pe on pe.id=m.id and pe.instance_country_id=m.instance_country_id
+                left join employee_operational_snapshot employee on employee.employee_id=m.employee_id and employee.instance_country_id=m.instance_country_id
+                left join operational_assignment oa on oa.id=pe.assignment_id and oa.instance_country_id=m.instance_country_id
+                left join shift_occurrence so on so.id=oa.shift_occurrence_id and so.instance_country_id=m.instance_country_id
+                left join post p on p.id=so.post_id and p.instance_country_id=m.instance_country_id
+                where m.instance_country_id=:tenant and m.measured_at>=:since and m.measured_at<:until
+                  and (m.measured_at>:since or :includeBoundary or m.id>:after) and m.accepted_segments>0
+                  and not exists(select 1 from smc_fact_delivery d where d.instance_country_id=m.instance_country_id
+                      and d.source_type='PATROL_DISTANCE' and d.source_id=m.id)
+                order by m.measured_at,m.id
+                """).setParameter("tenant",tenant).setParameter("since",since).setParameter("until",until)
+                .setParameter("includeBoundary",afterId==null).setParameter("after",after).setMaxResults(limit).getResultList();
+            for(Object row:rows){Object[] r=(Object[])row;
+                facts.add(new Candidate(new SmcFact(tenant,sourceType,uuid(r[0]),uuid(r[1]),"PATROL_KM",instant(r[2]),
+                    (BigDecimal)r[4],uuid(r[12]),uuid(r[13]),uuid(r[14]),
+                    Map.of("source","patrol_distance_measurement","sourceId",r[0].toString(),"sampleCount",r[5],
+                        "acceptedSegments",r[6],"rejectedSegments",r[7],"maxAccuracyM",r[8],"maxGapSeconds",r[9],
+                        "algorithmVersion",r[10],"maxSpeedKmh",5),personaId(r[11])),instant(r[3])));
+            }
+            return facts;
+        }
         if ("IMPULSE_EVALUATION".equals(sourceType)) {
             List<?> rows = em.createNativeQuery("""
                 select e.id, e.employee_id, e.occurred_at, e.evaluated_at, e.rule_code,

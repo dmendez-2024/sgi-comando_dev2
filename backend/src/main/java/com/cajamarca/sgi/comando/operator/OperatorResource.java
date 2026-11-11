@@ -45,6 +45,7 @@ public class OperatorResource {
     @ConfigProperty(name="sgi.operator.relief-uat-enabled",defaultValue="false") boolean enabled;
     @Inject OperatorPatrols patrols;
     @Inject PatrolExecutionService patrolExecutions;
+    @Inject com.cajamarca.sgi.comando.patrols.PatrolDistanceService patrolDistance;
     @Inject TaskEvidenceService taskEvidences;
     @Inject OperatorTasks tasks;
     @Inject ReliefStationReviews stationReviews;
@@ -761,6 +762,7 @@ public class OperatorResource {
             if(coordinates.isObject()) em.createNativeQuery("insert into patrol_gps_sample(instance_country_id,patrol_execution_id,captured_at,latitude,longitude,accuracy_m) values(:tenant,:execution,:captured,:latitude,:longitude,:accuracy)")
                 .setParameter("tenant",tenant.instanceCountryId()).setParameter("execution",executionId).setParameter("captured",capturedAt).setParameter("latitude",coordinates.path("latitude").asDouble()).setParameter("longitude",coordinates.path("longitude").asDouble()).setParameter("accuracy",coordinates.has("accuracyMeters")?coordinates.path("accuracyMeters").asDouble():null).executeUpdate();
         }
+        patrolDistance.complete(tenant.instanceCountryId(),executionId,event.get("gpsSamples"),started,finished);
         ObjectNode response=mapper.createObjectNode().put("executionId",executionId.toString()).put("status","RECEIVED").put("result",finalResult);
         response.put("persistedCheckpointCount",seen.size()).put("persistedFieldCheckpointCount",fieldCheckpoints.size()); return response;
     }
