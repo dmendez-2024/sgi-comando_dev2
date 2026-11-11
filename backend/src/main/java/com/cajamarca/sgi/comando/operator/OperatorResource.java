@@ -496,7 +496,7 @@ public class OperatorResource {
           join logbook_protocol_post_scope s on s.protocol_id=p.id and s.instance_country_id=p.instance_country_id
           join logbook_accreditation a on a.protocol_id=p.id and a.instance_country_id=p.instance_country_id
           where p.id=:protocol and a.id=:accreditation and p.instance_country_id=:tenant
-            and p.status='ACTIVO' and s.post_id=:post
+            and p.status='ACTIVO' and p.application_type in ('INGRESO','AMBOS') and s.post_id=:post
           """).setParameter("protocol",protocolId).setParameter("accreditation",accreditationId)
             .setParameter("tenant",tenant.instanceCountryId()).setParameter("post",c.post.id).getResultList();
         if(configuration.isEmpty() || ((Number)configuration.get(0)[0]).intValue()!=protocolVersion) throw new ClientErrorException("El Protocolo de Bitácora cambió; actualiza antes de registrar",409);
