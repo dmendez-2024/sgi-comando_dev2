@@ -14,6 +14,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import static com.cajamarca.sgi.comando.operator.OperatorFixtures.as;
+import static com.cajamarca.sgi.comando.operator.OperatorFixtures.POST_GGTT01;
 import static org.hamcrest.Matchers.is;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -82,6 +83,8 @@ class IncidentCatalogResourceTest {
         QuarkusTransaction.requiringNew().run(() -> {
             em.createNativeQuery("delete from incident_notification where category_catalog_id=:category")
                 .setParameter("category", categoryId).executeUpdate();
+            em.createNativeQuery("delete from operator_operational_report where source='SGI_COMANDO' and title=:title")
+                .setParameter("title", "Novedad " + suffix).executeUpdate();
             em.createNativeQuery("delete from incident_type_catalog where id=:id").setParameter("id", incidentTypeId).executeUpdate();
             em.createNativeQuery("delete from incident_subcategory_catalog where id=:id").setParameter("id", subcategoryId).executeUpdate();
             em.createNativeQuery("delete from incident_severity_catalog where id=:id").setParameter("id", severityId).executeUpdate();
@@ -140,5 +143,44 @@ class IncidentCatalogResourceTest {
             .body("subcategoryCatalogId", is(subcategoryId.toString()))
             .body("incidentTypeCatalogId", is(incidentTypeId.toString()))
             .body("severityCatalogId", is(severityId.toString()));
+    }
+
+    @Test
+    void finalizedConsoleIncidentCreatesConfirmedCommonNovelty() {
+        UUID pointId = QuarkusTransaction.requiringNew().call(() -> {
+            Object value = em.createNativeQuery("select point_id from post where id=:post")
+                .setParameter("post", POST_GGTT01).getSingleResult();
+            return value instanceof UUID id ? id : UUID.fromString(value.toString());
+        });
+        String occurredAt = "2026-11-05T19:00:00Z";
+        Map<String,Object> body = new LinkedHashMap<>();
+        body.put("status", "FINALIZED");
+        body.put("title", "Novedad " + suffix);
+        body.put("categoryCatalogId", categoryId);
+        body.put("subcategoryCatalogId", subcategoryId);
+        body.put("incidentTypeCatalogId", incidentTypeId);
+        body.put("severityCatalogId", severityId);
+        body.put("pointId", pointId);
+        body.put("postId", POST_GGTT01);
+        body.put("collaboratorIds", java.util.List.of(UUID.randomUUID()));
+        body.put("description", "Descripción del incidente");
+        body.put("resolution", "Resolución aplicada");
+        body.put("sanction", false);
+        body.put("createdAt", occurredAt);
+
+        String reportId = as("coord").contentType(ContentType.JSON).body(body).post("/api/incidents")
+            .then().statusCode(200).body("status", is("FINALIZED"))
+            .extract().path("operationalReportId");
+
+        Object[] report = QuarkusTransaction.requiringNew().call(() -> (Object[]) em.createNativeQuery("""
+            select status,source,category,subcategory,severity,occurred_at
+              from operator_operational_report where id=:id
+            """).setParameter("id", UUID.fromString(reportId)).getSingleResult());
+        assertEquals("CONFIRMED", report[0]);
+        assertEquals("SGI_COMANDO", report[1]);
+        assertEquals(categoryName, report[2]);
+        assertEquals(subcategoryName, report[3]);
+        assertEquals("MEDIUM", report[4]);
+        assertEquals(java.time.Instant.parse(occurredAt), report[5]);
     }
 }

@@ -6,11 +6,13 @@ import com.cajamarca.sgi.comando.companies.Company;
 import com.cajamarca.sgi.comando.operations.PointEntity;
 import com.cajamarca.sgi.comando.operations.PostEntity;
 import com.cajamarca.sgi.comando.operations.ServiceEntity;
+import com.cajamarca.sgi.comando.security.IdentIdentity;
 import com.cajamarca.sgi.comando.territory.OperationalScopeService;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
 import jakarta.persistence.EntityManager;
@@ -36,6 +38,7 @@ public class IncidentNotificationResource {
     @Inject IncidentCoverageRolePolicy coverageRolePolicy;
     @Inject IncidentCatalogService catalog;
     @Inject IncidentSanctionDeliveryService sanctionDelivery;
+    @Inject SecurityIdentity identity;
 
     @GET @Path("/catalog")
     public ObjectNode catalog() {
@@ -185,6 +188,12 @@ public class IncidentNotificationResource {
             body.put("coverageAssignmentId", assignment.id().toString());
             body.put("coverageAppliedAt", Instant.now().toString());
         }
+        if ("FINALIZED".equals(status)) {
+            operationalReportId = ensureOperationalReport(record, operationalReportId, body, selection, pointId, postId);
+            body.put("operationalReportId", operationalReportId.toString());
+        } else if (operationalReportId != null && isConsoleReport(operationalReportId)) {
+            throw new ClientErrorException("Un incidente enviado a Novedades no puede volver a borrador.", 409);
+        }
         record.status = status;
         record.pointId = pointId;
         record.postId = postId;
@@ -199,6 +208,111 @@ public class IncidentNotificationResource {
         catch (java.io.IOException e) { throw new InternalServerErrorException("No se pudieron validar las imágenes", e); }
         record.payloadJson = mapper.writeValueAsString(body);
         if (record.payloadJson.length() > 200_000) throw new BadRequestException("El incidente supera el tamaño permitido");
+    }
+
+    private UUID ensureOperationalReport(IncidentNotificationEntity record, UUID reportId, ObjectNode body,
+                                         IncidentCatalogService.Selection selection, UUID pointId, UUID postId) {
+        Instant occurredAt = incidentDate(record, body);
+        String severity = reportSeverity(selection.severity().systemKey());
+        String username = scope.username();
+        Long personaId = IdentIdentity.personaId(identity);
+        UUID employeeId = employeeId(personaId);
+        Instant now = Instant.now();
+
+        if (reportId == null) {
+            reportId = UUID.randomUUID();
+            em.createNativeQuery("""
+                insert into operator_operational_report
+                  (id,instance_country_id,assignment_id,employee_id,username,point_id,post_id,
+                   report_type,category,subcategory,title,description,severity,status,occurred_at,source,
+                   created_at,updated_at,routing_target,routing_status,photo_count,reporter_persona_id)
+                values
+                  (:id,:tenant,null,:employee,:username,:point,:post,
+                   'INCIDENT',:category,:subcategory,:title,:description,:severity,'CONFIRMED',:occurred,'SGI_COMANDO',
+                   :now,:now,'STC','PENDING_INTEGRATION',0,:persona)
+                """).setParameter("id", reportId).setParameter("tenant", tenant.instanceCountryId())
+                .setParameter("employee", employeeId).setParameter("username", username)
+                .setParameter("point", pointId).setParameter("post", postId)
+                .setParameter("category", selection.category().name())
+                .setParameter("subcategory", selection.subcategory().name())
+                .setParameter("title", reportTitle(body)).setParameter("description", text(body, "description"))
+                .setParameter("severity", severity).setParameter("occurred", occurredAt)
+                .setParameter("persona", personaId).setParameter("now", now).executeUpdate();
+            return reportId;
+        }
+
+        @SuppressWarnings("unchecked") List<Object[]> rows = em.createNativeQuery("""
+            select source,status from operator_operational_report
+             where id=:id and instance_country_id=:tenant and report_type='INCIDENT'
+             for update
+            """).setParameter("id", reportId).setParameter("tenant", tenant.instanceCountryId()).getResultList();
+        if (rows.isEmpty()) throw new BadRequestException("La novedad relacionada no existe o no es un incidente");
+        Object[] linked = rows.get(0);
+        if (!"SGI_COMANDO".equals(linked[0].toString())) return reportId;
+        if (!"CONFIRMED".equals(linked[1].toString()))
+            throw new ClientErrorException("La novedad ya fue procesada y el incidente no puede modificarse.", 409);
+
+        em.createNativeQuery("""
+            update operator_operational_report
+               set employee_id=:employee,username=:username,point_id=:point,post_id=:post,
+                   category=:category,subcategory=:subcategory,title=:title,description=:description,
+                   severity=:severity,occurred_at=:occurred,reporter_persona_id=coalesce(reporter_persona_id,:persona),
+                   updated_at=:now
+             where id=:id and instance_country_id=:tenant and source='SGI_COMANDO' and status='CONFIRMED'
+            """).setParameter("employee", employeeId).setParameter("username", username)
+            .setParameter("point", pointId).setParameter("post", postId)
+            .setParameter("category", selection.category().name())
+            .setParameter("subcategory", selection.subcategory().name())
+            .setParameter("title", reportTitle(body)).setParameter("description", text(body, "description"))
+            .setParameter("severity", severity).setParameter("occurred", occurredAt)
+            .setParameter("persona", personaId).setParameter("now", now)
+            .setParameter("id", reportId).setParameter("tenant", tenant.instanceCountryId()).executeUpdate();
+        return reportId;
+    }
+
+    private boolean isConsoleReport(UUID reportId) {
+        @SuppressWarnings("unchecked") List<Object> rows = em.createNativeQuery("""
+            select source from operator_operational_report
+             where id=:id and instance_country_id=:tenant
+            """).setParameter("id", reportId).setParameter("tenant", tenant.instanceCountryId()).getResultList();
+        return !rows.isEmpty() && "SGI_COMANDO".equals(rows.get(0).toString());
+    }
+
+    private UUID employeeId(Long personaId) {
+        if (personaId == null) return null;
+        @SuppressWarnings("unchecked") List<Object> rows = em.createNativeQuery("""
+            select employee_id from employee_operational_snapshot
+             where instance_country_id=:tenant and persona_id=:persona
+             order by updated_at desc limit 1
+            """).setParameter("tenant", tenant.instanceCountryId()).setParameter("persona", personaId).getResultList();
+        if (rows.isEmpty()) return null;
+        Object value = rows.get(0);
+        return value instanceof UUID id ? id : UUID.fromString(value.toString());
+    }
+
+    private static Instant incidentDate(IncidentNotificationEntity record, JsonNode body) {
+        String value = text(body, "createdAt");
+        if (!value.isEmpty()) {
+            try { return Instant.parse(value); }
+            catch (Exception e) { throw new BadRequestException("createdAt debe ser una fecha ISO-8601 válida"); }
+        }
+        return record.createdAt == null ? Instant.now() : record.createdAt;
+    }
+
+    private static String reportTitle(JsonNode body) {
+        String title = text(body, "title");
+        if (title.length() > 200) throw new BadRequestException("El título no puede superar 200 caracteres");
+        return title;
+    }
+
+    static String reportSeverity(String value) {
+        return switch (value == null ? "" : value.trim().toUpperCase(Locale.ROOT)) {
+            case "INFORMATIVE", "MINOR", "LOW" -> "LOW";
+            case "MODERATE", "MEDIUM" -> "MEDIUM";
+            case "MAJOR", "HIGH" -> "HIGH";
+            case "CRITICAL" -> "CRITICAL";
+            default -> "MEDIUM";
+        };
     }
 
     private ObjectNode view(IncidentNotificationEntity record) throws JsonProcessingException {

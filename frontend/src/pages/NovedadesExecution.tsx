@@ -49,7 +49,7 @@ type Novelty={
   reviewedBy:string|null;
   reviewedAt:string|null;
   clientVisible:boolean;
-  sourceSystem:'SGI_OPR';
+  sourceSystem:'SGI_OPR'|'SGI_COM';
   audit:AuditEvent[];
 };
 
@@ -172,14 +172,14 @@ const defaultFromDate=new Date(latestDate);defaultFromDate.setDate(defaultFromDa
 const DEFAULT_FROM=defaultFromDate.toISOString().slice(0,10);
 const EMPTY_FILTERS:Filters={type:'ALL',query:'',city:'',company:'ALL',client:'',point:'',post:'',status:'ALL',reporter:'',dateFrom:DEFAULT_FROM,dateTo:DEFAULT_TO};
 
-type OperatorReport={reportId:string;type:NoveltyType;category:string;subcategory?:string;title:string;description:string;severity:'LOW'|'MEDIUM'|'HIGH'|'CRITICAL';status:string;occurredAt:string;createdAt:string;username:string;pointName:string;postName:string;clientName?:string;city?:string;companyCode?:string;companyName?:string;latitude?:number;longitude?:number;accuracyM?:number;photoCount?:number};
-function fromOperatorReport(row:OperatorReport):Novelty{return {
-  id:row.reportId,code:`OPR-${row.reportId.slice(0,8).toUpperCase()}`,type:row.type,subcategory:row.subcategory||row.category,
+type OperatorReport={reportId:string;type:NoveltyType;category:string;subcategory?:string;title:string;description:string;severity:'LOW'|'MEDIUM'|'HIGH'|'CRITICAL';status:string;occurredAt:string;createdAt:string;username:string;pointName:string;postName:string;clientName?:string;city?:string;companyCode?:string;companyName?:string;latitude?:number;longitude?:number;accuracyM?:number;photoCount?:number;source?:string;originCode?:string};
+function fromOperatorReport(row:OperatorReport):Novelty{const fromConsole=row.source==='SGI_COMANDO';return {
+  id:row.reportId,code:row.originCode||`OPR-${row.reportId.slice(0,8).toUpperCase()}`,type:row.type,subcategory:row.subcategory||row.category,
   status:row.status==='FINALIZED'?'FINALIZED':row.status==='APPROVED'?'APPROVED':row.status==='DISCARDED'?'DISCARDED':row.status==='CONFIRMED'?'CONFIRMED':'PENDING',critical:row.severity==='CRITICAL',
   company:row.companyName||'—',companyCode:row.companyCode||'',client:row.clientName||'—',city:row.city||'—',point:row.pointName||'—',post:row.postName||'—',zone:'',region:'',
   reportedBy:row.username||'Operador',reporterRole:'AGENT',createdAt:row.occurredAt||row.createdAt,description:row.description,
-  latitude:row.latitude??null,longitude:row.longitude??null,accuracyM:row.accuracyM??null,photoCount:row.photoCount||0,reviewComment:'',reviewedBy:null,reviewedAt:null,clientVisible:false,sourceSystem:'SGI_OPR',
-  audit:[{id:`received-${row.reportId}`,at:row.createdAt,title:'Recibido desde SGI Operador',detail:row.title,actor:row.username||'Operador'}]
+  latitude:row.latitude??null,longitude:row.longitude??null,accuracyM:row.accuracyM??null,photoCount:row.photoCount||0,reviewComment:'',reviewedBy:null,reviewedAt:null,clientVisible:false,sourceSystem:fromConsole?'SGI_COM':'SGI_OPR',
+  audit:[{id:`received-${row.reportId}`,at:row.createdAt,title:fromConsole?'Registrado desde SGI Comando':'Recibido desde SGI Operador',detail:row.title,actor:row.username||(fromConsole?'SGI Comando':'Operador')}]
 }}
 
 const typeLabel=(type:NoveltyType)=>type==='FINDING'?'Hallazgo':type==='VULNERABILITY'?'Vulnerabilidad':'Incidente';
@@ -214,7 +214,7 @@ export default function NovedadesExecution(){
 
   const loadRecords=useCallback(async()=>{
     try{const values=await api.operationalReports();setRecords((values as OperatorReport[]).map(fromOperatorReport));setLoadError('')}
-    catch{setRecords([]);setLoadError('No fue posible consultar las novedades registradas desde SGI Operador.')}
+    catch{setRecords([]);setLoadError('No fue posible consultar las novedades registradas.')}
   },[]);
   useEffect(()=>{void loadRecords()},[loadRecords]);
 
