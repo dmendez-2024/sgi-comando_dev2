@@ -3,6 +3,7 @@ package com.cajamarca.sgi.comando.smc;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.persistence.EntityManager;
+import com.cajamarca.sgi.comando.patrols.PatrolDistanceCalculator;
 import java.math.BigDecimal;
 import java.sql.Timestamp;
 import java.time.Instant;
@@ -18,6 +19,36 @@ public class SmcFactSources {
     @Inject EntityManager em;
     static final List<String> TYPES = List.of("PATROL_EXECUTION", "CONSIGNMENT_COMPLIANCE", "IMPULSE_EVALUATION", "PATROL_DISTANCE", "NOVELTY_APPROVAL");
     public record Candidate(SmcFact fact, Instant changedAt) {}
+
+    // Una evaluación local puede haberse apoyado en VISINT mock durante UAT.
+    // Conservarla en SGI no la convierte en un resultado real exportable a SMC.
+    private static final String SIMULATED_IMPULSE_EVIDENCE = """
+        exists(select 1 from task_execution tx
+            join visual_review vr on vr.task_execution_id=tx.id and vr.instance_country_id=tx.instance_country_id
+            left join consignment_evidence ce on ce.id=tx.target_id and ce.instance_country_id=tx.instance_country_id
+            left join consignment_compliance cc on cc.id=e.source_id and cc.instance_country_id=e.instance_country_id
+            where tx.instance_country_id=e.instance_country_id and vr.simulated
+              and ((e.source_type='PATROL' and tx.patrol_execution_id=e.source_id)
+                or (e.source_type='LOGBOOK' and tx.target_type='LOGBOOK_FIELD' and tx.group_id=e.source_id)
+                or (e.source_type='CONSIGNMENT' and tx.target_type='CONSIGNMENT_EVIDENCE'
+                    and tx.group_id=e.assignment_id and ce.consignment_id=cc.consignment_id)))
+        """;
+    private static final String SIMULATED_PATROL_EVIDENCE = """
+        exists(select 1 from task_execution tx
+            join visual_review vr on vr.task_execution_id=tx.id and vr.instance_country_id=tx.instance_country_id
+            where tx.instance_country_id=pe.instance_country_id and tx.patrol_execution_id=pe.id and vr.simulated)
+        """;
+
+    /** También protege entregas pendientes encoladas antes de introducir el filtro. */
+    boolean hasSimulatedEvidence(UUID tenant,String sourceType,UUID sourceId) {
+        String sql=switch(sourceType) {
+            case "IMPULSE_EVALUATION" -> "select exists(select 1 from impulse_evaluation e where e.instance_country_id=:tenant and e.id=:id and " + SIMULATED_IMPULSE_EVIDENCE + ")";
+            case "PATROL_EXECUTION" -> "select exists(select 1 from patrol_execution pe where pe.instance_country_id=:tenant and pe.id=:id and " + SIMULATED_PATROL_EVIDENCE + ")";
+            default -> null;
+        };
+        return sql!=null && Boolean.TRUE.equals(em.createNativeQuery(sql).setParameter("tenant",tenant)
+            .setParameter("id",sourceId).getSingleResult());
+    }
 
     public List<Candidate> candidates(UUID tenant, String sourceType, Instant since, UUID afterId, Instant until, int limit) {
         if (!TYPES.contains(sourceType)) throw new IllegalArgumentException("Fuente SMC desconocida");
@@ -77,7 +108,7 @@ public class SmcFactSources {
                     (BigDecimal)r[4],uuid(r[12]),uuid(r[13]),uuid(r[14]),
                     Map.of("source","patrol_distance_measurement","sourceId",r[0].toString(),"sampleCount",r[5],
                         "acceptedSegments",r[6],"rejectedSegments",r[7],"maxAccuracyM",r[8],"maxGapSeconds",r[9],
-                        "algorithmVersion",r[10],"maxSpeedKmh",5),personaId(r[11])),instant(r[3])));
+                        "algorithmVersion",r[10],"maxSpeedKmh",PatrolDistanceCalculator.MAX_SPEED_KMH),personaId(r[11])),instant(r[3])));
             }
             return facts;
         }
@@ -101,7 +132,9 @@ public class SmcFactSources {
                     or (e.rule_code='CON_CORRECTA' and e.source_type='CONSIGNMENT'))
                   and not exists(select 1 from smc_fact_delivery d where d.instance_country_id=e.instance_country_id
                       and d.source_type='IMPULSE_EVALUATION' and d.source_id=e.id)
-                order by e.evaluated_at,e.id
+                and not (
+                """ + SIMULATED_IMPULSE_EVIDENCE + """
+                ) order by e.evaluated_at,e.id
                 """).setParameter("tenant", tenant).setParameter("since", since).setParameter("until", until)
                 .setParameter("includeBoundary", afterId == null).setParameter("after", after).setMaxResults(limit).getResultList();
             for (Object row : rows) {
@@ -148,7 +181,9 @@ public class SmcFactSources {
                          and k.instance_country_id=pe.instance_country_id)
               and not exists(select 1 from smc_fact_delivery d where d.instance_country_id=pe.instance_country_id
                   and d.source_type='PATROL_EXECUTION' and d.source_id=pe.id)
-            order by pe.updated_at, pe.id
+            and not (
+            """ + SIMULATED_PATROL_EVIDENCE + """
+            ) order by pe.updated_at, pe.id
             """).setParameter("tenant", tenant).setParameter("since", since).setParameter("until", until)
             .setParameter("includeBoundary", afterId == null).setParameter("after", after).setMaxResults(limit).getResultList();
         for (Object row : patrols) {

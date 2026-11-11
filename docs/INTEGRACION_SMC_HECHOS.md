@@ -240,3 +240,59 @@ Una comprobación de solo lectura en PostgreSQL local encontró 121 relevos,
 todos PENDIENTE, y ninguna tabla específica de asistencia validada. En esa base
 no aparecían migraciones V137 o posteriores en flyway_schema_history al momento
 de consultar. Esta sesión no aplica migraciones ni despliega el backend allí.
+
+## Auditoría de datos de salida hacia SMC (2026-11-11)
+
+Se revisó el recorrido SmcFactSources -> SmcFact -> smc_fact_delivery ->
+SmcFactPublisher -> SmcAdapter -> GenericInterconnectionExecutor.
+
+| Campo | Procedencia operacional |
+|---|---|
+| instanceCountryId | instance_country_context vigente, reconciliado con CORE |
+| employeeId | employee_id del origen o del registro de evaluación; sin empleado de ejemplo de respaldo |
+| persona_id | employee_operational_snapshot del mismo tenant; se omite si no existe |
+| pointId, postId, shiftId | novedad, configuración operativa y asignación/turno vinculados al origen |
+| occurredAt | aprobación auditada, finalización de patrulla, confirmación de consigna o fecha operacional de la evaluación |
+| value de PATROL_KM | kilómetros del snapshot patrol_distance_measurement calculado desde muestras GPS recibidas |
+| value de ROUTE_COMPLETION | porcentaje calculado con hitos cumplidos y totales de las tablas operativas |
+| value de los hechos unitarios | 1 por cada ocurrencia elegible encontrada; no representa una nota ni el premio local |
+| eventId e Idempotency-Key | identificador determinista derivado del tipo y el ID del registro origen |
+
+No se sustituyen identidades, fechas ni mediciones faltantes por datos de ejemplo.
+El UUID aleatorio de smc_fact_delivery es la clave interna de la bandeja, no un
+agente ni una medición. La fecha actual se usa para cursores/backoff, no para
+reemplazar occurredAt. Los códigos de hechos, estados y fuentes son vocabulario
+del contrato. Los límites GPS configurados son reglas de cálculo. maxSpeedKmh
+ahora usa la misma constante que el calculador, evitando duplicar el literal.
+La URL se resuelve en CORE y la autenticación usa OpenBao/IDENT; los tokens de
+prueba del harness HTTP no son fallback del transporte operativo.
+
+Se agregó un filtro para no extraer impulsos o porcentajes de patrulla asociados
+a visual_review.simulated=true. También se revisa esa condición antes de enviar
+una entrega pendiente: se marca REJECTED con SIMULATED_OPERATIONAL_SOURCE y no
+se invoca HTTP. Se excluye conservadoramente todo hecho vinculado a una revisión
+marcada como simulada, aunque tenga otras capturas; los cursores no se reinician.
+La consulta respeta tenant y relaciona la evidencia de consigna mediante el
+cumplimiento y su consignment_id. No modifica ni borra los resultados de UAT.
+Este control no afecta distancias GPS ni novedades aprobadas por el solo hecho
+de existir una revisión simulada en un proceso independiente.
+
+La inspección de solo lectura de la base local encontró la bandeja SMC vacía,
+ninguna revisión marcada como simulada, ninguna revisión con modelo
+visint-simulado sin esa marca y ninguna evaluación sin empleado en el snapshot.
+No se enviaron datos a SMC real ni se cambió la base operativa.
+
+Alcance: la validación acredita consultas y procedencia técnica. Un registro de
+prueba insertado manualmente en tablas operativas sin ninguna marca de prueba
+no puede distinguirse automáticamente de uno real. Esta auditoría no certifica
+la veracidad física de una captura GPS ni cambia el catálogo de personal.
+
+Validación final: 27 pruebas aprobadas, 0 fallos y 0 errores. Incluye los campos
+extraídos de PostgreSQL hasta el request HTTP local, error 503 y reintento 201
+con el mismo payload y la misma clave de idempotencia, cálculo de 50% desde un
+hito cumplido de dos registrados, exclusión de evidencia simulada de Patrullas,
+Bitácora y Consignas, aislamiento por tenant y rechazo de una entrega simulada
+ya encolada antes de cualquier llamada HTTP. Los fixtures y tokens del harness
+son de pruebas aisladas; no se usaron destinos ni credenciales reales de SMC.
+La imagen del backend empaqueta quarkus-app y no incorpora los fixtures de
+src/test al servicio operativo. Los cambios no se desplegaron en esta sesión.

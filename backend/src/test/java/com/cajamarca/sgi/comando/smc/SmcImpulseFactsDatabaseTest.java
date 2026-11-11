@@ -27,7 +27,11 @@ class SmcImpulseFactsDatabaseTest {
             "employee_operational_snapshot(employee_id uuid,instance_country_id uuid,persona_id bigint)",
             "operational_assignment(id uuid,instance_country_id uuid,shift_occurrence_id uuid)",
             "shift_occurrence(id uuid,instance_country_id uuid,post_id uuid)",
-            "post(id uuid,instance_country_id uuid,point_id uuid)"))
+            "post(id uuid,instance_country_id uuid,point_id uuid)",
+            "task_execution(id uuid,instance_country_id uuid,target_id uuid,target_type text,group_id uuid,patrol_execution_id uuid)",
+            "visual_review(task_execution_id uuid,instance_country_id uuid,simulated boolean)",
+            "consignment_evidence(id uuid,instance_country_id uuid,consignment_id uuid)",
+            "consignment_compliance(id uuid,instance_country_id uuid,consignment_id uuid)"))
             em.createNativeQuery("create temp table "+ddl+" on commit drop").executeUpdate();
         em.createNativeQuery("create temp table smc_fact_delivery (like public.smc_fact_delivery including all) on commit drop").executeUpdate();
         insert("employee_operational_snapshot",employee,tenant,123L);
@@ -110,5 +114,80 @@ class SmcImpulseFactsDatabaseTest {
     void insert(String table,Object... values) {
         var q=em.createNativeQuery("insert into "+table+" values("+String.join(",",Collections.nCopies(values.length,"?"))+")");
         for(int i=0;i<values.length;i++)q.setParameter(i+1,values[i]);q.executeUpdate();
+    }
+
+    @Test void simulatedEvidenceNeverBecomesAnExportableImpulse() {
+        QuarkusTransaction.requiringNew().run(()->{
+            fixtures();
+            for(String type:List.of("PATROL","LOGBOOK","CONSIGNMENT")) {
+                Object[] e=(Object[])em.createNativeQuery("select id,source_id from impulse_evaluation where source_type=:type")
+                    .setParameter("type",type).getSingleResult();
+                UUID task=UUID.randomUUID(),target=UUID.randomUUID();
+                insert("task_execution",task,tenant,target,"LOGBOOK".equals(type)?"LOGBOOK_FIELD":"CONSIGNMENT_EVIDENCE",
+                    "LOGBOOK".equals(type)?e[1]:assignment,"PATROL".equals(type)?e[1]:null);
+                if("CONSIGNMENT".equals(type)) {
+                    UUID consignment=UUID.randomUUID();
+                    insert("consignment_compliance",e[1],tenant,consignment);
+                    insert("consignment_evidence",target,tenant,consignment);
+                }
+                insert("visual_review",task,tenant,true);
+                var s=new SmcFactSources();s.em=em;
+                assertTrue(s.hasSimulatedEvidence(tenant,"IMPULSE_EVALUATION",(UUID)e[0]));
+            }
+            assertEquals(2,candidates(tenant,since,null,100).size());
+            em.createNativeQuery("update visual_review set simulated=false").executeUpdate();
+            assertEquals(5,candidates(tenant,since,null,100).size());
+            em.createNativeQuery("update visual_review set simulated=true,instance_country_id=:other")
+                .setParameter("other",UUID.randomUUID()).executeUpdate();
+            assertEquals(5,candidates(tenant,since,null,100).size());
+        });
+    }
+
+    @Test void previouslyQueuedSimulationIsRejectedBeforeAnyHttpCall() {
+        QuarkusTransaction.requiringNew().run(()->{
+            fixtures();var fact=candidates(tenant,since,null,100).stream().map(SmcFactSources.Candidate::fact)
+                .filter(f->f.factType().equals("PATROL_OK")).findFirst().orElseThrow();
+            UUID origin=(UUID)em.createNativeQuery("select source_id from impulse_evaluation where id=:id")
+                .setParameter("id",fact.sourceId()).getSingleResult();
+            UUID task=UUID.randomUUID();insert("task_execution",task,tenant,UUID.randomUUID(),"PATROL_CHECKPOINT",null,origin);
+            insert("visual_review",task,tenant,true);
+            em.createNativeQuery("""
+                insert into smc_fact_delivery(id,instance_country_id,source_type,source_id,event_id,fact_type,payload_json)
+                values(:id,:tenant,'IMPULSE_EVALUATION',:origin,:event,'PATROL_OK','{}')
+                """).setParameter("id",UUID.randomUUID()).setParameter("tenant",tenant).setParameter("origin",fact.sourceId())
+                .setParameter("event",fact.eventId()).executeUpdate();
+            var publisher=new SmcFactPublisher();publisher.em=em;publisher.sources=new SmcFactSources();publisher.sources.em=em;
+            // No se proporciona adaptador HTTP: invocarlo haría fallar esta prueba.
+            assertTrue(publisher.deliverOne(tenant));
+            Object[] state=(Object[])em.createNativeQuery("select status,last_error,attempts from smc_fact_delivery").getSingleResult();
+            assertEquals("REJECTED",state[0]);assertEquals("SIMULATED_OPERATIONAL_SOURCE",state[1]);assertEquals(1,((Number)state[2]).intValue());
+        });
+    }
+
+    @Test void simulatedPatrolCannotExportPerformanceAndRealCheckpointCountsAreCalculated() {
+        QuarkusTransaction.requiringNew().run(()->{
+            fixtures();
+            for(String ddl:List.of(
+                "patrol_execution(id uuid,instance_country_id uuid,employee_id uuid,finished_at timestamptz,updated_at timestamptz,patrol_plan_id uuid,patrol_definition_id uuid,assignment_id uuid,result text)",
+                "patrol_plan(id uuid,instance_country_id uuid,patrol_definition_id uuid,post_id uuid)",
+                "patrol_definition(id uuid,instance_country_id uuid,point_id uuid,version_no integer,structure_type text,schedule_type text)",
+                "patrol_checkpoint(id uuid,instance_country_id uuid,patrol_definition_id uuid)",
+                "patrol_checkpoint_execution(instance_country_id uuid,checkpoint_id uuid,patrol_execution_id uuid,result text)"))
+                em.createNativeQuery("create temp table "+ddl+" on commit drop").executeUpdate();
+            UUID run=UUID.randomUUID(),definition=UUID.randomUUID(),checkpoint=UUID.randomUUID();
+            insert("patrol_execution",run,tenant,employee,since.plusSeconds(60),since.plusSeconds(120),null,definition,assignment,"COMPLETA");
+            insert("patrol_definition",definition,tenant,point,2,"CLOSED","PROGRAMMED");
+            insert("patrol_checkpoint",checkpoint,tenant,definition);
+            insert("patrol_checkpoint",UUID.randomUUID(),tenant,definition);
+            insert("patrol_checkpoint_execution",tenant,checkpoint,run,"CUMPLIDO");
+            var source=new SmcFactSources();source.em=em;
+            var real=source.candidates(tenant,"PATROL_EXECUTION",since,null,Instant.now(),100);
+            assertEquals(1,real.size());assertEquals(0,new BigDecimal("50").compareTo(real.getFirst().fact().value()));
+            UUID task=UUID.randomUUID();insert("task_execution",task,tenant,checkpoint,"PATROL_CHECKPOINT",null,run);
+            insert("visual_review",task,tenant,true);
+            assertTrue(source.candidates(tenant,"PATROL_EXECUTION",since,null,Instant.now(),100).isEmpty());
+            assertTrue(source.hasSimulatedEvidence(tenant,"PATROL_EXECUTION",run));
+            assertFalse(source.hasSimulatedEvidence(UUID.randomUUID(),"PATROL_EXECUTION",run));
+        });
     }
 }
