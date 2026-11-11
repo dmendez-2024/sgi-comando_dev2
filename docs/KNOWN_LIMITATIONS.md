@@ -45,6 +45,6 @@
 - Adjuntos de la baseline CSL UAT: solo metadata. [CSL IMG RC1](CSL_INCIDENT_IMAGES_2026-10-16.md) agrega binarios en MinIO y referencias en evidence_object; pendiente despliegue y UAT de navegador. Fotos históricas sin binario requieren volver a adjuntar; no hay cola offline ni limpieza automática de objetos huérfanos.
 - Historial de colaboradores de 2 semanas, turnos, disponibilidad y coordenadas: dataset DEMO/local para UAT. Producción debe resolverlos desde las tablas/servicios operativos de SGI: Comando.
 - Routing a STC: no activado en esta versión; se conservan los contratos existentes sin cambio.
-- Sanción: captura UX únicamente; no envía todavía a SIC: RRHH.
+- Sanción: SGI Comando condiciona la finalización a la confirmación síncrona de SIC:DHO y muestra los rechazos funcionales. La recepción y el flujo de aprobación/rechazo dependen de que DHO implemente `registroComando`; el retorno de esa decisión aún requiere la interconexión inversa.
 - EVC: no implementado.
 

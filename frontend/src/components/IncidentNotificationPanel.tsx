@@ -4,7 +4,7 @@ import {
   FileText, ImagePlus, Info, MapPin, OctagonAlert, Save, Send, ShieldAlert,
   Trash2, UserCheck, Users, X
 } from 'lucide-react';
-import {api} from '../api';
+import {api,ApiError} from '../api';
 import SearchableSelect from './SearchableSelect';
 
 export type IncidentCategory='SERVICE'|'SECURITY'|'ADMINISTRATIVE';
@@ -51,6 +51,10 @@ export type IncidentRecord={
   resolutionImages:AttachmentMeta[];
   sanction:boolean;
   sanctionDescription:string;
+  sanctionDeliveryStatus?:'NOT_REQUIRED'|'PENDING'|'SENT'|'FAILED';
+  sanctionEventId?:string;
+  sanctionDeliveryAttempts?:number;
+  sanctionSentAt?:string;
   absenceMode:''|'PROGRAMMED'|'EFFECTIVE';
   targetShiftId:string;
   targetShiftLabel:string;
@@ -106,6 +110,14 @@ const emptyRecord=(nextCode:string):IncidentRecord=>({
 const absenceModeFromIncidentType=(incidentType:string)=>incidentType==='Inasistencia programada'?'PROGRAMMED':incidentType==='Inasistencia efectiva'?'EFFECTIVE':'';
 const uniq=<T,>(values:T[])=>Array.from(new Set(values));
 const fmtDate=(value:string)=>new Intl.DateTimeFormat('es-EC',{day:'2-digit',month:'2-digit',year:'numeric'}).format(new Date(value));
+
+const saveErrorMessage=(error:unknown)=>{
+  if(error instanceof ApiError){
+    try{const body=JSON.parse(error.body) as {message?:unknown};if(typeof body.message==='string'&&body.message.trim())return body.message.trim();}catch{/* respuesta no JSON */}
+    if(error.status===0)return 'No se pudo contactar al servidor de SGI Comando.';
+  }
+  return error instanceof Error&&error.message?error.message:'Ocurrió un error inesperado.';
+};
 
 const fmtShift=(shift:CoverageShift,prefix:string)=>{
   const date=(value:string)=>new Intl.DateTimeFormat('es-EC',{timeZone:'America/Guayaquil',day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',hour12:false}).format(new Date(value));
@@ -282,7 +294,7 @@ export default function IncidentNotificationPanel({initial,nextCode,locations,lo
       }
       const saved=await onSave({...working,status});
       setForm(saved);
-    }catch(error){setError(error instanceof Error?`No se pudo guardar el incidente: ${error.message}`:'No se pudo guardar el incidente.');}
+    }catch(error){setError(`No se pudo ${status==='FINALIZED'?'finalizar':'guardar'} el incidente: ${saveErrorMessage(error)}`);}
     finally{setSaving(false);}
   }
 

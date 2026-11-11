@@ -501,6 +501,62 @@
     "legacyConnectionIds": []
   },
   {
+    "interconnectionRef": "SGI_COM_SIC_DHO_0001",
+    "interconnectionId": "SGI_COM_SIC_DHO_0001_v001",
+    "sourceProgramId": "SGI_COM",
+    "targetProgramId": "SIC_DHO",
+    "purpose": "Submit finalized incident sanctions from SGI Comando for the DHO approval or rejection workflow.",
+    "interactionType": "REST_API",
+    "mode": "SYNC",
+    "protocol": "HTTP",
+    "contractVersion": "v1",
+    "dataOwnerProgramId": "SGI_COM",
+    "criticality": "HIGH",
+    "legacyTarget": true,
+    "targetImplementationStatus": "MANUAL_PENDING",
+    "status": "DEVELOPMENT",
+    "interfaces": [
+      {
+        "interfaceId": "SGI_COM_SIC_DHO_0001_IF01",
+        "method": "POST",
+        "path": "/ops.api.dho/ws/sgi/empresa/sancion/registroComando",
+        "purpose": "Register one sanction event containing every employee selected in the finalized incident.",
+        "contentType": "application/json",
+        "request": {
+          "headers": [
+            "Authorization: Bearer <SERVICE_TOKEN>",
+            "X-Correlation-Id",
+            "X-Interconnection-Id",
+            "X-Contract-Version",
+            "Idempotency-Key"
+          ],
+          "fields": [
+            "eventId",
+            "incidentId",
+            "instanceCountryId",
+            "emitterPersonaId",
+            "infraccionFecha",
+            "observacion",
+            "syncFecha",
+            "employees[].employeeId",
+            "employees[].personaId",
+            "employees[].punto",
+            "employees[].cliente",
+            "employees[].compania"
+          ],
+          "idempotency": "eventId is also sent as Idempotency-Key and remains unchanged across retries."
+        },
+        "response": {
+          "fields": [
+            "success",
+            "message"
+          ]
+        }
+      }
+    ],
+    "legacyConnectionIds": []
+  },
+  {
     "interconnectionRef": "SIC_DHO_SGI_COM_0001",
     "interconnectionId": "SIC_DHO_SGI_COM_0001_v001",
     "sourceProgramId": "SIC_DHO",

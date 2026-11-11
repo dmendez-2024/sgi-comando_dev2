@@ -35,6 +35,7 @@ public class IncidentNotificationResource {
     @Inject AssignmentResource assignments;
     @Inject IncidentCoverageRolePolicy coverageRolePolicy;
     @Inject IncidentCatalogService catalog;
+    @Inject IncidentSanctionDeliveryService sanctionDelivery;
 
     @GET @Path("/catalog")
     public ObjectNode catalog() {
@@ -62,8 +63,10 @@ public class IncidentNotificationResource {
         record.code = "INC-" + Instant.now().atZone(ZoneId.of("America/Guayaquil")).getYear() + "-"
                 + String.format("%06d", ((Number) em.createNativeQuery("select nextval('incident_notification_code_seq')").getSingleResult()).longValue());
         record.createdBy = scope.username();
+        record.sanctionDeliveryStatus = "NOT_REQUIRED";
         apply(record, body);
         record.persistAndFlush();
+        sanctionDelivery.deliverIfRequired(record, body);
         return view(record);
     }
 
@@ -72,6 +75,7 @@ public class IncidentNotificationResource {
         IncidentNotificationEntity record = findVisible(id);
         apply(record, body);
         record.flush();
+        sanctionDelivery.deliverIfRequired(record, body);
         return view(record);
     }
 
@@ -84,6 +88,7 @@ public class IncidentNotificationResource {
         String status = text(body, "status");
         if (!Set.of("DRAFT", "FINALIZED").contains(status)) throw new BadRequestException("Estado de incidente inválido");
         JsonNode previous = record.payloadJson == null ? mapper.createObjectNode() : mapper.readTree(record.payloadJson);
+        sanctionDelivery.requireQueuedSanctionUnchanged(record, previous, body);
         IncidentCatalogService.Selection selection = catalog.canonicalize(body, "FINALIZED".equals(status));
         String appliedAssignmentId = text(previous, "coverageAssignmentId");
         body.remove("coverageAssignmentId");
@@ -211,6 +216,10 @@ public class IncidentNotificationResource {
         data.put("severityCatalogId", record.severityCatalogId == null ? "" : record.severityCatalogId.toString());
         data.put("createdAt", record.createdAt.toString());
         data.put("updatedAt", record.updatedAt.toString());
+        data.put("sanctionDeliveryStatus", record.sanctionDeliveryStatus == null ? "NOT_REQUIRED" : record.sanctionDeliveryStatus);
+        data.put("sanctionDeliveryAttempts", record.sanctionDeliveryAttempts);
+        if (record.sanctionEventId != null) data.put("sanctionEventId", record.sanctionEventId.toString());
+        if (record.sanctionSentAt != null) data.put("sanctionSentAt", record.sanctionSentAt.toString());
         return data;
     }
 
