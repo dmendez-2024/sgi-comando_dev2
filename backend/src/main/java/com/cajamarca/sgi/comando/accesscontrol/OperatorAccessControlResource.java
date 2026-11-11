@@ -10,12 +10,14 @@ import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import java.security.MessageDigest;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.*;
 
 @Path("/api/v1/operator/access-control")
 @Produces(MediaType.APPLICATION_JSON)
 @RolesAllowed({"SUPERVISOR_SEGURIDAD","AGENTE_SEGURIDAD"})
 public class OperatorAccessControlResource {
+    private static final ZoneId OPERATING_ZONE=ZoneId.of("America/Guayaquil");
     @Inject TenantContext tenant;
     @Inject OperationalScopeService scope;
 
@@ -43,14 +45,15 @@ public class OperatorAccessControlResource {
 
     @GET @Path("/catalog")
     public List<CatalogEntry> catalog(@QueryParam("pointId") UUID pointId){
-        PointEntity point=point(pointId);ServiceEntity service=service(point);LocalDate today=LocalDate.now();
+        PointEntity point=point(pointId);ServiceEntity service=service(point);LocalDate today=today();
         List<AccessControlEntry> whites=AccessControlEntry.list("instanceCountryId=?1 and clientId=?2 and listType='WHITE' and status='ACTIVE'",tenant.instanceCountryId(),service.clientId);
         return whites.stream().filter(row->applies(row.id,point.id)&&!today.isBefore(row.validFrom)&&!today.isAfter(row.validUntil)).map(row->new AbstractMap.SimpleEntry<>(row,person(row))).filter(pair->pair.getValue().qrTokenHash!=null&&pair.getValue().qrRevokedAt==null).map(pair->{AccessControlEntry row=pair.getKey();AccessControlPerson person=pair.getValue();AccessControlEntry black=activeBlack(row,point.id);return new CatalogEntry(person.qrTokenHash,person.identification,person.lastNames,person.firstNames,row.accreditation,row.organizationalReference,row.validFrom,row.validUntil,black==null?"AUTHORIZED":"DENIED",black==null?"Autorización vigente.":black.observations);}).toList();
     }
 
     private AccessControlEntry activeBlack(AccessControlEntry white,UUID pointId){List<AccessControlEntry> rows=AccessControlEntry.list("instanceCountryId=?1 and clientId=?2 and listType='BLACK' and personId=?3",tenant.instanceCountryId(),white.clientId,white.personId);return rows.stream().filter(this::valid).filter(row->applies(row.id,pointId)).findFirst().orElse(null);}
     private AccessControlPerson person(AccessControlEntry row){AccessControlPerson person=AccessControlPerson.find("id=?1 and instanceCountryId=?2",row.personId,tenant.instanceCountryId()).firstResult();if(person==null)throw new NotFoundException("Identidad asociada no encontrada.");return person;}
-    private boolean valid(AccessControlEntry row){LocalDate today=LocalDate.now();return "ACTIVE".equals(row.status)&&!today.isBefore(row.validFrom)&&!today.isAfter(row.validUntil);}
+    private boolean valid(AccessControlEntry row){LocalDate today=today();return "ACTIVE".equals(row.status)&&!today.isBefore(row.validFrom)&&!today.isAfter(row.validUntil);}
+    private static LocalDate today(){return LocalDate.now(OPERATING_ZONE);}
     private boolean applies(UUID entryId,UUID pointId){return AccessControlEntryPoint.count("entryId=?1 and pointId=?2 and instanceCountryId=?3",entryId,pointId,tenant.instanceCountryId())>0;}
     private PointEntity point(UUID id){if(id==null)throw new BadRequestException("Punto obligatorio.");PointEntity point=PointEntity.find("id=?1 and instanceCountryId=?2",id,tenant.instanceCountryId()).firstResult();if(point==null)throw new NotFoundException("Punto no encontrado.");scope.requireCompanyForCompanyRoles(point.companyId);return point;}
     private ServiceEntity service(PointEntity point){ServiceEntity service=ServiceEntity.find("id=?1 and instanceCountryId=?2",point.serviceId,tenant.instanceCountryId()).firstResult();if(service==null)throw new NotFoundException("Servicio no encontrado.");return service;}

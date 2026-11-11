@@ -191,7 +191,7 @@ public class OperatorResource {
             List<Object[]> accreditationRows=em.createNativeQuery("""
               select id,code,name,description,identification_logic,verification_logic,
                      auth_preapproval,auth_client,auth_supervisor,capture_manual,capture_qr,
-                     capture_barcode,capture_nfc,capture_automatic
+                     capture_barcode,capture_nfc,capture_automatic,white_list_enabled,black_list_enabled
               from logbook_accreditation
               where instance_country_id=:tenant and protocol_id=:protocol
               order by code
@@ -212,7 +212,9 @@ public class OperatorResource {
                     .put("captureQr",(Boolean)accreditationRow[10])
                     .put("captureBarcode",(Boolean)accreditationRow[11])
                     .put("captureNfc",(Boolean)accreditationRow[12])
-                    .put("captureAutomatic",(Boolean)accreditationRow[13]);
+                    .put("captureAutomatic",(Boolean)accreditationRow[13])
+                    .put("whiteListEnabled",(Boolean)accreditationRow[14])
+                    .put("blackListEnabled",(Boolean)accreditationRow[15]);
                 ArrayNode fields=accreditation.putArray("fields");
                 List<Object[]> fieldRows=em.createNativeQuery("""
                   select id,section,sort_order,name,description,field_type,required,evidence_required,
@@ -490,7 +492,7 @@ public class OperatorResource {
             throw new BadRequestException("Fecha del registro fuera de la ventana operativa");
         if(!c.point.id.equals(uuid(event,"pointId")) || !c.post.id.equals(uuid(event,"postId"))) throw new BadRequestException("Punto o Puesto no coincide con la asignación");
         @SuppressWarnings("unchecked") List<Object[]> configuration=em.createNativeQuery("""
-          select p.version_no,a.id from logbook_protocol p
+          select p.version_no,a.id,a.white_list_enabled from logbook_protocol p
           join logbook_protocol_post_scope s on s.protocol_id=p.id and s.instance_country_id=p.instance_country_id
           join logbook_accreditation a on a.protocol_id=p.id and a.instance_country_id=p.instance_country_id
           where p.id=:protocol and a.id=:accreditation and p.instance_country_id=:tenant
@@ -498,6 +500,24 @@ public class OperatorResource {
           """).setParameter("protocol",protocolId).setParameter("accreditation",accreditationId)
             .setParameter("tenant",tenant.instanceCountryId()).setParameter("post",c.post.id).getResultList();
         if(configuration.isEmpty() || ((Number)configuration.get(0)[0]).intValue()!=protocolVersion) throw new ClientErrorException("El Protocolo de Bitácora cambió; actualiza antes de registrar",409);
+        UUID whiteListEntryId=null;
+        if(Boolean.TRUE.equals(configuration.get(0)[2])){
+            whiteListEntryId=uuid(event,"whiteListEntryId");
+            Number authorizationCount=(Number)em.createNativeQuery("""
+              select count(*) from access_control_entry e
+              join access_control_entry_point ep on ep.entry_id=e.id and ep.instance_country_id=e.instance_country_id
+              where e.id=:entry and e.instance_country_id=:tenant and e.list_type='WHITE' and e.status='ACTIVE'
+                and ep.point_id=:point and :operatingDate between e.valid_from and e.valid_until
+                and not exists (
+                  select 1 from access_control_entry b
+                  join access_control_entry_point bp on bp.entry_id=b.id and bp.instance_country_id=b.instance_country_id
+                  where b.instance_country_id=e.instance_country_id and b.person_id=e.person_id and b.client_id=e.client_id
+                    and b.list_type='BLACK' and b.status='ACTIVE' and bp.point_id=:point
+                    and :operatingDate between b.valid_from and b.valid_until)
+              """).setParameter("entry",whiteListEntryId).setParameter("tenant",tenant.instanceCountryId()).setParameter("point",c.point.id)
+                .setParameter("operatingDate",LocalDate.now(OPERATING_ZONE)).getSingleResult();
+            if(authorizationCount.longValue()!=1)throw new ClientErrorException("La autorización de Lista Blanca ya no está vigente para este Punto.",409);
+        }
         JsonNode values=event.path("fieldValues");
         if(!values.isObject()) throw new BadRequestException("fieldValues debe ser un objeto");
         @SuppressWarnings("unchecked") List<Object[]> fields=em.createNativeQuery("select id,required,evidence_required,field_type,options_json from logbook_protocol_field where instance_country_id=:tenant and accreditation_id=:accreditation")
@@ -525,10 +545,11 @@ public class OperatorResource {
                 .put("pointVersion",((Number)row[2]).longValue()).put("recordVersion",((Number)row[3]).longValue()).put("idempotentReplay",true);
         }
         long pointVersion=nextLogbookPointVersion(c.point.id);
-        em.createNativeQuery("insert into operator_logbook_record(id,instance_country_id,assignment_id,point_id,post_id,employee_id,username,protocol_id,protocol_version,accreditation_id,captured_at,received_at,status,comments,field_values_json,evidence_refs_json,payload_hash,correlation_id,record_version,point_version) values(:id,:tenant,:assignment,:point,:post,:employee,:username,:protocol,:version,:accreditation,:captured,current_timestamp,'INSIDE',:comments,:fields,:evidence,:hash,:correlation,1,:pointVersion)")
+        em.createNativeQuery("insert into operator_logbook_record(id,instance_country_id,assignment_id,point_id,post_id,employee_id,username,protocol_id,protocol_version,accreditation_id,white_list_entry_id,captured_at,received_at,status,comments,field_values_json,evidence_refs_json,payload_hash,correlation_id,record_version,point_version) values(:id,:tenant,:assignment,:point,:post,:employee,:username,:protocol,:version,:accreditation,:whiteListEntry,:captured,current_timestamp,'INSIDE',:comments,:fields,:evidence,:hash,:correlation,1,:pointVersion)")
             .setParameter("id",recordId).setParameter("tenant",tenant.instanceCountryId()).setParameter("assignment",assignmentId)
             .setParameter("point",c.point.id).setParameter("post",c.post.id).setParameter("employee",employee).setParameter("username",identity.getPrincipal().getName())
             .setParameter("protocol",protocolId).setParameter("version",protocolVersion).setParameter("accreditation",accreditationId).setParameter("captured",capturedAt)
+            .setParameter("whiteListEntry",whiteListEntryId)
             .setParameter("comments",comments.isBlank()?null:comments).setParameter("fields",values.toString()).setParameter("evidence",evidence.toString())
             .setParameter("hash",payloadHash).setParameter("correlation",correlationId).setParameter("pointVersion",pointVersion).executeUpdate();
         return mapper.createObjectNode().put("recordId",recordId.toString()).put("status","INSIDE").put("receivedAt",Instant.now().toString())
@@ -578,10 +599,36 @@ public class OperatorResource {
         if(!"INSIDE".equals(row[1].toString()))throw new ClientErrorException("El acceso no se encuentra disponible para registrar la salida.",409);
         long expected=request.path("expectedVersion").asLong(0), current=((Number)row[2]).longValue();
         if(expected>0&&expected!=current)throw new ClientErrorException("El acceso cambió. Actualiza la información antes de registrar la salida.",409);
+        UUID exitProtocolId=uuid(request,"exitProtocolId"), exitAccreditationId=uuid(request,"exitAccreditationId");
+        int exitProtocolVersion=request.path("exitProtocolVersion").asInt(0);
+        if(exitProtocolVersion<1)throw new BadRequestException("exitProtocolVersion inválida");
+        @SuppressWarnings("unchecked") List<Object[]> exitConfiguration=em.createNativeQuery("""
+          select p.version_no,p.application_type from logbook_protocol p
+          join logbook_protocol_post_scope s on s.protocol_id=p.id and s.instance_country_id=p.instance_country_id
+          join logbook_accreditation a on a.protocol_id=p.id and a.instance_country_id=p.instance_country_id
+          where p.id=:protocol and a.id=:accreditation and p.instance_country_id=:tenant
+            and p.status='ACTIVO' and s.post_id=:post and p.application_type in ('EGRESO','AMBOS')
+          """).setParameter("protocol",exitProtocolId).setParameter("accreditation",exitAccreditationId)
+            .setParameter("tenant",tenant.instanceCountryId()).setParameter("post",c.post.id).getResultList();
+        if(exitConfiguration.isEmpty()||((Number)exitConfiguration.get(0)[0]).intValue()!=exitProtocolVersion)
+            throw new ClientErrorException("El protocolo de egreso cambió; actualiza antes de registrar la salida.",409);
+        JsonNode exitValues=request.path("exitFieldValues");
+        if(!exitValues.isObject())throw new BadRequestException("exitFieldValues debe ser un objeto");
+        @SuppressWarnings("unchecked") List<Object[]> exitFields=em.createNativeQuery("select id,required,evidence_required,field_type,options_json from logbook_protocol_field where instance_country_id=:tenant and accreditation_id=:accreditation")
+            .setParameter("tenant",tenant.instanceCountryId()).setParameter("accreditation",exitAccreditationId).getResultList();
+        Set<String> allowedExitFields=new HashSet<>();Map<String,Set<String>> exitSelectionOptions=new HashMap<>();
+        for(Object[] field:exitFields){String fieldId=field[0].toString();allowedExitFields.add(fieldId);boolean evidenceField=Boolean.TRUE.equals(field[2])||"IMAGEN".equals(field[3].toString());
+            if(Boolean.TRUE.equals(field[1])&&!evidenceField&&(!exitValues.has(fieldId)||exitValues.path(fieldId).asText("").isBlank()))throw new BadRequestException("Falta un campo obligatorio del protocolo de egreso");
+            if(Boolean.TRUE.equals(field[1])&&evidenceField)throw new BadRequestException("El protocolo de egreso contiene una evidencia obligatoria aún no soportada por este contrato");
+            if("SELECCION".equals(field[3].toString())){Set<String> codes=new HashSet<>();try{for(JsonNode option:mapper.readTree(field[4]==null?"[]":field[4].toString()))codes.add(option.path("code").asText());}catch(Exception ignored){}exitSelectionOptions.put(fieldId,codes);}}
+        Iterator<String> exitNames=exitValues.fieldNames();while(exitNames.hasNext()){String fieldId=exitNames.next();if(!allowedExitFields.contains(fieldId))throw new BadRequestException("Campo no pertenece al protocolo de egreso vigente");Set<String> options=exitSelectionOptions.get(fieldId);String value=exitValues.path(fieldId).asText("");if(options!=null&&!value.isBlank()&&!options.contains(value))throw new BadRequestException("La opción seleccionada no pertenece al protocolo de egreso vigente");}
+        String exitComments=request.path("exitComments").asText("").trim();if(exitComments.length()>500)throw new BadRequestException("Las observaciones de salida superan 500 caracteres");
         Instant exitedAt=time(request,"exitedAt"); if(exitedAt.isAfter(Instant.now().plusSeconds(300)))throw new BadRequestException("La fecha de salida no puede estar en el futuro");
         long pointVersion=nextLogbookPointVersion(c.point.id), recordVersion=current+1;
-        em.createNativeQuery("update operator_logbook_record set status='EXITED',exited_at=:exitedAt,exited_by_employee_id=:employee,exited_by_username=:username,exit_operation_id=:operation,record_version=:recordVersion,point_version=:pointVersion where instance_country_id=:tenant and id=:id")
+        em.createNativeQuery("update operator_logbook_record set status='EXITED',exited_at=:exitedAt,exited_by_employee_id=:employee,exited_by_username=:username,exit_operation_id=:operation,exit_protocol_id=:exitProtocol,exit_protocol_version=:exitVersion,exit_accreditation_id=:exitAccreditation,exit_field_values_json=:exitFields,exit_comments=:exitComments,record_version=:recordVersion,point_version=:pointVersion where instance_country_id=:tenant and id=:id")
             .setParameter("exitedAt",exitedAt).setParameter("employee",employee).setParameter("username",identity.getPrincipal().getName())
+            .setParameter("exitProtocol",exitProtocolId).setParameter("exitVersion",exitProtocolVersion).setParameter("exitAccreditation",exitAccreditationId)
+            .setParameter("exitFields",exitValues.toString()).setParameter("exitComments",exitComments.isBlank()?null:exitComments)
             .setParameter("operation",exitOperationId).setParameter("recordVersion",recordVersion).setParameter("pointVersion",pointVersion)
             .setParameter("tenant",tenant.instanceCountryId()).setParameter("id",recordId).executeUpdate();
         return mapper.createObjectNode().put("recordId",recordId.toString()).put("status","EXITED").put("pointVersion",pointVersion)
