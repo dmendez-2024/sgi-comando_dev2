@@ -17,7 +17,7 @@ type PointResponsibility={pointId:string;startsAt:string;endsAt:string;employeeI
 type WeekData={plan:Plan;points:Point[];posts:Post[];shifts:Shift[];assignments:Assignment[];pointResponsibilities?:PointResponsibility[];summary:{requiredShifts:number;assignedShifts:number;unassignedShifts:number;coveragePct:number;warningsCount:number;plannedIcAvg:number;publishedRequiredShifts?:number;publishedAssignedShifts?:number;publishedCoveragePct?:number}};
 type DragPayload={employeeId:string;sourceAssignmentId?:string};
 type Evaluation={shiftOccurrenceId:string;state:'GREEN'|'AMBER'|'RED';ic?:number;blockers:{code:string;message:string}[];warnings:string[]};
-type RowDef={rowKey:string;post:Post;shiftCode:string;representative:Shift;rowIndex:number};
+type RowDef={rowKey:string;post:Post;slotKey:string;representative:Shift;variableSchedule:boolean;scheduleTitle:string;rowIndex:number};
 type CellCoord={rowIndex:number;dayIndex:number;rowKey:string;date:string};
 type ClipboardCell={r:number;c:number;employeeId?:string;sourceAssignmentId?:string;employeeName?:string};
 type ClipboardBlock={rows:number;cols:number;originRow:number;originDay:number;cells:ClipboardCell[];label:string};
@@ -65,9 +65,16 @@ function minutesOf(iso:string){const t=time(iso);const [h,m]=t.split(':').map(Nu
 function durationMinutes(s:Shift){const a=minutesOf(s.startsAt),b=minutesOf(s.endsAt);const d=(b-a+1440)%1440;return d===0?1440:d}
 function crossesMidnight(s:Shift){return durationMinutes(s)<1440&&minutesOf(s.endsAt)<=minutesOf(s.startsAt)}
 function overlapMinute(min:number,start:number,end:number){return start<end?(min>=start&&min<end):(min>=start||min<end)}
+function dominantDayNightBand(s:Shift){
+  const start=minutesOf(s.startsAt),dur=durationMinutes(s);let day=0,night=0;
+  for(let i=0;i<dur;i++){if(overlapMinute((start+i)%1440,360,1080))day++;else night++}
+  return day===night?null:day>night?'DAY':'NIGHT';
+}
+function shiftSlotKey(s:Shift,semanticSlots:boolean){const band=semanticSlots?dominantDayNightBand(s):null;return band?`BAND:${band}`:`CODE:${s.shiftCode}`}
+function scheduleText(s:Shift){return `${time(s.startsAt)} – ${time(s.endsAt)}${crossesMidnight(s)?' +1':''}`}
 function shiftLabel(s:Shift,rowCount:number){
   const start=minutesOf(s.startsAt),dur=durationMinutes(s);const minute=(i:number)=>(start+i)%1440;
-  if(rowCount<=2){let day=0,night=0;for(let i=0;i<dur;i++){if(overlapMinute(minute(i),360,1080))day++;else night++;}if(day===night)return s.shiftName;return day>night?'Turno Diurno':'Turno Nocturno'}
+  if(rowCount<=2){const band=dominantDayNightBand(s);return band==='DAY'?'Turno Diurno':band==='NIGHT'?'Turno Nocturno':s.shiftName}
   const bands=[['Turno Mañana',300,720],['Turno Tarde',720,1020],['Turno Noche',1020,0],['Turno Madrugada',0,300]] as const;
   const counts=bands.map(()=>0);for(let i=0;i<dur;i++){const m=minute(i);bands.forEach((b,j)=>{if(overlapMinute(m,b[1],b[2]))counts[j]++})}
   const max=Math.max(...counts);if(counts.filter(x=>x===max).length>1)return s.shiftName;return bands[counts.indexOf(max)][0];
@@ -139,20 +146,21 @@ export default function Assignments(){
   const visiblePostIds=useMemo(()=>new Set(visiblePosts.map(p=>p.id)),[visiblePosts]);
   const postsByPoint=useMemo(()=>{const m=new Map<string,Post[]>();for(const p of visiblePosts){const pointId=p.targetType==='COORDINATION'?COORDINATION_POINT_ID:p.pointId??'';const list=m.get(pointId);if(list)list.push(p);else m.set(pointId,[p])}return m},[visiblePosts]);
   const shiftsByPost=useMemo(()=>{const m=new Map<string,Shift[]>();for(const shift of allShifts){const list=m.get(shift.postId);if(list)list.push(shift);else m.set(shift.postId,[shift])}return m},[allShifts]);
+  const semanticSlotsByPost=useMemo(()=>{const m=new Map<string,boolean>();for(const [postId,shifts] of shiftsByPost){const codes=new Set(shifts.map(s=>s.shiftCode));let safe=codes.size<=2;const occupied=new Set<string>();for(const shift of shifts){const band=dominantDayNightBand(shift);const key=band?`${shift.localDate}|${band}`:'';if(!band||occupied.has(key)){safe=false;break}occupied.add(key)}m.set(postId,safe)}return m},[shiftsByPost]);
 
   const rows=useMemo<RowDef[]>(()=>{
     const out:RowDef[]=[];let idx=0;
     for(const point of visiblePoints){
       for(const post of postsByPoint.get(point.id)??[]){
-        const representatives=new Map<string,Shift>();
-        for(const shift of shiftsByPost.get(post.id)??[])if(!representatives.has(shift.shiftCode))representatives.set(shift.shiftCode,shift);
-        for(const [code,representative] of representatives)out.push({rowKey:`${post.id}|${code}`,post,shiftCode:code,representative,rowIndex:idx++});
+        const groups=new Map<string,Shift[]>(),semanticSlots=semanticSlotsByPost.get(post.id)??false;
+        for(const shift of shiftsByPost.get(post.id)??[]){const slotKey=shiftSlotKey(shift,semanticSlots),group=groups.get(slotKey);if(group)group.push(shift);else groups.set(slotKey,[shift])}
+        for(const [slotKey,group] of groups){const representative=group[0],schedules=Array.from(new Set(group.map(scheduleText)));out.push({rowKey:`${post.id}|${slotKey}`,post,slotKey,representative,variableSchedule:schedules.length>1,scheduleTitle:schedules.join(' / '),rowIndex:idx++})}
       }
     }
     return out;
-  },[visiblePoints,postsByPoint,shiftsByPost]);
-  const rowKeyByPostShift=useMemo(()=>new Map(rows.map(row=>[`${row.post.id}|${row.shiftCode}`,row.rowKey])),[rows]);
-  const shiftAt=useMemo(()=>{const m=new Map<string,Shift>();for(const shift of allShifts){if(!dayIndexByDate.has(shift.localDate))continue;const rowKey=rowKeyByPostShift.get(`${shift.postId}|${shift.shiftCode}`);if(rowKey)m.set(`${rowKey}|${shift.localDate}`,shift)}return m},[allShifts,dayIndexByDate,rowKeyByPostShift]);
+  },[visiblePoints,postsByPoint,shiftsByPost,semanticSlotsByPost]);
+  const rowKeyByPostSlot=useMemo(()=>new Map(rows.map(row=>[`${row.post.id}|${row.slotKey}`,row.rowKey])),[rows]);
+  const shiftAt=useMemo(()=>{const m=new Map<string,Shift>();for(const shift of allShifts){if(!dayIndexByDate.has(shift.localDate))continue;const slotKey=shiftSlotKey(shift,semanticSlotsByPost.get(shift.postId)??false),rowKey=rowKeyByPostSlot.get(`${shift.postId}|${slotKey}`);if(rowKey)m.set(`${rowKey}|${shift.localDate}`,shift)}return m},[allShifts,dayIndexByDate,rowKeyByPostSlot,semanticSlotsByPost]);
   const rowByKey=useMemo(()=>new Map(rows.map(r=>[r.rowKey,r])),[rows]);
   const coordByShift=useMemo(()=>{const m=new Map<string,CellCoord>();for(const [key,shift] of shiftAt){const split=key.lastIndexOf('|');const rowKey=key.slice(0,split);const date=key.slice(split+1);const row=rowByKey.get(rowKey),dayIndex=dayIndexByDate.get(date);if(row&&dayIndex!=null)m.set(shift.id,{rowIndex:row.rowIndex,dayIndex,rowKey,date})}return m},[shiftAt,rowByKey,dayIndexByDate]);
   const rowByIndex=useMemo(()=>new Map(rows.map(r=>[r.rowIndex,r])),[rows]);
@@ -348,7 +356,7 @@ export default function Assignments(){
         <div className="assignment-compact-copy" title={a.employeeName}><strong>{compactAssignmentName(a.employeeName)}</strong><span>ID {a.idScore?.toFixed(1)??'—'} · CP {a.ic!=null?`${a.ic.toFixed(0)}%`:'—'}</span></div>
         {bulkOk&&<button className="remove-assignment" onClick={e=>{e.stopPropagation();void remove(a)}}><X size={12}/></button>}
       </div>:<div className="empty-slot spreadsheet-empty"><Users size={14}/><span>{ev?.state==='GREEN'?'Asignable':ev?.state==='AMBER'?'Revisar IC / ID':ev?.state==='RED'?'No asignable':date<today?'Histórico':canEdit?'Asignar':'Solo lectura'}</span></div>}
-      {isBottomRight&&bulkOk&&<button className="fill-handle" title="Arrastrar para rellenar / repetir patrón" onMouseDown={startFill}/>} 
+      {isBottomRight&&bulkOk&&<button className="fill-handle" title="Arrastrar para rellenar / repetir patrón" onMouseDown={startFill}/>}
     </div>;
   };
 
@@ -375,15 +383,15 @@ export default function Assignments(){
       <div className="assignments-main-panel">
         {(selectedPerson||(canEdit&&week?.plan.status==='DRAFT'))&&<div className="assignments-main-top" ref={mainTopRef}>
           <div className="main-top-row">{selectedPerson&&<div className="selection-banner inline-selection-banner"><img src={avatarUrl(selectedPerson.employeeId,selectedPerson.photoKey)}/><div><strong>{selectedPerson.fullName}</strong><span>{evaluating?'Evaluando timeline…':'Verde: cumple · Amarillo: alerta · Rojo: bloqueo'}</span></div><button onClick={()=>{setSelectedEmployeeId('');setEvaluations(new Map())}}><X size={14}/>Limpiar persona</button></div>}
-          {canEdit&&week?.plan.status==='DRAFT'&&<div className="excel-toolbar spreadsheet-toolbar inline-excel-toolbar">
-            <span className="selection-count">{selectedShiftIds.size?`${selectedShiftIds.size} celdas seleccionadas`:'Selecciona celdas directamente · Shift/Ctrl habilitados'}</span>
-            <button disabled={!selectedShiftIds.size} onClick={()=>void copySelected(false)}><ClipboardCopy size={15}/>Copiar</button>
-            <button disabled={!selectedShiftIds.size||!clipboard} onClick={()=>void pasteSelected()}><ClipboardPaste size={15}/>Pegar</button>
-            <div className="copy-units"><button onClick={startCopyDay}><Copy size={15}/>Copiar día</button><button disabled={!selectedShiftIds.size} onClick={startCopyCycle}><Copy size={15}/>Copiar ciclo</button><button disabled={!selectedShiftIds.size} onClick={()=>void startCopySelection()}><Copy size={15}/>Copiar selección</button></div>
-            <button disabled={!selectedShiftIds.size} className="danger-light" onClick={()=>void deleteSelected()}><Trash2 size={15}/>Vaciar</button>
-            <button disabled={!history.length} onClick={()=>void undo()}>↶ Deshacer</button><button disabled={!redoStack.length} onClick={()=>void redo()}>↷ Rehacer</button>
-            {(copyMode!=='NONE')&&<button className="cancel-copy" onClick={cancelCopyMode}><X size={14}/>Cancelar {copyMode.startsWith('CYCLE')?'ciclo':copyMode.startsWith('DAY')?'día':'selección'}</button>}
-          </div>}
+            {canEdit&&week?.plan.status==='DRAFT'&&<div className="excel-toolbar spreadsheet-toolbar inline-excel-toolbar">
+              <span className="selection-count">{selectedShiftIds.size?`${selectedShiftIds.size} celdas seleccionadas`:'Selecciona celdas directamente · Shift/Ctrl habilitados'}</span>
+              <button disabled={!selectedShiftIds.size} onClick={()=>void copySelected(false)}><ClipboardCopy size={15}/>Copiar</button>
+              <button disabled={!selectedShiftIds.size||!clipboard} onClick={()=>void pasteSelected()}><ClipboardPaste size={15}/>Pegar</button>
+              <div className="copy-units"><button onClick={startCopyDay}><Copy size={15}/>Copiar día</button><button disabled={!selectedShiftIds.size} onClick={startCopyCycle}><Copy size={15}/>Copiar ciclo</button><button disabled={!selectedShiftIds.size} onClick={()=>void startCopySelection()}><Copy size={15}/>Copiar selección</button></div>
+              <button disabled={!selectedShiftIds.size} className="danger-light" onClick={()=>void deleteSelected()}><Trash2 size={15}/>Vaciar</button>
+              <button disabled={!history.length} onClick={()=>void undo()}>↶ Deshacer</button><button disabled={!redoStack.length} onClick={()=>void redo()}>↷ Rehacer</button>
+              {(copyMode!=='NONE')&&<button className="cancel-copy" onClick={cancelCopyMode}><X size={14}/>Cancelar {copyMode.startsWith('CYCLE')?'ciclo':copyMode.startsWith('DAY')?'día':'selección'}</button>}
+            </div>}
           </div>
         </div>}
 
@@ -393,7 +401,7 @@ export default function Assignments(){
             <div className={`point-band ${coverage.pct===100?'complete':coverage.pct>=80?'partial':'critical'}`}><div className="point-band-sticky"><div className="point-band-meta"><strong className="point-band-title" title={point.name}>{point.name}</strong><span className="point-band-subtitle" title={coordination?`Compañía: ${selectedCompany?.name??'—'} · Supervisión y Monitoreo`:`Cliente: ${point.clientName} · Ciudad: ${point.city}`}>{coordination?`Compañía: ${selectedCompany?.name??'—'} · Supervisión y Monitoreo`:`Cliente: ${point.clientName} · Ciudad: ${point.city}`}</span></div><b className="point-band-coverage">Asignación {coverage.pct}%</b></div><div className="point-band-fill" aria-hidden="true"/></div>
             {posts.map(post=>{const postRows=rowsByPost.get(post.id)??[],pm=postMetrics(post.id),isCoordination=post.targetType==='COORDINATION';return <div className="post-assignment spreadsheet-post" key={post.id}>
               <div className="post-info-v04 spreadsheet-post-info compact-post-info" onClick={()=>isCoordination?setNotice(`${post.code} · ${post.coordinationType==='SUPERVISION'?`Ruta activa: ${post.routeName??'sin ruta'}`:'Puesto interno de Monitoreo'} · Rol requerido: ${ROLE_LABEL[post.requiredRoleCode??'']??post.requiredRoleCode}`):void openPost(post.id)}><div className="post-info-headline"><div className="post-info-title"><strong>{post.code}</strong><span>{post.name}</span></div>{isCoordination?<div className="post-tier-inline"><span>COO</span><b>{post.coordinationType==='SUPERVISION'?'SUP':'MON'}</b></div>:<div className={`post-tier-inline post-tier-${post.tier}`}><span>TIER</span><b>{post.tier}</b></div>}</div><em>{pm.hours} h/semana requeridas</em>{isCoordination?<div className="post-metrics"><span>Rol: <b>{ROLE_LABEL[post.requiredRoleCode??'']??post.requiredRoleCode}</b></span><span>{post.routeName?`Ruta: ${post.routeName}`:'Sin ruta requerida'}</span></div>:<div className="post-metrics">IC: <b className={pm.ic==null?'':metricClass(pm.ic)}>{pm.ic==null?'—':`${pm.ic}%`}</b><span>ID: <b className={pm.id==null?'':metricClass(pm.id)}>{pm.id==null?'—':`${pm.id}%`}</b></span></div>}<div className={`cycle-chip ${post.cycleLengthDays?'':'missing'}`}>{post.cycleLengthDays?<><b>{post.rotationCode}</b><span>Ciclo {post.cycleLengthDays} días</span></>:<span>Ciclo no informado</span>}</div><button className="post-more"><Info size={11}/>{isCoordination?'Información de Coordinación':'Más información'}</button></div>
-              <div className="post-shift-rows spreadsheet-shift-rows">{postRows.map(row=><div className="shift-row spreadsheet-row" key={row.rowKey}><div className="shift-label spreadsheet-shift-label"><Clock3 size={15}/><div><strong>{shiftLabel(row.representative,postRows.length)}</strong><span>{time(row.representative.startsAt)} – {time(row.representative.endsAt)}{crossesMidnight(row.representative)?' +1':''}</span></div></div>{leftSpacerWidth>0&&<div className="virtual-day-spacer" style={{flex:`0 0 ${leftSpacerWidth}px`}}/>}{renderDays.map(d=>{const s=shiftAt.get(`${row.rowKey}|${d}`);return <div className={`calendar-day-cell spreadsheet-day-cell ${d<today?'past-readonly':''} ${copyClass(post.id,d)}`} key={`${row.rowKey}-${d}`} onMouseEnter={()=>setHoverDate(d)}>{s?renderShiftCell(s,row,d):<div className="calendar-empty-day">—</div>}</div>})}{rightSpacerWidth>0&&<div className="virtual-day-spacer" style={{flex:`0 0 ${rightSpacerWidth}px`}}/>}</div>)}</div>
+              <div className="post-shift-rows spreadsheet-shift-rows">{postRows.map(row=><div className="shift-row spreadsheet-row" key={row.rowKey}><div className="shift-label spreadsheet-shift-label"><Clock3 size={15}/><div><strong>{shiftLabel(row.representative,postRows.length)}</strong><span title={row.scheduleTitle}>{row.variableSchedule?'Horario variable':scheduleText(row.representative)}</span></div></div>{leftSpacerWidth>0&&<div className="virtual-day-spacer" style={{flex:`0 0 ${leftSpacerWidth}px`}}/>}{renderDays.map(d=>{const s=shiftAt.get(`${row.rowKey}|${d}`);return <div className={`calendar-day-cell spreadsheet-day-cell ${d<today?'past-readonly':''} ${copyClass(post.id,d)}`} key={`${row.rowKey}-${d}`} onMouseEnter={()=>setHoverDate(d)}>{s?renderShiftCell(s,row,d):<div className="calendar-empty-day">—</div>}</div>})}{rightSpacerWidth>0&&<div className="virtual-day-spacer" style={{flex:`0 0 ${rightSpacerWidth}px`}}/>}</div>)}</div>
             </div>})}
           </div>})}{bottomPointSpacer>0&&<div className="virtual-point-spacer" style={{height:bottomPointSpacer}} aria-hidden="true"/>}</>}
         </div>
