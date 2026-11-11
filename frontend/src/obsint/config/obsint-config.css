@@ -182,3 +182,9 @@
 @container (max-width:1050px){.obs-cfg-layout{grid-template-columns:190px minmax(0,1fr)}.obs-cfg-detail{grid-column:1/-1}}
 @container (max-width:850px){.obs-cfg-titlebar{flex-wrap:wrap}.obs-cfg-title-actions{flex-wrap:wrap}.obs-cfg-point{grid-template-columns:repeat(2,minmax(0,1fr))}.obs-cfg-point>div:nth-child(2n){border-right:0}.obs-cfg-point>div{border-bottom:1px solid #eef1f5}.obs-cfg-point>div:last-child{grid-column:1/-1;border-bottom:0}}
 @container (max-width:690px){.obs-cfg-layout{grid-template-columns:minmax(0,1fr)}.obs-cfg-detail{grid-column:auto}}
+/* Tarea OBSINT: aviso con botón a Componentes y grupo de cámaras fuera del servicio OBSINT. */
+.obs-cfg-hint-action{align-items:flex-start;background:#fff5df;color:#8a5606;border-radius:8px;padding:9px 11px;line-height:1.45}
+.obs-cfg-hint-action svg{flex:0 0 auto;margin-top:2px}
+.obs-cfg-hint-action button{margin-left:auto;flex:0 0 auto;border:1px solid #e3c88f;background:#fff;color:#8a5606;border-radius:7px;padding:4px 9px;font-size:11px;font-weight:800;cursor:pointer;white-space:nowrap}
+.obs-cfg-camera-group{margin:10px 0 4px;font-size:11px;font-weight:800;color:#5d6f86;text-transform:uppercase;letter-spacing:.05em}
+.obs-cfg-camera-group small{margin-left:6px;text-transform:none;letter-spacing:0;font-weight:600;color:#8190a0}

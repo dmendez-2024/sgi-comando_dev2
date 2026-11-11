@@ -1,6 +1,6 @@
 import {useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode} from 'react';
 import {AlertTriangle, ArrowLeft, BrushCleaning, CarFront, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ClipboardList, Factory, History, Info, Package, Pencil, Plus, Power, Save, Search, ShieldCheck, Trash2, UserRound, UsersRound, X} from 'lucide-react';
-import {errorText, isObsintNoOrder, obsintConfigApi, type ObsintCameraOption, type ObsintCategory, type ObsintConsignaConfig, type ObsintConsignaSave, type ObsintConsignmentOption, type ObsintProtocol, type ObsintTaskSaved} from '../obsintApi';
+import {errorText, isObsintNoOrder, obsintConfigApi, type ObsintCameraOption, type ObsintCategory, type ObsintConsignaConfig, type ObsintConsignaSave, type ObsintConsignmentOption, type ObsintDeviceSchedule, type ObsintProtocol, type ObsintTaskSaved} from '../obsintApi';
 import {CATEGORIES, categoryLabel, DAYS, protocolStatusLabel} from '../obsint';
 import {ObsintMonitoringPanel} from './ObsintMonitoringPanel';
 import {ObsintScheduleEditor, slotsFromWeek, weekFromSlots} from './ObsintScheduleEditor';
@@ -22,7 +22,7 @@ const PAGE_SIZES=[10,20,50];
  * Cada cambio guardado crea y activa una versión; las versiones anteriores quedan disponibles para consulta.
  * Se abre desde Configuración del Punto: <ObsintConfig point={…} onBack={…}/>.
  */
-export default function ObsintConfig({point,onBack}:{point:ObsintPointContext;onBack:()=>void}){
+export default function ObsintConfig({point,onBack,onOpenComponents}:{point:ObsintPointContext;onBack:()=>void;onOpenComponents?:()=>void}){
   const [protocols,setProtocols]=useState<ObsintProtocol[]>([]);
   const [cameras,setCameras]=useState<ObsintCameraOption[]>([]);
   const [linkable,setLinkable]=useState<ObsintConsignmentOption[]>([]);
@@ -193,7 +193,7 @@ export default function ObsintConfig({point,onBack}:{point:ObsintPointContext;on
         {editing
           ?<ConsignaForm key={editing==='new'?'new':editing.id} pointId={point.pointId} initial={editing==='new'?null:editing} cameras={cameras}
               linkable={linkable.filter(o=>!consignas.some(c=>c.consignmentCode===o.code&&(editing==='new'||c.id!==editing.id)))}
-              defaultCategory={category==='ALL'?'SSO':category} onSaved={saved} onCancel={()=>setEditing(null)}/>
+              defaultCategory={category==='ALL'?'SSO':category} onSaved={saved} onCancel={()=>setEditing(null)} onOpenComponents={onOpenComponents}/>
           :selected?<ConsignaDetail c={selected} cameras={cameras} onEdit={editable?()=>openEditor(selected):undefined}/>
           :<div className="obs-cfg-empty-detail"><ClipboardList size={30}/>Seleccione una tarea para ver su detalle{editable?' o cree una nueva':''}.</div>}
       </section>
@@ -227,8 +227,11 @@ function ConsignaDetail({c,cameras,onEdit}:{c:ObsintConsignaConfig;cameras:Obsin
   </>;
 }
 
-function ConsignaForm({pointId,initial,cameras,linkable,defaultCategory,onSaved,onCancel}:{pointId:string;initial:ObsintConsignaConfig|null;cameras:ObsintCameraOption[];
-  linkable:ObsintConsignmentOption[];defaultCategory:ObsintCategory;onSaved:(result:ObsintTaskSaved)=>void|Promise<void>;onCancel:()=>void}){
+function ConsignaForm({pointId,initial,cameras,linkable,defaultCategory,onSaved,onCancel,onOpenComponents}:{pointId:string;initial:ObsintConsignaConfig|null;cameras:ObsintCameraOption[];
+  linkable:ObsintConsignmentOption[];defaultCategory:ObsintCategory;onSaved:(result:ObsintTaskSaved)=>void|Promise<void>;onCancel:()=>void;onOpenComponents?:()=>void}){
+  /** Código y nombre de los dispositivos OBSINT, para decir cuál no tiene cámaras. */
+  const [devices,setDevices]=useState<ObsintDeviceSchedule[]>([]);
+  useEffect(()=>{void obsintConfigApi.deviceSchedules(pointId).then(setDevices).catch(()=>undefined)},[pointId]);
   const [form,setForm]=useState<ObsintConsignaSave>(()=>({consignmentCode:initial?.consignmentCode??null,title:initial?.title??'',description:initial?.description??'',instruction:initial?.instruction??'',category:initial?.category??defaultCategory,
     timeLimitSeconds:initial?.timeLimitSeconds??120,active:initial?.active??true,cameraIds:initial?.cameraIds??[],schedule:initial?.schedule??[]}));
   const [week,setWeek]=useState(()=>weekFromSlots(initial?initial.schedule:null));
@@ -266,8 +269,20 @@ function ConsignaForm({pointId,initial,cameras,linkable,defaultCategory,onSaved,
       if(suggestion.available)setWeek(weekFromSlots(suggestion.slots));
     }).catch(()=>setScheduleHint('No se pudo consultar el horario comercial del dispositivo.'));
   };
-  /** Con dispositivo: sus cámaras y las que aún no tienen dispositivo; sin dispositivo, todas. */
-  const offered=deviceIds.length?cameras.filter(c=>!c.deviceId||deviceIds.includes(c.deviceId)||form.cameraIds.includes(c.id)):cameras;
+  /*
+   * Cámaras que se ofrecen, en dos grupos:
+   * - del servicio OBSINT: con dispositivo en la consigna, solo las de ese dispositivo (y las ya elegidas); sin dispositivo, todas las que tienen uno.
+   * - fuera del servicio OBSINT: sin dispositivo en Componentes; se ofrecen aparte y nunca se marcan solas.
+   */
+  // Sin dispositivos OBSINT en el punto (o aún cargando) no hay grupos: se ofrecen todas, como antes.
+  const grouped=devices.length>0||deviceIds.length>0;
+  const obsintCameras=grouped?cameras.filter(c=>c.deviceId&&(!deviceIds.length||deviceIds.includes(c.deviceId)||form.cameraIds.includes(c.id))):cameras;
+  const outsideCameras=grouped?cameras.filter(c=>!c.deviceId):[];
+  const cameraOption=(c:ObsintCameraOption)=>{const checked=form.cameraIds.includes(c.id);
+    return <label key={c.id} className={checked?'checked':''}><input type="checkbox" checked={checked} disabled={!checked&&form.cameraIds.length>=4} onChange={()=>toggleCamera(c.id)}/>
+      <span><b>{c.code}</b> {c.name}{c.location&&<small>{c.location}</small>}</span>{c.status==='OBSERVED'&&<em>Con observación</em>}</label>};
+  const consignmentDevices=devices.filter(d=>deviceIds.includes(d.deviceId));
+  const devicesLabel=consignmentDevices.length?consignmentDevices.map(d=>d.name?`${d.code} · ${d.name}`:d.code).join(', '):'El dispositivo de esta consigna';
   const timeLimits=TIME_LIMITS.includes(form.timeLimitSeconds)?TIME_LIMITS:[...TIME_LIMITS,form.timeLimitSeconds].sort((a,b)=>a-b);
 
   async function submit(e:FormEvent){
@@ -314,10 +329,15 @@ function ConsignaForm({pointId,initial,cameras,linkable,defaultCategory,onSaved,
     <fieldset className="obs-cfg-fieldset"><legend>Cámaras asociadas<RequiredMark/> <small>{form.cameraIds.length}/4</small></legend>
       <p className="obs-cfg-camera-hint">{deviceIds.length?'Cámaras del servicio OBSINT de esta consigna (se asignan en Componentes de Seguridad).':'Seleccione las cámaras desde los componentes de seguridad configurados.'}</p>
       <div className="obs-cfg-camera-chips">{cameras.filter(c=>form.cameraIds.includes(c.id)).map(c=><button type="button" key={c.id} onClick={()=>toggleCamera(c.id)} title={`Quitar ${c.code}`}>{c.code} {c.name}<X size={11}/></button>)}</div>
-      {offered.length?<div className="obs-cfg-cameras">{offered.map(c=>{const checked=form.cameraIds.includes(c.id);
-        return <label key={c.id} className={checked?'checked':''}><input type="checkbox" checked={checked} disabled={!checked&&form.cameraIds.length>=4} onChange={()=>toggleCamera(c.id)}/>
-          <span><b>{c.code}</b> {c.name}{c.location&&<small>{c.location}</small>}</span>{c.status==='OBSERVED'&&<em>Con observación</em>}</label>})}</div>
-      :<p className="obs-cfg-hint"><AlertTriangle size={15}/>{deviceIds.length?'El dispositivo de esta consigna no tiene cámaras. Asígnelas en Componentes de Seguridad → Videovigilancia.':'Este punto no tiene cámaras. Agréguelas en Componentes de Seguridad → Videovigilancia.'}</p>}
+      {obsintCameras.length?<div className="obs-cfg-cameras">{obsintCameras.map(c=>cameraOption(c))}</div>
+      :<p className="obs-cfg-hint obs-cfg-hint-action"><AlertTriangle size={15}/><span>{deviceIds.length
+          ?`${devicesLabel} ${consignmentDevices.length>1?'no tienen':'no tiene'} cámaras asignadas. Asígnelas en Componentes de Seguridad y vuelva a esta tarea.`
+          :outsideCameras.length?'Ninguna cámara del punto está asignada a un dispositivo OBSINT. Asígnelas en Componentes de Seguridad.':'Este punto no tiene cámaras. Agréguelas en Componentes de Seguridad → Videovigilancia.'}</span>
+        {onOpenComponents&&<button type="button" onClick={onOpenComponents}>Ir a Componentes</button>}</p>}
+      {outsideCameras.length>0&&<>
+        <p className="obs-cfg-camera-group">Fuera del servicio OBSINT <small>No se marcan solas</small></p>
+        <div className="obs-cfg-cameras">{outsideCameras.map(c=>cameraOption(c))}</div>
+      </>}
     </fieldset>
     </div>
     <Field label="Instrucciones operativas" required><textarea value={form.instruction} onChange={e=>set('instruction',e.target.value)} required maxLength={1000} rows={4} readOnly={linked} title={linked?'Sale de la consigna; se edita en Consignas.':undefined}

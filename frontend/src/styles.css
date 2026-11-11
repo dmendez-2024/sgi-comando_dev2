@@ -2682,3 +2682,12 @@ button.rel-material-image:focus-visible{outline:3px solid rgba(45,103,216,.3);ou
 .nov-status.finalized{background:#e8f7f5;color:#087f75}
 .nov-publication.finalized{background:#e8f7f5;color:#087f75;border:1px solid #bde5df}
 
+/* Consignas → Alcance: horario contratado de cada dispositivo OBSINT y guía de una consigna por dispositivo. */
+.bit-list-cards span.con-obsint-schedule{display:inline-flex;align-items:center;gap:4px;margin-top:4px;padding:2px 7px;border-radius:999px;background:#eaf8ef;color:#187a46;font-weight:700}
+.bit-list-cards span.con-obsint-schedule.warn{background:#fff5df;color:#a96808}
+.bit-list-cards span.con-obsint-schedule svg{color:inherit}
+.bit-info-box.con-obsint-warn{background:#fff5df;color:#8a5606}
+.bit-info-box.con-obsint-ok{background:#eaf8ef;color:#187a46}
+.bit-list-cards span.con-obsint-pills{display:flex;flex-wrap:wrap;gap:4px;margin-top:0}
+.bit-info-box.con-obsint-action{align-items:center}
+.bit-info-box.con-obsint-action button{margin-left:auto;flex:0 0 auto;border:1px solid #e3c88f;background:#fff;color:#8a5606;border-radius:7px;padding:4px 9px;font-size:11px;font-weight:800;cursor:pointer;white-space:nowrap}

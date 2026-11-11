@@ -127,6 +127,36 @@ public class ObsintConfigResource {
         return new ScheduleSuggestion(true, "Horario comercial de " + who + " · " + shift.shiftName, slots, deviceIds);
     }
 
+    /** Horario contratado (turno activo de SIC:COM) de un dispositivo OBSINT. dayMask: bit 0 = lunes … bit 6 = domingo. */
+    public record DeviceShiftView(String name, String start, String end, Integer dayMask) {}
+    /** Dispositivo OBSINT del Punto con sus horarios activos; Consignas → Alcance lo usa para guiar una consigna por dispositivo. */
+    /** cameras: cámaras de Videovigilancia no inactivas asignadas al dispositivo en Componentes de Seguridad. */
+    public record DeviceScheduleView(UUID deviceId, String code, String name, boolean active, int cameras, List<DeviceShiftView> shifts) {}
+
+    /**
+     * Dispositivos OBSINT del Punto y su horario contratado. Solo exige acceso al Punto: sin dispositivos OBSINT devuelve la lista vacía.
+     * Misma regla que la sugerencia de horario: varias tareas toman su horario solas solo si cada consigna cubre dispositivos con el mismo horario.
+     */
+    @GET @Path("/points/{pointId}/device-schedules") @Transactional
+    public List<DeviceScheduleView> deviceSchedules(@PathParam("pointId") UUID pointId) {
+        platform.requirePointAccess(pointId);
+        List<ElectronicMonitoringDevice> devices = ElectronicMonitoringDevice.list("instanceCountryId=?1 and pointId=?2 and upper(postType)='OBSINT' order by code",
+            platform.instanceCountryId(), pointId);
+        Map<UUID, Long> cameras = new HashMap<>();
+        for (SecElecComponent camera : pointCameras(pointId))
+            if (camera.electronicDeviceId != null) cameras.merge(camera.electronicDeviceId, 1L, Long::sum);
+        List<DeviceScheduleView> out = new ArrayList<>();
+        for (ElectronicMonitoringDevice device : devices) {
+            List<DeviceShiftView> shifts = ElectronicMonitoringShift.<ElectronicMonitoringShift>list(
+                    "instanceCountryId=?1 and deviceId=?2 and active=true order by shiftCode", platform.instanceCountryId(), device.id).stream()
+                .map(s -> new DeviceShiftView(s.shiftName, s.startTime == null ? null : s.startTime.toString(), s.endTime == null ? null : s.endTime.toString(), s.dayMask))
+                .toList();
+            out.add(new DeviceScheduleView(device.id, device.code, device.name, "ACTIVE".equalsIgnoreCase(device.commercialStatus),
+                cameras.getOrDefault(device.id, 0L).intValue(), shifts));
+        }
+        return out;
+    }
+
     /** Dispositivos OBSINT de SIC:COM a los que apunta la consigna vigente de Consignas con ese código. */
     private List<UUID> consignmentDevices(UUID pointId, String consignmentCode) {
         Consignment consignment = Consignment.<Consignment>find("instanceCountryId=?1 and pointId=?2 and code=?3 and status='VIGENTE'",

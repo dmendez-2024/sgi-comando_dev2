@@ -42,6 +42,10 @@ export type ObsintConsignmentOption={code:string;title:string;instruction:string
 export type ObsintCameraOption={id:string;code:string;name:string;location:string|null;status:'ACTIVE'|'OBSERVED';deviceId:string|null};
 export type ObsintSummary={enabled:boolean;status:'complete'|'warning'|'blocked';meta:string;activeVersion:number|null;activeConsignas:number;hasDraft:boolean;warnings:string[]};
 /** deviceIds: dispositivos de SIC:COM de la consigna; la tarea ofrece solo sus cámaras. */
+/** Horario contratado de SIC:COM. dayMask: bit 0 = lunes … bit 6 = domingo. */
+export type ObsintDeviceShift={name:string|null;start:string|null;end:string|null;dayMask:number|null};
+/** cameras: cámaras asignadas al dispositivo en Componentes de Seguridad. */
+export type ObsintDeviceSchedule={deviceId:string;code:string;name:string|null;active:boolean;cameras:number;shifts:ObsintDeviceShift[]};
 export type ObsintScheduleSuggestion={available:boolean;message:string;slots:ObsintSlot[];deviceIds:string[]};
 
 /**
@@ -80,6 +84,8 @@ export const obsintConfigApi={
   protocols:(pointId:string)=>request<ObsintProtocol[]>(`${point(pointId)}/protocols`),
   cameras:(pointId:string)=>request<ObsintCameraOption[]>(`${point(pointId)}/cameras`),
   consignments:(pointId:string)=>request<ObsintConsignmentOption[]>(`${point(pointId)}/consignments`),
+  /** Dispositivos OBSINT del Punto con su horario contratado (Consignas → Alcance). */
+  deviceSchedules:(pointId:string)=>request<ObsintDeviceSchedule[]>(`${point(pointId)}/device-schedules`),
   scheduleSuggestion:(pointId:string,consignmentCode:string)=>request<ObsintScheduleSuggestion>(`${point(pointId)}/schedule-suggestion?consignmentCode=${encodeURIComponent(consignmentCode)}`),
   /** Para la fila "OBSINT" de Configuración del Punto: status complete | warning | blocked y el texto a mostrar. */
   summary:(pointId:string)=>request<ObsintSummary>(`${point(pointId)}/summary`),

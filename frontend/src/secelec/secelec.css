@@ -127,6 +127,12 @@
 .sec-device-list article.ok em{color:#1d7a46}
 .sec-device-list article.missing{border-color:#f0c36d;background:#fffaf0}
 .sec-device-list article.missing em{color:#9a6200}
-.sec-no-device{color:#9a6200;font-style:normal}
+.sec-no-device{display:inline-flex;align-items:center;border-radius:999px;padding:2px 8px;background:#edf1f5;color:#63758a;font-style:normal;font-size:12px;font-weight:600}
 .sec-route-preview{margin:-2px 0 4px;font-size:12px;color:#667085}
 .sec-route-preview code{font-family:ui-monospace,Consolas,monospace;color:#344054;background:#f2f4f7;border-radius:5px;padding:1px 6px}
+/* Cámaras que no son del servicio OBSINT: es normal, va en gris. */
+.sec-device-list article.outside{background:#f8fafc;border-style:dashed}
+.sec-device-list article.outside em{color:#63758a}
+/* Servicio OBSINT sin elegir (cámara nueva con varios dispositivos). */
+.sec-field select.sec-need{border-color:#e7a83a;background:#fffaf0}
+.sec-field-help{font-size:11px;font-weight:400;color:#6d7a8b;line-height:1.4}

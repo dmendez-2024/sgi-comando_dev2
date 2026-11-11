@@ -52,7 +52,7 @@ export default function SecurityComponents({point,onBack}:{point:PointContext;on
     <div className="sec-hero"><h2>Componentes de Seguridad</h2><p>Configuración, gestión y mantenimiento de los componentes de seguridad del punto.</p></div>
     <PointBar point={point}/>
     {error&&<div className="sec-error"><AlertTriangle size={16}/>{error}</div>}
-    {devices.length>0&&<DeviceBar devices={devices}/>}
+    {devices.length>0&&<DeviceBar devices={devices} outside={items.filter(c=>c.family==='VIDEO'&&!c.electronicDeviceId&&c.status!=='INACTIVE').length}/>}
 
     <div className="sec-kpis">
       <Kpi icon={<ShieldCheck size={20}/>} tone="blue" label="Total de componentes" value={items.length} hint="en el punto"/>
@@ -80,7 +80,7 @@ export default function SecurityComponents({point,onBack}:{point:PointContext;on
           <tbody>
             {loading?<tr><td colSpan={5} className="sec-empty">Cargando componentes…</td></tr>
             :ofFamily.length?ofFamily.map(c=><tr key={c.id} className={c.id===selectedId?'selected':''} onClick={()=>{setSelectedId(c.id);setEditing(null)}}>
-              <td><b>{c.code}</b></td><td>{c.name}</td><td>{family==='VIDEO'&&devices.length?(devices.find(d=>d.id===c.electronicDeviceId)?.code??<em className="sec-no-device">Sin asignar</em>):c.componentType}</td>
+              <td><b>{c.code}</b></td><td>{c.name}</td><td>{family==='VIDEO'&&devices.length?(devices.find(d=>d.id===c.electronicDeviceId)?.code??<em className="sec-no-device">Fuera de OBSINT</em>):c.componentType}</td>
               <td><span className={`sec-status ${c.status.toLowerCase()}`}><i/>{statusLabel(c.status)}</span></td>
               <td className="sec-actions">
                 <button type="button" title="Editar" aria-label="Editar" onClick={e=>{e.stopPropagation();setSelectedId(c.id);setEditing(c)}}><Edit3 size={15}/></button>
@@ -112,12 +112,17 @@ export function PointBar({point}:{point:PointContext}){
   </div>;
 }
 
-/** Lo que contrató el cliente en SIC:COM: cada dispositivo es una línea con su horario; las cámaras se asignan a ellos. */
-function DeviceBar({devices}:{devices:ElectronicDevice[]}){
+/**
+ * Lo que contrató el cliente en SIC:COM: cada dispositivo es una línea con su horario; las cámaras se asignan a ellos.
+ * outside: cámaras que no son del servicio OBSINT (videovigilancia del punto, sin dispositivo); es normal, no es un error.
+ */
+function DeviceBar({devices,outside}:{devices:ElectronicDevice[];outside:number}){
   return <section className="sec-card sec-devices"><header><h3>Servicio OBSINT contratado (SIC:COM)</h3><span>Asigne cada cámara al dispositivo que le corresponde</span></header>
     <div className="sec-device-list">{devices.map(d=><article key={d.id} className={d.cameras?'ok':'missing'}>
       <b>{d.code}</b><span>{d.name}</span><small>{d.schedule}</small>
-      <em>{d.commercialStatus.toUpperCase()!=='ACTIVE'?'Inactivo':d.cameras?`${d.cameras} ${d.cameras===1?'cámara':'cámaras'}`:'Sin cámara asignada'}</em></article>)}</div>
+      <em>{d.commercialStatus.toUpperCase()!=='ACTIVE'?'Inactivo':d.cameras?`${d.cameras} ${d.cameras===1?'cámara':'cámaras'}`:'Sin cámara asignada'}</em></article>)}
+      {outside>0&&<article className="outside"><b>Fuera de OBSINT</b><span>Videovigilancia del punto</span><small>No se revisan en la Consola OBSINT</small>
+        <em>{outside} {outside===1?'cámara':'cámaras'}</em></article>}</div>
   </section>;
 }
 
@@ -128,7 +133,7 @@ function Kpi({icon,tone,label,value,hint}:{icon:ReactNode;tone:'blue'|'green'|'o
 function Detail({c,brands,devices,onEdit,onDelete}:{c:SecurityComponent;brands:BrandOption[];devices:ElectronicDevice[];onEdit:()=>void;onDelete:()=>void}){
   const video=c.family==='VIDEO';
   const rows:[string,string|null][]=[['Código',c.code],['Nombre',c.name],['Familia',familyLabel(c.family)],['Tipo',c.componentType],['Ubicación',c.location]];
-  if(video&&devices.length){const d=devices.find(x=>x.id===c.electronicDeviceId);rows.push(['Servicio OBSINT',d?`${d.code} · ${d.name} · ${d.schedule}`:'Sin asignar'])}
+  if(video&&devices.length){const d=devices.find(x=>x.id===c.electronicDeviceId);rows.push(['Servicio OBSINT',d?`${d.code} · ${d.name} · ${d.schedule}`:'No es parte del servicio OBSINT'])}
   if(video)rows.push(['Marca',brands.find(b=>b.code===c.cameraBrand)?.label??c.cameraBrand],['Modelo',c.brandModel]);
   else rows.push(['Marca / Modelo',c.brandModel]);
   rows.push(['Cobertura',c.coverage]);
@@ -163,6 +168,12 @@ function ComponentForm({pointId,family,brands,devices,initial,onSaved,onCancel}:
     cameraBrand:initial?.cameraBrand??'HIKVISION',streamQuality:initial?.streamQuality??(initial?'MAIN':'SUB'),rtspPath:initial?.rtspPath??'',
     latitude:initial?.latitude??null,longitude:initial?.longitude??null,streamingEnabled:initial?.streamingEnabled??true,streamingMode:initial?.streamingMode??'COPY',
     username:initial?.username??'',password:'',streamUrl:initial?.streamUrl??'',electronicDeviceId:initial?.electronicDeviceId??(devices.length===1?devices[0].id:null)}));
+  /*
+   * Servicio OBSINT de la cámara: '' = sin elegir (cámara nueva con varios dispositivos; el campo es obligatorio para no olvidarlo),
+   * NOT_OBSINT = no es parte del servicio OBSINT (se guarda sin dispositivo), o el id del dispositivo.
+   */
+  const [deviceChoice,setDeviceChoice]=useState(()=>initial?(initial.electronicDeviceId??NOT_OBSINT):devices.length===1?devices[0].id:'');
+  const chooseDevice=(value:string)=>{setDeviceChoice(value);set('electronicDeviceId',value&&value!==NOT_OBSINT?value:null)};
   const [showPassword,setShowPassword]=useState(false);
   const [testing,setTesting]=useState(false);
   const [test,setTest]=useState<CameraTestResult|null>(null);
@@ -210,9 +221,11 @@ function ComponentForm({pointId,family,brands,devices,initial,onSaved,onCancel}:
     <Field label="Nombre del componente *"><input value={form.name} onChange={e=>set('name',e.target.value)} required maxLength={160} placeholder="Cámara Bala Acceso Norte"/></Field>
     <Field label="Ubicación"><input value={form.location} onChange={e=>set('location',e.target.value)} maxLength={200} placeholder="Acceso Norte"/></Field>
     {video&&<>
-      {devices.length>0&&<Field label="Servicio OBSINT (SIC:COM)"><select value={form.electronicDeviceId??''} onChange={e=>set('electronicDeviceId',e.target.value||null)}>
-        <option value="">Sin asignar</option>
-        {devices.map(d=><option key={d.id} value={d.id}>{d.code} · {d.name} · {d.schedule}</option>)}</select></Field>}
+      {devices.length>0&&<Field label="Servicio OBSINT (SIC:COM) *"><select className={deviceChoice?'':'sec-need'} value={deviceChoice} onChange={e=>chooseDevice(e.target.value)} required>
+        <option value="" disabled>Seleccione…</option>
+        {devices.map(d=><option key={d.id} value={d.id}>{d.code} · {d.name} · {d.schedule}{d.cameras===0&&d.id!==initial?.electronicDeviceId?' · sin cámaras':''}</option>)}
+        <option value={NOT_OBSINT}>No es parte del servicio OBSINT</option></select>
+        <small className="sec-field-help">Elija el dispositivo si esta cámara se revisa en la Consola OBSINT. Si es solo videovigilancia del punto, elija «No es parte del servicio OBSINT».</small></Field>}
       <div className="sec-form-row">
         <Field label="Marca *"><select value={form.cameraBrand} onChange={e=>chooseBrand(e.target.value as CameraBrand)} required>
           {brands.length?brands.map(b=><option key={b.code} value={b.code}>{b.label}</option>):<option value={form.cameraBrand}>{form.cameraBrand}</option>}</select></Field>
@@ -263,14 +276,16 @@ function ComponentForm({pointId,family,brands,devices,initial,onSaved,onCancel}:
     {test&&<div className={`sec-test ${test.ok?'ok':'fail'}`} role="status">
       {test.ok?<CheckCircle2 size={16}/>:<AlertTriangle size={16}/>}
       <div><b>{test.message}</b><small>Ruta {test.streamPath} · {test.elapsedMs} ms</small>
-        {test.codec==='H.265'&&form.streamingEnabled&&<small>El navegador no reproduce H.265: cambie la cámara a H.264 en su configuración.</small>}</div>
+        {test.ok&&isH265(test.codec)&&form.streamingEnabled&&<small>La cámara envía H.265: se convierte a H.264 automáticamente. La vista previa tarda unos segundos más.</small>}</div>
     </div>}
-    {test?.ok&&test.codec!=='H.265'&&(test.previewUrl
+    {test?.ok&&(test.previewUrl
       ?<LivePreview url={test.previewUrl}/>
       :<p className="sec-preview-note">Vista previa no disponible: el servidor de video no está configurado.</p>)}
     {error&&<div className="sec-error"><AlertTriangle size={16}/>{error}</div>}
-    <div className="sec-form-actions"><button type="submit" className="sec-primary" disabled={saving}>{saving?'Guardando…':'Guardar componente'}</button>
-      {video&&<button type="button" onClick={()=>void testConnection()} disabled={testing||saving}><PlugZap size={15}/>{testing?'Probando…':'Probar conexión'}</button>}
+    {/* Cámaras: primero se prueba y luego se guarda; por eso Probar conexión va antes. */}
+    <div className="sec-form-actions">
+      {video&&<button type="button" onClick={()=>void testConnection()} disabled={testing||saving}><PlugZap size={15}/>{testing?'Probando…':'1. Probar conexión'}</button>}
+      <button type="submit" className="sec-primary" disabled={saving}>{saving?'Guardando…':video?'2. Guardar componente':'Guardar componente'}</button>
       <button type="button" onClick={onCancel}>Cancelar</button></div>
   </form>;
 }
@@ -310,5 +325,10 @@ function LivePreview({url}:{url:string}){
       :<video ref={ref} autoPlay muted playsInline controls/>}
   </div>;
 }
+
+/** Valor del selector para "No es parte del servicio OBSINT" (se guarda sin dispositivo). */
+const NOT_OBSINT='NOT_OBSINT';
+/** El servidor de video informa "H265"; la prueba directa, "H.265"; algunas cámaras, "HEVC". */
+const isH265=(codec:string|null|undefined)=>/H\.?265|HEVC/i.test(codec??'');
 
 function Field({label,children}:{label:string;children:ReactNode}){return <label className="sec-field"><span>{label}</span>{children}</label>}

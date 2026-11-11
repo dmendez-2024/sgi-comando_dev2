@@ -1181,13 +1181,13 @@ export default function Services(){
     return <PatrolConfig point={selectedPoint} onBack={()=>setView('config-landing')}/>;
   }
   if(selectedPoint&&view==='config-consignas'){
-    return <ConsignasConfig point={selectedPoint} onBack={()=>setView('config-landing')}/>;
+    return <ConsignasConfig point={selectedPoint} onBack={()=>setView('config-landing')} onOpenComponents={()=>setView('config-components')}/>;
   }
   if(selectedPoint&&view==='config-components'){
     return <SecurityComponents point={selectedPoint} onBack={()=>setView('config-landing')}/>;
   }
   if(selectedPoint&&view==='config-obsint'){
-    return <ObsintConfig key={selectedPoint.pointId} point={selectedPoint} onBack={()=>setView('config-landing')}/>;
+    return <ObsintConfig key={selectedPoint.pointId} point={selectedPoint} onBack={()=>setView('config-landing')} onOpenComponents={()=>setView('config-components')}/>;
   }
   if(selectedPoint&&view==='config-nexus'){
     return <NexusConfig point={selectedPoint} onBack={()=>setView('config-landing')}/>;

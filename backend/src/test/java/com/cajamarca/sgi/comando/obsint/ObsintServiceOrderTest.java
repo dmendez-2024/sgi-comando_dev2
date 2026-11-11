@@ -206,12 +206,14 @@ class ObsintServiceOrderTest {
         return item.path("code");
     }
 
-    void shift(UUID device, String start, String end, int dayMask) {
+    void shift(UUID device, String start, String end, int dayMask) { shift(device, "OBS24", start, end, dayMask); }
+
+    void shift(UUID device, String code, String start, String end, int dayMask) {
         QuarkusTransaction.requiringNew().run(() -> em.createNativeQuery("""
                 insert into electronic_monitoring_shift(id, instance_country_id, monitoring_post_id, shift_code, shift_name, start_time, end_time, day_mask, active, created_at, updated_at)
-                select :id, d.instance_country_id, d.id, 'OBS24', 'Monitoreo OBSINT', cast(:start as time), cast(:end as time), :mask, true, now(), now()
+                select :id, d.instance_country_id, d.id, :code, 'Monitoreo OBSINT', cast(:start as time), cast(:end as time), :mask, true, now(), now()
                 from electronic_monitoring_post d where d.id=:device""")
-            .setParameter("id", UUID.randomUUID()).setParameter("device", device).setParameter("start", start).setParameter("end", end)
+            .setParameter("id", UUID.randomUUID()).setParameter("device", device).setParameter("code", code).setParameter("start", start).setParameter("end", end)
             .setParameter("mask", dayMask).executeUpdate());
     }
 
@@ -249,6 +251,32 @@ class ObsintServiceOrderTest {
         } finally {
             deviceStatus(a, "INACTIVE");
             if (b != null) deviceStatus(b, "INACTIVE");
+        }
+    }
+
+    /** Consignas → Alcance: cada dispositivo OBSINT del Punto con su horario contratado, para guiar una consigna por dispositivo. */
+    @Test void deviceSchedulesListEachObsintDeviceWithItsShift() {
+        UUID a = siccomDevice("ACTIVE"), b = siccomDevice("ACTIVE");
+        try {
+            shift(a, "06:00", "18:00", 31);
+            shift(b, "N1", "18:00", "23:00", 127); shift(b, "N2", "00:00", "06:00", 127);
+            as("coord").contentType(ContentType.JSON).body(Map.of("family", "VIDEO", "componentType", "Cámara Bala", "name", "Cámara acceso",
+                    "ip", "192.168.1.30", "port", 554, "username", "admin", "password", "secreta", "electronicDeviceId", a.toString()))
+                .post("/api/secelec/points/" + POINT + "/components").then().statusCode(200);
+            var body = as("coord").get(CONFIG + "/device-schedules").then().statusCode(200).extract().jsonPath();
+            // Cámaras asignadas en Componentes: Consignas → Alcance avisa si el dispositivo no tiene ninguna.
+            assertEquals(1, body.getInt("find { it.deviceId == '" + a + "' }.cameras"));
+            assertEquals(0, body.getInt("find { it.deviceId == '" + b + "' }.cameras"));
+            assertEquals(true, body.getBoolean("find { it.deviceId == '" + a + "' }.active"));
+            assertEquals(List.of("06:00"), body.getList("find { it.deviceId == '" + a + "' }.shifts.start"));
+            assertEquals(31, body.getInt("find { it.deviceId == '" + a + "' }.shifts[0].dayMask"));
+            assertEquals(2, body.getList("find { it.deviceId == '" + b + "' }.shifts").size());
+            // Inactivo en SIC:COM: sigue en la lista, marcado como no activo.
+            deviceStatus(b, "INACTIVE");
+            as("coord").get(CONFIG + "/device-schedules").then().statusCode(200)
+                .body("find { it.deviceId == '" + b + "' }.active", is(false));
+        } finally {
+            deviceStatus(a, "INACTIVE"); deviceStatus(b, "INACTIVE");
         }
     }
 }
