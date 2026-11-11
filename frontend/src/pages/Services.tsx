@@ -43,6 +43,7 @@ import {
   X,
 } from 'lucide-react';
 import {api,ApiError,getUser} from '../api';
+import {identEnabled,identRoles} from '../security/identAuth';
 import BitacoraConfig from './BitacoraConfig';
 import AccessControlLists from './AccessControlLists';
 import PatrolConfig from './PatrolConfig';
@@ -56,6 +57,15 @@ import {obsintConfigApi} from '../obsint/obsintApi';
 import MatchThresholdField from '../components/MatchThresholdField';
 import RadiusField from '../components/RadiusField';
 import SearchableSelect from '../components/SearchableSelect';
+
+/**
+ * Patrullas y Control de Accesos son de Seguridad Física: no muestran los dispositivos OBSINT (Seguridad Electrónica),
+ * que solo van en Consignas. Excepción pedida por negocio: el Presidente sigue viéndolos.
+ */
+const seesElectronicInPhysicalModules=()=>identEnabled()?identRoles().includes('PRESIDENTE'):getUser()==='presidente';
+function pointForPhysicalModule<T extends {posts:{securityDomain?:string}[]}>(point:T):T{
+  return seesElectronicInPhysicalModules()?point:{...point,posts:point.posts.filter(post=>post.securityDomain!=='ELECTRONIC')};
+}
 
 type State='ACTIVE'|'INACTIVE'|'TO_CONFIGURE'|'PENDING_ASSIGNMENT';
 type Row={
@@ -1169,7 +1179,7 @@ export default function Services(){
     return <PostsPage point={selectedPoint} onBack={()=>setView('config-landing')}/>;
   }
   if(selectedPoint&&view==='config-bitacora'){
-    return <BitacoraConfig point={selectedPoint} onBack={()=>setView('config-landing')}/>;
+    return <BitacoraConfig point={pointForPhysicalModule(selectedPoint)} onBack={()=>setView('config-landing')}/>;
   }
   if(selectedPoint&&view==='config-whitelist'){
     return <AccessControlLists point={selectedPoint} listType="WHITE" onBack={()=>setView('config-landing')}/>;
@@ -1178,7 +1188,7 @@ export default function Services(){
     return <AccessControlLists point={selectedPoint} listType="BLACK" onBack={()=>setView('config-landing')}/>;
   }
   if(selectedPoint&&view==='config-patrols'){
-    return <PatrolConfig point={selectedPoint} onBack={()=>setView('config-landing')}/>;
+    return <PatrolConfig point={pointForPhysicalModule(selectedPoint)} onBack={()=>setView('config-landing')}/>;
   }
   if(selectedPoint&&view==='config-consignas'){
     return <ConsignasConfig point={selectedPoint} onBack={()=>setView('config-landing')} onOpenComponents={()=>setView('config-components')}/>;
