@@ -27,7 +27,9 @@ public class IncidentSanctionWorker {
     @Inject ObjectMapper mapper;
     @Inject TenantContext tenant;
     @Inject DhoSanctionAdapter dho;
-    @ConfigProperty(name = "sgi.dho.sanction.worker-enabled", defaultValue = "true") boolean enabled;
+    // Deshabilitado por defecto: un fallo sincronico debe dejar la finalizacion sin cambios
+    // y el usuario decide cuando volver a intentarla.
+    @ConfigProperty(name = "sgi.dho.sanction.worker-enabled", defaultValue = "false") boolean enabled;
     @ConfigProperty(name = "sgi.dho.sanction.max-attempts", defaultValue = "10") int maxAttempts;
     @ConfigProperty(name = "sgi.dho.sanction.batch-size", defaultValue = "20") int batchSize;
 

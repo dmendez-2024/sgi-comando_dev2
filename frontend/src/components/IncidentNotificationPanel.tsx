@@ -51,6 +51,7 @@ export type IncidentRecord={
   resolutionImages:AttachmentMeta[];
   sanction:boolean;
   sanctionDescription:string;
+  sanctionRequestId?:string;
   sanctionDeliveryStatus?:'NOT_REQUIRED'|'PENDING'|'SENT'|'FAILED';
   sanctionEventId?:string;
   sanctionDeliveryAttempts?:number;
@@ -274,9 +275,11 @@ export default function IncidentNotificationPanel({initial,nextCode,locations,lo
     if(status==='FINALIZED'){const validation=validateFinal();if(validation){setError(validation);return;}}
     const now=new Date().toISOString();
     const location=selectedLocation;
+    const sanctionRequestId=form.sanction?(form.sanctionRequestId||form.id||crypto.randomUUID()):undefined;
+    if(sanctionRequestId!==form.sanctionRequestId)setForm(previous=>({...previous,sanctionRequestId}));
     setSaving(true);
     try{
-      let working:IncidentRecord={...form,code:form.code||nextCode,status,absenceMode,targetShiftId:coverageApplied?form.targetShiftId:targetShift?.id??form.targetShiftId,targetShiftLabel:coverageApplied?form.targetShiftLabel:targetShift?fmtShift(targetShift,'Turno a cubrir'):form.targetShiftLabel,companyId:location?.companyId??form.companyId,company:location?.company??form.company,companyCode:location?.companyCode??form.companyCode,city:location?.city??form.city,createdAt:form.createdAt||now,updatedAt:now};
+      let working:IncidentRecord={...form,sanctionRequestId,code:form.code||nextCode,status,absenceMode,targetShiftId:coverageApplied?form.targetShiftId:targetShift?.id??form.targetShiftId,targetShiftLabel:coverageApplied?form.targetShiftLabel:targetShift?fmtShift(targetShift,'Turno a cubrir'):form.targetShiftLabel,companyId:location?.companyId??form.companyId,company:location?.company??form.company,companyCode:location?.companyCode??form.companyCode,city:location?.city??form.city,createdAt:form.createdAt||now,updatedAt:now};
       const pending=working.descriptionImages.some(x=>x.file)||working.resolutionImages.some(x=>x.file);
       if(pending){
         // Persist the draft first; a failed upload must never finalize or lose the selected files.

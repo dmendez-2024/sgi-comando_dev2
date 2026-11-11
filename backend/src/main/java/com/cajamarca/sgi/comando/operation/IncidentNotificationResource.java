@@ -334,7 +334,29 @@ public class IncidentNotificationResource {
         data.put("sanctionDeliveryAttempts", record.sanctionDeliveryAttempts);
         if (record.sanctionEventId != null) data.put("sanctionEventId", record.sanctionEventId.toString());
         if (record.sanctionSentAt != null) data.put("sanctionSentAt", record.sanctionSentAt.toString());
+        List<IncidentSanctionEmployeeEntity> sanctions = IncidentSanctionEmployeeEntity.list(
+            "instanceCountryId=?1 and incidentId=?2 order by createdAt", record.instanceCountryId, record.id);
+        var sanctionItems = data.putArray("sanctions");
+        for (IncidentSanctionEmployeeEntity sanction : sanctions) {
+            ObjectNode item = sanctionItems.addObject();
+            item.put("id", sanction.id.toString());
+            item.put("employeeId", sanction.employeeId.toString());
+            item.put("personaId", sanction.personaId);
+            item.put("status", sanction.decisionStatus);
+            if (sanction.dhoSanctionId != null) item.put("dhoSanctionId", sanction.dhoSanctionId);
+            if (sanction.decisionReason != null) item.put("reason", sanction.decisionReason);
+            if (sanction.decidedBy != null) item.put("responsible", sanction.decidedBy);
+            if (sanction.decidedAt != null) item.put("decidedAt", sanction.decidedAt.toString());
+        }
+        if (!sanctions.isEmpty()) data.put("sanctionDecisionStatus", aggregateSanctionStatus(sanctions));
         return data;
+    }
+
+    private static String aggregateSanctionStatus(List<IncidentSanctionEmployeeEntity> sanctions) {
+        Set<String> statuses = new HashSet<>();
+        for (IncidentSanctionEmployeeEntity sanction : sanctions) statuses.add(sanction.decisionStatus);
+        if (statuses.size() == 1) return statuses.iterator().next();
+        return "MIXED";
     }
 
     private static String text(JsonNode body, String key) { return body.path(key).asText("").trim(); }

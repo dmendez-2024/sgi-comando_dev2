@@ -544,13 +544,68 @@
             "employees[].cliente",
             "employees[].compania"
           ],
-          "idempotency": "eventId is also sent as Idempotency-Key and remains unchanged across retries."
+          "idempotency": "The client keeps sanctionRequestId across manual finalization retries; SGI Comando uses it as eventId and Idempotency-Key for every transport retry."
         },
         "response": {
           "fields": [
             "success",
             "message"
           ]
+        }
+      }
+    ],
+    "legacyConnectionIds": []
+  },
+  {
+    "interconnectionRef": "SIC_DHO_SGI_COM_0004",
+    "interconnectionId": "SIC_DHO_SGI_COM_0004_v001",
+    "sourceProgramId": "SIC_DHO",
+    "targetProgramId": "SGI_COM",
+    "purpose": "Notify the approval or rejection of an incident sanction for one employee.",
+    "interactionType": "WEBHOOK",
+    "mode": "SYNC",
+    "protocol": "HTTPS",
+    "contractVersion": "v1",
+    "dataOwnerProgramId": "SIC_DHO",
+    "criticality": "HIGH",
+    "legacyTarget": false,
+    "targetImplementationStatus": "IMPLEMENTED",
+    "status": "DEVELOPMENT",
+    "interfaces": [
+      {
+        "interfaceId": "SIC_DHO_SGI_COM_0004_IF01",
+        "method": "POST",
+        "path": "/api/v1/inbound/sic-dho/sanction-decisions",
+        "purpose": "Persist one terminal DHO decision against the employee selected in the finalized incident.",
+        "contentType": "application/json",
+        "request": {
+          "headers": [
+            "Authorization: Bearer <SERVICE_TOKEN>",
+            "X-Correlation-Id",
+            "X-Interconnection-Id: SIC_DHO_SGI_COM_0004_v001",
+            "X-Contract-Version: v1",
+            "Idempotency-Key"
+          ],
+          "fields": [
+            "eventId",
+            "incidentId",
+            "employeeId",
+            "dhoSanctionId",
+            "status",
+            "responsible",
+            "reason?",
+            "decidedAt"
+          ],
+          "statusValues": [
+            "Aprobado",
+            "Rechazado"
+          ],
+          "idempotency": "Idempotency-Key must equal eventId. A repeated event with the same content returns OK; different content returns conflict."
+        },
+        "response": {
+          "example": {
+            "message": "OK"
+          }
         }
       }
     ],

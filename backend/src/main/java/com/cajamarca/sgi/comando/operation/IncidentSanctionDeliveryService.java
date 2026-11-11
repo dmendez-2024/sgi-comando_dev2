@@ -17,6 +17,7 @@ import jakarta.ws.rs.core.Response;
 import org.jboss.logging.Logger;
 import io.quarkus.security.identity.SecurityIdentity;
 
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.*;
 import java.util.function.Function;
@@ -68,9 +69,23 @@ public class IncidentSanctionDeliveryService {
             ));
         }
 
+        // Estas filas se confirman junto con el incidente solo si DHO acepta la solicitud.
+        // Cualquier error remoto provoca rollback de toda la transaccion.
+        for (IncidentSanctionPayload.Employee employee : employees) {
+            IncidentSanctionEmployeeEntity sanction = new IncidentSanctionEmployeeEntity();
+            sanction.id = UUID.randomUUID();
+            sanction.instanceCountryId = incident.instanceCountryId;
+            sanction.incidentId = incident.id;
+            sanction.employeeId = employee.employeeId();
+            sanction.personaId = employee.personaId();
+            sanction.decisionStatus = "PENDING";
+            sanction.persist();
+        }
+
         Instant queuedAt = Instant.now();
         OutboxEvent event = OutboxEvent.of(
             incident.instanceCountryId, AGGREGATE_TYPE, incident.id, EVENT_TYPE, "{}");
+        event.id = stableEventId(body, incident.id);
         IncidentSanctionPayload payload = new IncidentSanctionPayload(
             event.id,
             incident.id,
@@ -100,7 +115,7 @@ public class IncidentSanctionDeliveryService {
             String code = error instanceof InterconnectionException integration
                 ? integration.code() : "DHO_COMMUNICATION_FAILURE";
             throw failure(503, code,
-                "No se pudo comunicar con Recursos Humanos. Intente finalizar el incidente nuevamente.");
+                "No se pudo conectar con Recursos Humanos. El incidente no fue finalizado. Intente nuevamente mas tarde.");
         }
         WebApplicationException rejection = rejection(result, mapper);
         if (rejection != null) throw rejection;
@@ -123,6 +138,7 @@ public class IncidentSanctionDeliveryService {
         boolean changed = !"FINALIZED".equals(text(incoming, "status"))
             || previous.path("sanction").asBoolean(false) != incoming.path("sanction").asBoolean(false)
             || !Objects.equals(text(previous, "sanctionDescription"), text(incoming, "sanctionDescription"))
+            || !Objects.equals(text(previous, "sanctionRequestId"), text(incoming, "sanctionRequestId"))
             || !Objects.equals(text(previous, "pointId"), text(incoming, "pointId"))
             || !new LinkedHashSet<>(collaboratorTexts(previous.path("collaboratorIds")))
                 .equals(new LinkedHashSet<>(collaboratorTexts(incoming.path("collaboratorIds"))));
@@ -163,10 +179,10 @@ public class IncidentSanctionDeliveryService {
             case 409 -> failure(409, "DHO_IDEMPOTENCY_CONFLICT",
                 "Recursos Humanos reportó un conflicto al registrar la sanción. Vuelva a intentarlo o comuníquese con soporte.");
             case 408, 429 -> failure(503, "DHO_TEMPORARILY_UNAVAILABLE",
-                "Recursos Humanos no pudo procesar la sanción en este momento. Intente nuevamente.");
+                "Recursos Humanos no pudo procesar la sancion en este momento. El incidente no fue finalizado. Intente nuevamente mas tarde.");
             default -> result.statusCode >= 500
                 ? failure(503, "DHO_PROCESSING_ERROR",
-                    "Recursos Humanos no pudo procesar la sanción. Intente nuevamente.")
+                    "No se pudo conectar con Recursos Humanos. El incidente no fue finalizado. Intente nuevamente mas tarde.")
                 : failure(502, "DHO_UNEXPECTED_RESPONSE",
                     "Recursos Humanos devolvió una respuesta inesperada al registrar la sanción.");
         };
@@ -195,6 +211,15 @@ public class IncidentSanctionDeliveryService {
         List<String> values = new ArrayList<>();
         node.forEach(value -> values.add(value.asText()));
         return values;
+    }
+
+    private static UUID stableEventId(JsonNode body, UUID incidentId) {
+        String requestId = text(body, "sanctionRequestId");
+        if (!requestId.isEmpty()) {
+            try { return UUID.fromString(requestId); }
+            catch (IllegalArgumentException error) { throw new BadRequestException("sanctionRequestId invalido."); }
+        }
+        return UUID.nameUUIDFromBytes((EVENT_TYPE + ":" + incidentId).getBytes(StandardCharsets.UTF_8));
     }
 
     private static String text(JsonNode body, String field) { return body.path(field).asText("").trim(); }

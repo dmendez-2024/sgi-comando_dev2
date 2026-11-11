@@ -25,6 +25,8 @@ public class DhoSanctionAdapter {
         request.body = payload;
         request.idempotencyKey = eventId.toString();
         request.correlationId = eventId.toString();
+        // Tres reintentos adicionales para errores de transporte o respuestas 5xx.
+        request.maxRetriesOverride = 3;
         // Esta integración legado usa SERVICE_TOKEN resuelto desde SGI_CREDENTIAL_<credentialRef>.
         request.requireOpenBaoCredentials = false;
         return executor.execute(

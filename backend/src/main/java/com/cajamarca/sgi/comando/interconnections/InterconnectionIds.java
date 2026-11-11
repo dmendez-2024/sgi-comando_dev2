@@ -44,6 +44,9 @@ public final class InterconnectionIds {
     /** Registro de sanciones finalizadas desde SGI Comando hacia SIC:DHO. */
     public static final String DHO_SANCTION_REGISTRATION = "SGI_COM_SIC_DHO_0001_v001";
     public static final String DHO_SANCTION_REGISTRATION_INTERFACE = "SGI_COM_SIC_DHO_0001_IF01";
+    /** Decisiones de sanciones por empleado desde SIC:DHO hacia SGI Comando. */
+    public static final String DHO_SANCTION_DECISIONS = "SIC_DHO_SGI_COM_0004_v001";
+    public static final String DHO_SANCTION_DECISIONS_INTERFACE = "SIC_DHO_SGI_COM_0004_IF01";
     public static final String TRANSITIONAL_RRHH_MASTER_EVENTS = "SIC_RRHH_SGI_COM_0001_v001";
 	public static final String RRHH_MASTER_EVENTS = "SIC_RRHH_SGI_COM_0001_v001";
 
