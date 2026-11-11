@@ -1,5 +1,9 @@
 # SGI: Comando — API / Interface Catalog v4.1
 
+## Sanciones de incidentes hacia DHO — SGI_COM_SIC_DHO_0001
+
+`SGI_COM_SIC_DHO_0001_IF01` envía por `POST` cada sanción generada al finalizar un incidente. CORE resuelve el binding de `/ops.api.dho/ws/sgi/empresa/sancion/registroComando`, el `SERVICE_TOKEN` y los reintentos. DHO debe confirmar la recepción para que SGI Comando finalice el incidente; un rechazo revierte la transacción local y se muestra como error funcional. El lote incluye todos los empleados seleccionados y sus `personaId`, sin cédula, evidencia ni reglamento. [Contrato completo](SGI_COM_DHO_SANCTIONS_v1.md).
+
 ## Revisión de consignas propuestas desde SGI Operador — OPR-CNS-REVIEW-001
 
 - `POST /api/consignment-review-requests/{requestId}/approve`: para `COORDINADOR_COMPANIA` y `ASISTENTE_COORDINACION`. Incorpora la propuesta a un protocolo del mismo punto. Si la versión elegida no es `BORRADOR`, crea o reutiliza el borrador de la serie. Conserva el original y registra protocolo, consigna, usuario, fecha y comentario de revisión.

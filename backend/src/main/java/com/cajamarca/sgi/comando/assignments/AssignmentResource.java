@@ -45,6 +45,7 @@ public class AssignmentResource {
     @Inject ObjectMapper mapper;
     @Inject AssignmentScopeService scope;
     @Inject AssignmentRolePolicy rolePolicy;
+    @Inject PointResponsibilityService pointResponsibilities;
     @Inject AssignmentReleaseService assignmentReleaseService;
     @Inject OperationalScopeService operationalScope;
     @Inject IncidentCoverageRolePolicy coverageRolePolicy;
@@ -64,7 +65,8 @@ public class AssignmentResource {
                                 String reassignedBy, Instant reassignedAt, String reassignmentReason) {}
     public record SummaryDto(int requiredShifts, int assignedShifts, int unassignedShifts, double coveragePct, int warningsCount, double plannedIcAvg,
                              Integer publishedRequiredShifts, Integer publishedAssignedShifts, Double publishedCoveragePct) {}
-    public record WeekResponse(PlanDto plan, List<PointDto> points, List<PostDto> posts, List<ShiftDto> shifts, List<AssignmentDto> assignments, SummaryDto summary) {}
+    public record WeekResponse(PlanDto plan, List<PointDto> points, List<PostDto> posts, List<ShiftDto> shifts, List<AssignmentDto> assignments, SummaryDto summary,
+                               List<PointResponsibilityService.ResponsibilityDto> pointResponsibilities) {}
     public record UnavailabilityDto(String type, Instant startsAt, Instant endsAt, String sourceRef, String sourceReasonLabel) {}
     public record TransferMiniDto(UUID id,String direction,String status,UUID originCompanyId,String originCompanyName,UUID destinationCompanyId,String destinationCompanyName,String reasonCode,String reasonLabel,String observations,String initiatedBy,Instant initiatedAt,Instant effectiveAt,int releasedFutureAssignments) {}
     public record PersonnelDto(UUID employeeId, String fullName, String roleCode, String employmentStatus, BigDecimal idScore, String preferredShift,
@@ -198,7 +200,8 @@ public class AssignmentResource {
             shifts.stream().map(s->new ShiftDto(s.id,s.targetId(),s.templateId,s.localDate,s.shiftCode,s.shiftName,s.startsAt,s.endsAt,s.commercialVersion)).toList(),
             assignmentDtos,
             new SummaryDto(required,assigned,Math.max(required-assigned,0),coverage,warnings,roundPct(icAvg),
-                plan.publishedRequiredShifts,plan.publishedAssignedShifts,plan.publishedCoveragePct==null?null:plan.publishedCoveragePct.doubleValue())
+                plan.publishedRequiredShifts,plan.publishedAssignedShifts,plan.publishedCoveragePct==null?null:plan.publishedCoveragePct.doubleValue()),
+            pointResponsibilities.list(plan.id).stream().filter(r -> pointId == null || pointId.equals(r.pointId())).toList()
         );
     }
 
@@ -482,8 +485,10 @@ public class AssignmentResource {
         AssignmentPlanEntity plan=plan(req.planId());
         if(incidentCoverage){
             operationalScope.requireCompanyForCompanyRoles(plan.companyId);
-            if(!"PUBLISHED".equals(plan.status))throw conflict("PLAN_NO_PUBLICADO","La cobertura desde Consola requiere un plan publicado.");
         }else scope.requireEditorForCompany(plan.companyId);
+        em.refresh(plan,LockModeType.PESSIMISTIC_WRITE);
+        closeIfExpired(plan);
+        if(incidentCoverage&&!"PUBLISHED".equals(plan.status))throw conflict("PLAN_NO_PUBLICADO","La cobertura desde Consola requiere un plan publicado.");
         if("CLOSED".equals(plan.status)) throw conflict("PLAN_CERRADO","El plan está cerrado y no admite cambios.");
         ShiftOccurrenceEntity shift=ShiftOccurrenceEntity.find("id=?1 and instanceCountryId=?2",req.shiftOccurrenceId(),tenant.instanceCountryId()).firstResult();
         if(shift==null) throw new NotFoundException("Turno requerido no encontrado");
@@ -535,6 +540,7 @@ public class AssignmentResource {
         existing.compatibilityIndex=ic; existing.idScore=employee.idScore; existing.warningJson=json(warnings);
         if(!"REASSIGNMENT_CREATED".equals(eventType))
             recordEvent(plan,existing,shift,eventType,existing.employeeId,employee.employeeId,actor,req.reason(),assignmentPayload(warnings,ic,employee.idScore));
+        if("PUBLISHED".equals(plan.status)) pointResponsibilities.synchronize(plan,planShifts(plan),actor);
         return Response.ok(toAssignmentDto(existing,employee)).build();
     }
 
@@ -546,6 +552,8 @@ public class AssignmentResource {
         if(a==null) throw new NotFoundException();
         AssignmentPlanEntity plan=plan(a.assignmentPlanId);
         scope.requireEditorForCompany(plan.companyId);
+        em.refresh(plan,LockModeType.PESSIMISTIC_WRITE);
+        closeIfExpired(plan);
         if(!"DRAFT".equals(plan.status)) throw conflict("PLAN_PUBLICADO","Un plan publicado no se edita silenciosamente; utilice Reasignación.");
         a.status="REMOVED";
         recordEvent(plan,a,null,"ASSIGNMENT_REMOVED",a.employeeId,null,identity.getPrincipal().getName(),null,Map.of());
@@ -558,16 +566,20 @@ public class AssignmentResource {
     public PublishResponse publish(@PathParam("planId") UUID planId) {
         AssignmentPlanEntity plan=plan(planId);
         scope.requireEditorForCompany(plan.companyId);
+        em.refresh(plan,LockModeType.PESSIMISTIC_WRITE);
+        closeIfExpired(plan);
         if("CLOSED".equals(plan.status)) throw conflict("PLAN_CERRADO","El plan ya está cerrado.");
         if("PUBLISHED".equals(plan.status)) return publishResponse(plan);
         List<ShiftOccurrenceEntity> shifts=planShifts(plan);
         pinSupervisionRoutes(shifts);
         List<OperationalAssignmentEntity> assignments=OperationalAssignmentEntity.list("instanceCountryId=?1 and assignmentPlanId=?2 and status<>'REMOVED'",tenant.instanceCountryId(),plan.id);
+        pointResponsibilities.synchronize(plan,shifts,identity.getPrincipal().getName());
         Map<String,Object> snapshot=new LinkedHashMap<>();
         snapshot.put("planId",plan.id); snapshot.put("companyId",plan.companyId); snapshot.put("weekStart",plan.weekStart);
         snapshot.put("publishedAt",Instant.now());
         snapshot.put("shifts",shifts.stream().map(this::publicationShiftSnapshot).toList());
         snapshot.put("assignments",assignments.stream().map(this::publicationAssignmentSnapshot).toList());
+        snapshot.put("pointResponsibilities",pointResponsibilities.list(plan.id));
         int requiredAtPublish=shifts.size();
         int assignedAtPublish=assignments.size();
         double coverageAtPublish=requiredAtPublish==0?100d:roundPct(100d*assignedAtPublish/requiredAtPublish);

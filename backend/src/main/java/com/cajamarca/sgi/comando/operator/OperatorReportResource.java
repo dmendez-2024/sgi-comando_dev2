@@ -176,11 +176,12 @@ public class OperatorReportResource {
           select r.id,r.employee_id,r.report_type,r.category,r.subcategory,r.title,r.description,r.severity,r.status,
                  r.occurred_at,r.created_at,r.assignment_id,r.point_id,r.post_id,coalesce(employee.full_name,r.username),p.name,coalesce(po.name,'—'),
                  p.client_name,p.city,p.company_id,co.code,co.name,r.payload_hash,r.routing_target,r.routing_status,r.routing_reference_id,r.photo_count,
-                 ev.latitude,ev.longitude,ev.accuracy_m,r.stc_start_date,r.stc_end_date
+                 ev.latitude,ev.longitude,ev.accuracy_m,r.stc_start_date,r.stc_end_date,r.source,incident.code
           from operator_operational_report r join point p on p.id=r.point_id and p.instance_country_id=r.instance_country_id
           left join employee_operational_snapshot employee on employee.employee_id=r.employee_id and employee.instance_country_id=r.instance_country_id
           left join post po on po.id=r.post_id and po.instance_country_id=r.instance_country_id
           left join company co on co.id=p.company_id and co.instance_country_id=r.instance_country_id
+          left join incident_notification incident on incident.operational_report_id=r.id and incident.instance_country_id=r.instance_country_id
           left join lateral (
             select e.latitude,e.longitude,e.accuracy_m from evidence_object e
             where e.instance_country_id=r.instance_country_id and e.event_id=r.id and e.target_id=r.id and e.target_type='OPERATIONAL_REPORT'
@@ -210,7 +211,7 @@ public class OperatorReportResource {
         ObjectNode x=mapper.createObjectNode().put("reportId",r[0].toString()).put("type",r[2].toString())
           .put("category",r[3].toString()).put("title",r[5].toString()).put("description",r[6].toString())
           .put("severity",r[7].toString()).put("status",r[8].toString()).put("occurredAt",r[9].toString())
-          .put("createdAt",r[10].toString()).put("assignmentId",r[11].toString()).put("pointId",r[12].toString())
+          .put("createdAt",r[10].toString()).put("pointId",r[12].toString())
           .put("username",r[14].toString()).put("pointName",r[15].toString()).put("postName",r[16].toString())
           .put("acknowledged",true).put("duplicate",duplicate);
         if(r[17]!=null)x.put("clientName",r[17].toString()); if(r[18]!=null)x.put("city",r[18].toString());
@@ -221,6 +222,9 @@ public class OperatorReportResource {
         if(r[29]!=null)x.put("accuracyM",((Number)r[29]).doubleValue());
         if(r.length>30&&r[30]!=null)x.put("stcStartDate",r[30].toString());
         if(r.length>31&&r[31]!=null)x.put("stcEndDate",r[31].toString());
+        if(r.length>32&&r[32]!=null)x.put("source",r[32].toString());
+        if(r.length>33&&r[33]!=null)x.put("originCode",r[33].toString());
+        if(r[11]!=null)x.put("assignmentId",r[11].toString());
         if(r[4]!=null)x.put("subcategory",r[4].toString()); if(r[13]!=null)x.put("postId",r[13].toString()); return x;
     }
     static String normalizeType(String value) { if(value==null||value.isBlank())return null; String x=value.trim().toUpperCase(Locale.ROOT); if(!TYPES.contains(x))throw new BadRequestException("Tipo de reporte inválido"); return x; }

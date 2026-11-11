@@ -41,8 +41,9 @@
 | 23 | `SGI_CLT_SGI_COM_0002_v001` | SGI_CLT | SGI_COM | Submit client-originated Consigna proposals, incidents or requirements for SGI moderation/routing. | DESIGN | BLOCKED |
 | 24 | `SGI_COM_CM_CON_0001_v001` | SGI_COM | CM_CON | Request pre-shift attendance confirmation through Cajamarca Conmigo/IVR capability. | DESIGN | MANUAL_PENDING |
 | 25 | `SGI_COM_CM_CON_0002_v001` | SGI_COM | CM_CON | Read the result of a pre-shift attendance confirmation. | DESIGN | MANUAL_PENDING |
+| 26 | `SGI_COM_SIC_DHO_0001_v001` | SGI_COM | SIC_DHO | Submit finalized incident sanctions for the DHO approval or rejection workflow. | DEVELOPMENT | MANUAL_PENDING |
 
-Total: **25 interconexiones / 31 interfaces**.
+Total: **26 interconexiones / 32 interfaces**.
 
 ## Reglas de Impulsos
 

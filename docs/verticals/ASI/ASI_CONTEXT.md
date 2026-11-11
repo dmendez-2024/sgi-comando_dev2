@@ -33,6 +33,10 @@ ID bajo mínimo TIER genera alerta pero no bloqueo.
 
 ## Plan
 
+### Responsable de Punto por turno/relevo — 2026-11-10
+
+Es una función operacional temporal, distinta del cargo recibido de RRHH y de la Compañía responsable del Punto. Al publicar el plan, SGI elige aleatoriamente entre los agentes asignados y disponibles en cada intervalo del Punto, priorizando el menor número histórico de designaciones en ese Punto. ID de SMC, IC y sus promedios no intervienen. La rotación no se reinicia al cambiar de semana. Véase ASI-DEC-059.
+
 Estados: Borrador → Publicado → Cerrado. Solo Coordinador/Asistente modifican. El plan publicado es snapshot inmutable; cambios posteriores son eventos explícitos de reasignación/asignación posterior.
 
 ## Borrador

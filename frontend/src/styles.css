@@ -2679,6 +2679,12 @@ button.rel-material-image:focus-visible{outline:3px solid rgba(45,103,216,.3);ou
 
 
 /* Estado terminal informado por STC. */
+.point-responsibility-panel{margin:8px 0;padding:10px 14px;background:var(--panel-bg,#fff);border:1px solid #dbe3ed;border-radius:8px;font-size:13px}
+.point-responsibility-panel summary{cursor:pointer;font-weight:600}
+.point-responsibility-panel p{margin:8px 0;color:#526277}
+.point-responsibility-list{max-height:240px;overflow:auto}
+.point-responsibility-list table{width:100%;border-collapse:collapse;text-align:left}
+.point-responsibility-list th,.point-responsibility-list td{padding:7px 10px;border-bottom:1px solid #e4eaf1;white-space:nowrap}
 .nov-status.finalized{background:#e8f7f5;color:#087f75}
 .nov-publication.finalized{background:#e8f7f5;color:#087f75;border:1px solid #bde5df}
 

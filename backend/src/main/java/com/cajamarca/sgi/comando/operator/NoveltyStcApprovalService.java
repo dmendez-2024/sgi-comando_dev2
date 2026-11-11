@@ -101,7 +101,7 @@ public class NoveltyStcApprovalService {
         @SuppressWarnings("unchecked") List<Object[]> rows = em.createNativeQuery("""
             select report.id,report.report_type,report.category,report.subcategory,report.title,
                    report.description,report.severity,report.occurred_at,company.name,
-                   reporter.persona_id,coordinator.persona_id,assistant.persona_id
+                   coalesce(report.reporter_persona_id,reporter.persona_id),coordinator.persona_id,assistant.persona_id
               from operator_operational_report report
               join point point_row on point_row.id=report.point_id
                                   and point_row.instance_country_id=report.instance_country_id
