@@ -26,16 +26,21 @@ public class SmcFactSources {
         if ("IMPULSE_EVALUATION".equals(sourceType)) {
             List<?> rows = em.createNativeQuery("""
                 select e.id, e.employee_id, e.occurred_at, e.evaluated_at, e.rule_code,
-                       e.source_type, e.source_id, employee.persona_id, so.post_id, oa.shift_occurrence_id
+                       e.source_type, e.source_id, employee.persona_id, so.post_id, oa.shift_occurrence_id, p.point_id, e.rule_version
                 from impulse_evaluation e
                 left join employee_operational_snapshot employee on employee.employee_id=e.employee_id
                     and employee.instance_country_id=e.instance_country_id
                 left join operational_assignment oa on oa.id=e.assignment_id and oa.instance_country_id=e.instance_country_id
                 left join shift_occurrence so on so.id=oa.shift_occurrence_id and so.instance_country_id=oa.instance_country_id
+                left join post p on p.id=so.post_id and p.instance_country_id=e.instance_country_id
                 where e.instance_country_id=:tenant and e.evaluated_at>=:since and e.evaluated_at<:until
+                  and e.employee_id is not null
                   and (e.evaluated_at>:since or :includeBoundary or e.id>:after)
                   and e.decision in ('AWARDED','NO_AWARD')
-                  and e.rule_code in ('REL_A_TIEMPO','REL_FOTO_CUERPO','BIT_CA_CORRECTO','PAT_CORRECTA','CON_CORRECTA')
+                  and ((e.rule_code in ('REL_A_TIEMPO','REL_FOTO_CUERPO') and e.source_type='RELIEF')
+                    or (e.rule_code='BIT_CA_CORRECTO' and e.source_type='LOGBOOK')
+                    or (e.rule_code='PAT_CORRECTA' and e.source_type='PATROL')
+                    or (e.rule_code='CON_CORRECTA' and e.source_type='CONSIGNMENT'))
                   and not exists(select 1 from smc_fact_delivery d where d.instance_country_id=e.instance_country_id
                       and d.source_type='IMPULSE_EVALUATION' and d.source_id=e.id)
                 order by e.evaluated_at,e.id
@@ -52,8 +57,9 @@ public class SmcFactSources {
                     default -> throw new IllegalStateException("Regla de impulso desconocida");
                 };
                 facts.add(new Candidate(new SmcFact(tenant, sourceType, uuid(r[0]), uuid(r[1]), factType,
-                    instant(r[2]), BigDecimal.ONE, null, uuid(r[8]), uuid(r[9]),
-                    Map.of("source", r[5].toString(), "sourceId", r[6].toString()), personaId(r[7])), instant(r[3])));
+                    instant(r[2]), BigDecimal.ONE, uuid(r[10]), uuid(r[8]), uuid(r[9]),
+                    Map.of("source", r[5].toString(), "sourceId", r[6].toString(),
+                        "evaluationId", r[0].toString(), "ruleCode", r[4].toString(), "ruleVersion", r[11]), personaId(r[7])), instant(r[3])));
             }
             return facts;
         }
