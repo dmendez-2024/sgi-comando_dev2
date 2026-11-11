@@ -1,4 +1,5 @@
 import {identClaims,identEnabled,identRoles,identToken,notifySessionEnded,renewIdentToken} from './security/identAuth';
+export type OperationalNotification={id:string;type:string;title:string;priority:string;status:string;companyName:string;clientName:string;pointName:string;occurredAt:string};
 const API = import.meta.env.VITE_API_URL || '/dev.comando';
 // const API=import.meta.env.VITE_API_URL ?? 'http://localhost:8080';
 export type UatUser='presidente'|'ggeneral'|'dlatam'|'don'|'dnacional'|'dzonal'|'jregional'|'coord'|'asistente'|'supervisor'|'agente'|'cliente'|'monitor';
@@ -69,6 +70,8 @@ async function atsUpload(pointId:string,file:File):Promise<any>{
  if(!res.ok){reloginIfExpired(res.status);const body=await res.text();throw new ApiError(res.status,body)} return res.json();
 }
 export const api={
+ notifications:()=>request<{total:number;items:OperationalNotification[]}>('/api/notifications'),
+ operationalReport:(id:string)=>request<any>(`/api/operational-reports/${encodeURIComponent(id)}`),
  operationalEventEvidences:(eventId:string)=>request<{id:string;source:string;purpose?:string;label?:string}[]>(`/api/operation/events/${encodeURIComponent(eventId)}/evidences`),
  operationalEventEvidenceImage:(eventId:string,photoId:string)=>binaryRequest(`/api/operation/events/${encodeURIComponent(eventId)}/evidences/${encodeURIComponent(photoId)}/content`),
  /** Fotos guía del registro: estándar del puesto, hitos, campos o consigna, y plano ATS en patrullas. */

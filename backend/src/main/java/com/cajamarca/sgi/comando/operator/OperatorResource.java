@@ -728,6 +728,10 @@ public class OperatorResource {
             .setParameter("id",executionId).setParameter("tenant",tenant.instanceCountryId()).getResultList();
         if("START".equals(action)) {
             if(!old.isEmpty()) return executionState((Object[])old.get(0));
+            if("PROGRAMMED".equals(patrolRules[2])) {
+                List<?> completed=completedScheduledPatrol(assignmentId,employee,patrolId,c.post.id);
+                if(!completed.isEmpty()) return executionState((Object[])completed.get(0));
+            }
             List<?> active=em.createNativeQuery("""
               select pe.id,pe.started_at,pe.finished_at,pe.result from patrol_execution pe
               join patrol_plan pp on pp.id=pe.patrol_plan_id and pp.instance_country_id=pe.instance_country_id
@@ -907,6 +911,11 @@ public class OperatorResource {
     public ObjectNode currentPatrol(@QueryParam("assignmentId") UUID assignmentId,@QueryParam("patrolId") UUID patrolId) {
         UUID employee=employee(); AssignmentContext c=assignment(assignmentId,employee);
         if(patrolId==null) throw new BadRequestException("patrolId obligatorio");
+        List<?> completed=completedScheduledPatrol(assignmentId,employee,patrolId,c.post.id);
+        if(!completed.isEmpty()) {
+            Object[] row=(Object[])completed.get(0);
+            return executionState(row).put("completedCheckpoints",((Number)row[4]).intValue());
+        }
         @SuppressWarnings("unchecked") List<Object[]> rows=em.createNativeQuery("""
           select pe.id,pe.started_at,pe.finished_at,pe.result,
                  (select count(*) from patrol_checkpoint_execution pce where pce.instance_country_id=pe.instance_country_id and pce.patrol_execution_id=pe.id)
@@ -917,6 +926,27 @@ public class OperatorResource {
             .setParameter("post",c.post.id).getResultList();
         if(rows.isEmpty()) return mapper.createObjectNode().put("status","NOT_STARTED").put("completedCheckpoints",0);
         Object[] row=rows.get(0); return executionState(row).put("completedCheckpoints",((Number)row[4]).intValue());
+    }
+
+    /** Una versión nueva conserva el código y la serie del protocolo; una patrulla duplicada tiene otro código. */
+    private List<?> completedScheduledPatrol(UUID assignmentId, UUID employee, UUID patrolId, UUID postId) {
+        return em.createNativeQuery("""
+          select pe.id,pe.started_at,pe.finished_at,pe.result,
+                 (select count(*) from patrol_checkpoint_execution pce where pce.instance_country_id=pe.instance_country_id and pce.patrol_execution_id=pe.id)
+          from patrol_execution pe
+          left join patrol_plan plan on plan.id=pe.patrol_plan_id and plan.instance_country_id=pe.instance_country_id
+          join patrol_definition previous on previous.id=coalesce(pe.patrol_definition_id,plan.patrol_definition_id) and previous.instance_country_id=pe.instance_country_id
+          join patrol_protocol previous_protocol on previous_protocol.id=previous.protocol_id and previous_protocol.instance_country_id=previous.instance_country_id
+          join patrol_definition requested on requested.id=:patrol and requested.instance_country_id=pe.instance_country_id
+          join patrol_protocol requested_protocol on requested_protocol.id=requested.protocol_id and requested_protocol.instance_country_id=requested.instance_country_id
+          where pe.instance_country_id=:tenant and pe.assignment_id=:assignment and pe.employee_id=:employee
+            and requested.schedule_type='PROGRAMMED' and previous.code=requested.code
+            and previous_protocol.series_id=requested_protocol.series_id
+            and (plan.post_id=:post or plan.id is null)
+            and pe.finished_at is not null
+          order by pe.started_at desc limit 1
+          """).setParameter("tenant",tenant.instanceCountryId()).setParameter("assignment",assignmentId)
+            .setParameter("employee",employee).setParameter("patrol",patrolId).setParameter("post",postId).getResultList();
     }
     @GET @Path("/patrol-executions")
     public ArrayNode listPatrolExecutions() {

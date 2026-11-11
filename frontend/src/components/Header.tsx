@@ -1,10 +1,11 @@
 import {useEffect,useState} from 'react';
-import {Bell,Menu,X} from 'lucide-react';
+import {Menu,X} from 'lucide-react';
+import Notifications from './Notifications';
 import {getUser,setUser,type UatUser} from '../api';
 import {identEmail,identEnabled,identPlatforms,identPortal,identSignOut} from '../security/identAuth';
 const users:UatUser[]=['presidente','ggeneral','don','dnacional','dzonal','jregional','coord','asistente','monitor'];
 const labels:Record<UatUser,string>={presidente:'Presidente',ggeneral:'Gerente General Ecuador',dlatam:'Director Operaciones LATAM',don:'Director Nacional de Operaciones',dnacional:'Director Nacional de Operaciones',dzonal:'Director Zonal de Operaciones',jregional:'Jefe Regional de Operaciones',coord:'Coordinador de Compañía',monitor:'Monitor',asistente:'Asistente de Operaciones',supervisor:'Supervisor',agente:'Agente',cliente:'Cliente'};
-export default function Header({title,coreContext,onUserChange,onMenuToggle,navOpen=false}:{title:string,coreContext?:any,onUserChange:()=>void,onMenuToggle?:()=>void,navOpen?:boolean}){
+export default function Header({title,coreContext,onUserChange,onMenuToggle,navOpen=false,onNotification}:{title:string,coreContext?:any,onUserChange:()=>void,onMenuToggle?:()=>void,navOpen?:boolean,onNotification:(id?:string)=>void}){
   // Con IDENT: la persona y su Rol vienen del login de IDENT; "← Plataformas" solo si tiene 2 o mas Sistemas.
   const [plataformas,setPlataformas]=useState(0);
   useEffect(()=>{if(identEnabled())identPlatforms().then(p=>setPlataformas(p?.count??0))},[]);
@@ -14,7 +15,7 @@ export default function Header({title,coreContext,onUserChange,onMenuToggle,navO
       <div><div className="eyebrow">{coreContext?.country||'Cargando país desde CORE…'} · {coreContext?.territoryCatalogSource||'CORE'}{coreContext?.territorialDatasetVersion?` · ${coreContext.territorialDatasetVersion}`:''}</div><h1>{title}</h1></div>
     </div>
     <div className="header-actions">
-      <button className="notification-button" aria-label="Notificaciones"><Bell size={19}/><span className="notification-dot">0</span></button>
+      <Notifications key={getUser()} onOpen={onNotification}/>
       {identEnabled()
         ?<>
           <div className="userbox ident-userbox"><span>{identEmail()}</span><strong>{labels[getUser()]}</strong></div>
