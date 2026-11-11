@@ -14,7 +14,7 @@ import SearchableSelect from '../components/SearchableSelect';
 import FilterAccordion from '../components/FilterAccordion';
 
 type ItemCategory='CONSIGNAS'|'NOVEDADES'|'ALARMAS';
-type ItemStatus='PENDING'|'IN_PROGRESS'|'OVERDUE'|'COMPLETED'|'APPROVED'|'DISCARDED'|'NEW'|'ACKNOWLEDGED'|'ESCALATED'|'RESOLVED'|'CRITICAL'|'DRAFT'|'FINALIZED';
+type ItemStatus='PENDING'|'CONFIRMED'|'IN_PROGRESS'|'OVERDUE'|'COMPLETED'|'APPROVED'|'DISCARDED'|'NEW'|'ACKNOWLEDGED'|'ESCALATED'|'RESOLVED'|'CRITICAL'|'DRAFT'|'FINALIZED';
 type Priority='LOW'|'MEDIUM'|'HIGH'|'CRITICAL';
 
 type ConsoleItem={
@@ -109,8 +109,8 @@ const EMPTY_FILTERS:Filters={category:'ALL',query:'',city:'',company:'ALL',clien
 const categoryLabel=(value:ItemCategory)=>value==='CONSIGNAS'?'Consignas':value==='NOVEDADES'?'Novedades':'Alarmas electrónicas';
 const categoryClass=(value:ItemCategory)=>value==='CONSIGNAS'?'consignas':value==='NOVEDADES'?'novedades':'alarmas';
 const categoryIcon=(value:ItemCategory)=>value==='CONSIGNAS'?<ClipboardList size={15}/>:value==='NOVEDADES'?<FileWarning size={15}/>:<BellRing size={15}/>;
-const statusLabel=(value:ItemStatus)=>({PENDING:'Pendiente',IN_PROGRESS:'En curso',OVERDUE:'Vencida',COMPLETED:'Completada',APPROVED:'Aprobada',DISCARDED:'Descartada',NEW:'Nueva',ACKNOWLEDGED:'Reconocida',ESCALATED:'Escalada',RESOLVED:'Resuelta',CRITICAL:'Crítica',DRAFT:'Borrador',FINALIZED:'Finalizado'}[value]);
-const statusClass=(value:ItemStatus)=>({PENDING:'warning',IN_PROGRESS:'info',OVERDUE:'danger',COMPLETED:'success',APPROVED:'success',DISCARDED:'neutral',NEW:'info',ACKNOWLEDGED:'info',ESCALATED:'warning',RESOLVED:'success',CRITICAL:'danger',DRAFT:'neutral',FINALIZED:'success'}[value]);
+const statusLabel=(value:ItemStatus)=>({PENDING:'Pendiente',CONFIRMED:'Confirmada',IN_PROGRESS:'En curso',OVERDUE:'Vencida',COMPLETED:'Completada',APPROVED:'Aprobada',DISCARDED:'Descartada',NEW:'Nueva',ACKNOWLEDGED:'Reconocida',ESCALATED:'Escalada',RESOLVED:'Resuelta',CRITICAL:'Crítica',DRAFT:'Borrador',FINALIZED:'Finalizado'}[value]);
+const statusClass=(value:ItemStatus)=>({PENDING:'warning',CONFIRMED:'info',IN_PROGRESS:'info',OVERDUE:'danger',COMPLETED:'success',APPROVED:'success',DISCARDED:'neutral',NEW:'info',ACKNOWLEDGED:'info',ESCALATED:'warning',RESOLVED:'success',CRITICAL:'danger',DRAFT:'neutral',FINALIZED:'success'}[value]);
 const priorityClass=(value:Priority)=>({LOW:'neutral',MEDIUM:'info',HIGH:'warning',CRITICAL:'danger'}[value]);
 const priorityLabel=(value:Priority)=>({LOW:'Baja',MEDIUM:'Media',HIGH:'Alta',CRITICAL:'Crítica'}[value]);
 const formatDateTime=(value:string)=>new Intl.DateTimeFormat('es-EC',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}).format(new Date(value));
@@ -120,6 +120,10 @@ function withinScope(row:ConsoleItem,scope:Scope){ if(row.id.startsWith('inciden
 function validateRange(from:string,to:string){ if(!from||!to) return 'Debe elegir siempre una fecha inicio y una fecha fin.'; if(to<from) return 'La fecha fin no puede ser menor que la fecha inicio.'; const start=new Date(`${from}T00:00:00`); const max=new Date(start); max.setFullYear(max.getFullYear()+1); const end=new Date(`${to}T23:59:59`); return end>max?'El período consultado no puede ser mayor a 1 año.':''; }
 
 const severityToPriority=(value:IncidentSeverity|''):Priority=>value==='CRITICAL'?'CRITICAL':value==='MAJOR'?'HIGH':value==='MODERATE'?'MEDIUM':'LOW';
+const operationalReportStatus=(value:string):ItemStatus=>{
+  const status=value?.trim().toUpperCase();
+  return status==='CONFIRMED'||status==='APPROVED'||status==='DISCARDED'||status==='FINALIZED'?status:'PENDING';
+};
 const incidentToConsoleItem=(record:IncidentRecord):ConsoleItem=>({
   id:`incident:${record.id}`,category:'NOVEDADES',subtype:'Incidente',code:record.code,title:record.title||'Incidente sin título',
   evidenceEventId:record.id,photoCount:(record.descriptionImages?.length||0)+(record.resolutionImages?.length||0),
@@ -135,7 +139,7 @@ const operatorReportToConsoleItem=(record:OperatorReport,location?:LocationOptio
   evidenceEventId:record.reportId,photoCount:record.photoCount||0,
   code:`OPR-${record.reportId.slice(0,8).toUpperCase()}`,title:record.title,company:location?.company||'Sin dato',companyCode:location?.companyCode||'',companyId:location?.companyId||undefined,client:location?.client||'Sin dato',city:location?.city||'Sin dato',
   point:record.pointName||'Sin dato',post:record.postName||'Sin dato',responsible:record.username||'SGI Operador',zone:'',region:'',
-  status:record.severity==='CRITICAL'?'CRITICAL':'PENDING',priority:record.severity,createdAt:record.createdAt,updatedAt:record.occurredAt,
+  status:operationalReportStatus(record.status),priority:record.severity,createdAt:record.createdAt,updatedAt:record.occurredAt,
   summary:record.description,source:'NOV',originLabel:`Novedades · ${record.type==='INCIDENT'?'Incidentes':record.type==='FINDING'?'Hallazgos':'Vulnerabilidades'} · ${record.category}`,
   recommendedAction:'Validar el reporte recibido desde SGI Operador.'
 });
@@ -206,7 +210,10 @@ export default function ConsolaMonitor({initialCaseId=''}:{initialCaseId?:string
   },[user]);
   const incidentRows=useMemo(()=>incidents.map(incidentToConsoleItem),[incidents]);
   const locationsByPoint=useMemo(()=>new Map(locationOptions.map(location=>[location.pointId,location])),[locationOptions]);
-  const operatorRows=useMemo(()=>operatorReports.map(report=>operatorReportToConsoleItem(report,locationsByPoint.get(report.pointId))),[operatorReports,locationsByPoint]);
+  const incidentReportIds=useMemo(()=>new Set(incidents.map(incident=>incident.operationalReportId).filter(Boolean)),[incidents]);
+  const operatorRows=useMemo(()=>operatorReports
+    .filter(report=>!incidentReportIds.has(report.reportId))
+    .map(report=>operatorReportToConsoleItem(report,locationsByPoint.get(report.pointId))),[operatorReports,locationsByPoint,incidentReportIds]);
   //const allRows=useMemo(()=>[...operatorRows,...DATA,...incidentRows],[operatorRows,incidentRows]);
   const allRows=useMemo(()=>[...operatorRows,...incidentRows],[operatorRows,incidentRows]);
   const scoped=useMemo(()=>allRows.filter(x=>withinScope(x,scope)),[allRows,scope]);
