@@ -139,7 +139,7 @@ public class SmcFactPublisher {
         // Lock solo sobre la bandeja. Otra réplica no entrega la misma fila simultáneamente.
         // Si cae después de la recepción remota, el rollback permite reintentar con la misma clave.
         List<?> rows = em.createNativeQuery("""
-            select id,payload_json,attempts from smc_fact_delivery
+            select id,payload_json,attempts,source_type,source_id from smc_fact_delivery
             where instance_country_id=:tenant and status='PENDING' and next_attempt_at<=current_timestamp
             order by next_attempt_at,created_at,id limit 1 for update skip locked
             """).setParameter("tenant", pe).getResultList();
@@ -147,6 +147,10 @@ public class SmcFactPublisher {
         Object[] row = (Object[]) rows.get(0);
         UUID id = SmcFactSources.uuid(row[0]);
         int attempts = ((Number) row[2]).intValue() + 1;
+        if (sources.hasSimulatedEvidence(pe,row[3].toString(),SmcFactSources.uuid(row[4]))) {
+            finish(id,pe,attempts,null,new SmcDeliveryOutcome("REJECTED",null,"SIMULATED_OPERATIONAL_SOURCE"));
+            return true;
+        }
         SmcDeliveryOutcome outcome;
         Integer http = null;
         Map<String,Object> body;

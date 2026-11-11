@@ -14,7 +14,8 @@ import static org.junit.jupiter.api.Assertions.*;
 @QuarkusTest
 class SmcApprovalFactsDatabaseTest {
     @Inject EntityManager em;
-    final UUID tenant=UUID.randomUUID(),employee=UUID.randomUUID(),assignment=UUID.randomUUID();
+    UUID tenant=UUID.randomUUID();
+    final UUID employee=UUID.randomUUID(),assignment=UUID.randomUUID();
     final UUID point=UUID.randomUUID(),post=UUID.randomUUID(),shift=UUID.randomUUID();
     final Instant since=Instant.now().truncatedTo(ChronoUnit.MICROS).minusSeconds(86400);
 
@@ -85,5 +86,53 @@ class SmcApprovalFactsDatabaseTest {
     void insert(String table,Object... values) {
         var q=em.createNativeQuery("insert into "+table+" values("+String.join(",",Collections.nCopies(values.length,"?"))+")");
         for(int i=0;i<values.length;i++)q.setParameter(i+1,values[i]);q.executeUpdate();
+    }
+
+    @Test void databaseFieldsReachHttpUnchangedAndRetryKeepsOriginalSnapshot() throws Exception {
+        var directory=java.nio.file.Files.createTempDirectory("sgi-smc-db-http-");
+        String key="sgi.m2m.client-id.SMC",previous=System.getProperty(key);
+        System.setProperty(key,"sgi-com-to-smc-local-test");
+        try(var h=new SmcOpenBaoTest.Harness(directory,"OAUTH2_CLIENT_CREDENTIALS","vault:kv/data/local-test/smc")) {
+            tenant=h.pe;
+            var received=new java.util.concurrent.CopyOnWriteArrayList<com.fasterxml.jackson.databind.JsonNode>();
+            var keys=new java.util.concurrent.CopyOnWriteArrayList<String>();
+            h.server.removeContext("/api/v1/operational-facts");
+            h.server.createContext("/api/v1/operational-facts",exchange->{
+                received.add(h.json.readTree(exchange.getRequestBody()));keys.add(exchange.getRequestHeaders().getFirst("Idempotency-Key"));
+                SmcOpenBaoTest.reply(exchange,received.size()==1?503:201,received.size()==1?"{}":"{\"accepted\":true,\"smcFactId\":\"local-receipt\"}");
+            });
+            QuarkusTransaction.requiringNew().run(()->{
+                fixtures();long person=java.util.concurrent.ThreadLocalRandom.current().nextLong(10000,Long.MAX_VALUE);
+                em.createNativeQuery("update employee_operational_snapshot set persona_id=:person").setParameter("person",person).executeUpdate();
+                UUID reportId=report(tenant,"APPROVED","FINDING",true);
+                var fact=candidates(since,null,100).getFirst().fact();
+                String payload;
+                try {payload=h.json.writeValueAsString(fact.payload());}catch(Exception e){throw new RuntimeException(e);}
+                em.createNativeQuery("""
+                    insert into smc_fact_delivery(id,instance_country_id,source_type,source_id,event_id,fact_type,payload_json)
+                    values(:id,:pe,'NOVELTY_APPROVAL',:origin,:event,'NOVELTY_APPROVED',:payload)
+                    """).setParameter("id",UUID.randomUUID()).setParameter("pe",tenant).setParameter("origin",reportId)
+                    .setParameter("event",fact.eventId()).setParameter("payload",payload).executeUpdate();
+                var publisher=new SmcFactPublisher();publisher.em=em;publisher.mapper=h.json;publisher.adapter=h.adapter;
+                publisher.sources=new SmcFactSources();publisher.sources.em=em;
+                assertTrue(publisher.deliverOne(tenant));
+                // Modificar el read model después no debe sustituir la identidad del snapshot al reintentar.
+                em.createNativeQuery("update employee_operational_snapshot set persona_id=persona_id-1").executeUpdate();
+                em.createNativeQuery("update smc_fact_delivery set next_attempt_at=current_timestamp").executeUpdate();
+                assertTrue(publisher.deliverOne(tenant));assertFalse(publisher.deliverOne(tenant));
+                assertEquals(2,received.size());assertEquals(received.get(0),received.get(1));assertEquals(keys.get(0),keys.get(1));
+                var body=received.getFirst();assertEquals(employee.toString(),body.path("employeeId").asText());
+                assertEquals(tenant.toString(),body.path("instanceCountryId").asText());assertEquals(person,body.path("persona_id").asLong());
+                assertEquals(point.toString(),body.path("pointId").asText());assertEquals(post.toString(),body.path("postId").asText());
+                assertEquals(shift.toString(),body.path("shiftId").asText());assertEquals(since.plusSeconds(60).toString(),body.path("occurredAt").asText());
+                assertEquals(reportId.toString(),body.path("metadata").path("sourceId").asText());
+                assertFalse(body.has("amount"));assertFalse(body.has("draw"));assertEquals("SENT",em.createNativeQuery("select status from smc_fact_delivery").getSingleResult());
+            });
+        } finally {
+            if(previous==null)System.clearProperty(key);else System.setProperty(key,previous);
+            java.nio.file.Files.deleteIfExists(directory.resolve("secret_id"));
+            java.nio.file.Files.deleteIfExists(directory.resolve("role_id"));
+            java.nio.file.Files.deleteIfExists(directory);
+        }
     }
 }

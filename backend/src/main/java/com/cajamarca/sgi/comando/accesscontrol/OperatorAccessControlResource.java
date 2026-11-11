@@ -4,7 +4,7 @@ import com.cajamarca.sgi.comando.common.TenantContext;
 import com.cajamarca.sgi.comando.operations.PointEntity;
 import com.cajamarca.sgi.comando.operations.ServiceEntity;
 import com.cajamarca.sgi.comando.operator.OperatorContext;
-import jakarta.annotation.security.RolesAllowed;
+import io.quarkus.security.Authenticated;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
@@ -14,9 +14,9 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.*;
 
-@Path("/api/v1/operator/access-control")
-@Produces(MediaType.APPLICATION_JSON)
-@RolesAllowed({"SUPERVISOR_SEGURIDAD","AGENTE_SEGURIDAD"})
+/** Control de accesos del Operador (SGI: Operador). Igual que el resto de /api/v1/operator: @Authenticated y el
+ *  OperatorContext exige IDENT, Rol de operador y la asignación vigente del empleado. */
+@Path("/api/v1/operator/access-control") @Authenticated @Produces(MediaType.APPLICATION_JSON)
 public class OperatorAccessControlResource {
     private static final ZoneId OPERATING_ZONE=ZoneId.of("America/Guayaquil");
     @Inject TenantContext tenant;
@@ -57,8 +57,9 @@ public class OperatorAccessControlResource {
     private static LocalDate today(){return LocalDate.now(OPERATING_ZONE);}
     private boolean applies(UUID entryId,UUID pointId){return AccessControlEntryPoint.count("entryId=?1 and pointId=?2 and instanceCountryId=?3",entryId,pointId,tenant.instanceCountryId())>0;}
     private PointEntity assignedPoint(UUID assignmentId,UUID pointId){
+        UUID employee=operator.employee();
         if(assignmentId==null||pointId==null)throw new BadRequestException("Asignación y Punto son obligatorios.");
-        OperatorContext.Assignment assignment=operator.assignment(assignmentId,operator.employee());
+        OperatorContext.Assignment assignment=operator.assignment(assignmentId,employee);
         Instant now=Instant.now();
         if(now.isBefore(assignment.shift().startsAt.minusSeconds(3540))||now.isAfter(assignment.shift().endsAt))
             throw new ForbiddenException("La asignación no está vigente para validar accesos.");

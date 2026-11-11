@@ -122,7 +122,9 @@ class SmcOpenBaoTest {
             ResolutionCache cache=new ResolutionCache();set(cache,"defaultTtl",30);set(cache,"defaultAllowStale",0);
             TenantContext tenant=new TenantContext(){@Override public UUID instanceCountryId(){return pe;}};
             set(executor,"tenant",tenant);set(executor,"coreResolver",resolver);set(executor,"cache",cache);
-            set(executor,"credentials",credentials);set(executor,"serviceTokens",tokens);set(executor,"circuits",new CircuitRegistry());set(executor,"objectMapper",json);
+            CircuitRegistry circuits=new CircuitRegistry();
+            set(circuits,"failureThreshold",5);set(circuits,"openSeconds",30);
+            set(executor,"credentials",credentials);set(executor,"serviceTokens",tokens);set(executor,"circuits",circuits);set(executor,"objectMapper",json);
             adapter.executor=executor;adapter.tenant=tenant;adapter.interconnectionId="SGI_COM_SMC__0001_v001";adapter.interfaceId="SGI_COM_SMC_0001_IF01";
             server.start();
         }
