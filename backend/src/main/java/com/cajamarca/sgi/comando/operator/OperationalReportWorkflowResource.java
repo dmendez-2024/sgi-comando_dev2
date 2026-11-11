@@ -76,11 +76,16 @@ public class OperationalReportWorkflowResource {
     public List<Map<String,Object>> history(@PathParam("id") UUID id) {
         Report report=find(id,false); authorizeRead(report.pointId());
         @SuppressWarnings("unchecked") List<Object[]> rows=em.createNativeQuery("""
-            select id,action,previous_status,resulting_status,actor_username,actor_role,comment,created_at,
-                   assignment_id,shift_occurrence_id
-              from operator_operational_report_decision
-             where instance_country_id=:tenant and report_id=:report
-             order by created_at,id
+            select decision.id,decision.action,decision.previous_status,decision.resulting_status,
+                   coalesce(nullif(trim(employee.full_name),''),decision.actor_username) as actor_name,
+                   decision.actor_role,decision.comment,decision.created_at,
+                   decision.assignment_id,decision.shift_occurrence_id
+              from operator_operational_report_decision decision
+              left join employee_operational_snapshot employee
+                on employee.instance_country_id=decision.instance_country_id
+               and employee.employee_id=decision.actor_employee_id
+             where decision.instance_country_id=:tenant and decision.report_id=:report
+             order by decision.created_at,decision.id
             """).setParameter("tenant",tenant.instanceCountryId()).setParameter("report",id).getResultList();
         List<Map<String,Object>> out=new ArrayList<>();
         for(Object[] row:rows){Map<String,Object> x=new LinkedHashMap<>();x.put("id",row[0]);x.put("action",row[1]);x.put("previousStatus",row[2]);x.put("resultingStatus",row[3]);x.put("actor",row[4]);x.put("actorRole",row[5]);x.put("comment",row[6]);x.put("createdAt",row[7]);x.put("assignmentId",row[8]);x.put("shiftOccurrenceId",row[9]);out.add(x);}
