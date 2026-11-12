@@ -23,6 +23,7 @@ import static com.cajamarca.sgi.comando.operator.ReliefContract.*;
  */
 @ApplicationScoped
 public class TaskEvidenceService {
+    @Inject ShiftSyncService shiftSync;
     public static final String TYPE = "TASK_EVIDENCE_SUBMITTED";
 
     @Inject OperatorContext ctx;
@@ -49,6 +50,7 @@ public class TaskEvidenceService {
             return ack(eventId, countEvidence(eventId), reviews.statusFor(eventId));
         }
 
+        shiftSync.ensureOpen(t,assignmentId);
         Instant executed = time(e, "executedAt");
         if (executed.isBefore(a.shift().startsAt.minusSeconds(43200)) || executed.isAfter(a.shift().endsAt.plusSeconds(43200))) throw new BadRequestException("Fecha fuera de la ventana del turno");
         OperatorTasks.Target target = tasks.require(targetType, targetId, a.post());

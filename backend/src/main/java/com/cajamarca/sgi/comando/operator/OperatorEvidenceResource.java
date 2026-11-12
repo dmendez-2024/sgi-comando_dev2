@@ -106,7 +106,8 @@ public class OperatorEvidenceResource {
     }
 
     /** Foto estándar de un Hito, evidencia de Consigna, campo de Bitácora o del propio Puesto (relevo), para que el agente la use como guía. */
-    @GET @Path("/standard-images/{imageId}")
+    // image/*: sin él hereda application/json de la clase y responde 406 al Accept: image/... de SGI Operador.
+    @GET @Path("/standard-images/{imageId}") @Produces("image/*")
     public Response standardImage(@PathParam("imageId") UUID imageId, @QueryParam("assignmentId") UUID assignmentId) {
         if (assignmentId == null) throw new BadRequestException("assignmentId es obligatorio");
         OperatorContext.Assignment a = ctx.assignment(assignmentId, ctx.employee());
@@ -118,7 +119,7 @@ public class OperatorEvidenceResource {
     }
 
     /** Compatibilidad: foto estándar de un Hito de patrulla. */
-    @GET @Path("/checkpoints/{checkpointId}/standard-images/{imageId}")
+    @GET @Path("/checkpoints/{checkpointId}/standard-images/{imageId}") @Produces("image/*")
     public Response checkpointStandardImage(@PathParam("checkpointId") UUID checkpointId, @PathParam("imageId") UUID imageId, @QueryParam("assignmentId") UUID assignmentId) {
         return standardImage(imageId, assignmentId);
     }

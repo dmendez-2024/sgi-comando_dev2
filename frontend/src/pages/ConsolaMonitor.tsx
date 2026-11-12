@@ -48,7 +48,7 @@ type ConsoleItem={
 type Scope={label:string;companies:string[]|null;region?:string;zone?:string};
 type ClientOption={id:string;code:string;name:string};
 type ServiceLocationRow={clientId:string;pointId:string;postId:string;companyId:string|null;companyName:string;clientName:string;pointName:string;postName:string};
-type OperatorReport={reportId:string;type:'INCIDENT'|'FINDING'|'VULNERABILITY';category:string;subcategory?:string;title:string;description:string;severity:Priority;status:string;occurredAt:string;createdAt:string;username:string;pointId:string;pointName:string;postName:string;photoCount?:number};
+type OperatorReport={reportId:string;type:'INCIDENT'|'FINDING'|'VULNERABILITY';category:string;subcategory?:string;title:string;description:string;severity:Priority;status:string;occurredAt:string;createdAt:string;username:string;pointId:string;pointName:string;postName:string;photoCount?:number;companyName?:string;companyCode?:string;companyId?:string;clientName?:string;city?:string};
 type Filters={
   category:'ALL'|ItemCategory;
   query:string;
@@ -137,14 +137,14 @@ const incidentToConsoleItem=(record:IncidentRecord):ConsoleItem=>({
 const operatorReportToConsoleItem=(record:OperatorReport,location?:LocationOption):ConsoleItem=>({
   id:`operator:${record.reportId}`,category:'NOVEDADES',subtype:record.type==='INCIDENT'?'Incidente':record.type==='FINDING'?'Hallazgo':'Vulnerabilidad',
   evidenceEventId:record.reportId,photoCount:record.photoCount||0,
-  code:`OPR-${record.reportId.slice(0,8).toUpperCase()}`,title:record.title,company:location?.company||'Sin dato',companyCode:location?.companyCode||'',companyId:location?.companyId||undefined,client:location?.client||'Sin dato',city:location?.city||'Sin dato',
+  code:`OPR-${record.reportId.slice(0,8).toUpperCase()}`,title:record.title,company:record.companyName||location?.company||'Sin dato',companyCode:record.companyCode||location?.companyCode||'',companyId:record.companyId||location?.companyId||undefined,client:record.clientName||location?.client||'Sin dato',city:record.city||location?.city||'Sin dato',
   point:record.pointName||'Sin dato',post:record.postName||'Sin dato',responsible:record.username||'SGI Operador',zone:'',region:'',
   status:operationalReportStatus(record.status),priority:record.severity,createdAt:record.createdAt,updatedAt:record.occurredAt,
   summary:record.description,source:'NOV',originLabel:`Novedades · ${record.type==='INCIDENT'?'Incidentes':record.type==='FINDING'?'Hallazgos':'Vulnerabilidades'} · ${record.category}`,
   recommendedAction:'Validar el reporte recibido desde SGI Operador.'
 });
 
-export default function ConsolaMonitor({initialCaseId=''}:{initialCaseId?:string}){
+export default function ConsolaMonitor({initialCaseId='',notificationTarget}:{initialCaseId?:string,notificationTarget?:{id:string}|null}){
   const user=getUser();
   const scope=scopeByUser[user];
   const [filters,setFilters]=useState<Filters>(EMPTY_FILTERS);
@@ -154,6 +154,21 @@ export default function ConsolaMonitor({initialCaseId=''}:{initialCaseId?:string
   const [incidentsError,setIncidentsError]=useState('');
   const [incidentsRefresh,setIncidentsRefresh]=useState(0);
   const [operatorReports,setOperatorReports]=useState<OperatorReport[]>([]);
+  const [notificationReport,setNotificationReport]=useState<OperatorReport|null>(null);
+  const [notificationError,setNotificationError]=useState('');
+  const [notificationLoading,setNotificationLoading]=useState(false);
+  useEffect(()=>{
+    let current=true;
+    setNotificationReport(null);setNotificationError('');setNotificationLoading(false);
+    if(notificationTarget){
+      setDetailId('');setIncidentEditorOpen(false);setNotificationLoading(true);
+      void api.operationalReport(notificationTarget.id).then(report=>{
+        if(current){setNotificationReport(report as OperatorReport);setDetailId(`operator:${report.reportId}`)}
+      }).catch(()=>{if(current)setNotificationError('No se pudo abrir la notificación. El caso puede estar fuera de tu alcance actual.')})
+        .finally(()=>{if(current)setNotificationLoading(false)});
+    }
+    return ()=>{current=false};
+  },[notificationTarget,user]);
   const [incidentEditorOpen,setIncidentEditorOpen]=useState(false);
   const [editingIncidentId,setEditingIncidentId]=useState('');
   const [locationOptions,setLocationOptions]=useState<LocationOption[]>([]);
@@ -215,7 +230,7 @@ export default function ConsolaMonitor({initialCaseId=''}:{initialCaseId?:string
     .filter(report=>!incidentReportIds.has(report.reportId))
     .map(report=>operatorReportToConsoleItem(report,locationsByPoint.get(report.pointId))),[operatorReports,locationsByPoint,incidentReportIds]);
   //const allRows=useMemo(()=>[...operatorRows,...DATA,...incidentRows],[operatorRows,incidentRows]);
-  const allRows=useMemo(()=>[...operatorRows,...incidentRows],[operatorRows,incidentRows]);
+  const allRows=useMemo(()=>[...operatorRows,...incidentRows,...(notificationReport&&!operatorRows.some(row=>row.id===`operator:${notificationReport.reportId}`)&&!incidentReportIds.has(notificationReport.reportId)?[operatorReportToConsoleItem(notificationReport,locationsByPoint.get(notificationReport.pointId))]:[])],[operatorRows,incidentRows,notificationReport,locationsByPoint,incidentReportIds]);
   const scoped=useMemo(()=>allRows.filter(x=>withinScope(x,scope)),[allRows,scope]);
   useEffect(()=>{if(initialCaseId&&scoped.some(row=>row.id===initialCaseId))setDetailId(initialCaseId)},[initialCaseId,scoped]);
   const cities=useMemo(()=>unique(scoped.map(x=>x.city)),[scoped]);
@@ -332,6 +347,8 @@ export default function ConsolaMonitor({initialCaseId=''}:{initialCaseId?:string
       <div><div className="page-backline">Operaciones / Consola</div><h2>Consola</h2><p>Workspace operativo para Monitores: consignas, novedades, reasignaciones y alarmas electrónicas.</p></div>
       <div style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
         <div className="csl-scope nov-scope"><Monitor size={16}/>{scope.label}</div>
+        {notificationLoading&&<div role="status" className="posts-notice">Abriendo notificación…</div>}
+        {notificationError&&<div role="alert" className="csl-incident-error"><AlertTriangle size={16}/>{notificationError}</div>}
         {obsintEnabled&&<ObsintButton onClick={()=>setObsintOpen(true)}/>}
       </div>
     </div>

@@ -23,6 +23,18 @@ public class SmcPublishResource {
     @Inject TenantContext tenant;
     @Inject com.cajamarca.sgi.comando.patrols.PatrolDistanceService distance;
     @Inject SecurityIdentity identity;
+    @Inject DayOffWorkedService dayOffWorked;
+
+    @POST @Path("/day-off-worked") @Consumes(MediaType.APPLICATION_JSON)
+    public jakarta.ws.rs.core.Response accreditDayOff(DayOffWorkedService.Request request) {
+        var receipt=dayOffWorked.accredit(activeTenant(),identity.getPrincipal().getName(),request);
+        return jakarta.ws.rs.core.Response.status(receipt.duplicate()?200:201).entity(receipt).build();
+    }
+
+    @GET @Path("/day-off-worked/{id}")
+    public Map<String,Object> dayOff(@PathParam("id") UUID id) {
+        return dayOffWorked.get(activeTenant(),id);
+    }
 
     @POST @Path("/publish")
     public SmcFactPublisher.Publication publish(@QueryParam("retryRejected") @DefaultValue("false") boolean retryRejected) {

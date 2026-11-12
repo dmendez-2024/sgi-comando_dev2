@@ -27,6 +27,7 @@ export default function App() {
   const home = () => isMonitor() ? 'Consola' : 'Dashboard';
   const [active, setActive] = useState(home);
   const [attentionCase, setAttentionCase] = useState('');
+  const [notificationTarget,setNotificationTarget]=useState<{id:string}|null>(null);
   // "Atras" del navegador con la sesion abierta: se queda en SGI y vuelve al inicio.
   useEffect(() => { installBackGuard(() => setActive(home())); }, []);
   const [userRevision, setUserRevision] = useState(0);
@@ -52,8 +53,9 @@ export default function App() {
   }, [userRevision,contextReload]);
 
   const monitor = isMonitor();
-  const navigate = (next:string) => { setAttentionCase(''); setActive(next); setMobileNavOpen(false); };
-  const openAttention = (target:'Consola'|'Consignas', id:string) => { setAttentionCase(id); setActive(target); setMobileNavOpen(false); };
+  const navigate = (next:string) => { setNotificationTarget(null); setAttentionCase(''); setActive(next); setMobileNavOpen(false); };
+  const openAttention = (target:'Consola'|'Consignas', id:string) => { setNotificationTarget(null); setAttentionCase(id); setActive(target); setMobileNavOpen(false); };
+  const openNotification = (id?:string) => { setAttentionCase(''); setNotificationTarget(id?{id}:null); setActive('Consola'); setMobileNavOpen(false); };
 
   useEffect(() => {
     document.body.classList.toggle('mobile-nav-open', mobileNavOpen);
@@ -69,7 +71,7 @@ export default function App() {
   }, [mobileNavOpen]);
 
   const page = monitor
-    ? <ConsolaMonitor initialCaseId={attentionCase} />
+    ? <ConsolaMonitor initialCaseId={attentionCase} notificationTarget={notificationTarget}/>
     : active === 'Dashboard'
     ? <Dashboard onOpenAttention={openAttention} />
     : active === 'Territorio'
@@ -83,7 +85,7 @@ export default function App() {
       : active === 'Asignaciones'
         ? <Assignments />
       : active === 'Consola'
-        ? <ConsolaMonitor initialCaseId={attentionCase} />
+        ? <ConsolaMonitor initialCaseId={attentionCase} notificationTarget={notificationTarget}/>
       : active === 'Bitácora'
         ? <BitacoraGlobal />
       : active === 'Consignas'
@@ -108,7 +110,7 @@ export default function App() {
       <Sidebar active={monitor ? 'Consola' : active} onChange={navigate} uatTools={uatTools} monitorOnly={monitor} open={mobileNavOpen} onClose={() => setMobileNavOpen(false)} />
       <button className={`mobile-nav-backdrop ${mobileNavOpen ? 'open' : ''}`} type="button" aria-label="Cerrar menú de navegación" onClick={() => setMobileNavOpen(false)} />
       <main>
-        <Header title={title} coreContext={coreContext} navOpen={mobileNavOpen} onMenuToggle={() => setMobileNavOpen(value => !value)} onUserChange={() => {setCoreLoaded(false);setActive(home());setUserRevision((x) => x + 1)}} />
+        <Header title={title} coreContext={coreContext} navOpen={mobileNavOpen} onMenuToggle={() => setMobileNavOpen(value => !value)} onNotification={openNotification} onUserChange={() => {setNotificationTarget(null);setAttentionCase('');setCoreLoaded(false);setActive(home());setUserRevision((x) => x + 1)}} />
         {coreError&&<div className="core-bootstrap-message"><span>{coreError}</span><button onClick={()=>{setCoreLoaded(false);setContextReload(value=>value+1)}}>Reintentar conexión</button></div>}
         {coreContext?.coreSyncStatus==='STALE'&&<div className="core-bootstrap-message stale">Mostrando el último catálogo CORE sincronizado ({coreContext.territorialDatasetVersion}). {coreContext.coreSyncMessage||''}</div>}
         <section key={`${active}-${userRevision}-${coreContext?.coreCatalogSyncedAt||coreError}`}>{coreLoaded?page:<div className="core-bootstrap-message">Cargando contexto del país y catálogos de CORE…</div>}</section>

@@ -191,13 +191,18 @@ public class OperatorReportResource {
           where r.instance_country_id=:tenant""";
 
     ArrayNode rows(UUID employee,String type,Set<UUID> companyIds) {
+        return rows(employee,type,companyIds,null);
+    }
+
+    ArrayNode rows(UUID employee,String type,Set<UUID> companyIds,UUID id) {
         if(companyIds!=null && companyIds.isEmpty()) return mapper.createArrayNode();
-        String filters=(employee==null?"":" and r.employee_id=:employee")+(type==null?"":" and r.report_type=:type")+(companyIds==null?"":" and p.company_id in (:companyIds)");
+        String filters=(employee==null?"":" and r.employee_id=:employee")+(type==null?"":" and r.report_type=:type")+(companyIds==null?"":" and p.company_id in (:companyIds)")+(id==null?"":" and r.id=:id");
         String sql=SELECT+filters+" order by r.occurred_at desc limit 200";
         var query=em.createNativeQuery(sql).setParameter("tenant",tenant.instanceCountryId());
         if(employee!=null) query.setParameter("employee",employee);
         if(type!=null) query.setParameter("type",type);
         if(companyIds!=null) query.setParameter("companyIds",companyIds);
+        if(id!=null) query.setParameter("id",id);
         @SuppressWarnings("unchecked") List<Object[]> data=query.getResultList();
         ArrayNode out=mapper.createArrayNode(); data.forEach(row->out.add(response(row,false))); return out;
     }

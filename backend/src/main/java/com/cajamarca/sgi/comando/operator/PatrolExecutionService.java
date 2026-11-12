@@ -23,6 +23,7 @@ import static com.cajamarca.sgi.comando.operator.ReliefContract.*;
  */
 @ApplicationScoped
 public class PatrolExecutionService {
+    @Inject ShiftSyncService shiftSync;
     @Inject OperatorContext ctx;
     @Inject OperatorPatrols patrols;
     @Inject TenantContext tenant;
@@ -47,6 +48,7 @@ public class PatrolExecutionService {
             return ack(eventId, countEvidence(eventId), reviews.statusFor(eventId));
         }
 
+        shiftSync.ensureOpen(t,assignmentId);
         Instant executed = time(e, "executedAt");
         if (executed.isBefore(a.shift().startsAt.minusSeconds(43200)) || executed.isAfter(a.shift().endsAt.plusSeconds(43200))) throw new BadRequestException("Fecha fuera de la ventana del turno");
         OperatorPatrols.Applicable target = patrols.requireCheckpoint(checkpointId, a.post().id);

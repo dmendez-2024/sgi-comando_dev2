@@ -8,7 +8,7 @@ Activación controlada por `SGI_SMC_ENABLED`. La publicación no adjudica Impuls
 - `ROUTE_COMPLETION`: ejecución finalizada `COMPLETA`/`INCOMPLETA`, patrulla `CLOSED` y `PROGRAMMED`, al menos un hito configurado. Valor = hitos distintos `CUMPLIDO` / hitos configurados * 100, HALF_UP a dos decimales. Un 100 también se entrega como evidencia.
 - `CONSIGNMENT_NOT_DONE`: registro explícito `consignment_compliance.result=NO_CUMPLIDA`, valor 1. La ausencia de registro, `CON_NOVEDAD`, `CUMPLIDA` y `NO_APLICA` no generan hechos.
 - Cada origen se registra una vez en `smc_fact_delivery`; no se usa la bandeja SQLite del teléfono ni el outbox general de Comando.
-- No incluye `NO_EJECUTADA`, francos trabajados, cierre de ocurrencias ni consulta del ID de SMC. No se alteran las rutas de ingreso de Operador.
+- Alcance inicial: no incluía `NO_EJECUTADA` ni francos trabajados. La ampliación V141 incorpora cierres explícitos de patrulla y acreditaciones auditadas de franco trabajado; ver `SMC_ID_PATRULLAS_FRANCOS.md`. No incluye cierre automático de ocurrencias ni consulta del ID de SMC. No se alteran las rutas de ingreso de Operador.
 
 ### Hechos para Impulsos (SMC-002v0.5)
 
@@ -211,15 +211,24 @@ captura cada 120 s y velocidad máxima de 5 km/h. Los límites de 25 m y 180 s
 son valores iniciales aprobados para UAT; no se presentan como reglas originales
 de SMC. V137 crea la medición y V139 admite su fuente en el cursor.
 
-`POINT_RESPONSIBLE` sigue pendiente. El usuario definió contar únicamente agentes
-con asistencia validada, excluyendo al responsable. La designación de
-`point_responsibility` es planificada (ASI-DEC-059). El ingreso actual de relevo
-guarda `relief_event.status='PENDIENTE'`; no hay un flujo implementado que confirme
-asistencia/identidad. Las revisiones VISINT actuales son de fotos del puesto y
-no acreditan esa asistencia. Por ello no se exporta un número de agentes
-planificados como si fueran asistentes validados y no se crea una aprobación
-manual nueva. Para completar este hecho falta disponer de la fuente real de
-asistencia validada y acordar cómo cerrar el conteo ante validaciones tardías.
+`POINT_RESPONSIBLE` se incorpora detrás de `sgi.smc.point-responsibility-enabled`
+(apagado por defecto y pendiente de pruebas). El usuario definió que,
+mientras no exista validación facial, un relevo realizado cuenta como asistencia
+para este indicador. El responsable se excluye del número de agentes a cargo.
+Esta decisión no convierte el estado del relevo en identidad validada ni modifica
+otros flujos. `point_responsibility` contiene una designación planificada;
+`operator_relief_submission` y `relief_event` contienen relevos recibidos y su
+hora de ejecución. La recepción de un relevo no demuestra que todas las colas
+de los demás dispositivos se hayan sincronizado.
+
+En el escenario con conexión, se espera a que termine el periodo y se reciban
+relevos ejecutados de todas las asignaciones de agentes elegibles solapadas; se
+cuentan personas distintas excluyendo al responsable. Una asignación sin relevo
+mantiene el hecho pendiente de generación indefinidamente. La recepción de todos
+es una condición conservadora, no prueba que se haya sincronizado cualquier otro
+tipo de evento móvil. Falta validar con pruebas los cambios tardíos de asignación,
+ventanas, roles y el mecanismo de corrección en SMC antes de activar. El contrato
+exige `value` entero mayor o igual a 1; un conteo cero no genera hecho.
 
 Las pruebas usan PostgreSQL temporal y HTTP local. No demuestran recepción ni
 valoración en SMC real. La APK de Operador y la captura GPS con pantalla apagada
