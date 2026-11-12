@@ -74,6 +74,7 @@ public class DhoStcNoveltyIntegrationGateway implements NoveltyIntegrationGatewa
         request.headers.put("channel", "WEB");
         request.headers.put("user", approvingUserEmail.trim());
         request.headers.put("ktoken", token);
+        LOG.infof("stc_task_request noveltyId=%s payload=%s", noveltyId, payload.toString());
 
         final IntegrationResult result;
         try {
