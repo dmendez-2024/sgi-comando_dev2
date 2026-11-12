@@ -342,6 +342,8 @@ Read the result of a pre-shift attendance confirmation.
 
 # OPR-CONSIGNMENT-CONTEXT-001 - Contexto parametrizado de Consignas
 
+Consulta operativa CNS (solo lectura): `GET /api/consignments/compliances?dateFrom=AAAA-MM-DD&dateTo=AAAA-MM-DD` devuelve los cumplimientos `CUMPLIDA` de consignas pertenecientes a protocolos, con punto, puesto, agente, fecha, comentario y número de fotos. Aplica `instance_country_id` y alcance de compañías del usuario. El rango máximo es un año; no incluye propuestas ad-hoc, que conservan su flujo de revisión independiente.
+
 `GET /api/v1/operator/runtime`
 
 - `consignments[]` conserva el contrato existente y añade `code`, `protocolCode`, `protocolName`, `priority`, `applicationType`, `applicationDaysJson`, `applicationTimeFrom`, `applicationTimeTo`, `scopeType`, `acknowledgmentRequired`, `confirmationRequired`, `evidenceRequired`, `gpsRequired`, `observationRequired` y `expectedLocationMode`.

@@ -1,5 +1,11 @@
 # SGI: Comando — Changelog
 
+## SGI_COM — CNS consulta de consignas cumplidas y progreso de patrullas — 2026-11-12
+- RC de consulta operativa: `GET /api/consignments/compliances` lee cumplimientos `CUMPLIDA` del registro canónico, con rango de fechas, tenant y alcance por compañía. Operaciones → Consignas los presenta separados de las propuestas ad-hoc, con agente, punto, puesto, fecha y cantidad de fotos declaradas. Las fotos individuales viajan como ejecuciones de evidencia separadas y todavía no están vinculadas a este detalle. No cambia el flujo de aprobación de propuestas ni el contrato de envío de SGI Operador.
+- Corrección: el contador y los eventos de patrullas incluyen los hitos recibidos en `task_execution` además de los registros heredados en `patrol_checkpoint_execution`; se cuentan hitos distintos de la ronda, sin duplicar reintentos.
+- Archivos: `ConsignmentComplianceQueryResource`, `OperatorResource`, `V147__consignment_compliance_query_index.sql`, `frontend/src/api.ts`, `frontend/src/pages/ConsignasExecution.tsx`, `frontend/src/styles.css`, `frontend/src/utils/exportCsv.ts`, `docs/API_CATALOG.md`. Migración aditiva de índice, sin transformar datos.
+- Validación: frontend `npm run build` y backend `docker build -f backend/Dockerfile` correctos. Prueba integrada con datos de DEV pendiente.
+
 ## SGI_COM — Plano ATS del Operador: id del paquete vigente — 2026-11-04
 - PERMITIDO (SITC-NOM-001 §6.1). `GET /api/v1/operator/patrol-map` agrega el header `X-ATS-Package-Id` con el id del paquete ATS vigente del Punto.
 - Motivo: el runtime ya envía por Hito `atsX`/`atsY` (0–1 relativos a la imagen) y `atsPackageId`, pero el Operador no podía saber si el plano descargado era la misma revisión sobre la que se marcó el Hito. Con este header descarta los pines de otra revisión, igual que la web (`Services.tsx`).
