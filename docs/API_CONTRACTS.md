@@ -19,6 +19,13 @@ Base: `/api`
 - `GET /api/points/{pointId}/posts`
 
 ## Consignas
+
+### Listado ligero de relevos para Consignas
+
+- `GET /api/consignments/executions/reliefs?limit=100`: máximo 100 registros, ordenados por recepción descendente, con alcance de compañía aplicado en SQL antes del límite. Devuelve los datos de tabla, contador de fotos y un `event` mínimo (`executedAt`, `unilateral`, `reliefMode`); no devuelve `context`, el payload completo ni `inventoryReport`.
+- `GET /api/consignments/executions/reliefs/{id}`: mismo alcance, 404 si no existe o no está autorizado. Devuelve además `context`, `event` completo, `inventoryDeliveryStatus` e `inventoryReport.items`. No descarga fotos; las galerías mantienen sus consultas existentes.
+- Lectura para los roles de Comando, incluido Monitor según las compañías de su turno. No cambia la consulta antigua `/api/v1/operator/reliefs` ni los contratos de SGI Operador.
+- La pantalla actualiza consignas, patrullas y relevos independientemente al terminar cada petición. Exportar espera a que terminen las tres fuentes para conservar una exportación completa de los resultados cargados.
 - `GET /api/consignments?pointId=...`
 - `POST /api/consignments`
 - `POST /api/consignments/{id}/publish`

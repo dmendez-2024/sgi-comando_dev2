@@ -13,6 +13,7 @@ import {PhotoEvidenceGallery} from '../components/PhotoEvidenceGallery';
 import SearchableSelect from '../components/SearchableSelect';
 import FilterAccordion from '../components/FilterAccordion';
 import {downloadCsv} from '../utils/exportCsv';
+import TablePagination, {pageSlice} from '../components/TablePagination';
 
 type ItemCategory='CONSIGNAS'|'NOVEDADES'|'ALARMAS';
 type ItemStatus='PENDING'|'CONFIRMED'|'IN_PROGRESS'|'OVERDUE'|'COMPLETED'|'APPROVED'|'DISCARDED'|'NEW'|'ACKNOWLEDGED'|'ESCALATED'|'RESOLVED'|'CRITICAL'|'DRAFT'|'FINALIZED';
@@ -149,6 +150,7 @@ export default function ConsolaMonitor({initialCaseId='',notificationTarget}:{in
   const user=getUser();
   const scope=scopeByUser[user];
   const [filters,setFilters]=useState<Filters>(EMPTY_FILTERS);
+  const [page,setPage]=useState(0);
   const [selectedId,setSelectedId]=useState('');
   const [detailId,setDetailId]=useState('');
   const [incidents,setIncidents]=useState<IncidentRecord[]>([]);
@@ -259,6 +261,8 @@ export default function ConsolaMonitor({initialCaseId='',notificationTarget}:{in
       return true;
     }).sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt));
   },[scoped,filters,dateError]);
+  const pagedRows=useMemo(()=>pageSlice(rows,page),[rows,page]);
+  useEffect(()=>{if(page!==pagedRows.current)setPage(pagedRows.current)},[page,pagedRows.current]);
 
   const inspected=detailId?scoped.find(x=>x.id===detailId)??null:null;
   const editingIncident=editingIncidentId?incidents.find(x=>x.id===editingIncidentId)??null:null;
@@ -403,7 +407,7 @@ export default function ConsolaMonitor({initialCaseId='',notificationTarget}:{in
             <table className="csl-table nov-table">
               <thead><tr><th>Categoría</th><th>Subtipo</th><th>Código</th><th>Título</th><th>Cliente</th><th>Punto / Puesto</th><th>Responsable</th><th>Estado</th><th>Prioridad</th><th>Última actualización</th><th></th></tr></thead>
               <tbody>
-                {rows.map(row=><tr key={row.id} className={selectedId===row.id?'selected':''} onClick={()=>openRow(row)}>
+                {pagedRows.items.map(row=><tr key={row.id} className={selectedId===row.id?'selected':''} onClick={()=>openRow(row)}>
                   <td><span className={`csl-category ${categoryClass(row.category)}`}>{categoryIcon(row.category)}{categoryLabel(row.category)}</span></td>
                   <td>{row.subtype}</td>
                   <td>{row.code}</td>
@@ -420,7 +424,7 @@ export default function ConsolaMonitor({initialCaseId='',notificationTarget}:{in
               </tbody>
             </table>
           </div>
-          <div className="csl-results-footer nov-results-footer">Mostrando {rows.length?1:0} a {rows.length} de {rows.length} resultados</div>
+          <TablePagination total={rows.length} page={pagedRows.current} onChange={setPage}/>
         </div>
       </section>
 

@@ -237,6 +237,8 @@ export const api={
   patrolExecutions:()=>request<any[]>('/api/v1/operator/patrol-executions'),
  logbookRecords:()=>request<any[]>('/api/v1/operator/logbook-records'),
  reliefs:(limit=100)=>request<any[]>(`/api/v1/operator/reliefs?limit=${limit}`),
+ consignmentReliefs:(limit=100)=>request<any[]>(`/api/consignments/executions/reliefs?limit=${limit}`),
+ consignmentRelief:(id:string)=>request<any>(`/api/consignments/executions/reliefs/${encodeURIComponent(id)}`),
  currentRegesep:(pointId:string)=>request<any>(`/api/points/${pointId}/regesep/current`),
  assignmentCompanies:()=>request<any[]>('/api/assignments/companies'),
  assignmentWeek:(companyId:string,weekStart:string,pointId?:string)=>request<any>(`/api/assignments/week?companyId=${encodeURIComponent(companyId)}&weekStart=${weekStart}${pointId?`&pointId=${encodeURIComponent(pointId)}`:''}`),
