@@ -42,8 +42,9 @@ public class OperatorEvidenceResource {
 
     @POST @Path("/evidences") @Consumes(MediaType.MULTIPART_FORM_DATA) @Transactional
     public UploadResponse upload(@RestForm("metadata") String metadataJson, @RestForm("files") List<FileUpload> files) throws IOException {
-        UUID employee = ctx.employee();
         EvidenceUploadContract.Metadata meta = EvidenceUploadContract.parse(metadataJson, mapper);
+        // Autor: quien inició sesión o, si la app sincroniza fotos de otro agente del punto, el dueño de la asignación.
+        UUID employee = ctx.author(ctx.employee(), meta.assignmentId(), "EVIDENCE_UPLOAD", meta.eventId() + "/" + meta.uploadBatchId());
         List<FileUpload> uploads = files == null ? List.of() : files;
         Map<UUID,Integer> index = EvidenceUploadContract.matchFiles(meta, uploads.stream().map(FileUpload::fileName).toList(), maxFiles, Instant.now());
         OperatorContext.Assignment a = ctx.assignment(meta.assignmentId(), employee);

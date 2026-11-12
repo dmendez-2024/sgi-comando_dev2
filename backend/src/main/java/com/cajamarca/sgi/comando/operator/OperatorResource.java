@@ -481,7 +481,7 @@ public class OperatorResource {
     }
     @POST @Path("/logbook-records") @Consumes(MediaType.APPLICATION_JSON) @Transactional
     public ObjectNode submitLogbookRecord(@HeaderParam("Idempotency-Key") String idempotencyKey, JsonNode event) {
-        UUID employee=employee(), recordId=uuid(event,"recordId"), assignmentId=uuid(event,"assignmentId");
+        UUID recordId=uuid(event,"recordId"), assignmentId=uuid(event,"assignmentId"), employee=ctx.author(employee(),assignmentId,"LOGBOOK_RECORD",recordId);
         String key=idempotencyKey==null?"":idempotencyKey.trim();
         if(!recordId.toString().equals(key)) throw new BadRequestException("Idempotency-Key debe coincidir con recordId");
         AssignmentContext c=assignment(assignmentId,employee); lock(assignmentId);
@@ -540,7 +540,7 @@ public class OperatorResource {
         @SuppressWarnings("unchecked") List<Object[]> old=em.createNativeQuery("select payload_hash,username,point_version,record_version,status from operator_logbook_record where instance_country_id=:tenant and id=:id")
             .setParameter("tenant",tenant.instanceCountryId()).setParameter("id",recordId).getResultList();
         if(!old.isEmpty()) {
-            Object[] row=old.get(0); if(!identity.getPrincipal().getName().equals(row[1].toString())) throw new ForbiddenException();
+            Object[] row=old.get(0); if(!ctx.username().equals(row[1].toString())) throw new ForbiddenException();
             if(!payloadHash.equals(row[0].toString())) throw new ClientErrorException("recordId reutilizado con contenido diferente",409);
             return mapper.createObjectNode().put("recordId",recordId.toString()).put("status",row[4].toString())
                 .put("pointVersion",((Number)row[2]).longValue()).put("recordVersion",((Number)row[3]).longValue()).put("idempotentReplay",true);
@@ -548,7 +548,7 @@ public class OperatorResource {
         long pointVersion=nextLogbookPointVersion(c.point.id);
         em.createNativeQuery("insert into operator_logbook_record(id,instance_country_id,assignment_id,point_id,post_id,employee_id,username,protocol_id,protocol_version,accreditation_id,white_list_entry_id,captured_at,received_at,status,comments,field_values_json,evidence_refs_json,payload_hash,correlation_id,record_version,point_version) values(:id,:tenant,:assignment,:point,:post,:employee,:username,:protocol,:version,:accreditation,:whiteListEntry,:captured,current_timestamp,'INSIDE',:comments,:fields,:evidence,:hash,:correlation,1,:pointVersion)")
             .setParameter("id",recordId).setParameter("tenant",tenant.instanceCountryId()).setParameter("assignment",assignmentId)
-            .setParameter("point",c.point.id).setParameter("post",c.post.id).setParameter("employee",employee).setParameter("username",identity.getPrincipal().getName())
+            .setParameter("point",c.point.id).setParameter("post",c.post.id).setParameter("employee",employee).setParameter("username",ctx.username())
             .setParameter("protocol",protocolId).setParameter("version",protocolVersion).setParameter("accreditation",accreditationId).setParameter("captured",capturedAt)
             .setParameter("whiteListEntry",whiteListEntryId)
             .setParameter("comments",comments.isBlank()?null:comments).setParameter("fields",values.toString()).setParameter("evidence",evidence.toString())
@@ -582,7 +582,7 @@ public class OperatorResource {
 
     @POST @Path("/logbook-records/{recordId}/exit") @Consumes(MediaType.APPLICATION_JSON) @Transactional
     public ObjectNode exitLogbookRecord(@PathParam("recordId") UUID recordId,@HeaderParam("Idempotency-Key") String idempotencyKey,JsonNode request) {
-        UUID employee=employee(), assignmentId=uuid(request,"assignmentId"), exitOperationId=uuid(request,"exitOperationId");
+        UUID assignmentId=uuid(request,"assignmentId"), exitOperationId=uuid(request,"exitOperationId"), employee=ctx.author(employee(),assignmentId,"LOGBOOK_EXIT",exitOperationId);
         if(idempotencyKey==null||!exitOperationId.toString().equals(idempotencyKey.trim())) throw new BadRequestException("Idempotency-Key debe coincidir con exitOperationId");
         AssignmentContext c=assignment(assignmentId,employee); lock(assignmentId);
         @SuppressWarnings("unchecked") List<Object[]> replay=em.createNativeQuery("select id,point_version,record_version,exited_at,exited_by_username from operator_logbook_record where instance_country_id=:tenant and exit_operation_id=:operation")
@@ -627,13 +627,13 @@ public class OperatorResource {
         Instant exitedAt=time(request,"exitedAt"); if(exitedAt.isAfter(Instant.now().plusSeconds(300)))throw new BadRequestException("La fecha de salida no puede estar en el futuro");
         long pointVersion=nextLogbookPointVersion(c.point.id), recordVersion=current+1;
         em.createNativeQuery("update operator_logbook_record set status='EXITED',exited_at=:exitedAt,exited_by_employee_id=:employee,exited_by_username=:username,exit_operation_id=:operation,exit_protocol_id=:exitProtocol,exit_protocol_version=:exitVersion,exit_accreditation_id=:exitAccreditation,exit_field_values_json=:exitFields,exit_comments=:exitComments,record_version=:recordVersion,point_version=:pointVersion where instance_country_id=:tenant and id=:id")
-            .setParameter("exitedAt",exitedAt).setParameter("employee",employee).setParameter("username",identity.getPrincipal().getName())
+            .setParameter("exitedAt",exitedAt).setParameter("employee",employee).setParameter("username",ctx.username())
             .setParameter("exitProtocol",exitProtocolId).setParameter("exitVersion",exitProtocolVersion).setParameter("exitAccreditation",exitAccreditationId)
             .setParameter("exitFields",exitValues.toString()).setParameter("exitComments",exitComments.isBlank()?null:exitComments)
             .setParameter("operation",exitOperationId).setParameter("recordVersion",recordVersion).setParameter("pointVersion",pointVersion)
             .setParameter("tenant",tenant.instanceCountryId()).setParameter("id",recordId).executeUpdate();
         return mapper.createObjectNode().put("recordId",recordId.toString()).put("status","EXITED").put("pointVersion",pointVersion)
-            .put("recordVersion",recordVersion).put("exitedAt",exitedAt.toString()).put("exitedBy",identity.getPrincipal().getName()).put("idempotentReplay",false);
+            .put("recordVersion",recordVersion).put("exitedAt",exitedAt.toString()).put("exitedBy",ctx.username()).put("idempotentReplay",false);
     }
     @GET @Path("/logbook-records")
     public ArrayNode listLogbookRecords() {
@@ -704,7 +704,8 @@ public class OperatorResource {
     }
     @POST @Path("/patrol-executions") @Consumes(MediaType.APPLICATION_JSON) @Transactional
     public ObjectNode submitPatrol(JsonNode event) {
-        UUID employee=employee(), assignmentId=uuid(event,"assignmentId"), executionId=uuid(event,"executionId"), patrolId=uuid(event,"patrolId");
+        UUID assignmentId=uuid(event,"assignmentId"), executionId=uuid(event,"executionId"), patrolId=uuid(event,"patrolId");
+        UUID employee=ctx.author(employee(),assignmentId,"PATROL_EXECUTION",executionId+"/"+event.path("action").asText("").trim().toUpperCase(Locale.ROOT));
         AssignmentContext c=assignment(assignmentId,employee); lock(assignmentId);
         shiftSync.ensureOpen(tenant.instanceCountryId(),assignmentId);
         List<?> allowed=em.createNativeQuery("""
@@ -835,9 +836,10 @@ public class OperatorResource {
     }
     @POST @Path("/consignment-compliances") @Consumes(MediaType.APPLICATION_JSON) @Transactional
     public ObjectNode submitConsignmentCompliance(JsonNode event) {
-        UUID employee=employee(), assignmentId=uuid(event,"assignmentId"), executionId=uuid(event,"executionId"), consignmentId=uuid(event,"consignmentId");
+        UUID assignmentId=uuid(event,"assignmentId"), executionId=uuid(event,"executionId"), consignmentId=uuid(event,"consignmentId");
+        UUID employee=ctx.author(employee(),assignmentId,"CONSIGNMENT_COMPLIANCE",executionId);
         AssignmentContext c=assignment(assignmentId,employee); lock(assignmentId);
-        String username=identity.getPrincipal().getName();
+        String username=ctx.username();
         String result=text(event,"result").trim().toUpperCase(Locale.ROOT);
         if(!Set.of("CUMPLIDA","NO_CUMPLIDA","CON_NOVEDAD","NO_APLICA").contains(result)) throw new BadRequestException("Resultado de Consigna inválido");
         String comment=event.path("comment").asText("").trim();
@@ -1089,9 +1091,10 @@ public class OperatorResource {
     }
     @PUT @Path("/relief-evidence/{eventId}/{purpose}") @Consumes("image/jpeg") @Transactional
     public Map<String,Object> upload(@PathParam("eventId") UUID eventId,@PathParam("purpose") String purpose,@QueryParam("assignmentId") UUID assignmentId,byte[] bytes) {
-        UUID employee=employee(); assignment(assignmentId,employee);
+        if(assignmentId==null) throw new BadRequestException("assignmentId obligatorio");
+        UUID employee=ctx.author(employee(),assignmentId,"RELIEF_EVIDENCE",eventId+"/"+purpose); assignment(assignmentId,employee);
         if(!PURPOSES.contains(purpose) || bytes==null || bytes.length<4 || bytes.length>5242880 || (bytes[0]&255)!=255 || (bytes[1]&255)!=216 || (bytes[bytes.length-2]&255)!=255 || (bytes[bytes.length-1]&255)!=217) throw new BadRequestException("Fotografía JPEG inválida o superior a 5 MB");
-        lock(assignmentId); String digest=hash(bytes); String user=identity.getPrincipal().getName();
+        lock(assignmentId); String digest=hash(bytes); String user=ctx.username();
         List<?> existing=em.createNativeQuery("select id,sha256,username,assignment_id from operator_relief_evidence where instance_country_id=:t and event_id=:e and purpose=:p")
             .setParameter("t",tenant.instanceCountryId()).setParameter("e",eventId).setParameter("p",purpose).getResultList();
         if(!existing.isEmpty()) { Object[] row=(Object[])existing.get(0); if(!user.equals(row[2].toString()) || !assignmentId.toString().equals(row[3].toString())) throw new ForbiddenException();
@@ -1113,7 +1116,7 @@ public class OperatorResource {
         assignment(assignmentId,employee);
         List<?> rows=em.createNativeQuery("select content_type,bucket,object_key,content from operator_relief_evidence where instance_country_id=:t and event_id=:e and assignment_id=:a and username=:u and purpose=:p")
             .setParameter("t",tenant.instanceCountryId()).setParameter("e",eventId).setParameter("a",assignmentId)
-            .setParameter("u",identity.getPrincipal().getName()).setParameter("p",purpose).getResultList();
+            .setParameter("u",ctx.username()).setParameter("p",purpose).getResultList();
         if(rows.size()!=1) throw new NotFoundException("Evidencia no disponible");
         Object[] row=(Object[])rows.get(0);
         return Response.ok(reliefPhotos.read(row[1],row[2],row[3])).type(row[0].toString()).header(HttpHeaders.CACHE_CONTROL,"no-store").build();
@@ -1123,14 +1126,14 @@ public class OperatorResource {
         // Hito de patrulla y tarea con foto (Consigna/Bitácora) tienen su propio servicio; el resto es el relevo.
         if(PatrolExecutionContract.TYPE.equals(batch.path("events").path(0).path("type").asText())) return patrolExecutions.submit(batch);
         if(TaskEvidenceService.TYPE.equals(batch.path("events").path(0).path("type").asText())) return taskEvidences.submit(batch);
-        UUID employee=employee(); validate(batch,employee,tenant.instanceCountryId(),Instant.now());
-        JsonNode event=batch.path("events").get(0); UUID eventId=uuid(event,"eventId"), assignmentId=uuid(event,"assignmentId");
+        JsonNode event=batch.path("events").path(0); UUID eventId=uuid(event,"eventId"), assignmentId=uuid(event,"assignmentId");
+        UUID employee=ctx.author(employee(),assignmentId,"RELIEF",eventId); validate(batch,employee,tenant.instanceCountryId(),Instant.now());
         AssignmentContext c=assignment(assignmentId,employee); lock(assignmentId);
         if(!c.targetId().equals(uuid(event,"postId")) || !c.shift.id.equals(uuid(event,"shiftOccurrenceId"))) throw new BadRequestException("Puesto o turno no coincide");
         String digest=hash(canonical(event).toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
         List<?> old=em.createNativeQuery("select payload_hash,username from operator_relief_submission where id=:id and instance_country_id=:t")
             .setParameter("id",eventId).setParameter("t",tenant.instanceCountryId()).getResultList();
-        if(!old.isEmpty()) { Object[] r=(Object[])old.get(0); if(!r[1].equals(identity.getPrincipal().getName())) throw new ForbiddenException();
+        if(!old.isEmpty()) { Object[] r=(Object[])old.get(0); if(!r[1].equals(ctx.username())) throw new ForbiddenException();
             if(!r[0].equals(digest)) throw new ClientErrorException("Identificador reutilizado con datos diferentes",409);
             boolean reviewed=!em.createNativeQuery("select 1 from visual_review v join task_execution t on t.id=v.task_execution_id where t.instance_country_id=:t and t.group_id=:e and t.execution_type=:x")
                 .setParameter("t",tenant.instanceCountryId()).setParameter("e",eventId).setParameter("x",ReliefStationReviews.TYPE).setMaxResults(1).getResultList().isEmpty();
@@ -1159,7 +1162,7 @@ public class OperatorResource {
         if(!required.equals(actual)) throw new BadRequestException("Debes confirmar todas las consignas vigentes con su versión");
         for(JsonNode photo:event.path("evidence")) {
             List<?> rows=em.createNativeQuery("select id from operator_relief_evidence where id=:id and instance_country_id=:t and event_id=:e and assignment_id=:a and username=:u and purpose=:p")
-                .setParameter("id",uuid(photo,"evidenceId")).setParameter("t",tenant.instanceCountryId()).setParameter("e",eventId).setParameter("a",assignmentId).setParameter("u",identity.getPrincipal().getName()).setParameter("p",text(photo,"purpose")).getResultList();
+                .setParameter("id",uuid(photo,"evidenceId")).setParameter("t",tenant.instanceCountryId()).setParameter("e",eventId).setParameter("a",assignmentId).setParameter("u",ctx.username()).setParameter("p",text(photo,"purpose")).getResultList();
             if(rows.isEmpty()) throw new BadRequestException("Evidencia no autorizada o no cargada");
         }
         String inventoryStatus=ReliefContract.inventoryStatus(event);
@@ -1170,13 +1173,13 @@ public class OperatorResource {
             .setParameter("executed",execution).setParameter("unilateral",event.path("unilateral").asBoolean()).setParameter("mode",mode)
             .setParameter("cause",openingCause==null?"":openingCause).setParameter("inventory",inventoryStatus).executeUpdate();
         em.createNativeQuery("insert into operator_relief_submission(id,instance_country_id,assignment_id,employee_id,username,device_id,batch_id,correlation_id,payload_hash,payload_json,context_json,received_at) values(:id,:t,:a,:e,:u,:d,:b,:c,:h,:payload,:context,current_timestamp)")
-            .setParameter("id",eventId).setParameter("t",tenant.instanceCountryId()).setParameter("a",assignmentId).setParameter("e",employee).setParameter("u",identity.getPrincipal().getName())
+            .setParameter("id",eventId).setParameter("t",tenant.instanceCountryId()).setParameter("a",assignmentId).setParameter("e",employee).setParameter("u",ctx.username())
             .setParameter("d",text(batch,"deviceId")).setParameter("b",uuid(batch,"batchId")).setParameter("c",uuid(batch,"correlationId"))
             .setParameter("h",digest).setParameter("payload",event.toString()).setParameter("context",snapshot.toString()).executeUpdate();
         String inventoryDelivery=c.coordination()?"NOT_REQUIRED":inventory.recordReport(event,snapshot.path("inventory"),eventId,assignmentId,c.post.id,c.point.id,employee,
-            identity.getPrincipal().getName(),uuid(batch,"correlationId"));
+            ctx.username(),uuid(batch,"correlationId"));
         // VISINT opcional: las fotos del puesto se comparan con las fotos estándar del Puesto; el resultado no bloquea el relevo.
-        String stationVisint=c.coordination()?"NOT_REQUESTED":stationReviews.enqueue(tenant.instanceCountryId(),eventId,assignmentId,c.shift.id,c.point.id,c.post.id,employee,identity.getPrincipal().getName(),execution,batch);
+        String stationVisint=c.coordination()?"NOT_REQUESTED":stationReviews.enqueue(tenant.instanceCountryId(),eventId,assignmentId,c.shift.id,c.point.id,c.post.id,employee,ctx.username(),execution,batch);
         return ack(eventId,stationVisint,inventoryStatus,inventoryDelivery);
     }
     private long nextLogbookPointVersion(UUID pointId) {
@@ -1223,12 +1226,12 @@ public class OperatorResource {
     }
     @POST @Path("/consignment-review-requests") @Consumes(MediaType.APPLICATION_JSON) @Transactional
     public ObjectNode submitConsignmentReviewRequest(@HeaderParam("Idempotency-Key") String idempotencyKey, JsonNode request) {
-        UUID employee=employee();
         UUID requestId=uuid(request,"requestId"), assignmentId=uuid(request,"assignmentId");
+        UUID employee=ctx.author(employee(),assignmentId,"CONSIGNMENT_REVIEW_REQUEST",requestId);
         String key=idempotencyKey==null?"":idempotencyKey.trim();
         if(key.isEmpty() || key.length()>160) throw new BadRequestException("Idempotency-Key es obligatorio y debe tener máximo 160 caracteres");
         if(!key.equals(requestId.toString())) throw new BadRequestException("Idempotency-Key debe coincidir con requestId");
-        String username=identity.getPrincipal().getName();
+        String username=ctx.username();
         String payloadHash=hash(canonical(request).toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
         List<?> existing=em.createNativeQuery("select payload_hash,employee_id,username from operator_consignment_review_request where id=:id and instance_country_id=:t")
             .setParameter("id",requestId).setParameter("t",tenant.instanceCountryId()).getResultList();
