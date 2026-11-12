@@ -47,6 +47,7 @@ public class OperatorResource {
     @Inject PatrolExecutionService patrolExecutions;
     @Inject com.cajamarca.sgi.comando.patrols.PatrolDistanceService patrolDistance;
     @Inject TaskEvidenceService taskEvidences;
+    @Inject ShiftSyncService shiftSync;
     @Inject OperatorTasks tasks;
     @Inject ReliefStationReviews stationReviews;
     @Inject ReliefEvidencePhotos reliefPhotos;
@@ -705,6 +706,7 @@ public class OperatorResource {
     public ObjectNode submitPatrol(JsonNode event) {
         UUID employee=employee(), assignmentId=uuid(event,"assignmentId"), executionId=uuid(event,"executionId"), patrolId=uuid(event,"patrolId");
         AssignmentContext c=assignment(assignmentId,employee); lock(assignmentId);
+        shiftSync.ensureOpen(tenant.instanceCountryId(),assignmentId);
         List<?> allowed=em.createNativeQuery("""
           select d.id,d.structure_type,d.schedule_type,d.sequence_type,d.window_start,d.window_end from patrol_definition d join patrol_protocol p on p.id=d.protocol_id and p.instance_country_id=d.instance_country_id
           join patrol_protocol_post_scope s on s.protocol_id=p.id and s.instance_country_id=p.instance_country_id
@@ -874,12 +876,15 @@ public class OperatorResource {
             Object[] old=(Object[])alreadyConfirmed.get(0);
             return mapper.createObjectNode().put("executionId",old[0].toString()).put("status","RECEIVED").put("result",old[1].toString()).put("confirmedAt",old[2].toString());
         }
+        shiftSync.ensureOpen(tenant.instanceCountryId(),assignmentId);
+        if(executedAt.isBefore(c.shift.startsAt) || !executedAt.isBefore(c.shift.endsAt) || executedAt.isAfter(Instant.now().plusSeconds(300)))
+            throw new BadRequestException("La ejecución de la consigna debe corresponder al turno");
         Instant confirmedAt=Instant.now();
-        em.createNativeQuery("insert into consignment_compliance(id,instance_country_id,protocol_id,consignment_id,assignment_id,employee_id,username,result,comment,photo_count,gps_required,payload_hash,payload_json,confirmed_at,created_at) values(:id,:tenant,:protocol,:consignment,:assignment,:employee,:username,:result,:comment,:photos,:gps,:hash,:payload,:confirmed,current_timestamp)")
+        em.createNativeQuery("insert into consignment_compliance(id,instance_country_id,protocol_id,consignment_id,assignment_id,employee_id,username,result,comment,photo_count,gps_required,payload_hash,payload_json,confirmed_at,created_at,executed_at) values(:id,:tenant,:protocol,:consignment,:assignment,:employee,:username,:result,:comment,:photos,:gps,:hash,:payload,:confirmed,current_timestamp,:executed)")
             .setParameter("id",executionId).setParameter("tenant",tenant.instanceCountryId()).setParameter("protocol",UUID.fromString(rules[0].toString()))
             .setParameter("consignment",consignmentId).setParameter("assignment",assignmentId).setParameter("employee",employee).setParameter("username",username)
             .setParameter("result",result).setParameter("comment",comment).setParameter("photos",photoCount).setParameter("gps",Boolean.TRUE.equals(rules[2]))
-            .setParameter("hash",payloadHash).setParameter("payload",event.toString()).setParameter("confirmed",confirmedAt).executeUpdate();
+            .setParameter("hash",payloadHash).setParameter("payload",event.toString()).setParameter("confirmed",confirmedAt).setParameter("executed",executedAt).executeUpdate();
         return mapper.createObjectNode().put("executionId",executionId.toString()).put("status","RECEIVED").put("result",result).put("confirmedAt",confirmedAt.toString());
     }
     private Instant parseConsignmentExecutedAt(JsonNode event) {

@@ -28,6 +28,7 @@ public class SmcFactPublisher {
     @ConfigProperty(name="sgi.smc.enabled", defaultValue="false") boolean enabled;
     @ConfigProperty(name="sgi.smc.facts-since") Optional<String> factsSince;
     @ConfigProperty(name="sgi.smc.batch-size", defaultValue="100") int batchSize;
+    @ConfigProperty(name="sgi.smc.point-responsibility-enabled", defaultValue="false") boolean pointResponsibilityEnabled;
     private final AtomicBoolean running = new AtomicBoolean();
 
     public record Publication(boolean enabled, boolean busy, int enqueued, int attempted, int requeued) {}
@@ -80,6 +81,7 @@ public class SmcFactPublisher {
             """).getSingleResult());
         int inserted = 0;
         for (String type : SmcFactSources.TYPES) {
+            if ("POINT_RESPONSIBILITY".equals(type) && !pointResponsibilityEnabled) continue;
             int initialized = em.createNativeQuery("""
                 insert into smc_source_cursor(instance_country_id,source_type,changed_at)
                 values(:tenant,:type,:start) on conflict do nothing
