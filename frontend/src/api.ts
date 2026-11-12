@@ -243,6 +243,7 @@ export const api={
  assignmentPersonnel:(companyId:string,weekStart:string,q='',role='',availability='',page=0,size=50,sort='PERSON',direction='ASC')=>request<any>(`/api/assignments/personnel?companyId=${encodeURIComponent(companyId)}&weekStart=${weekStart}&q=${encodeURIComponent(q)}&role=${encodeURIComponent(role)}&availability=${encodeURIComponent(availability)}&page=${page}&size=${size}&sort=${encodeURIComponent(sort)}&direction=${encodeURIComponent(direction)}`),
  assignmentPersonnelRoles:(companyId:string)=>request<any[]>(`/api/assignments/personnel-roles?companyId=${encodeURIComponent(companyId)}`),
  assignmentEmployee:(employeeId:string,weekStart:string,companyId:string)=>request<any>(`/api/assignments/employees/${encodeURIComponent(employeeId)}?weekStart=${weekStart}&companyId=${encodeURIComponent(companyId)}`),
+ assignmentEmployeePhoto:(employeeId:string)=>binaryRequest(`/api/assignments/employees/${encodeURIComponent(employeeId)}/photo`),
  transferReasons:()=>request<any[]>('/api/assignments/transfer-reasons'),
  transferDestinations:(originCompanyId:string)=>request<any[]>(`/api/assignments/transfer-destinations?originCompanyId=${encodeURIComponent(originCompanyId)}`),
  createCompanyTransfer:(body:any)=>request<any>('/api/assignments/transfers',{method:'POST',body:JSON.stringify(body)}),

@@ -652,9 +652,14 @@
             "companyCoreCatalogId?",
             "companyCode?",
             "separationReason? (RESIGNATION|DISMISSAL|POINT_CLOSURE|OTHER; only INACTIVE)",
-            "separationEffectiveAt? (ISO-8601; defaults to updatedFromSourceAt)"
+            "separationEffectiveAt? (ISO-8601; defaults to updatedFromSourceAt)",
+            "identificationNumber?",
+            "corporateEmail?",
+            "photoBase64?"
           ],
           "companyRule": "An explicit companyCoreCatalogId or companyCode is authoritative. During the DHO transition, new employees that omit both fields use the configured default company (Kaibil); existing employees retain their current source company.",
+          "profileRule": "fullName is persisted exactly as sent by DHO in surname-surname-name-name order. identificationNumber and corporateEmail are additive optional fields during rollout.",
+          "photoRule": "photoBase64 is optional patch data. Omitted or blank preserves the existing photo; when present it must decode to JPEG, PNG or WebP and be at most 5 MiB.",
           "idempotency": "Idempotency-Key is persisted per Instancia PE; same key + same payload is safe, same key + different payload returns conflict.",
           "rotationRule": "Only RESIGNATION and DISMISSAL contribute to Dashboard personnel rotation. POINT_CLOSURE is persisted but excluded."
         },

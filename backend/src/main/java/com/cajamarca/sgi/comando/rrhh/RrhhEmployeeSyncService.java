@@ -20,13 +20,16 @@ import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import java.util.regex.Pattern;
 
 @ApplicationScoped
 public class RrhhEmployeeSyncService {
     private static final Set<String> SEPARATION_REASONS = Set.of("RESIGNATION", "DISMISSAL", "POINT_CLOSURE", "OTHER");
+    private static final Pattern CORPORATE_EMAIL = Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
     private static final List<String> LOCAL_AVATAR_KEYS = List.of(
         "/avatars/82000000-0000-0000-0000-000000000001.png",
         "/avatars/82000000-0000-0000-0000-000000000002.png",
@@ -44,6 +47,7 @@ public class RrhhEmployeeSyncService {
 
     @Inject TenantContext tenant;
     @Inject AssignmentReleaseService assignmentReleaseService;
+    @Inject EmployeePhotoService employeePhotos;
 
     @ConfigProperty(name = "sgi.integrations.rrhh.use-canonical-employee-id", defaultValue = "false")
     boolean useCanonicalEmployeeId;
@@ -75,6 +79,8 @@ public class RrhhEmployeeSyncService {
             }
             return;
         }
+
+        EmployeePhotoService.DecodedPhoto incomingPhoto = employeePhotos.decode(request.photoBase64());
 
         Long personaId = sourcePersonaId(request);
         UUID employeeId = resolveEmployeeId(tenantId, request);
@@ -121,6 +127,11 @@ public class RrhhEmployeeSyncService {
             return;
         }
 
+        String identificationNumber = nullableTrim(request.identificationNumber());
+        if (identificationNumber != null) {
+            requireUniqueIdentification(tenantId, employeeId, identificationNumber);
+        }
+
         boolean becameInactive = employee != null
             && !"INACTIVE".equalsIgnoreCase(employee.employmentStatus)
             && "INACTIVE".equals(employmentStatus);
@@ -136,12 +147,23 @@ public class RrhhEmployeeSyncService {
         } else {
             employee.companyId = sourceCompany.id;
         }
-        if (blank(employee.photoKey)) employee.photoKey = localAvatarKey(employeeId);
-
         employee.fullName = request.fullName().trim();
+        if (identificationNumber != null) employee.identificationNumber = identificationNumber;
+        String corporateEmail = nullableTrim(request.corporateEmail());
+        if (corporateEmail != null) employee.corporateEmail = corporateEmail;
         employee.roleCode = request.roleCode().trim();
         employee.employmentStatus = employmentStatus;
         employee.updatedFromSourceAt = sourceTimestamp;
+        if (incomingPhoto != null && (!incomingPhoto.sha256().equals(employee.photoSha256)
+            || blank(employee.photoBucket) || blank(employee.photoKey))) {
+            EmployeePhotoService.StoredPhoto stored = employeePhotos.store(tenantId, employeeId, incomingPhoto);
+            employee.photoBucket = stored.bucket();
+            employee.photoKey = stored.objectKey();
+            employee.photoContentType = stored.contentType();
+            employee.photoSha256 = stored.sha256();
+            employee.photoSizeBytes = stored.sizeBytes();
+        }
+        if (blank(employee.photoKey)) employee.photoKey = localAvatarKey(employeeId);
         if (!employee.isPersistent()) employee.persist();
 
         if ("ACTIVE".equals(employmentStatus)) {
@@ -306,25 +328,44 @@ public class RrhhEmployeeSyncService {
         event.persist();
     }
 
-    private String contentHash(RrhhEmployeeEventResource.EmployeeEventRequest request) {
-        String canonical = String.join("\u001f",
-            Objects.toString(request.employeeId(), ""),
-            Objects.toString(request.personaId(), ""),
-            Objects.toString(request.canonicalEmployeeId(), ""),
-            trim(request.fullName()),
-            trim(request.roleCode()),
-            trim(request.employmentStatus()).toUpperCase(),
-            Objects.toString(request.updatedFromSourceAt(), ""),
-            Objects.toString(request.companyCoreCatalogId(), ""),
-            trim(request.companyCode()).toUpperCase(),
-            trim(request.separationReason()).toUpperCase(),
-            Objects.toString(request.separationEffectiveAt(), "")
-        );
+    String contentHash(RrhhEmployeeEventResource.EmployeeEventRequest request) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            return HexFormat.of().formatHex(digest.digest(canonical.getBytes(StandardCharsets.UTF_8)));
+            hashPart(digest, request.employeeId());
+            hashPart(digest, request.personaId());
+            hashPart(digest, request.canonicalEmployeeId());
+            hashPart(digest, trim(request.fullName()));
+            hashPart(digest, trim(request.roleCode()));
+            hashPart(digest, trim(request.employmentStatus()).toUpperCase());
+            hashPart(digest, request.updatedFromSourceAt());
+            hashPart(digest, request.companyCoreCatalogId());
+            hashPart(digest, trim(request.companyCode()).toUpperCase());
+            hashPart(digest, trim(request.separationReason()).toUpperCase());
+            hashPart(digest, request.separationEffectiveAt());
+            hashPart(digest, trim(request.identificationNumber()));
+            hashPart(digest, trim(request.corporateEmail()));
+            hashPart(digest, trim(request.photoBase64()));
+            return HexFormat.of().formatHex(digest.digest());
         } catch (NoSuchAlgorithmException e) {
             throw new InternalServerErrorException("SHA-256 no está disponible.", e);
+        }
+    }
+
+    private static void hashPart(MessageDigest digest, Object value) {
+        digest.update(Objects.toString(value, "").getBytes(StandardCharsets.UTF_8));
+        digest.update((byte) 0x1f);
+    }
+
+    private void requireUniqueIdentification(UUID tenantId, UUID employeeId, String identificationNumber) {
+        List<EmployeeOperationalSnapshot> matches = EmployeeOperationalSnapshot.list(
+            "instanceCountryId=?1 and upper(identificationNumber)=?2",
+            tenantId, identificationNumber.toUpperCase(Locale.ROOT)
+        );
+        if (matches.stream().anyMatch(row -> !employeeId.equals(row.employeeId))) {
+            throw new WebApplicationException(
+                "identificationNumber ya está vinculado a otro empleado del país.",
+                Response.Status.CONFLICT
+            );
         }
     }
 
@@ -392,10 +433,29 @@ public class RrhhEmployeeSyncService {
         if (!blank(request.companyCode()) && request.companyCode().trim().length() > 80) {
             throw new BadRequestException("companyCode supera el máximo de 80 caracteres.");
         }
+        if (request.identificationNumber() != null) {
+            String identificationNumber = request.identificationNumber().trim();
+            if (identificationNumber.isEmpty()) {
+                throw new BadRequestException("identificationNumber no puede estar vacío cuando se envía.");
+            }
+            if (identificationNumber.length() > 80 || identificationNumber.chars().anyMatch(Character::isISOControl)) {
+                throw new BadRequestException("identificationNumber no es válido o supera 80 caracteres.");
+            }
+        }
+        if (request.corporateEmail() != null) {
+            String corporateEmail = request.corporateEmail().trim();
+            if (corporateEmail.isEmpty()) {
+                throw new BadRequestException("corporateEmail no puede estar vacío cuando se envía.");
+            }
+            if (corporateEmail.length() > 254 || !CORPORATE_EMAIL.matcher(corporateEmail).matches()) {
+                throw new BadRequestException("corporateEmail no contiene un correo empresarial válido.");
+            }
+        }
     }
 
     private static boolean blank(String value) { return value == null || value.trim().isEmpty(); }
     private static String trim(String value) { return value == null ? "" : value.trim(); }
+    private static String nullableTrim(String value) { return blank(value) ? null : value.trim(); }
     private static String separationReason(String value) {
         if (blank(value)) return null;
         String normalized = trim(value).toUpperCase();

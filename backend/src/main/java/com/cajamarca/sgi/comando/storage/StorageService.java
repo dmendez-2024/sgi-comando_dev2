@@ -22,6 +22,7 @@ public class StorageService {
     @ConfigProperty(name="sgi.storage.standard-bucket") String standardBucket;
     @ConfigProperty(name="sgi.storage.evidence-bucket") String evidenceBucket;
     @ConfigProperty(name="sgi.storage.documents-bucket") String documentsBucket;
+    @ConfigProperty(name="sgi.storage.employee-bucket") String employeeBucket;
     private MinioClient client;
     private final Set<String> ready = ConcurrentHashMap.newKeySet();
 
@@ -31,6 +32,7 @@ public class StorageService {
     public String standardBucket() { return standardBucket; }
     public String evidenceBucket() { return evidenceBucket; }
     public String documentsBucket() { return documentsBucket; }
+    public String employeeBucket() { return employeeBucket; }
 
     public void put(String bucket, String key, InputStream in, long size, String contentType) {
         ensureBucket(bucket);

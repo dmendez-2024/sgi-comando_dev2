@@ -47,7 +47,10 @@ public class RrhhEmployeeEventResource {
         UUID companyCoreCatalogId,
         String companyCode,
         String separationReason,
-        Instant separationEffectiveAt
+        Instant separationEffectiveAt,
+        String identificationNumber,
+        String corporateEmail,
+        String photoBase64
     ) {}
 
     public record EmployeeEventResponse(boolean accepted, String correlationId) {}

@@ -60,7 +60,7 @@ public class AssignmentResource {
                           String rotationCode, Integer cycleLengthDays, String cycleSourceVersion,
                           String targetType, String coordinationType, String requiredRoleCode, String routeName) {}
     public record ShiftDto(UUID id, UUID postId, UUID templateId, LocalDate localDate, String shiftCode, String shiftName, Instant startsAt, Instant endsAt, String commercialVersion) {}
-    public record AssignmentDto(UUID id, UUID shiftOccurrenceId, UUID originalEmployeeId, UUID effectiveEmployeeId, String employeeName, String status,
+    public record AssignmentDto(UUID id, UUID shiftOccurrenceId, UUID originalEmployeeId, UUID effectiveEmployeeId, String employeeName, String identificationNumber, String status,
                                 BigDecimal ic, BigDecimal idScore, List<String> warnings, String assignedBy, Instant assignedAt,
                                 String reassignedBy, Instant reassignedAt, String reassignmentReason) {}
     public record SummaryDto(int requiredShifts, int assignedShifts, int unassignedShifts, double coveragePct, int warningsCount, double plannedIcAvg,
@@ -232,7 +232,7 @@ public class AssignmentResource {
         Map<String,Object> params=new HashMap<>();params.put("tenant",tenant.instanceCountryId());params.put("companyId",companyId);
         params.put("assignableRoles",rolePolicy.assignableRoleCodes());
         if(incomingIds.isEmpty()) hql.append("companyId=:companyId"); else {hql.append("(companyId=:companyId or employeeId in :incomingIds)");params.put("incomingIds",incomingIds);}
-        if(q!=null&&!q.isBlank()){hql.append(" and lower(fullName) like :q");params.put("q","%"+q.trim().toLowerCase(Locale.ROOT)+"%");}
+        if(q!=null&&!q.isBlank()){hql.append(" and (lower(fullName) like :q or lower(coalesce(identificationNumber,'')) like :q)");params.put("q","%"+q.trim().toLowerCase(Locale.ROOT)+"%");}
         if(role!=null&&!role.isBlank()){
             if(!rolePolicy.isAssignable(role)) throw new BadRequestException("El cargo seleccionado no participa en Asignaciones.");
             hql.append(" and roleCode=:role");params.put("role",role);
@@ -866,7 +866,7 @@ public class AssignmentResource {
     }
 
     private AssignmentDto toAssignmentDto(OperationalAssignmentEntity a, EmployeeOperationalSnapshot employee){
-        return new AssignmentDto(a.id,a.shiftOccurrenceId,a.employeeId,a.effectiveEmployeeId(),employee==null?"—":employee.fullName,a.status,a.compatibilityIndex,a.idScore,parseWarnings(a.warningJson),a.assignedByUsername,a.assignedAt,a.actualAssignedByUsername,a.actualAssignedAt,a.reassignmentReason);
+        return new AssignmentDto(a.id,a.shiftOccurrenceId,a.employeeId,a.effectiveEmployeeId(),employee==null?"—":employee.fullName,employee==null?null:employee.identificationNumber,a.status,a.compatibilityIndex,a.idScore,parseWarnings(a.warningJson),a.assignedByUsername,a.assignedAt,a.actualAssignedByUsername,a.actualAssignedAt,a.reassignmentReason);
     }
 
     private Map<UUID,EmployeeOperationalSnapshot> employeeMap(Set<UUID> ids){
