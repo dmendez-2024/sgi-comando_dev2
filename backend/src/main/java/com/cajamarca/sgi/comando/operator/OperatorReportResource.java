@@ -44,8 +44,8 @@ public class OperatorReportResource {
 
     @POST @Consumes(MediaType.APPLICATION_JSON) @Transactional
     public ObjectNode create(JsonNode body, @HeaderParam("Idempotency-Key") String key) {
-        UUID employee=ctx.employee();
         UUID reportId=uuid(body,"reportId"), assignmentId=uuid(body,"assignmentId");
+        UUID employee=ctx.author(ctx.employee(),assignmentId,"OPERATIONAL_REPORT",reportId);
         if(key==null || !reportId.toString().equals(key.trim())) throw new BadRequestException("Idempotency-Key debe coincidir con reportId");
         String type=required(body,"type").toUpperCase(Locale.ROOT);
         String severity=required(body,"severity").toUpperCase(Locale.ROOT);

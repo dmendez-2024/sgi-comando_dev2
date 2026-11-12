@@ -23,6 +23,7 @@ import static com.cajamarca.sgi.comando.operator.ReliefContract.*;
  */
 @ApplicationScoped
 public class TaskEvidenceService {
+    @Inject ShiftSyncService shiftSync;
     public static final String TYPE = "TASK_EVIDENCE_SUBMITTED";
 
     @Inject OperatorContext ctx;
@@ -34,9 +35,11 @@ public class TaskEvidenceService {
 
     @Transactional
     public ObjectNode submit(JsonNode batch) {
-        UUID employee = ctx.employee();
         UUID t = tenant.instanceCountryId();
-        JsonNode e = validate(batch, employee, t, Instant.now());
+        JsonNode first = batch.path("events").path(0);
+        // Autor: quien inició sesión o, si la app sincroniza registros de otro agente del punto, el dueño de la asignación.
+        UUID employee = ctx.author(ctx.employee(), uuid(first, "assignmentId"), "TASK_EVIDENCE", uuid(first, "eventId"));
+        JsonNode e = validate(batch, ctx.batchEmployee(batch.path("employeeId").asText(null)), t, Instant.now());
         UUID eventId = uuid(e, "eventId"), assignmentId = uuid(e, "assignmentId"), targetId = uuid(e, "targetId");
         String targetType = text(e, "targetType");
         OperatorContext.Assignment a = ctx.assignment(assignmentId, employee);
@@ -49,6 +52,7 @@ public class TaskEvidenceService {
             return ack(eventId, countEvidence(eventId), reviews.statusFor(eventId));
         }
 
+        shiftSync.ensureOpen(t,assignmentId);
         Instant executed = time(e, "executedAt");
         if (executed.isBefore(a.shift().startsAt.minusSeconds(43200)) || executed.isAfter(a.shift().endsAt.plusSeconds(43200))) throw new BadRequestException("Fecha fuera de la ventana del turno");
         OperatorTasks.Target target = tasks.require(targetType, targetId, a.post());

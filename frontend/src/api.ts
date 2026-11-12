@@ -141,9 +141,12 @@ export const api={
 
  bitacoraProtocols:(pointId:string)=>request<any[]>(`/api/bitacora/protocols?pointId=${encodeURIComponent(pointId)}`),
   accessControlEntries:(clientId:string,listType:'WHITE'|'BLACK',filters:Record<string,string>={})=>request<any[]>(`/api/access-control-lists?${new URLSearchParams({clientId,listType,...Object.fromEntries(Object.entries(filters).filter(([,v])=>v))})}`),
+  accessControlAccreditations:(clientId:string,listType:'WHITE'|'BLACK',pointId:string)=>request<string[]>(`/api/access-control-lists/accreditations?${new URLSearchParams({clientId,listType,pointId})}`),
+  accessControlQrPdf:(clientId:string,pointId:string,filters:Record<string,string>={})=>binaryRequest(`/api/access-control-lists/qr/pdf?${new URLSearchParams({clientId,pointId,...Object.fromEntries(Object.entries(filters).filter(([,v])=>v))})}`),
   accessControlPoints:(clientId:string)=>request<any[]>(`/api/access-control-lists/points?clientId=${encodeURIComponent(clientId)}`),
   createAccessControlEntry:(body:any)=>request<any>('/api/access-control-lists',{method:'POST',body:JSON.stringify(body)}),
   updateAccessControlEntry:(id:string,body:any)=>request<any>(`/api/access-control-lists/${encodeURIComponent(id)}`,{method:'PUT',body:JSON.stringify(body)}),
+  revokeAccessControlPoint:(id:string,pointId:string,reason:string)=>request<any>(`/api/access-control-lists/${encodeURIComponent(id)}/points/${encodeURIComponent(pointId)}/revoke`,{method:'POST',body:JSON.stringify({reason})}),
   regenerateAccessControlQr:(id:string)=>request<any>(`/api/access-control-lists/${encodeURIComponent(id)}/qr/regenerate`,{method:'POST'}),
   revokeAccessControlQr:(id:string)=>request<any>(`/api/access-control-lists/${encodeURIComponent(id)}/qr`,{method:'DELETE'}),
   accessControlQr:(id:string)=>binaryRequest(`/api/access-control-lists/${encodeURIComponent(id)}/qr`),

@@ -13,6 +13,9 @@ public class AccessControlEntryPoint extends PanacheEntityBase {
     @Id @Column(name="point_id") public UUID pointId;
     @Column(name="instance_country_id",nullable=false) public UUID instanceCountryId;
     @Column(name="created_at",nullable=false) public Instant createdAt;
+    @Column(name="revoked_at") public Instant revokedAt;
+    @Column(name="revoked_by_username",length=120) public String revokedByUsername;
+    @Column(name="revocation_reason",length=500) public String revocationReason;
     public static class Key implements java.io.Serializable {
         public UUID entryId; public UUID pointId;
         public Key() {}

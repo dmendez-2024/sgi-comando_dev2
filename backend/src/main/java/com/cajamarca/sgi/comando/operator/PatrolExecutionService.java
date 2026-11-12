@@ -23,6 +23,7 @@ import static com.cajamarca.sgi.comando.operator.ReliefContract.*;
  */
 @ApplicationScoped
 public class PatrolExecutionService {
+    @Inject ShiftSyncService shiftSync;
     @Inject OperatorContext ctx;
     @Inject OperatorPatrols patrols;
     @Inject TenantContext tenant;
@@ -32,9 +33,11 @@ public class PatrolExecutionService {
 
     @Transactional
     public ObjectNode submit(JsonNode batch) {
-        UUID employee = ctx.employee();
         UUID t = tenant.instanceCountryId();
-        PatrolExecutionContract.validate(batch, employee, t, Instant.now());
+        JsonNode first = batch.path("events").path(0);
+        // Autor: quien inició sesión o, si la app sincroniza registros de otro agente del punto, el dueño de la asignación.
+        UUID employee = ctx.author(ctx.employee(), uuid(first, "assignmentId"), "PATROL_CHECKPOINT", uuid(first, "eventId"));
+        PatrolExecutionContract.validate(batch, ctx.batchEmployee(batch.path("employeeId").asText(null)), t, Instant.now());
         JsonNode e = batch.path("events").get(0);
         UUID eventId = uuid(e, "eventId"), assignmentId = uuid(e, "assignmentId"), runId = uuid(e, "patrolRunId"), checkpointId = uuid(e, "checkpointId");
         OperatorContext.Assignment a = ctx.assignment(assignmentId, employee);
@@ -47,6 +50,7 @@ public class PatrolExecutionService {
             return ack(eventId, countEvidence(eventId), reviews.statusFor(eventId));
         }
 
+        shiftSync.ensureOpen(t,assignmentId);
         Instant executed = time(e, "executedAt");
         if (executed.isBefore(a.shift().startsAt.minusSeconds(43200)) || executed.isAfter(a.shift().endsAt.plusSeconds(43200))) throw new BadRequestException("Fecha fuera de la ventana del turno");
         OperatorPatrols.Applicable target = patrols.requireCheckpoint(checkpointId, a.post().id);

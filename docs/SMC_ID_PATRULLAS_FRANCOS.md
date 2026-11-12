@@ -1,5 +1,9 @@
 # ID: patrullas no ejecutadas y francos trabajados
 
+Este documento describe la ampliación V141. V143 añade el cierre tras confirmación
+completa del turno por Operador; ver [CIERRE_TURNO_SINCRONIZADO.md](CIERRE_TURNO_SINCRONIZADO.md).
+No se cierra por vencimiento de ventana, falta de conexión ni logout ordinario.
+
 ## Contrato y criterio operacional
 
 Comando entrega hechos, no calcula descuentos ni bonificaciones. No cambia el cierre
