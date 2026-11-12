@@ -84,7 +84,7 @@ function unavailabilityLabel(u:Unavailability){const reason=u.sourceReasonLabel?
 function inDateRange(date:string,start:string,length:number){return date>=start&&date<addDays(start,length)}
 function isFormTarget(target:EventTarget|null){const el=target as HTMLElement|null;return Boolean(el?.closest('input,textarea,select,[contenteditable="true"]'))}
 function normalizeName(v:string){return v.trim().toLocaleLowerCase('es-EC').replace(/\s+/g,' ')}
-function compactAssignmentName(v:string){const parts=v.trim().split(/\s+/).filter(Boolean);if(!parts.length)return v;if(parts.length===1)return parts[0];const firstSurname=parts[0],firstName=parts.length>=3?parts[2]:parts[1];return `${firstSurname} ${firstName[0]?.toUpperCase()??''}.`;}
+function compactAssignmentName(v:string){const parts=v.trim().split(/\s+/).filter(Boolean);if(!parts.length)return v;if(parts.length===1)return parts[0];const firstSurname=parts[0],firstName=parts.length>=3?parts[2]:parts[1];return `${firstName[0]?.toUpperCase()??''}. ${firstSurname}`;}
 function clampIso(date:string,min:string,max:string){return date<min?min:date>max?max:date}
 function verticalPointRange(layouts:PointLayout[],scrollTop:number,viewportHeight:number){
   if(!layouts.length)return{start:0,end:0};
