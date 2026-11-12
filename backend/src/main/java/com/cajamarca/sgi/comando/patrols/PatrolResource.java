@@ -146,7 +146,10 @@ public class PatrolResource {
             PatrolDefinition copy=clonePatrolDefinition(old,target.id,destination.pointId);
             for(PatrolCheckpoint oldCheckpoint:checkpoints(old.id)){
                 PatrolCheckpoint checkpoint=cloneCheckpoint(oldCheckpoint,copy.id);
-                if(!samePoint){checkpoint.atsPackageId=null;checkpoint.atsX=null;checkpoint.atsY=null;checkpoint.latitude=null;checkpoint.longitude=null;checkpoint.gpsAccuracyM=null;checkpoint.locationCapturedAt=null;checkpoint.locationCapturedBy=null;}
+                // La ubicación sobre el plano pertenece a la revisión ATS del protocolo de origen.
+                // Un modelo importado conserva la definición del Hito, pero exige ubicarlo nuevamente.
+                checkpoint.atsPackageId=null;checkpoint.atsX=null;checkpoint.atsY=null;
+                if(!samePoint){checkpoint.latitude=null;checkpoint.longitude=null;checkpoint.gpsAccuracyM=null;checkpoint.locationCapturedAt=null;checkpoint.locationCapturedBy=null;}
             }
         }
         return dto(target);

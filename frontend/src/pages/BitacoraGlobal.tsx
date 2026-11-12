@@ -8,6 +8,7 @@ import {PhotoEvidenceGallery, ReferenceImageGallery} from '../components/PhotoEv
 import SearchableSelect from '../components/SearchableSelect';
 import FilterAccordion from '../components/FilterAccordion';
 import {downloadCsv} from '../utils/exportCsv';
+import TablePagination, {pageSlice} from '../components/TablePagination';
 
 type RecordType='PERSON'|'VEHICLE'|'CONTAINER';
 type RecordStatus='AUTHORIZED'|'REGISTERED'|'RELEASED'|'UNDER_REVIEW'|'RETAINED';
@@ -71,6 +72,7 @@ function dateOnly(value:string){return value.slice(0,10)}
 export default function BitacoraGlobal(){
   const [userRevision,setUserRevision]=useState(0);
   const [filters,setFilters]=useState<Filters>(EMPTY_FILTERS);
+  const [page,setPage]=useState(0);
   const [viewedId,setViewedId]=useState('');
   const [liveData,setLiveData]=useState<BitRecord[]>([]);
   const [liveLoaded,setLiveLoaded]=useState(false);
@@ -121,6 +123,8 @@ export default function BitacoraGlobal(){
     if(filters.dateTo && dateOnly(record.at) > filters.dateTo) return false;
     return true;
   }).sort((a,b)=>b.at.localeCompare(a.at)),[scopedData,filters]);
+  const pagedRows=useMemo(()=>pageSlice(rows,page),[rows,page]);
+  useEffect(()=>{if(page!==pagedRows.current)setPage(pagedRows.current)},[page,pagedRows.current]);
 
   const viewed=scopedData.find(r=>r.id===viewedId) ?? null;
   const metrics=useMemo(()=>({
@@ -202,7 +206,7 @@ export default function BitacoraGlobal(){
             <table className="bit-global-table nov-table">
               <thead><tr><th>Tipo</th><th>Identificador</th><th>Nombre / Descripción</th><th>Cliente</th><th>Ciudad</th><th>Punto</th><th>Fecha / Hora</th><th>Resultado</th><th></th></tr></thead>
               <tbody>
-                {rows.map(row=><tr key={row.id} onClick={()=>setViewedId(row.id)}>
+                {pagedRows.items.map(row=><tr key={row.id} onClick={()=>setViewedId(row.id)}>
                   <td><span className={`bit-global-type type-${row.type.toLowerCase()}`}>{iconByType(row.type)} {typeLabel(row.type)}</span></td>
                   <td>{row.identifier}</td>
                   <td><strong>{row.label}</strong><small>{row.company}</small></td>
@@ -217,7 +221,7 @@ export default function BitacoraGlobal(){
               </tbody>
             </table>
           </div>
-          <div className="bit-global-results-footer nov-results-footer">Mostrando {rows.length?1:0} a {rows.length} de {rows.length} resultados</div>
+          <TablePagination total={rows.length} page={pagedRows.current} onChange={setPage}/>
         </div>
       </section>
 

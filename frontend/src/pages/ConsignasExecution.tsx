@@ -1,4 +1,4 @@
-import {useCallback, useEffect, useMemo, useState, type ReactNode} from 'react';
+import {useCallback, useEffect, useMemo, useRef, useState, type ReactNode} from 'react';
 import {
   AlertTriangle, ClipboardList, Clock3, Upload,
   FileText, FilterX, RefreshCw, Search, ShieldCheck,
@@ -9,6 +9,7 @@ import {PhotoEvidenceGallery, ReferenceImageGallery, ReliefInventoryCards, type 
 import SearchableSelect from '../components/SearchableSelect';
 import FilterAccordion from '../components/FilterAccordion';
 import {downloadCsv} from '../utils/exportCsv';
+import TablePagination, {pageSlice} from '../components/TablePagination';
 
 type ExecutionType='RELIEF'|'PATROL'|'ADHOC';
 type ExecutionStatus='IN_PROGRESS'|'COMPLETED'|'OVERDUE'|'PENDING'|'CRITICAL';
@@ -225,11 +226,18 @@ export default function ConsignasExecution({initialCaseId=''}:{initialCaseId?:st
   const user=getUser();
   const scope=scopeByUser[user];
   const [filters,setFilters]=useState<Filters>(EMPTY_FILTERS);
+  const [page,setPage]=useState(0);
   const [inspectorId,setInspectorId]=useState<string|null>(null);
   const [reviewRequests,setReviewRequests]=useState<Execution[]>([]);
   const [patrolExecutions,setPatrolExecutions]=useState<Execution[]>([]);
   const [reliefExecutions,setReliefExecutions]=useState<Execution[]>([]);
   const [loadWarnings,setLoadWarnings]=useState<string[]>([]);
+  const [pendingSources,setPendingSources]=useState<string[]>(['consignas','patrullas','relevos']);
+  const loadRevision=useRef(0);
+  const [reliefDetail,setReliefDetail]=useState<Execution|null>(null);
+  const [detailLoading,setDetailLoading]=useState(false);
+  const [detailError,setDetailError]=useState('');
+  const [detailRevision,setDetailRevision]=useState(0);
   const [decision,setDecision]=useState<'APPROVE'|'DISCARD'|null>(null);
   const [protocols,setProtocols]=useState<any[]>([]);
   const [targetProtocolId,setTargetProtocolId]=useState('');
@@ -241,18 +249,43 @@ export default function ConsignasExecution({initialCaseId=''}:{initialCaseId?:st
   const [actionNotice,setActionNotice]=useState('');
 
   const loadReviewRequests=useCallback(async()=>{
-    const [requests,patrols,reliefs]=await Promise.allSettled([api.consignmentReviewRequests('PENDING'),api.patrolExecutions(),api.reliefs(100)]);
-    const warnings:string[]=[];
-    if(requests.status==='fulfilled') setReviewRequests(requests.value.map(reviewRequestToExecution));
-    else { setReviewRequests([]); warnings.push('No fue posible consultar las consignas pendientes. Verifica el alcance operativo del usuario o inténtalo nuevamente.'); }
-    if(patrols.status==='fulfilled') setPatrolExecutions(patrols.value.map(patrolExecutionToExecution));
-    else { setPatrolExecutions([]); warnings.push('No fue posible consultar las ejecuciones de patrullas.'); }
-    if(reliefs.status==='fulfilled') setReliefExecutions(reliefs.value.map(reliefToExecution));
-    else { setReliefExecutions([]); warnings.push('No fue posible consultar los relevos registrados.'); }
-    setLoadWarnings(warnings);
-  },[]);
+    const revision=++loadRevision.current;
+    setLoadWarnings([]);setPendingSources(['consignas','patrullas','relevos']);
+    const load=async(source:string,request:()=>Promise<any[]>,convert:(row:any)=>Execution,update:(rows:Execution[])=>void,message:string)=>{
+      try{
+        const rows=await request();
+        if(revision===loadRevision.current)update(rows.map(convert));
+      }catch{
+        if(revision===loadRevision.current){update([]);setLoadWarnings(warnings=>[...warnings,message]);}
+      }finally{
+        if(revision===loadRevision.current)setPendingSources(sources=>sources.filter(value=>value!==source));
+      }
+    };
+    await Promise.all([
+      load('consignas',()=>api.consignmentReviewRequests('PENDING'),reviewRequestToExecution,setReviewRequests,'No fue posible consultar las consignas pendientes. Verifica el alcance operativo del usuario o inténtalo nuevamente.'),
+      load('patrullas',()=>api.patrolExecutions(),patrolExecutionToExecution,setPatrolExecutions,'No fue posible consultar las ejecuciones de patrullas.'),
+      load('relevos',()=>api.consignmentReliefs(100),reliefToExecution,setReliefExecutions,'No fue posible consultar los relevos registrados.')
+    ]);
+  },[user]);
 
-  useEffect(()=>{void loadReviewRequests()},[loadReviewRequests]);
+  useEffect(()=>{
+    setReviewRequests([]);setPatrolExecutions([]);setReliefExecutions([]);
+    void loadReviewRequests();
+    return ()=>{++loadRevision.current};
+  },[loadReviewRequests]);
+
+  useEffect(()=>{
+    let current=true;
+    setReliefDetail(null);setDetailError('');setDetailLoading(false);
+    if(inspectorId?.startsWith('relief-')){
+      setDetailLoading(true);
+      void api.consignmentRelief(inspectorId.slice('relief-'.length)).then(item=>{
+        if(current)setReliefDetail(reliefToExecution(item));
+      }).catch(error=>{if(current)setDetailError(apiMessage(error,'No fue posible cargar el detalle del relevo.'))})
+        .finally(()=>{if(current)setDetailLoading(false)});
+    }
+    return ()=>{current=false};
+  },[inspectorId,user,detailRevision]);
 
   // El backend es la fuente oficial y aplica alcance RBAC; esta vista no mezcla datos DEMO.
   const scoped=useMemo(()=>[...reliefExecutions,...reviewRequests,...patrolExecutions],[reliefExecutions,reviewRequests,patrolExecutions]);
@@ -290,8 +323,10 @@ export default function ConsignasExecution({initialCaseId=''}:{initialCaseId?:st
       return true;
     }).sort((a,b)=>b.start.localeCompare(a.start));
   },[scoped,filters,dateError]);
+  const pagedRows=useMemo(()=>pageSlice(rows,page),[rows,page]);
+  useEffect(()=>{if(page!==pagedRows.current)setPage(pagedRows.current)},[page,pagedRows.current]);
 
-  const inspected=scoped.find(x=>x.id===inspectorId) ?? null;
+  const inspected=(reliefDetail?.id===inspectorId?reliefDetail:null)??scoped.find(x=>x.id===inspectorId)??null;
 
   const metrics=useMemo(()=>({
     reliefRunning:scoped.filter(x=>x.type==='RELIEF'&&x.status==='IN_PROGRESS').length,
@@ -363,13 +398,14 @@ export default function ConsignasExecution({initialCaseId=''}:{initialCaseId?:st
           {dateError && <div className="cns-validation-error"><AlertTriangle size={16}/><span>{dateError}</span></div>}
           {actionNotice&&<div className="cns-action-notice"><CheckCircle2 size={16}/><span>{actionNotice}</span><button onClick={()=>setActionNotice('')} aria-label="Cerrar mensaje"><X size={14}/></button></div>}
           {loadWarnings.map(message=><div className="cns-validation-error" key={message}><AlertTriangle size={16}/><span>{message}</span></div>)}
-          <div className="cns-search-actions nov-actions"><button className="primary" disabled={!!dateError} onClick={()=>void loadReviewRequests()}><Search size={16}/>Buscar</button><button onClick={clear}><FilterX size={16}/>Limpiar filtros</button><div className="cns-rules-note"><AlertCircle size={15}/><span>Fechas obligatorias · rango máximo de 1 año</span></div><button className="export" onClick={exportCsv} disabled={!!dateError || !rows.length}><Upload size={16}/>Exportar</button></div>
+          {pendingSources.length>0&&<div role="status" className="cns-rules-note">Cargando {pendingSources.join(', ')}… Los resultados disponibles ya se muestran.</div>}
+          <div className="cns-search-actions nov-actions"><button className="primary" disabled={!!dateError||pendingSources.length>0} onClick={()=>void loadReviewRequests()}><Search size={16}/>Buscar</button><button onClick={clear}><FilterX size={16}/>Limpiar filtros</button><div className="cns-rules-note"><AlertCircle size={15}/><span>Fechas obligatorias · rango máximo de 1 año</span></div><button className="export" onClick={exportCsv} disabled={!!dateError || !rows.length||pendingSources.length>0}><Upload size={16}/>Exportar</button></div>
         </FilterAccordion>
 
-        <div className="cns-results-card nov-results-card"><div className="cns-results-head nov-results-head"><h3>Ejecuciones ({rows.length})</h3><div>Ordenar por: <strong>Fecha más reciente</strong></div></div><div className="cns-table-wrap nov-table-wrap"><table className="cns-table nov-table"><thead><tr><th>Tipo</th><th>Código</th><th>Nombre / Descripción</th><th>Cliente</th><th>Punto / Puesto</th><th>Responsable</th><th>Ventana / Hora</th><th>Estado de ejecución</th><th>Resultado / Progreso</th><th></th></tr></thead><tbody>{rows.map(row=>{
+        <div className="cns-results-card nov-results-card"><div className="cns-results-head nov-results-head"><h3>Ejecuciones ({rows.length})</h3><div>Ordenar por: <strong>Fecha más reciente</strong></div></div><div className="cns-table-wrap nov-table-wrap"><table className="cns-table nov-table"><thead><tr><th>Tipo</th><th>Código</th><th>Nombre / Descripción</th><th>Cliente</th><th>Punto / Puesto</th><th>Responsable</th><th>Ventana / Hora</th><th>Estado de ejecución</th><th>Resultado / Progreso</th><th></th></tr></thead><tbody>{pagedRows.items.map(row=>{
           const pct=Math.round((row.progressCurrent/Math.max(row.progressTotal,1))*100);
           return <tr key={row.id} onClick={()=>openInspector(row)}><td><span className={`cns-type ${typeClass(row.type)}`}>{typeIcon(row.type)}{typeLabel(row.type)}</span></td><td>{row.code}</td><td><strong>{row.name}</strong><small>{row.company}</small></td><td>{row.client}</td><td><strong>{row.point}</strong><small>{row.post}</small></td><td>{row.responsible}</td><td>{formatDateTime(row.start)} – {formatTime(row.end)}</td><td><span className={`cns-status ${statusClass(row.status)}`}>{statusLabel(row.status)}</span></td><td><div className="cns-progress-cell"><span>{row.result}</span><div><i style={{width:`${pct}%`}}/></div></div></td><td><button onClick={e=>{e.stopPropagation();openInspector(row)}}>Ver <ChevronRight size={13}/></button></td></tr>
-        })}{!rows.length&&<tr><td className="empty" colSpan={10}>{dateError ? 'Corrija el rango de fechas para consultar resultados.' : 'No se encontraron ejecuciones con los filtros aplicados.'}</td></tr>}</tbody></table></div><div className="cns-results-footer nov-results-footer">Mostrando {rows.length?1:0} a {rows.length} de {rows.length} resultados</div></div>
+        })}{!rows.length&&<tr><td className="empty" colSpan={10}>{dateError ? 'Corrija el rango de fechas para consultar resultados.' : 'No se encontraron ejecuciones con los filtros aplicados.'}</td></tr>}</tbody></table></div><TablePagination total={rows.length} page={pagedRows.current} onChange={setPage}/></div>
       </section>
 
 
@@ -397,7 +433,7 @@ export default function ConsignasExecution({initialCaseId=''}:{initialCaseId?:st
           </div>
           <section className="cns-detail-progress"><div><strong>Progreso {inspected.type==='RELIEF'?'del relevo':inspected.type==='PATROL'?'de hitos':'de acciones'}</strong><b>{inspected.progressCurrent}/{inspected.progressTotal}</b></div><div className="bar"><i style={{width:`${Math.round(inspected.progressCurrent/Math.max(inspected.progressTotal,1)*100)}%`}}/></div><span>{Math.round(inspected.progressCurrent/Math.max(inspected.progressTotal,1)*100)}% completado</span></section>
           <PhotoEvidenceGallery eventId={inspected.evidenceEventId} declaredCount={inspected.photoCount} hideInventory={inspected.type==='RELIEF'}/>
-          {inspected.type==='RELIEF'&&<ReliefInventoryCards eventId={inspected.evidenceEventId} items={inspected.inventoryItems}/>}
+          {inspected.type==='RELIEF'&&(detailLoading?<p role="status">Cargando detalle e inventario del relevo…</p>:detailError?<div role="alert" className="cns-validation-error"><span>{detailError}</span><button type="button" onClick={()=>setDetailRevision(value=>value+1)}>Reintentar</button></div>:reliefDetail?.id===inspected.id?<ReliefInventoryCards eventId={inspected.evidenceEventId} items={inspected.inventoryItems}/>:null)}
           <ReferenceImageGallery eventId={inspected.evidenceEventId}/>
           <section className="cns-timeline"><div className="cns-timeline-head"><h4>{inspected.type==='RELIEF'?'Hitos del relevo':'Últimos eventos'}</h4></div>{inspected.timeline.map(event=><article key={event.id}><i className={event.state.toLowerCase()}/><div><span>{formatDateTime(event.at)}</span><strong>{event.title}</strong><small>{event.detail}</small></div></article>)}</section>
         </div>

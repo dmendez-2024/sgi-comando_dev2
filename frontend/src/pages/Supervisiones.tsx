@@ -1,8 +1,9 @@
 import {useCallback, useEffect, useMemo, useState, type ReactNode} from 'react';
-import {AlertTriangle, Camera, ChevronLeft, ChevronRight, CircleAlert, ClipboardCheck, ClipboardList, FilterX, MapPinned, Search, ShieldCheck, Upload, UserCheck, X} from 'lucide-react';
+import {AlertTriangle, Camera, ChevronRight, CircleAlert, ClipboardCheck, ClipboardList, FilterX, MapPinned, Search, ShieldCheck, Upload, UserCheck, X} from 'lucide-react';
 import {api} from '../api';
 import FilterAccordion from '../components/FilterAccordion';
 import {downloadCsv} from '../utils/exportCsv';
+import TablePagination from '../components/TablePagination';
 import {OperationalDrawer} from '../components/OperationalDrawer';
 import SearchableSelect from '../components/SearchableSelect';
 
@@ -16,7 +17,7 @@ type Option={id:string;name:string;parentId:string|null};
 type Options={companies:Option[];points:Option[];posts:Option[];supervisors:Option[];agents:Option[]};
 type Filters={companyId:string;pointId:string;postId:string;supervisorEmployeeId:string;agentEmployeeId:string;from:string;to:string};
 
-const PAGE_SIZE=50;
+const PAGE_SIZE=10;
 const EXPORT_SIZE=200; // máximo que acepta el backend por página
 const today=new Date();const monthAgo=new Date(today);monthAgo.setDate(monthAgo.getDate()-30);
 const localDate=(d:Date)=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
@@ -54,7 +55,6 @@ export default function Supervisiones(){
   const dateError=!filters.from||!filters.to?'Debe elegir una fecha inicio y una fecha fin.':filters.to<filters.from?'La fecha fin no puede ser menor que la fecha inicio.':'';
   const points=useMemo(()=>options.points.filter(x=>!filters.companyId||x.parentId===filters.companyId),[options.points,filters.companyId]);
   const posts=useMemo(()=>options.posts.filter(x=>x.parentId===filters.pointId),[options.posts,filters.pointId]);
-  const pages=Math.max(1,Math.ceil(data.total/PAGE_SIZE));
   const metrics=useMemo(()=>({posts:new Set(data.items.map(x=>x.postId)).size,agents:new Set(data.items.map(x=>x.agentEmployeeId)).size,
     observations:data.items.filter(x=>x.inventoryOverallState==='OBSERVATIONS').length,
     critical:data.items.filter(x=>x.inventoryOverallState==='CRITICAL'||x.inventoryOverallState==='INCOMPLETE').length,
@@ -122,8 +122,7 @@ export default function Supervisiones(){
             <td><button onClick={e=>{e.stopPropagation();setSelectedId(row.id)}}>Ver <ChevronRight size={13}/></button></td></tr>)}
           {!data.items.length&&<tr><td colSpan={11} className="empty">{loading?'Consultando evaluaciones…':'No se encontraron evaluaciones con los filtros aplicados.'}</td></tr>}
         </tbody></table></div>
-        <div className="nov-results-footer sup-pager"><span>Mostrando {data.items.length?page*PAGE_SIZE+1:0} a {page*PAGE_SIZE+data.items.length} de {data.total} evaluaciones</span>
-          <span><button disabled={page===0||loading} onClick={()=>setPage(p=>p-1)}><ChevronLeft size={14}/>Anterior</button><b>Página {page+1} de {pages}</b><button disabled={page+1>=pages||loading} onClick={()=>setPage(p=>p+1)}>Siguiente<ChevronRight size={14}/></button></span></div>
+        <TablePagination total={data.total} page={page} onChange={setPage} size={PAGE_SIZE}/>
       </div>
     </section>
 

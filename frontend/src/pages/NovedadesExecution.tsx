@@ -10,6 +10,7 @@ import {PhotoEvidenceGallery} from '../components/PhotoEvidenceGallery';
 import SearchableSelect from '../components/SearchableSelect';
 import FilterAccordion from '../components/FilterAccordion';
 import {downloadCsv} from '../utils/exportCsv';
+import TablePagination, {pageSlice} from '../components/TablePagination';
 
 type NoveltyType='FINDING'|'VULNERABILITY'|'INCIDENT';
 type NoveltyStatus='PENDING'|'CONFIRMED'|'APPROVED'|'FINALIZED'|'DISCARDED';
@@ -205,6 +206,7 @@ export default function NovedadesExecution(){
   const [records,setRecords]=useState<Novelty[]>([]);
   const [loadError,setLoadError]=useState('');
   const [filters,setFilters]=useState<Filters>(EMPTY_FILTERS);
+  const [page,setPage]=useState(0);
   const [selectedId,setSelectedId]=useState<string|null>(null);
   const [editing,setEditing]=useState(false);
   const [draft,setDraft]=useState<EditableDraft|null>(null);
@@ -246,6 +248,8 @@ export default function NovedadesExecution(){
       return true;
     }).sort((a,b)=>b.createdAt.localeCompare(a.createdAt));
   },[scoped,filters,dateError]);
+  const pagedRows=useMemo(()=>pageSlice(rows,page),[rows,page]);
+  useEffect(()=>{if(page!==pagedRows.current)setPage(pagedRows.current)},[page,pagedRows.current]);
 
   const selected=selectedId?records.find(x=>x.id===selectedId)??null:null;
   const metrics=useMemo(()=>({
@@ -345,10 +349,10 @@ export default function NovedadesExecution(){
       <div className="nov-results-card">
         <div className="nov-results-head"><h3>Novedades ({rows.length})</h3><span>Ordenado por <strong>Fecha más reciente</strong></span></div>
         <div className="nov-table-wrap"><table className="nov-table"><thead><tr><th>Tipo</th><th>Código</th><th>Novedad / Descripción</th><th>Cliente</th><th>Punto / Puesto</th><th>Reportado por</th><th>Fecha / Hora</th><th>Estado</th><th></th></tr></thead><tbody>
-          {rows.map(row=><tr key={row.id} className={row.critical&&row.status==='PENDING'?'critical':''} onClick={()=>openModal(row)}><td><span className={`nov-type ${typeClass(row.type)}`}>{iconForType(row.type)}{typeLabel(row.type)}</span></td><td>{row.code}</td><td><strong>{row.description.length>54?`${row.description.slice(0,54)}…`:row.description}</strong><small>{row.subcategory}</small></td><td>{row.client}</td><td><strong>{row.point}</strong><small>{row.post}</small></td><td><strong>{row.reportedBy}</strong></td><td>{formatDateTime(row.createdAt)}</td><td><span className={`nov-status ${statusClass(row.status)}`}>{statusLabel(row.status)}</span></td><td><button onClick={e=>{e.stopPropagation();openModal(row)}}>Ver <ChevronRight size={13}/></button></td></tr>)}
+          {pagedRows.items.map(row=><tr key={row.id} className={row.critical&&row.status==='PENDING'?'critical':''} onClick={()=>openModal(row)}><td><span className={`nov-type ${typeClass(row.type)}`}>{iconForType(row.type)}{typeLabel(row.type)}</span></td><td>{row.code}</td><td><strong>{row.description.length>54?`${row.description.slice(0,54)}…`:row.description}</strong><small>{row.subcategory}</small></td><td>{row.client}</td><td><strong>{row.point}</strong><small>{row.post}</small></td><td><strong>{row.reportedBy}</strong></td><td>{formatDateTime(row.createdAt)}</td><td><span className={`nov-status ${statusClass(row.status)}`}>{statusLabel(row.status)}</span></td><td><button onClick={e=>{e.stopPropagation();openModal(row)}}>Ver <ChevronRight size={13}/></button></td></tr>)}
           {!rows.length&&<tr><td colSpan={9} className="empty">{dateError?'Corrija el rango de fechas para consultar resultados.':'No se encontraron novedades con los filtros aplicados.'}</td></tr>}
         </tbody></table></div>
-        <div className="nov-results-footer">Mostrando {rows.length?1:0} a {rows.length} de {rows.length} novedades</div>
+        <TablePagination total={rows.length} page={pagedRows.current} onChange={setPage}/>
       </div>
     </section>
 
