@@ -16,7 +16,11 @@ function utf16LeWithBom(content:string):Uint8Array<ArrayBuffer> {
 }
 
 export function downloadCsv(filename:string,rows:readonly (readonly unknown[])[]):void {
-  const blob=new Blob([utf16LeWithBom(createExcelCsv(rows))],{type:'text/csv;charset=utf-16le;'});
+  const bytes=utf16LeWithBom(createExcelCsv(rows));
+  // BlobPart exige ArrayBuffer en la versión de TypeScript usada por el build Linux.
+  const buffer=new ArrayBuffer(bytes.byteLength);
+  new Uint8Array(buffer).set(bytes);
+  const blob=new Blob([buffer],{type:'text/csv;charset=utf-16le;'});
   const url=URL.createObjectURL(blob);
   const link=document.createElement('a');
   link.href=url;
