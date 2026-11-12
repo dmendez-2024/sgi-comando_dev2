@@ -45,7 +45,9 @@ public class RrhhEmployeeEventResource {
         String employmentStatus,
         Instant updatedFromSourceAt,
         UUID companyCoreCatalogId,
-        String companyCode
+        String companyCode,
+        String separationReason,
+        Instant separationEffectiveAt
     ) {}
 
     public record EmployeeEventResponse(boolean accepted, String correlationId) {}

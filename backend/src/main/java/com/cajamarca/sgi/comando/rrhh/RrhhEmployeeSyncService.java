@@ -21,10 +21,12 @@ import java.time.Instant;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 
 @ApplicationScoped
 public class RrhhEmployeeSyncService {
+    private static final Set<String> SEPARATION_REASONS = Set.of("RESIGNATION", "DISMISSAL", "POINT_CLOSURE", "OTHER");
     private static final List<String> LOCAL_AVATAR_KEYS = List.of(
         "/avatars/82000000-0000-0000-0000-000000000001.png",
         "/avatars/82000000-0000-0000-0000-000000000002.png",
@@ -78,6 +80,7 @@ public class RrhhEmployeeSyncService {
         UUID employeeId = resolveEmployeeId(tenantId, request);
         Instant sourceTimestamp = request.updatedFromSourceAt();
         String employmentStatus = trim(request.employmentStatus()).toUpperCase();
+        String separationReason = separationReason(request.separationReason());
 
         EmployeeOperationalSnapshot employeeById = EmployeeOperationalSnapshot.find(
             "instanceCountryId=?1 and employeeId=?2", tenantId, employeeId
@@ -152,6 +155,11 @@ public class RrhhEmployeeSyncService {
                     sourceTimestamp,
                     key
                 );
+            }
+            if (separationReason != null) {
+                recordSeparation(tenantId, employee, sourceCompany, separationReason,
+                    request.separationEffectiveAt() == null ? sourceTimestamp : request.separationEffectiveAt(),
+                    sourceTimestamp, key);
             }
         }
         recordReceipt(tenantId, key, contentHash, sourceTimestamp, "APPLIED");
@@ -281,6 +289,23 @@ public class RrhhEmployeeSyncService {
         receipt.persist();
     }
 
+    private void recordSeparation(UUID tenantId, EmployeeOperationalSnapshot employee, Company company,
+            String reason, Instant effectiveAt, Instant sourceUpdatedAt, String idempotencyKey) {
+        EmployeeSeparationEvent prior = EmployeeSeparationEvent.find(
+            "instanceCountryId=?1 and sourceIdempotencyKey=?2", tenantId, idempotencyKey
+        ).firstResult();
+        if (prior != null) return;
+        EmployeeSeparationEvent event = new EmployeeSeparationEvent();
+        event.instanceCountryId = tenantId;
+        event.employeeId = employee.employeeId;
+        event.companyId = company.id;
+        event.separationReason = reason;
+        event.effectiveAt = effectiveAt;
+        event.sourceUpdatedAt = sourceUpdatedAt;
+        event.sourceIdempotencyKey = idempotencyKey;
+        event.persist();
+    }
+
     private String contentHash(RrhhEmployeeEventResource.EmployeeEventRequest request) {
         String canonical = String.join("\u001f",
             Objects.toString(request.employeeId(), ""),
@@ -291,7 +316,9 @@ public class RrhhEmployeeSyncService {
             trim(request.employmentStatus()).toUpperCase(),
             Objects.toString(request.updatedFromSourceAt(), ""),
             Objects.toString(request.companyCoreCatalogId(), ""),
-            trim(request.companyCode()).toUpperCase()
+            trim(request.companyCode()).toUpperCase(),
+            trim(request.separationReason()).toUpperCase(),
+            Objects.toString(request.separationEffectiveAt(), "")
         );
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
@@ -355,6 +382,10 @@ public class RrhhEmployeeSyncService {
         if (!"ACTIVE".equals(employmentStatus) && !"INACTIVE".equals(employmentStatus)) {
             throw new BadRequestException("Solo se sincronizan empleados activos de Seguridad Física.");
         }
+        String separationReason = separationReason(request.separationReason());
+        if ("ACTIVE".equals(employmentStatus) && separationReason != null) {
+            throw new BadRequestException("separationReason solo aplica cuando employmentStatus es INACTIVE.");
+        }
         if (request.updatedFromSourceAt() == null) {
             throw new BadRequestException("updatedFromSourceAt es obligatorio.");
         }
@@ -365,4 +396,12 @@ public class RrhhEmployeeSyncService {
 
     private static boolean blank(String value) { return value == null || value.trim().isEmpty(); }
     private static String trim(String value) { return value == null ? "" : value.trim(); }
+    private static String separationReason(String value) {
+        if (blank(value)) return null;
+        String normalized = trim(value).toUpperCase();
+        if (!SEPARATION_REASONS.contains(normalized)) {
+            throw new BadRequestException("separationReason debe ser RESIGNATION, DISMISSAL, POINT_CLOSURE u OTHER.");
+        }
+        return normalized;
+    }
 }

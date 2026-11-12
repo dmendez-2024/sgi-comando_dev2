@@ -261,6 +261,7 @@ export const api={
  dashboardPointLocations:()=>request<any[]>('/api/dashboard/point-locations'),
  dashboardOperationalCoverage:(weekStart:string,companyId='',clientId='')=>request<any>(`/api/dashboard/operational-coverage?${new URLSearchParams({weekStart,...(companyId?{companyId}:{}),...(clientId?{clientId}:{})})}`),
  dashboardMetrics:(weekStart:string,companyId='',clientId='',period?:'7d'|'30d'|'6m')=>request<any>(`/api/dashboard/metrics?${new URLSearchParams({weekStart,...(period?{period}:{}),...(companyId?{companyId}:{}),...(clientId?{clientId}:{})})}`),
+  dashboardPersonnelRotation:(weekStart:string,companyId='',clientId='',period?:'7d'|'30d'|'6m')=>request<any>(`/api/dashboard/personnel-rotation?${new URLSearchParams({weekStart,...(period?{period}:{}),...(companyId?{companyId}:{}),...(clientId?{clientId}:{})})}`),
  dashboardSuitability:(weekStart:string,companyId='',clientId='')=>request<any>(`/api/dashboard/suitability?${new URLSearchParams({weekStart,...(companyId?{companyId}:{}),...(clientId?{clientId}:{})})}`),
  dashboardConsignmentCompliance:(weekStart:string,companyId='',clientId='',period?:'7d'|'30d'|'6m')=>request<any>(`/api/dashboard/consignment-compliance?${new URLSearchParams({weekStart,...(period?{period}:{}),...(companyId?{companyId}:{}),...(clientId?{clientId}:{})})}`),
  dashboardSupervisionRouteCompliance:(weekStart:string,companyId='',clientId='')=>request<any>(`/api/dashboard/supervision-route-compliance?${new URLSearchParams({weekStart,...(companyId?{companyId}:{}),...(clientId?{clientId}:{})})}`),

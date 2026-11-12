@@ -40,6 +40,8 @@ public class DashboardResource {
     public record SupervisionRouteCompliance(long nonCompliantRoutes, long evaluatedRoutes, Double nonCompliancePct) {}
     public record MissedReliefs(long missedShifts, long assignedShifts) {}
     public record CriticalIncidents(long reportedCriticalIncidents) {}
+    public record PersonnelRotation(long resignations, long dismissals, long pointClosureExclusions,
+                                    long totalPersonnel, Double rotationPct) {}
     public record RiskTrendPoint(LocalDate date, long scheduledPoints, long uncoveredPoints, Double riskIndex) {}
 
     @GET @Path("/suitability")
@@ -503,6 +505,60 @@ public class DashboardResource {
             ((Number)scores[2]).longValue(), ((Number)scores[3]).longValue(),
             ((Number)currentReliefs[0]).longValue(), ((Number)currentReliefs[1]).longValue(),
             ((Number)currentReliefs[2]).longValue(), reliefs.longValue());
+    }
+
+    /**
+     * Personnel rotation only uses classified SIC:RRHH departures. Inactivations
+     * with no reason are deliberately excluded rather than guessed as resignations.
+     */
+    @GET @Path("/personnel-rotation")
+    public PersonnelRotation personnelRotation(@QueryParam("weekStart") String weekStart,
+            @QueryParam("companyId") UUID companyId, @QueryParam("clientId") UUID clientId,
+            @QueryParam("period") String period) {
+        LocalDate week = parseWeek(weekStart);
+        Set<UUID> allowed = scope.allowedCompanyIds();
+        if (companyId != null) { scope.requireCompany(companyId); allowed = Set.of(companyId); }
+        allowed = rotationCompanies(allowed, clientId);
+        if (allowed.isEmpty()) return new PersonnelRotation(0, 0, 0, 0, null);
+
+        ConsignmentWindow window = consignmentWindow(week, period, LocalDate.now(OPERATING_ZONE));
+        Object[] departures = (Object[]) query("""
+            select count(*) filter (where separation_reason='RESIGNATION'),
+                   count(*) filter (where separation_reason='DISMISSAL'),
+                   count(*) filter (where separation_reason='POINT_CLOSURE')
+            from employee_separation_event
+            where instance_country_id=:tenant and company_id in (:companies)
+              and effective_at>=:from and effective_at<:to
+            """, allowed, null, window.from(), window.to()).getSingleResult();
+        NativeQuery<?> personnelQuery = em.createNativeQuery("""
+            select count(*) from employee_operational_snapshot
+            where instance_country_id=:tenant and company_id in (:companies)
+              and employment_status='ACTIVE'
+            """).unwrap(NativeQuery.class);
+        personnelQuery.setParameter("tenant", tenant.instanceCountryId());
+        personnelQuery.setParameterList("companies", allowed);
+        long personnel = ((Number) personnelQuery.getSingleResult()).longValue();
+        long resignations = ((Number) departures[0]).longValue();
+        long dismissals = ((Number) departures[1]).longValue();
+        long closures = ((Number) departures[2]).longValue();
+        return new PersonnelRotation(resignations, dismissals, closures, personnel,
+            percentage(resignations + dismissals, personnel));
+    }
+
+    /** Employee records belong to a company. A client filter narrows the companies that serve it. */
+    private Set<UUID> rotationCompanies(Set<UUID> allowed, UUID clientId) {
+        if (clientId == null || allowed.isEmpty()) return allowed;
+        NativeQuery<?> companies = em.createNativeQuery("""
+            select distinct p.company_id
+            from point p join service s on s.id=p.service_id and s.instance_country_id=p.instance_country_id
+            where p.instance_country_id=:tenant and p.company_id in (:companies) and s.client_id=:client
+            """).unwrap(NativeQuery.class);
+        companies.setParameter("tenant", tenant.instanceCountryId());
+        companies.setParameterList("companies", allowed);
+        companies.setParameter("client", clientId);
+        Set<UUID> filtered = new java.util.HashSet<>();
+        for (Object value : companies.getResultList()) filtered.add((UUID) value);
+        return filtered;
     }
 
     private NativeQuery<?> query(String sql, Set<UUID> companies, UUID clientId, Instant from, Instant to) {

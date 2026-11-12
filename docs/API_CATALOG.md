@@ -141,7 +141,8 @@ Synchronize the ACTIVE/INACTIVE lifecycle of Seguridad Física personnel and the
 
 - `SIC_DHO_SGI_COM_0001_IF01` — `POST` `/api/v1/inbound/sic-rrhh/employee-events` — evento maestro versionado de empleado.
   - Headers: `Authorization`, `X-Correlation-Id`, `X-Interconnection-Id`, `X-Contract-Version`, `Idempotency-Key`.
-  - Campos: `employeeId?`, `personaId?`, `canonicalEmployeeId?`, `fullName`, `roleCode`, `employmentStatus`, `updatedFromSourceAt`, `companyCoreCatalogId?`, `companyCode?`.
+  - Campos: `employeeId?`, `personaId?`, `canonicalEmployeeId?`, `fullName`, `roleCode`, `employmentStatus`, `updatedFromSourceAt`, `companyCoreCatalogId?`, `companyCode?`, `separationReason?`, `separationEffectiveAt?`.
+  - Si `employmentStatus=INACTIVE`, RRHH puede enviar `separationReason`: `RESIGNATION`, `DISMISSAL`, `POINT_CLOSURE` u `OTHER`. `separationEffectiveAt` es ISO-8601 y, si se omite, se usa `updatedFromSourceAt`. Solo renuncia y despido alimentan el indicador de Rotación; un cierre de punto se conserva para auditoría pero se excluye del numerador.
   - Para un empleado **nuevo**, `companyCoreCatalogId` o `companyCode` identifica la Compañía fuente. Mientras DHO incorpora esos campos, si ambos se omiten SGI asigna temporalmente la Compañía predeterminada configurada (Kaibil).
   - Para un empleado ya existente, la omisión temporal de compañía conserva la compañía actual para compatibilidad de transición.
   - Una transición de `ACTIVE` a `INACTIVE` cierra la membresía activa y libera las asignaciones cuyo turno todavía no ha iniciado (`status=REMOVED`), conservando el turno en curso, los turnos pasados y su auditoría.

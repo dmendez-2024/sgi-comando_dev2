@@ -21,12 +21,13 @@ type ConsignmentCompliance={nonCompliant:number;activeConsignments:number;expect
 type SupervisionRouteCompliance={nonCompliantRoutes:number;evaluatedRoutes:number;nonCompliancePct:number|null};
 type MissedReliefs={missedShifts:number;assignedShifts:number};
 type CriticalIncidents={reportedCriticalIncidents:number};
+type PersonnelRotation={resignations:number;dismissals:number;pointClosureExclusions:number;totalPersonnel:number;rotationPct:number|null};
 type AttentionItem={id:string;target:'Consola'|'Consignas'|'Novedades';source:string;title:string;client:string;point:string;at:string;status:string;pointId:string;companyId?:string};
 type RiskTrendPoint={date:string;scheduledPoints:number;uncoveredPoints:number;riskIndex:number|null};
-type DashboardData={companies:Company[];rows:ServiceRow[];coverage:Coverage|null;metrics:DashboardMetrics|null;suitability:Suitability|null;consignments:ConsignmentCompliance|null;supervisionRoute:SupervisionRouteCompliance|null;missedReliefs:MissedReliefs|null;criticalIncidents:CriticalIncidents|null;notifications:OperationalNotification[];locations:PointLocation[];provinces:Province[];errors:string[]};
+type DashboardData={companies:Company[];rows:ServiceRow[];coverage:Coverage|null;metrics:DashboardMetrics|null;suitability:Suitability|null;consignments:ConsignmentCompliance|null;supervisionRoute:SupervisionRouteCompliance|null;missedReliefs:MissedReliefs|null;criticalIncidents:CriticalIncidents|null;rotation:PersonnelRotation|null;notifications:OperationalNotification[];locations:PointLocation[];provinces:Province[];errors:string[]};
 type DashboardField=Exclude<keyof DashboardData,'errors'>;
 type DashboardRequest={field:DashboardField;request:()=>Promise<unknown>;message:string;valid?:(value:any)=>boolean};
-const metricFields:DashboardField[]=['coverage','metrics','suitability','consignments','supervisionRoute','missedReliefs','criticalIncidents'];
+const metricFields:DashboardField[]=['coverage','metrics','suitability','consignments','supervisionRoute','missedReliefs','criticalIncidents','rotation'];
 
 function hasNumber(value:unknown):value is number{return typeof value==='number'&&Number.isFinite(value)}
 function hasMetrics(value:unknown):value is DashboardMetrics{return typeof value==='object'&&value!==null&&typeof (value as Partial<DashboardMetrics>).calculatedAt==='string'&&hasNumber((value as Partial<DashboardMetrics>).lateReliefs)&&hasNumber((value as Partial<DashboardMetrics>).recordedReliefs)&&hasNumber((value as Partial<DashboardMetrics>).reliefsOverThreeHours)&&hasNumber((value as Partial<DashboardMetrics>).previousLateReliefs)}
@@ -37,6 +38,7 @@ function hasConsignmentCompliance(value:unknown):value is ConsignmentCompliance{
 function hasSupervisionRouteCompliance(value:unknown):value is SupervisionRouteCompliance{return typeof value==='object'&&value!==null&&hasNumber((value as Partial<SupervisionRouteCompliance>).nonCompliantRoutes)&&hasNumber((value as Partial<SupervisionRouteCompliance>).evaluatedRoutes)}
 function hasMissedReliefs(value:unknown):value is MissedReliefs{return typeof value==='object'&&value!==null&&hasNumber((value as Partial<MissedReliefs>).missedShifts)&&hasNumber((value as Partial<MissedReliefs>).assignedShifts)}
 function hasCriticalIncidents(value:unknown):value is CriticalIncidents{return typeof value==='object'&&value!==null&&hasNumber((value as Partial<CriticalIncidents>).reportedCriticalIncidents)}
+function hasPersonnelRotation(value:unknown):value is PersonnelRotation{return typeof value==='object'&&value!==null&&hasNumber((value as Partial<PersonnelRotation>).resignations)&&hasNumber((value as Partial<PersonnelRotation>).dismissals)&&hasNumber((value as Partial<PersonnelRotation>).totalPersonnel)}
 function metricPercent(value:number|null|undefined){return hasNumber(value)?`${Number(value.toFixed(1))}%`:'0'}
 
 function CardSparkline({values,color}:{values:number[];color:string}){
@@ -130,7 +132,7 @@ export default function Dashboard({onOpenAttention}:{onOpenAttention?:(target:'C
   const [activeCard,setActiveCard]=useState<(typeof cardCatalog)[number]['id']>('coverageGap');
   const [pending,setPending]=useState<Set<DashboardField>>(()=>new Set(metricFields));
   const [loadErrors,setLoadErrors]=useState<Partial<Record<DashboardField,string>>>({});
-  const [data,setData]=useState<DashboardData>({companies:[],rows:[],coverage:null,metrics:null,suitability:null,consignments:null,supervisionRoute:null,missedReliefs:null,criticalIncidents:null,notifications:[],locations:[],provinces:[],errors:[]});
+  const [data,setData]=useState<DashboardData>({companies:[],rows:[],coverage:null,metrics:null,suitability:null,consignments:null,supervisionRoute:null,missedReliefs:null,criticalIncidents:null,rotation:null,notifications:[],locations:[],provinces:[],errors:[]});
 
 
   const startRequests=useCallback((requests:DashboardRequest[])=>{
@@ -173,8 +175,9 @@ export default function Dashboard({onOpenAttention}:{onOpenAttention?:(target:'C
     {field:'suitability',request:()=>api.dashboardSuitability(weekStart,companyId,clientId),valid:hasSuitability,message:'No se pudo cargar la idoneidad de ID e IC.'},
     {field:'supervisionRoute',request:()=>api.dashboardSupervisionRouteCompliance(weekStart,companyId,clientId),valid:hasSupervisionRouteCompliance,message:'No se pudo cargar el incumplimiento de rutas de supervisión.'},
     {field:'missedReliefs',request:()=>api.dashboardMissedReliefs(weekStart,companyId,clientId),valid:hasMissedReliefs,message:'No se pudieron cargar los relevos no realizados.'},
-    {field:'criticalIncidents',request:()=>api.dashboardCriticalIncidents(weekStart,companyId,clientId),valid:hasCriticalIncidents,message:'No se pudieron cargar los incidentes críticos.'}
-  ]),[startRequests,weekStart,companyId,clientId]);
+    {field:'criticalIncidents',request:()=>api.dashboardCriticalIncidents(weekStart,companyId,clientId),valid:hasCriticalIncidents,message:'No se pudieron cargar los incidentes críticos.'},
+    {field:'rotation',request:()=>api.dashboardPersonnelRotation(weekStart,companyId,clientId,period),valid:hasPersonnelRotation,message:'No se pudo cargar la rotación de personal.'}
+  ]),[startRequests,weekStart,companyId,clientId,period]);
 
   useEffect(()=>{
     setShowAllAttention(false);
@@ -240,7 +243,7 @@ export default function Dashboard({onOpenAttention}:{onOpenAttention?:(target:'C
     critical:{value:data.criticalIncidents?data.criticalIncidents.reportedCriticalIncidents.toLocaleString('es-EC'):'0',note:'Críticos sin cierre',available:data.criticalIncidents!=null},
     route:{value:metricPercent(data.supervisionRoute?.nonCompliancePct),note:data.supervisionRoute?.evaluatedRoutes?`${data.supervisionRoute.nonCompliantRoutes} de ${data.supervisionRoute.evaluatedRoutes} rutas`:'Sin rutas previstas',available:hasNumber(data.supervisionRoute?.nonCompliancePct)},
     factor:{value:'0',note:'Sin dotación',available:false},
-    rotation:{value:'0',note:'Sin bajas',available:false},
+    rotation:{value:metricPercent(data.rotation?.rotationPct),note:data.rotation?`${data.rotation.resignations} renuncias + ${data.rotation.dismissals} despidos / ${data.rotation.totalPersonnel} personal`:'Sin bajas clasificadas',available:data.rotation!=null},
     cx:{value:'0',note:'Sin evaluaciones',available:false},
     risk:{value:'—',note:'Sin regla de cálculo aprobada',available:false}
   };
@@ -265,9 +268,9 @@ export default function Dashboard({onOpenAttention}:{onOpenAttention?:(target:'C
     </div>
 
     <div className="dash-v6-kpis" aria-label="Indicadores operativos">
-      {cardCatalog.map(card=>{const metric=metricValues[card.id];const field:DashboardField|null=({coverageGap:'coverage',nonIdealPerformance:'suitability',nonIdealCompat:'suitability',faltos:'missedReliefs',lateRelief:'metrics',consignas:'consignments',critical:'criticalIncidents',route:'supervisionRoute',factor:null,rotation:null,cx:null,risk:null} as const)[card.id];const cardLoading=field!==null&&pending.has(field);const spark=card.id==='coverageGap'?coverageSpark:[];return <button type="button" key={card.id} data-kpi={card.id} title={`Clic para visualizar ${card.label.toLocaleLowerCase('es')}. ${metric.note}`} aria-pressed={activeCard===card.id} onClick={()=>setActiveCard(card.id)} className={`dash-v6-kpi kpi tone-${card.tone} ${activeCard===card.id?'selected':''} ${metric.available?'':'unavailable'}`}>
+      {cardCatalog.map(card=>{const metric=metricValues[card.id];const field:DashboardField|null=({coverageGap:'coverage',nonIdealPerformance:'suitability',nonIdealCompat:'suitability',faltos:'missedReliefs',lateRelief:'metrics',consignas:'consignments',critical:'criticalIncidents',route:'supervisionRoute',factor:null,rotation:'rotation',cx:null,risk:null} as const)[card.id];const cardLoading=field!==null&&pending.has(field);const spark=card.id==='coverageGap'?coverageSpark:[];return <button type="button" key={card.id} data-kpi={card.id} title={`Clic para visualizar ${card.label.toLocaleLowerCase('es')}. ${metric.note}`} aria-pressed={activeCard===card.id} onClick={()=>setActiveCard(card.id)} className={`dash-v6-kpi kpi tone-${card.tone} ${activeCard===card.id?'selected':''} ${metric.available?'':'unavailable'}`}>
         <span className="dash-v6-kpi-mark kicon" aria-hidden="true">{card.glyph}</span>
-        <span className="dash-v6-kpi-copy kcontent"><span className="dash-v6-kpi-heading"><strong className="ktitle">{card.id==='coverageGap'?<>Puntos sin<br/>cobertura</>:card.label}</strong>{'sub' in card&&<span className="dash-v6-kpi-sub ksub">{card.sub}</span>}</span>{card.id==='factor'?<span className="dash-v6-factor factor"><span>FHT:</span><b>0</b><span>Disponible:</span><b>0</b><span>Exceso:</span><b>0</b></span>:<span className="dash-v6-kpi-value-row value-row"><b className="kvalue">{cardLoading?'…':metric.value}</b>{!cardLoading&&card.id!=='risk'&&<CardSparkline values={spark} color={({red:"#ff243e",green:"#00bf7d",blue:"#1687ff",orange:"#ff7b00",purple:"#8a38ff",yellow:"#f4a100"})[card.tone]}/>}</span>}{card.id!=='critical'&&card.id!=='risk'&&<small className="dash-v6-kpi-delta delta dash-v6-kpi-comparison" title={card.id==='coverageGap'?'Puntos sin cobertura: semana seleccionada frente a la semana anterior.':card.id==='lateRelief'?'Relevos tardíos: rango seleccionado frente al rango anterior de igual duración.':'Comparación histórica no disponible.'}>{card.id==='coverageGap'&&data.coverage?comparison(data.coverage.uncoveredPoints,data.coverage.previousUncoveredPoints):card.id==='lateRelief'&&data.metrics?comparison(data.metrics.lateReliefs,data.metrics.previousLateReliefs):'0%'} <span>vs. {card.id==='coverageGap'?'semana anterior':'período anterior'}</span></small>}</span>
+        <span className="dash-v6-kpi-copy kcontent"><span className="dash-v6-kpi-heading"><strong className="ktitle">{card.id==='coverageGap'?<>Puntos sin<br/>cobertura</>:card.label}</strong>{'sub' in card&&<span className="dash-v6-kpi-sub ksub">{card.sub}</span>}</span>{card.id==='factor'?<span className="dash-v6-factor factor"><span>FHT:</span><b>0</b><span>Disponible:</span><b>0</b><span>Exceso:</span><b>0</b></span>:<span className="dash-v6-kpi-value-row value-row"><b className="kvalue">{cardLoading?'…':metric.value}</b>{!cardLoading&&card.id!=='risk'&&<CardSparkline values={spark} color={({red:"#ff243e",green:"#00bf7d",blue:"#1687ff",orange:"#ff7b00",purple:"#8a38ff",yellow:"#f4a100"})[card.tone]}/>}</span>}{card.id!=='critical'&&card.id!=='risk'&&card.id!=='rotation'&&<small className="dash-v6-kpi-delta delta dash-v6-kpi-comparison" title={card.id==='coverageGap'?'Puntos sin cobertura: semana seleccionada frente a la semana anterior.':card.id==='lateRelief'?'Relevos tardíos: rango seleccionado frente al rango anterior de igual duración.':'Comparación histórica no disponible.'}>{card.id==='coverageGap'&&data.coverage?comparison(data.coverage.uncoveredPoints,data.coverage.previousUncoveredPoints):card.id==='lateRelief'&&data.metrics?comparison(data.metrics.lateReliefs,data.metrics.previousLateReliefs):'0%'} <span>vs. {card.id==='coverageGap'?'semana anterior':'período anterior'}</span></small>}</span>
       </button>})}
     </div>
 

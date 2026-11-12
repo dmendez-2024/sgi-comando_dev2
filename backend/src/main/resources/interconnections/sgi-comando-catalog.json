@@ -650,10 +650,13 @@
             "employmentStatus",
             "updatedFromSourceAt",
             "companyCoreCatalogId?",
-            "companyCode?"
+            "companyCode?",
+            "separationReason? (RESIGNATION|DISMISSAL|POINT_CLOSURE|OTHER; only INACTIVE)",
+            "separationEffectiveAt? (ISO-8601; defaults to updatedFromSourceAt)"
           ],
           "companyRule": "An explicit companyCoreCatalogId or companyCode is authoritative. During the DHO transition, new employees that omit both fields use the configured default company (Kaibil); existing employees retain their current source company.",
-          "idempotency": "Idempotency-Key is persisted per Instancia PE; same key + same payload is safe, same key + different payload returns conflict."
+          "idempotency": "Idempotency-Key is persisted per Instancia PE; same key + same payload is safe, same key + different payload returns conflict.",
+          "rotationRule": "Only RESIGNATION and DISMISSAL contribute to Dashboard personnel rotation. POINT_CLOSURE is persisted but excluded."
         },
         "response": {
           "fields": [
