@@ -32,9 +32,11 @@ public class PatrolExecutionService {
 
     @Transactional
     public ObjectNode submit(JsonNode batch) {
-        UUID employee = ctx.employee();
         UUID t = tenant.instanceCountryId();
-        PatrolExecutionContract.validate(batch, employee, t, Instant.now());
+        JsonNode first = batch.path("events").path(0);
+        // Autor: quien inició sesión o, si la app sincroniza registros de otro agente del punto, el dueño de la asignación.
+        UUID employee = ctx.author(ctx.employee(), uuid(first, "assignmentId"), "PATROL_CHECKPOINT", uuid(first, "eventId"));
+        PatrolExecutionContract.validate(batch, ctx.batchEmployee(batch.path("employeeId").asText(null)), t, Instant.now());
         JsonNode e = batch.path("events").get(0);
         UUID eventId = uuid(e, "eventId"), assignmentId = uuid(e, "assignmentId"), runId = uuid(e, "patrolRunId"), checkpointId = uuid(e, "checkpointId");
         OperatorContext.Assignment a = ctx.assignment(assignmentId, employee);

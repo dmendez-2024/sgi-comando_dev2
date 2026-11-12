@@ -34,9 +34,11 @@ public class TaskEvidenceService {
 
     @Transactional
     public ObjectNode submit(JsonNode batch) {
-        UUID employee = ctx.employee();
         UUID t = tenant.instanceCountryId();
-        JsonNode e = validate(batch, employee, t, Instant.now());
+        JsonNode first = batch.path("events").path(0);
+        // Autor: quien inició sesión o, si la app sincroniza registros de otro agente del punto, el dueño de la asignación.
+        UUID employee = ctx.author(ctx.employee(), uuid(first, "assignmentId"), "TASK_EVIDENCE", uuid(first, "eventId"));
+        JsonNode e = validate(batch, ctx.batchEmployee(batch.path("employeeId").asText(null)), t, Instant.now());
         UUID eventId = uuid(e, "eventId"), assignmentId = uuid(e, "assignmentId"), targetId = uuid(e, "targetId");
         String targetType = text(e, "targetType");
         OperatorContext.Assignment a = ctx.assignment(assignmentId, employee);
