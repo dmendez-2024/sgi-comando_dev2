@@ -708,27 +708,39 @@ public class OperatorResource {
         UUID employee=ctx.author(employee(),assignmentId,"PATROL_EXECUTION",executionId+"/"+event.path("action").asText("").trim().toUpperCase(Locale.ROOT));
         AssignmentContext c=assignment(assignmentId,employee); lock(assignmentId);
         shiftSync.ensureOpen(tenant.instanceCountryId(),assignmentId);
-        List<?> allowed=em.createNativeQuery("""
-          select d.id,d.structure_type,d.schedule_type,d.sequence_type,d.window_start,d.window_end from patrol_definition d join patrol_protocol p on p.id=d.protocol_id and p.instance_country_id=d.instance_country_id
-          join patrol_protocol_post_scope s on s.protocol_id=p.id and s.instance_country_id=p.instance_country_id
-          where d.id=:patrol and d.instance_country_id=:tenant and d.status='ACTIVO' and p.status='ACTIVO' and s.post_id=:post
-          """).setParameter("patrol",patrolId).setParameter("tenant",tenant.instanceCountryId()).setParameter("post",c.post.id).getResultList();
-        if(allowed.isEmpty()) throw new BadRequestException("Patrulla no activa para el puesto asignado");
-        Object[] patrolRules=(Object[])allowed.get(0);
-        if(!withinAssignmentWindow(c,patrolRules[2],patrolRules[4],patrolRules[5]))
-            throw new BadRequestException("La patrulla no corresponde al horario de la asignación");
-        boolean fieldCheckpointsAllowed="OPEN".equals(patrolRules[1]);
-        List<?> plans=em.createNativeQuery("select id from patrol_plan where instance_country_id=:tenant and patrol_definition_id=:patrol and post_id=:post and active=true limit 1")
-            .setParameter("tenant",tenant.instanceCountryId()).setParameter("patrol",patrolId).setParameter("post",c.post.id).getResultList();
-        UUID planId;
-        if(plans.isEmpty()) {
-            planId=UUID.randomUUID();
-            em.createNativeQuery("insert into patrol_plan(id,instance_country_id,patrol_definition_id,post_id,schedule_type,schedule_json,active,created_at,updated_at) select :id,:tenant,id,:post,schedule_type,'{\"source\":\"SGI_OPR_UAT\"}',true,current_timestamp,current_timestamp from patrol_definition where id=:patrol")
-                .setParameter("id",planId).setParameter("tenant",tenant.instanceCountryId()).setParameter("post",c.post.id).setParameter("patrol",patrolId).executeUpdate();
-        } else planId=UUID.fromString(plans.get(0).toString());
         String action=event.path("action").asText("").trim().toUpperCase(Locale.ROOT);
         List<?> old=em.createNativeQuery("select id,started_at,finished_at,result,assignment_id,employee_id from patrol_execution where id=:id and instance_country_id=:tenant")
             .setParameter("id",executionId).setParameter("tenant",tenant.instanceCountryId()).getResultList();
+        // El FINISH de una ejecución ya iniciada se valida con la versión del protocolo con que se inició: si el protocolo
+        // se volvió a publicar durante la patrulla, la versión anterior ya no está activa y la app puede enviar el patrolId
+        // de cualquiera de las dos versiones (mismo código y serie).
+        Object[] execution="FINISH".equals(action)&&!old.isEmpty()?executionDefinition(executionId):null;
+        Object[] patrolRules;
+        UUID definitionId, planId;
+        if(execution!=null) {
+            definitionId=(UUID)execution[0]; planId=(UUID)execution[1];
+            if(!definitionId.equals(patrolId)&&!samePatrolSeries(patrolId,definitionId)) throw new BadRequestException("La ejecución no corresponde a la patrulla indicada");
+            patrolRules=new Object[]{execution[0],execution[2],execution[3],execution[4],execution[5],execution[6]};
+        } else {
+            List<?> allowed=em.createNativeQuery("""
+              select d.id,d.structure_type,d.schedule_type,d.sequence_type,d.window_start,d.window_end from patrol_definition d join patrol_protocol p on p.id=d.protocol_id and p.instance_country_id=d.instance_country_id
+              join patrol_protocol_post_scope s on s.protocol_id=p.id and s.instance_country_id=p.instance_country_id
+              where d.id=:patrol and d.instance_country_id=:tenant and d.status='ACTIVO' and p.status='ACTIVO' and s.post_id=:post
+              """).setParameter("patrol",patrolId).setParameter("tenant",tenant.instanceCountryId()).setParameter("post",c.post.id).getResultList();
+            if(allowed.isEmpty()) throw new BadRequestException("Patrulla no activa para el puesto asignado");
+            patrolRules=(Object[])allowed.get(0);
+            definitionId=patrolId;
+            List<?> plans=em.createNativeQuery("select id from patrol_plan where instance_country_id=:tenant and patrol_definition_id=:patrol and post_id=:post and active=true limit 1")
+                .setParameter("tenant",tenant.instanceCountryId()).setParameter("patrol",patrolId).setParameter("post",c.post.id).getResultList();
+            if(plans.isEmpty()) {
+                planId=UUID.randomUUID();
+                em.createNativeQuery("insert into patrol_plan(id,instance_country_id,patrol_definition_id,post_id,schedule_type,schedule_json,active,created_at,updated_at) select :id,:tenant,id,:post,schedule_type,'{\"source\":\"SGI_OPR_UAT\"}',true,current_timestamp,current_timestamp from patrol_definition where id=:patrol")
+                    .setParameter("id",planId).setParameter("tenant",tenant.instanceCountryId()).setParameter("post",c.post.id).setParameter("patrol",patrolId).executeUpdate();
+            } else planId=UUID.fromString(plans.get(0).toString());
+        }
+        if(!withinAssignmentWindow(c,patrolRules[2],patrolRules[4],patrolRules[5]))
+            throw new BadRequestException("La patrulla no corresponde al horario de la asignación");
+        boolean fieldCheckpointsAllowed="OPEN".equals(patrolRules[1]);
         if("START".equals(action)) {
             if(!old.isEmpty()) return executionState((Object[])old.get(0));
             if("PROGRAMMED".equals(patrolRules[2])) {
@@ -775,18 +787,27 @@ public class OperatorResource {
         if(fieldCheckpointsAllowed && (started.isBefore(c.shift.startsAt) || finished.isAfter(c.shift.endsAt))) throw new BadRequestException("La patrulla no programada debe ejecutarse dentro del turno asignado");
         if(!fieldCheckpointsAllowed && (started.isBefore(c.shift.startsAt.minusSeconds(43200)) || finished.isAfter(c.shift.endsAt.plusSeconds(43200)))) throw new BadRequestException("Fechas de patrulla fuera de la ventana UAT del turno");
         JsonNode results=event.path("checkpointResults"); if(!results.isArray()) throw new BadRequestException("Resultados de hitos obligatorios");
-        Set<UUID> seen=new HashSet<>(); boolean complete=true;
+        Set<UUID> seen=new HashSet<>(); Set<String> seenCodes=new HashSet<>(); boolean complete=true;
         for(JsonNode item:results) {
             UUID checkpointId=uuid(item,"checkpointId"); if(!seen.add(checkpointId)) throw new BadRequestException("Hito duplicado");
-            List<?> valid=em.createNativeQuery("select id from patrol_checkpoint where id=:id and instance_country_id=:tenant and patrol_definition_id=:patrol")
-                .setParameter("id",checkpointId).setParameter("tenant",tenant.instanceCountryId()).setParameter("patrol",patrolId).getResultList();
+            // Hitos de la patrulla o de otra versión del mismo protocolo (misma patrulla y serie): una patrulla iniciada
+            // antes de volver a publicar el protocolo puede traer Hitos de ambas versiones.
+            List<?> valid=em.createNativeQuery("""
+              select c.code from patrol_checkpoint c
+              join patrol_definition d on d.id=c.patrol_definition_id and d.instance_country_id=c.instance_country_id
+              join patrol_protocol p on p.id=d.protocol_id and p.instance_country_id=d.instance_country_id
+              join patrol_definition base on base.id=:patrol and base.instance_country_id=c.instance_country_id
+              join patrol_protocol bp on bp.id=base.protocol_id and bp.instance_country_id=base.instance_country_id
+              where c.id=:id and c.instance_country_id=:tenant and (d.id=base.id or (d.code=base.code and p.series_id=bp.series_id))
+              """).setParameter("id",checkpointId).setParameter("tenant",tenant.instanceCountryId()).setParameter("patrol",definitionId).getResultList();
             if(valid.isEmpty()) throw new BadRequestException("Hito no pertenece a la patrulla");
+            seenCodes.add(String.valueOf(valid.get(0)));
             String result=text(item,"result"); if(!Set.of("CUMPLIDO","NO_CUMPLIDO").contains(result)) throw new BadRequestException("Resultado de hito inválido");
             if(!"CUMPLIDO".equals(result)) complete=false;
         }
         Number required=(Number)em.createNativeQuery("select count(*) from patrol_checkpoint where instance_country_id=:tenant and patrol_definition_id=:patrol")
-            .setParameter("tenant",tenant.instanceCountryId()).setParameter("patrol",patrolId).getSingleResult();
-        if(required.intValue()!=seen.size()) complete=false;
+            .setParameter("tenant",tenant.instanceCountryId()).setParameter("patrol",definitionId).getSingleResult();
+        if(required.intValue()!=seenCodes.size()) complete=false;
         JsonNode suppliedFieldCheckpoints=event.get("fieldCheckpoints");
         JsonNode fieldCheckpoints=suppliedFieldCheckpoints==null?mapper.createArrayNode():suppliedFieldCheckpoints;
         if(!fieldCheckpoints.isArray()) throw new BadRequestException("Listado de hitos de campo inválido");
@@ -808,8 +829,9 @@ public class OperatorResource {
         }
         String finalResult=complete?"COMPLETA":"INCOMPLETA";
         if(finishing) {
-            int updated=em.createNativeQuery("update patrol_execution set finished_at=:finished,result=:result,updated_at=current_timestamp where id=:id and instance_country_id=:tenant and assignment_id=:assignment and employee_id=:employee and patrol_plan_id=:plan and finished_at is null")
-                .setParameter("finished",finished).setParameter("result",finalResult).setParameter("id",executionId).setParameter("tenant",tenant.instanceCountryId()).setParameter("assignment",assignmentId).setParameter("employee",employee).setParameter("plan",planId).executeUpdate();
+            // Sin filtrar por plan: la ejecución conserva el plan de la versión con que se inició.
+            int updated=em.createNativeQuery("update patrol_execution set finished_at=:finished,result=:result,updated_at=current_timestamp where id=:id and instance_country_id=:tenant and assignment_id=:assignment and employee_id=:employee and finished_at is null")
+                .setParameter("finished",finished).setParameter("result",finalResult).setParameter("id",executionId).setParameter("tenant",tenant.instanceCountryId()).setParameter("assignment",assignmentId).setParameter("employee",employee).executeUpdate();
             if(updated!=1) throw new ClientErrorException("La patrulla ya fue finalizada o no corresponde al contexto activo",409);
         } else em.createNativeQuery("insert into patrol_execution(id,instance_country_id,patrol_plan_id,assignment_id,employee_id,started_at,finished_at,result,created_at,updated_at) values(:id,:tenant,:plan,:assignment,:employee,:started,:finished,:result,current_timestamp,current_timestamp)")
             .setParameter("id",executionId).setParameter("tenant",tenant.instanceCountryId()).setParameter("plan",planId).setParameter("assignment",assignmentId).setParameter("employee",employee).setParameter("started",started).setParameter("finished",finished).setParameter("result",finalResult).executeUpdate();
@@ -948,8 +970,54 @@ public class OperatorResource {
           order by pe.started_at desc limit 1
           """).setParameter("tenant",tenant.instanceCountryId()).setParameter("assignment",assignmentId).setParameter("employee",employee).setParameter("patrol",patrolId)
             .setParameter("post",c.post.id).getResultList();
+        // Sin ejecución de esta versión: la que sigue en curso de otra versión del protocolo (se volvió a publicar
+        // durante la patrulla). START la rechaza con 409, así que la app debe verla para continuarla y finalizarla.
+        if(rows.isEmpty()) rows=activeOtherVersionPatrol(assignmentId,employee,patrolId,c.post.id);
         if(rows.isEmpty()) return mapper.createObjectNode().put("status","NOT_STARTED").put("completedCheckpoints",0);
         Object[] row=rows.get(0); return executionState(row).put("completedCheckpoints",((Number)row[4]).intValue());
+    }
+
+    /** Ejecución en curso de la misma patrulla programada (mismo código y serie) en otra versión del protocolo. */
+    @SuppressWarnings("unchecked")
+    private List<Object[]> activeOtherVersionPatrol(UUID assignmentId, UUID employee, UUID patrolId, UUID postId) {
+        return em.createNativeQuery("""
+          select pe.id,pe.started_at,pe.finished_at,pe.result,
+                 (select count(*) from patrol_checkpoint_execution pce where pce.instance_country_id=pe.instance_country_id and pce.patrol_execution_id=pe.id)
+          from patrol_execution pe
+          left join patrol_plan plan on plan.id=pe.patrol_plan_id and plan.instance_country_id=pe.instance_country_id
+          join patrol_definition previous on previous.id=coalesce(pe.patrol_definition_id,plan.patrol_definition_id) and previous.instance_country_id=pe.instance_country_id
+          join patrol_protocol previous_protocol on previous_protocol.id=previous.protocol_id and previous_protocol.instance_country_id=previous.instance_country_id
+          join patrol_definition requested on requested.id=:patrol and requested.instance_country_id=pe.instance_country_id
+          join patrol_protocol requested_protocol on requested_protocol.id=requested.protocol_id and requested_protocol.instance_country_id=requested.instance_country_id
+          where pe.instance_country_id=:tenant and pe.assignment_id=:assignment and pe.employee_id=:employee
+            and requested.schedule_type='PROGRAMMED' and previous.code=requested.code and previous.id<>requested.id
+            and previous_protocol.series_id=requested_protocol.series_id
+            and (plan.post_id=:post or plan.id is null) and pe.finished_at is null
+          order by pe.started_at desc limit 1
+          """).setParameter("tenant",tenant.instanceCountryId()).setParameter("assignment",assignmentId)
+            .setParameter("employee",employee).setParameter("patrol",patrolId).setParameter("post",postId).getResultList();
+    }
+
+    /** Definición, plan y reglas con que se inició la ejecución: id, plan, estructura, horario, secuencia, inicio y fin de ventana. */
+    private Object[] executionDefinition(UUID executionId) {
+        List<?> rows=em.createNativeQuery("""
+          select d.id,pe.patrol_plan_id,d.structure_type,d.schedule_type,d.sequence_type,d.window_start,d.window_end
+          from patrol_execution pe
+          left join patrol_plan plan on plan.id=pe.patrol_plan_id and plan.instance_country_id=pe.instance_country_id
+          join patrol_definition d on d.id=coalesce(pe.patrol_definition_id,plan.patrol_definition_id) and d.instance_country_id=pe.instance_country_id
+          where pe.id=:id and pe.instance_country_id=:tenant
+          """).setParameter("id",executionId).setParameter("tenant",tenant.instanceCountryId()).getResultList();
+        return rows.isEmpty()?null:(Object[])rows.get(0);
+    }
+
+    /** Misma patrulla en otra versión del protocolo: mismo código de patrulla y misma serie de protocolo. */
+    private boolean samePatrolSeries(UUID patrolId, UUID otherPatrolId) {
+        return !em.createNativeQuery("""
+          select 1 from patrol_definition a join patrol_protocol ap on ap.id=a.protocol_id and ap.instance_country_id=a.instance_country_id
+          join patrol_definition b on b.id=:other and b.instance_country_id=a.instance_country_id
+          join patrol_protocol bp on bp.id=b.protocol_id and bp.instance_country_id=b.instance_country_id
+          where a.id=:patrol and a.instance_country_id=:tenant and a.code=b.code and ap.series_id=bp.series_id
+          """).setParameter("patrol",patrolId).setParameter("other",otherPatrolId).setParameter("tenant",tenant.instanceCountryId()).getResultList().isEmpty();
     }
 
     /** Una versión nueva conserva el código y la serie del protocolo; una patrulla duplicada tiene otro código. */
