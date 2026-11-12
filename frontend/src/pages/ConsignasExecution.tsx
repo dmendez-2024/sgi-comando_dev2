@@ -8,6 +8,7 @@ import {api, getUser, type UatUser} from '../api';
 import {PhotoEvidenceGallery, ReferenceImageGallery, ReliefInventoryCards, type ReliefInventoryItem} from '../components/PhotoEvidenceGallery';
 import SearchableSelect from '../components/SearchableSelect';
 import FilterAccordion from '../components/FilterAccordion';
+import {downloadCsv} from '../utils/exportCsv';
 
 type ExecutionType='RELIEF'|'PATROL'|'ADHOC';
 type ExecutionStatus='IN_PROGRESS'|'COMPLETED'|'OVERDUE'|'PENDING'|'CRITICAL';
@@ -327,8 +328,7 @@ export default function ConsignasExecution({initialCaseId=''}:{initialCaseId?:st
   function exportCsv(){
     const header=['Tipo','Código','Nombre / Descripción','Cliente','Compañía','Ciudad','Punto','Puesto','Responsable','Inicio','Fin','Estado','Progreso'];
     const body=rows.map(r=>[typeLabel(r.type),r.code,r.name,r.client,r.company,r.city,r.point,r.post,r.responsible,formatDateTime(r.start),formatDateTime(r.end),statusLabel(r.status),r.result]);
-    const csv=[header,...body].map(line=>line.map(v=>`"${String(v).replaceAll('"','""')}"`).join(',')).join('\n');
-    const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='consignas_ejecuciones.csv';a.click();URL.revokeObjectURL(url);
+    downloadCsv('consignas_ejecuciones.csv',[header,...body]);
   }
 
   return <div className="cns-page nov-page">

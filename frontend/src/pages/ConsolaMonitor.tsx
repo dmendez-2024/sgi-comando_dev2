@@ -12,6 +12,7 @@ import {OperationalDrawer} from '../components/OperationalDrawer';
 import {PhotoEvidenceGallery} from '../components/PhotoEvidenceGallery';
 import SearchableSelect from '../components/SearchableSelect';
 import FilterAccordion from '../components/FilterAccordion';
+import {downloadCsv} from '../utils/exportCsv';
 
 type ItemCategory='CONSIGNAS'|'NOVEDADES'|'ALARMAS';
 type ItemStatus='PENDING'|'CONFIRMED'|'IN_PROGRESS'|'OVERDUE'|'COMPLETED'|'APPROVED'|'DISCARDED'|'NEW'|'ACKNOWLEDGED'|'ESCALATED'|'RESOLVED'|'CRITICAL'|'DRAFT'|'FINALIZED';
@@ -284,8 +285,7 @@ export default function ConsolaMonitor({initialCaseId='',notificationTarget}:{in
   function exportCsv(){
     const header=['Categoría','Subtipo','Código','Título','Cliente','Compañía','Ciudad','Punto','Puesto','Responsable','Estado','Prioridad','Última actualización'];
     const body=rows.map(r=>[categoryLabel(r.category),r.subtype,r.code,r.title,r.client,r.company,r.city,r.point,r.post,r.responsible,statusLabel(r.status),priorityLabel(r.priority),formatDateTime(r.updatedAt)]);
-    const csv=[header,...body].map(line=>line.map(v=>`"${String(v).replaceAll('"','""')}"`).join(',')).join('\n');
-    const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='consola_operativa.csv'; a.click(); URL.revokeObjectURL(url);
+    downloadCsv('consola_operativa.csv',[header,...body]);
   }
 
   function openNewIncident(){setDetailId('');setEditingIncidentId('');setIncidentEditorOpen(true);}

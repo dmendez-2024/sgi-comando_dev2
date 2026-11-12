@@ -9,6 +9,7 @@ import {OperationalDrawer} from '../components/OperationalDrawer';
 import {PhotoEvidenceGallery} from '../components/PhotoEvidenceGallery';
 import SearchableSelect from '../components/SearchableSelect';
 import FilterAccordion from '../components/FilterAccordion';
+import {downloadCsv} from '../utils/exportCsv';
 
 type NoveltyType='FINDING'|'VULNERABILITY'|'INCIDENT';
 type NoveltyStatus='PENDING'|'CONFIRMED'|'APPROVED'|'FINALIZED'|'DISCARDED';
@@ -294,7 +295,11 @@ export default function NovedadesExecution(){
     catch(error){setModalError(apiMessage(error,'No fue posible descartar la novedad.'))}finally{setDecisionBusy(false)}
   }
 
-  function exportCsv(){const header=['Tipo','Código','Subcategoría','Descripción','Cliente','Compañía','Ciudad','Punto','Puesto','Reportado por','Fecha / Hora','Estado'];const body=rows.map(r=>[typeLabel(r.type),r.code,r.subcategory,r.description,r.client,r.company,r.city,r.point,r.post,r.reportedBy,formatDateTime(r.createdAt),statusLabel(r.status)]);const csv=[header,...body].map(line=>line.map(v=>`"${String(v).replaceAll('"','""')}"`).join(',')).join('\n');const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='novedades.csv';a.click();URL.revokeObjectURL(url)}
+  function exportCsv(){
+    const header=['Tipo','Código','Subcategoría','Descripción','Cliente','Compañía','Ciudad','Punto','Puesto','Reportado por','Fecha / Hora','Estado'];
+    const body=rows.map(r=>[typeLabel(r.type),r.code,r.subcategory,r.description,r.client,r.company,r.city,r.point,r.post,r.reportedBy,formatDateTime(r.createdAt),statusLabel(r.status)]);
+    downloadCsv('novedades.csv',[header,...body]);
+  }
 
   return <div className="nov-page">
     <div className="nov-topbar"><div><div className="page-backline">Operaciones / Novedades</div><h2>Novedades</h2><p>Revisión y aprobación de novedades reportadas desde SGI: Operador</p></div><div className="nov-scope"><ShieldCheck size={16}/>{scope.label}</div></div>

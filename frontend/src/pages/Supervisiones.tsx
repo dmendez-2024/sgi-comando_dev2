@@ -2,6 +2,7 @@ import {useCallback, useEffect, useMemo, useState, type ReactNode} from 'react';
 import {AlertTriangle, Camera, ChevronLeft, ChevronRight, CircleAlert, ClipboardCheck, ClipboardList, FilterX, MapPinned, Search, ShieldCheck, Upload, UserCheck, X} from 'lucide-react';
 import {api} from '../api';
 import FilterAccordion from '../components/FilterAccordion';
+import {downloadCsv} from '../utils/exportCsv';
 import {OperationalDrawer} from '../components/OperationalDrawer';
 import SearchableSelect from '../components/SearchableSelect';
 
@@ -75,8 +76,7 @@ export default function Supervisiones(){
       const body=all.map(r=>[formatDateTime(r.capturedAt),r.companyName??'',r.clientName,r.pointName,r.postCode,r.postName,r.supervisorName,r.agentName,
         LEVELS[r.vigilanceLevel]??r.vigilanceLevel,LEVELS[r.cleanlinessLevel]??r.cleanlinessLevel,LEVELS[r.consignmentKnowledgeLevel]??r.consignmentKnowledgeLevel,LEVELS[r.situationalLevel]??r.situationalLevel,
         INVENTORY[r.inventoryOverallState]??r.inventoryOverallState]);
-      const csv='﻿'+[header,...body].map(line=>line.map(v=>`"${String(v).replaceAll('"','""')}"`).join(',')).join('\n');
-      const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8;'}));const a=document.createElement('a');a.href=url;a.download=`supervisiones_${applied.from}_${applied.to}.csv`;a.click();URL.revokeObjectURL(url);
+      downloadCsv(`supervisiones_${applied.from}_${applied.to}.csv`,[header,...body]);
       setError('');
     }catch(e){setError(errorText(e,'No fue posible exportar las evaluaciones de supervisión.'))}
     finally{setExporting(false)}

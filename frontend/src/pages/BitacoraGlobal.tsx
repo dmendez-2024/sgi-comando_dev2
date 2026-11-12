@@ -7,6 +7,7 @@ import {api, getUser} from '../api';
 import {PhotoEvidenceGallery, ReferenceImageGallery} from '../components/PhotoEvidenceGallery';
 import SearchableSelect from '../components/SearchableSelect';
 import FilterAccordion from '../components/FilterAccordion';
+import {downloadCsv} from '../utils/exportCsv';
 
 type RecordType='PERSON'|'VEHICLE'|'CONTAINER';
 type RecordStatus='AUTHORIZED'|'REGISTERED'|'RELEASED'|'UNDER_REVIEW'|'RETAINED';
@@ -135,12 +136,7 @@ export default function BitacoraGlobal(){
   function exportCsv(){
     const header=['Tipo','Identificador','Nombre / Descripción','Cliente','Compañía','Ciudad','Punto','Fecha / Hora','Resultado'];
     const body=rows.map(r=>[typeLabel(r.type),r.identifier,r.label,r.client,r.company,r.city,r.point,formatDateTime(r.at),statusLabel(r.status)]);
-    const csv=[header,...body].map(line=>line.map(value=>`"${String(value).replaceAll('"','""')}"`).join(',')).join('\n');
-    const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
-    const url=URL.createObjectURL(blob);
-    const a=document.createElement('a');
-    a.href=url; a.download='bitacora_global.csv'; a.click();
-    URL.revokeObjectURL(url);
+    downloadCsv('bitacora_global.csv',[header,...body]);
   }
 
   return <div className="bit-global-page nov-page">
