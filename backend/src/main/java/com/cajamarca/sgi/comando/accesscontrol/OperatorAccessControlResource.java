@@ -55,7 +55,7 @@ public class OperatorAccessControlResource {
     private AccessControlPerson person(AccessControlEntry row){AccessControlPerson person=AccessControlPerson.find("id=?1 and instanceCountryId=?2",row.personId,tenant.instanceCountryId()).firstResult();if(person==null)throw new NotFoundException("Identidad asociada no encontrada.");return person;}
     private boolean valid(AccessControlEntry row){LocalDate today=today();return "ACTIVE".equals(row.status)&&!today.isBefore(row.validFrom)&&!today.isAfter(row.validUntil);}
     private static LocalDate today(){return LocalDate.now(OPERATING_ZONE);}
-    private boolean applies(UUID entryId,UUID pointId){return AccessControlEntryPoint.count("entryId=?1 and pointId=?2 and instanceCountryId=?3",entryId,pointId,tenant.instanceCountryId())>0;}
+    private boolean applies(UUID entryId,UUID pointId){return AccessControlEntryPoint.count("entryId=?1 and pointId=?2 and instanceCountryId=?3 and revokedAt is null",entryId,pointId,tenant.instanceCountryId())>0;}
     private PointEntity assignedPoint(UUID assignmentId,UUID pointId){
         UUID employee=operator.employee();
         if(assignmentId==null||pointId==null)throw new BadRequestException("Asignación y Punto son obligatorios.");
