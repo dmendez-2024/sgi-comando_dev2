@@ -18,6 +18,7 @@ import {
   ChevronDown,
   ImagePlus,
   CalendarPlus,
+  ShieldX,
 } from "lucide-react";
 import { api, ApiError } from "../api";
 
@@ -40,6 +41,7 @@ type Entry = {
   hasPhoto: boolean;
   hasQr: boolean;
   pointIds: string[];
+  revocations: {pointId:string;revokedAt:string;revokedBy:string;reason:string}[];
   points: Point[];
 };
 type PointContext = {
@@ -64,7 +66,7 @@ type Draft = {
   photoContentType?: string;
   photoFilename?: string;
 };
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Guayaquil", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
 const dayAfter = (value: string) => {
   const date = new Date(`${value}T00:00:00Z`);
   date.setUTCDate(date.getUTCDate() + 1);
@@ -108,27 +110,39 @@ export default function AccessControlLists({
   const [q, setQ] = useState(""),
     [pointFilter, setPointFilter] = useState(""),
     [statusFilter, setStatusFilter] = useState("");
+  const [accreditationFilter, setAccreditationFilter] = useState("");
+  const [createdFrom, setCreatedFrom] = useState("");
+  const [createdUntil, setCreatedUntil] = useState("");
+  const [accreditations, setAccreditations] = useState<string[]>([]);
+  const [applied, setApplied] = useState<Record<string,string>>({});
+  const [searchedPointFilter, setSearchedPointFilter] = useState("");
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
   const [drawer, setDrawer] = useState(false),
     [mode, setMode] = useState<"individual" | "file">("individual"),
     [draft, setDraft] = useState<Draft>(() => empty(point.pointId)),
     [saving, setSaving] = useState(false),
     [formError, setFormError] = useState(""),
     [pointsOpen, setPointsOpen] = useState(false);
+  const [revoking, setRevoking] = useState<Entry | null>(null);
+  const [revocationReason, setRevocationReason] = useState("");
+  const [revocationError, setRevocationError] = useState("");
+  const [submittingRevocation, setSubmittingRevocation] = useState(false);
   const title = white ? "Lista Blanca" : "Lista Negra";
-  const load = async () => {
+  const load = async (filters: Record<string,string> = applied) => {
     setLoading(true);
     setError("");
     try {
-      const [entries, available] = await Promise.all([
+      const [entries, available, names] = await Promise.all([
         api.accessControlEntries(point.clientId, listType, {
-          q,
           pointId: point.pointId,
-          status: statusFilter,
+          ...filters,
         }),
         api.accessControlPoints(point.clientId),
+        api.accessControlAccreditations(point.clientId, listType, point.pointId),
       ]);
       setRows(entries);
       setPoints(available);
+      setAccreditations(names);
     } catch (e) {
       setError(
         e instanceof ApiError ? e.body : "No fue posible consultar la lista.",
@@ -138,8 +152,30 @@ export default function AccessControlLists({
     }
   };
   useEffect(() => {
-    void load();
+    void load({});
   }, [listType, point.clientId, point.pointId]);
+  const search = () => {
+    if (createdFrom && createdUntil && createdUntil < createdFrom) {
+      setError("La fecha final no puede ser anterior a la inicial.");
+      return;
+    }
+    const filters = {q:q.trim(),status:statusFilter,accreditation:accreditationFilter,createdFrom,createdUntil};
+    setApplied(filters);
+    setSearchedPointFilter(pointFilter);
+    void load(filters);
+  };
+  const downloadPdf = async () => {
+    if (downloadingPdf) return;
+    setDownloadingPdf(true);setError("");
+    try {
+      const blob=await api.accessControlQrPdf(point.clientId,point.pointId,{...applied,sharedPointId:searchedPointFilter});
+      const url=URL.createObjectURL(blob);
+      const anchor=document.createElement("a");anchor.href=url;anchor.download=`QR-lista-blanca-${point.pointName}-${today()}.pdf`;anchor.click();
+      URL.revokeObjectURL(url);
+    } catch(e) {
+      setError(e instanceof ApiError ? e.body : "No fue posible descargar los códigos QR.");
+    } finally {setDownloadingPdf(false);}
+  };
   const openNew = () => {
     setNotice("");
     setDraft(empty(point.pointId));
@@ -182,10 +218,26 @@ export default function AccessControlLists({
       validUntil: "",
       status: "ACTIVE",
       observations: "",
-      pointIds: row.pointIds,
+      pointIds: row.revocations?.some(item => item.pointId === point.pointId) ? [...row.pointIds, point.pointId] : row.pointIds,
     });
     setMode("individual");
     setDrawer(true);
+  };
+  const revokePoint = async () => {
+    if (!revoking || !revocationReason.trim() || submittingRevocation) return;
+    setSubmittingRevocation(true);
+    setRevocationError("");
+    try {
+      await api.revokeAccessControlPoint(revoking.id, point.pointId, revocationReason.trim());
+      setNotice(`Se retiró la autorización de ${revoking.firstNames} ${revoking.lastNames} en ${point.pointName}.`);
+      setRevoking(null);
+      setRevocationReason("");
+      await load();
+    } catch (e) {
+      setRevocationError(e instanceof ApiError ? e.body : "No fue posible retirar la autorización.");
+    } finally {
+      setSubmittingRevocation(false);
+    }
   };
   const valid = useMemo(
     () =>
@@ -279,10 +331,10 @@ export default function AccessControlLists({
   }, [point.pointId, points, rows]);
   const visibleRows = useMemo(
     () =>
-      pointFilter
-        ? rows.filter((row) => row.pointIds.includes(pointFilter))
+      searchedPointFilter
+        ? rows.filter((row) => row.pointIds.includes(searchedPointFilter))
         : rows,
-    [pointFilter, rows],
+    [searchedPointFilter, rows],
   );
   useEffect(() => {
     if (
@@ -373,10 +425,22 @@ export default function AccessControlLists({
           <option value="ACTIVE">Activos</option>
           <option value="INACTIVE">Inactivos</option>
         </select>
-        <button onClick={() => void load()}>
+        {white && <select aria-label="Acreditación" value={accreditationFilter} onChange={e=>setAccreditationFilter(e.target.value)}>
+          <option value="">Todas las acreditaciones</option>
+          {accreditations.map(name=><option key={name} value={name}>{name}</option>)}
+        </select>}
+        {white && <div className="acl-date-filter">
+          <span>Fecha de creación</span>
+          <label>Desde<input aria-label="Fecha de creación desde" type="date" value={createdFrom} onChange={e=>setCreatedFrom(e.target.value)} /></label>
+          <label>Hasta<input aria-label="Fecha de creación hasta" type="date" min={createdFrom} value={createdUntil} onChange={e=>setCreatedUntil(e.target.value)} /></label>
+        </div>}
+        <button onClick={search}>
           <RefreshCcw size={16} />
           Buscar
         </button>
+        {white && <button type="button" className="acl-pdf-button" disabled={loading||downloadingPdf} onClick={()=>void downloadPdf()}>
+          <Download size={16}/>{downloadingPdf?"Generando PDF…":"Descargar QR en PDF"}
+        </button>}
       </section>
       <section className="acl-table-card">
         <h3>
@@ -412,6 +476,9 @@ export default function AccessControlLists({
                         {row.points.map((item) => (
                           <span key={item.id}>{item.name}</span>
                         ))}
+                        {row.revocations?.filter(item => item.pointId === point.pointId).map(item => (
+                          <span key={item.pointId} title={`Retirada el ${new Date(item.revokedAt).toLocaleString("es-EC", {timeZone:"America/Guayaquil"})} por ${item.revokedBy}. Motivo: ${item.reason}`}>Retirada de {point.pointName}</span>
+                        ))}
                       </div>
                     </td>
                     <td>
@@ -421,12 +488,12 @@ export default function AccessControlLists({
                       <span
                         className={`acl-state ${row.effectiveStatus.toLowerCase()}`}
                       >
-                        {labels[row.effectiveStatus]}
+                        {row.revocations?.some(item => item.pointId === point.pointId) ? "Retirada" : labels[row.effectiveStatus]}
                       </span>
                     </td>
                     {white && (
                       <td>
-                        {row.hasQr ? (
+                        {row.hasQr && !row.revocations?.some(item => item.pointId === point.pointId) ? (
                           <button
                             className="icon"
                             title="Descargar QR"
@@ -454,6 +521,16 @@ export default function AccessControlLists({
                       >
                         <CalendarPlus size={16} />
                       </button>
+                      {white && row.pointIds.includes(point.pointId) && (
+                        <button
+                          className="icon acl-revoke-action"
+                          title={`Retirar autorización de ${point.pointName}`}
+                          aria-label={`Retirar autorización de ${point.pointName} a ${row.firstNames} ${row.lastNames}`}
+                          onClick={() => { setRevoking(row); setRevocationReason(""); setRevocationError(""); }}
+                        >
+                          <ShieldX size={16} /> Retirar autorización
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -467,6 +544,23 @@ export default function AccessControlLists({
           )}
         </div>
       </section>
+      {revoking && (
+        <>
+          <div className="acl-overlay" onClick={() => !submittingRevocation && setRevoking(null)} />
+          <section className="acl-revoke-dialog" role="dialog" aria-modal="true" aria-labelledby="acl-revoke-title">
+            <h2 id="acl-revoke-title">Retirar autorización</h2>
+            <p>Se retirará el acceso de <strong>{revoking.firstNames} {revoking.lastNames}</strong> únicamente a <strong>{point.pointName}</strong>. Los demás puntos conservarán su autorización y el QR de la persona no se revocará.</p>
+            <label>Motivo del retiro *
+              <textarea maxLength={500} value={revocationReason} onChange={e => setRevocationReason(e.target.value)} placeholder="Indica por qué se retira la autorización en este punto" />
+            </label>
+            {revocationError && <div className="acl-form-error" role="alert">{revocationError}</div>}
+            <footer>
+              <button className="ghost" disabled={submittingRevocation} onClick={() => setRevoking(null)}>Cancelar</button>
+              <button className="primary" disabled={!revocationReason.trim() || submittingRevocation} onClick={() => void revokePoint()}>{submittingRevocation ? "Retirando…" : "Retirar autorización"}</button>
+            </footer>
+          </section>
+        </>
+      )}
       {drawer && (
         <>
           <div
