@@ -4,7 +4,7 @@ export function createExcelCsv(rows:readonly (readonly unknown[])[]):string {
   return 'sep=,\r\n'+content+'\r\n';
 }
 
-function utf16LeWithBom(content:string):Uint8Array {
+function utf16LeWithBom(content:string):Uint8Array<ArrayBuffer> {
   const bytes=new Uint8Array(2+content.length*2);
   bytes[0]=0xff;bytes[1]=0xfe;
   for(let index=0;index<content.length;index++){

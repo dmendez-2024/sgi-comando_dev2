@@ -935,7 +935,14 @@ public class OperatorResource {
         }
         @SuppressWarnings("unchecked") List<Object[]> rows=em.createNativeQuery("""
           select pe.id,pe.started_at,pe.finished_at,pe.result,
-                 (select count(*) from patrol_checkpoint_execution pce where pce.instance_country_id=pe.instance_country_id and pce.patrol_execution_id=pe.id)
+                 (select count(*) from (
+                    select pce.checkpoint_id from patrol_checkpoint_execution pce
+                    where pce.instance_country_id=pe.instance_country_id and pce.patrol_execution_id=pe.id
+                    union
+                    select te.target_id from task_execution te
+                    where te.instance_country_id=pe.instance_country_id and te.patrol_execution_id=pe.id
+                      and te.target_type='PATROL_CHECKPOINT' and te.status='RECEIVED'
+                 ) recorded)
           from patrol_execution pe join patrol_plan pp on pp.id=pe.patrol_plan_id and pp.instance_country_id=pe.instance_country_id
           where pe.instance_country_id=:tenant and pe.assignment_id=:assignment and pe.employee_id=:employee and pp.patrol_definition_id=:patrol and pp.post_id=:post
           order by pe.started_at desc limit 1
@@ -949,7 +956,14 @@ public class OperatorResource {
     private List<?> completedScheduledPatrol(UUID assignmentId, UUID employee, UUID patrolId, UUID postId) {
         return em.createNativeQuery("""
           select pe.id,pe.started_at,pe.finished_at,pe.result,
-                 (select count(*) from patrol_checkpoint_execution pce where pce.instance_country_id=pe.instance_country_id and pce.patrol_execution_id=pe.id)
+                 (select count(*) from (
+                    select pce.checkpoint_id from patrol_checkpoint_execution pce
+                    where pce.instance_country_id=pe.instance_country_id and pce.patrol_execution_id=pe.id
+                    union
+                    select te.target_id from task_execution te
+                    where te.instance_country_id=pe.instance_country_id and te.patrol_execution_id=pe.id
+                      and te.target_type='PATROL_CHECKPOINT' and te.status='RECEIVED'
+                 ) recorded)
           from patrol_execution pe
           left join patrol_plan plan on plan.id=pe.patrol_plan_id and plan.instance_country_id=pe.instance_country_id
           join patrol_definition previous on previous.id=coalesce(pe.patrol_definition_id,plan.patrol_definition_id) and previous.instance_country_id=pe.instance_country_id
@@ -991,7 +1005,15 @@ public class OperatorResource {
         @SuppressWarnings("unchecked") List<Object[]> rows=em.createNativeQuery("""
           select pe.id,d.code,d.name,pr.code,pr.name,pe.employee_id,pe.started_at,pe.finished_at,pe.result,
                  e.full_name,pt.client_name,pt.city,pt.name,po.name,c.code,c.name,pt.company_id,
-                 count(pce.id),(select count(*) from patrol_checkpoint pc where pc.instance_country_id=pe.instance_country_id and pc.patrol_definition_id=d.id)
+                 (select count(*) from (
+                    select pce.checkpoint_id from patrol_checkpoint_execution pce
+                    where pce.instance_country_id=pe.instance_country_id and pce.patrol_execution_id=pe.id
+                    union
+                    select te.target_id from task_execution te
+                    where te.instance_country_id=pe.instance_country_id and te.patrol_execution_id=pe.id
+                      and te.target_type='PATROL_CHECKPOINT' and te.status='RECEIVED'
+                 ) recorded),
+                 (select count(*) from patrol_checkpoint pc where pc.instance_country_id=pe.instance_country_id and pc.patrol_definition_id=d.id)
           from patrol_execution pe
           join patrol_plan pl on pl.id=pe.patrol_plan_id and pl.instance_country_id=pe.instance_country_id
           join patrol_definition d on d.id=pl.patrol_definition_id and d.instance_country_id=pe.instance_country_id
@@ -1000,10 +1022,7 @@ public class OperatorResource {
           join point pt on pt.id=po.point_id and pt.instance_country_id=pe.instance_country_id
           left join company c on c.id=pt.company_id and c.instance_country_id=pe.instance_country_id
           left join employee_operational_snapshot e on e.employee_id=pe.employee_id and e.instance_country_id=pe.instance_country_id
-          left join patrol_checkpoint_execution pce on pce.patrol_execution_id=pe.id and pce.instance_country_id=pe.instance_country_id
           where pe.instance_country_id=:tenant
-          group by pe.id,d.id,d.code,d.name,pr.code,pr.name,pe.employee_id,pe.started_at,pe.finished_at,pe.result,
-                   e.full_name,pt.client_name,pt.city,pt.name,po.name,c.code,c.name,pt.company_id
           order by pe.started_at desc
           """).setParameter("tenant",tenant.instanceCountryId()).setMaxResults(200).getResultList();
         ArrayNode result=mapper.createArrayNode();
@@ -1020,9 +1039,19 @@ public class OperatorResource {
                 .put("companyName",row[15]==null?"—":row[15].toString()).put("completedCheckpoints",((Number)row[17]).intValue()).put("totalCheckpoints",((Number)row[18]).intValue());
             ArrayNode events=item.putArray("checkpointEvents");
             @SuppressWarnings("unchecked") List<Object[]> checkpoints=em.createNativeQuery("""
-              select pc.name,pce.result,pce.validated_at
-              from patrol_checkpoint_execution pce join patrol_checkpoint pc on pc.id=pce.checkpoint_id and pc.instance_country_id=pce.instance_country_id
-              where pce.instance_country_id=:tenant and pce.patrol_execution_id=:execution order by pc.sequence_no
+              select pc.name,events.result,events.executed_at
+              from (
+                select pce.checkpoint_id,pce.result,pce.validated_at as executed_at
+                from patrol_checkpoint_execution pce
+                where pce.instance_country_id=:tenant and pce.patrol_execution_id=:execution
+                union all
+                select te.target_id,'RECEIVED',te.executed_at
+                from task_execution te
+                where te.instance_country_id=:tenant and te.patrol_execution_id=:execution
+                  and te.target_type='PATROL_CHECKPOINT' and te.status='RECEIVED'
+              ) events
+              join patrol_checkpoint pc on pc.id=events.checkpoint_id and pc.instance_country_id=:tenant
+              order by pc.sequence_no,events.executed_at
               """).setParameter("tenant",tenant.instanceCountryId()).setParameter("execution",executionId).getResultList();
             for(Object[] checkpoint:checkpoints) events.addObject().put("name",checkpoint[0].toString()).put("result",checkpoint[1].toString()).put("validatedAt",checkpoint[2].toString());
         }

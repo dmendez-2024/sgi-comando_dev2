@@ -11,7 +11,7 @@ import FilterAccordion from '../components/FilterAccordion';
 import {downloadCsv} from '../utils/exportCsv';
 import TablePagination, {pageSlice} from '../components/TablePagination';
 
-type ExecutionType='RELIEF'|'PATROL'|'ADHOC';
+type ExecutionType='RELIEF'|'PATROL'|'ADHOC'|'PROTOCOL';
 type ExecutionStatus='IN_PROGRESS'|'COMPLETED'|'OVERDUE'|'PENDING'|'CRITICAL';
 type Priority='LOW'|'MEDIUM'|'HIGH'|'CRITICAL';
 
@@ -42,6 +42,8 @@ type Execution={
   progressTotal:number;
   progressUnit:string;
   result:string;
+  instruction?:string;
+  comment?:string;
   timeline:TimelineEvent[];
   reviewRequest?:ReviewRequestData;
 };
@@ -123,7 +125,7 @@ const tempFrom=new Date(latestDate); tempFrom.setDate(tempFrom.getDate()-30);
 const defaultFrom=tempFrom.toISOString().slice(0,10);
 const EMPTY_FILTERS:Filters={type:'ALL',query:'',company:'ALL',client:'',city:'',point:'',post:'',status:'ALL',responsible:'',dateFrom:defaultFrom,dateTo:defaultTo};
 
-const typeLabel=(type:ExecutionType)=>type==='RELIEF'?'Relevo':type==='PATROL'?'Patrulla':'Consigna ad-hoc';
+const typeLabel=(type:ExecutionType)=>type==='RELIEF'?'Relevo':type==='PATROL'?'Patrulla':type==='PROTOCOL'?'Consigna cumplida':'Consigna ad-hoc';
 const statusLabel=(status:ExecutionStatus)=>({IN_PROGRESS:'En curso',COMPLETED:'Completada',OVERDUE:'Vencida',PENDING:'Pendiente',CRITICAL:'Crítica'}[status]);
 const priorityLabel=(priority:Priority)=>({LOW:'Baja',MEDIUM:'Media',HIGH:'Alta',CRITICAL:'Crítica'}[priority]);
 const inventoryStatusLabel=(status?:string|null)=>({
@@ -132,9 +134,9 @@ const inventoryStatusLabel=(status?:string|null)=>({
   PENDING_SOURCE:'Pendiente de fuente',
   NOT_REPORTED:'No informado'
 }[String(status??'').trim().toUpperCase()]??'No informado');
-const typeClass=(type:ExecutionType)=>type==='RELIEF'?'relief':type==='PATROL'?'patrol':'adhoc';
+const typeClass=(type:ExecutionType)=>type==='RELIEF'?'relief':type==='PATROL'?'patrol':type==='PROTOCOL'?'patrol':'adhoc';
 const statusClass=(status:ExecutionStatus)=>({IN_PROGRESS:'info',COMPLETED:'success',OVERDUE:'danger',PENDING:'warning',CRITICAL:'danger'}[status]);
-const typeIcon=(type:ExecutionType)=>type==='RELIEF'?<RefreshCw size={15}/>:type==='PATROL'?<CarFront size={15}/>:<FileText size={15}/>;
+const typeIcon=(type:ExecutionType)=>type==='RELIEF'?<RefreshCw size={15}/>:type==='PATROL'?<CarFront size={15}/>:type==='PROTOCOL'?<CheckCircle2 size={15}/>:<FileText size={15}/>;
 // Una patrulla en curso llega con finishedAt vacío: Intl lanza RangeError con fechas inválidas y tumba la pantalla.
 const toDate=(value?:string|null)=>{if(!value)return null;const d=new Date(value);return Number.isNaN(d.getTime())?null:d};
 const formatDateTime=(value?:string|null)=>{const d=toDate(value);return d?new Intl.DateTimeFormat('es-EC',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}).format(d):'—'};
@@ -191,9 +193,24 @@ function patrolExecutionToExecution(item:any):Execution{
     progressCurrent:completed,progressTotal:total,progressUnit:'hitos',result:`${completed}/${total} hitos · ${item.protocolCode}`,
     timeline:[
       {id:`start-${item.id}`,at:item.startedAt,title:'Inicio de patrulla',detail:`${item.protocolCode} · ${item.protocolName}`,state:'DONE'},
-      ...(item.checkpointEvents||[]).map((event:any,index:number)=>({id:`checkpoint-${item.id}-${index}`,at:event.validatedAt,title:`Hito ${index+1} validado`,detail:event.name,state:'DONE' as const})),
+      ...(item.checkpointEvents||[]).map((event:any,index:number)=>({id:`checkpoint-${item.id}-${index}`,at:event.validatedAt,title:`Hito ${index+1} registrado`,detail:event.name,state:'DONE' as const})),
       ...(item.finishedAt?[{id:`finish-${item.id}`,at:item.finishedAt,title:'Patrulla completada',detail:item.result,state:'DONE' as const}]:[])
     ]
+  };
+}
+function completedConsignmentToExecution(item:any):Execution{
+  const at=item.executedAt||item.confirmedAt;
+  const priority:Priority=({CRITICAL:'CRITICAL',HIGH:'HIGH',MEDIUM:'MEDIUM',LOW:'LOW'} as Record<string,Priority>)[String(item.priority).toUpperCase()]??'MEDIUM';
+  return {
+    id:`protocol-compliance-${item.id}`,type:'PROTOCOL',code:item.code,name:item.title,
+    evidenceEventId:String(item.id),photoCount:Number(item.photoCount||0),
+    client:item.clientName||'—',company:item.companyName||'—',companyCode:item.companyCode||'',city:item.city||'—',
+    point:item.pointName||'—',post:item.postName||'—',responsible:item.responsible||item.username||'Operador',zone:'',region:'',
+    status:'COMPLETED',priority,start:at,end:item.confirmedAt,progressCurrent:1,progressTotal:1,progressUnit:'consigna',
+    result:`Cumplida · ${item.protocolCode}`,
+    instruction:item.instruction||'',comment:item.comment||'',
+    timeline:[{id:`completed-${item.id}`,at:item.confirmedAt,title:'Cumplimiento registrado',
+      detail:`${item.protocolCode} · ${item.protocolName}${item.comment?` · ${item.comment}`:''}`,state:'DONE'}]
   };
 }
 function reliefToExecution(item:any):Execution{
@@ -229,10 +246,11 @@ export default function ConsignasExecution({initialCaseId=''}:{initialCaseId?:st
   const [page,setPage]=useState(0);
   const [inspectorId,setInspectorId]=useState<string|null>(null);
   const [reviewRequests,setReviewRequests]=useState<Execution[]>([]);
+  const [completedConsignments,setCompletedConsignments]=useState<Execution[]>([]);
   const [patrolExecutions,setPatrolExecutions]=useState<Execution[]>([]);
   const [reliefExecutions,setReliefExecutions]=useState<Execution[]>([]);
   const [loadWarnings,setLoadWarnings]=useState<string[]>([]);
-  const [pendingSources,setPendingSources]=useState<string[]>(['consignas','patrullas','relevos']);
+  const [pendingSources,setPendingSources]=useState<string[]>(['propuestas','cumplimientos','patrullas','relevos']);
   const loadRevision=useRef(0);
   const [reliefDetail,setReliefDetail]=useState<Execution|null>(null);
   const [detailLoading,setDetailLoading]=useState(false);
@@ -250,7 +268,7 @@ export default function ConsignasExecution({initialCaseId=''}:{initialCaseId?:st
 
   const loadReviewRequests=useCallback(async()=>{
     const revision=++loadRevision.current;
-    setLoadWarnings([]);setPendingSources(['consignas','patrullas','relevos']);
+    setLoadWarnings([]);setPendingSources(['propuestas','cumplimientos','patrullas','relevos']);
     const load=async(source:string,request:()=>Promise<any[]>,convert:(row:any)=>Execution,update:(rows:Execution[])=>void,message:string)=>{
       try{
         const rows=await request();
@@ -262,14 +280,15 @@ export default function ConsignasExecution({initialCaseId=''}:{initialCaseId?:st
       }
     };
     await Promise.all([
-      load('consignas',()=>api.consignmentReviewRequests('PENDING'),reviewRequestToExecution,setReviewRequests,'No fue posible consultar las consignas pendientes. Verifica el alcance operativo del usuario o inténtalo nuevamente.'),
+      load('propuestas',()=>api.consignmentReviewRequests('PENDING'),reviewRequestToExecution,setReviewRequests,'No fue posible consultar las consignas pendientes. Verifica el alcance operativo del usuario o inténtalo nuevamente.'),
+      load('cumplimientos',()=>api.completedConsignments(filters.dateFrom,filters.dateTo),completedConsignmentToExecution,setCompletedConsignments,'No fue posible consultar las consignas cumplidas.'),
       load('patrullas',()=>api.patrolExecutions(),patrolExecutionToExecution,setPatrolExecutions,'No fue posible consultar las ejecuciones de patrullas.'),
       load('relevos',()=>api.consignmentReliefs(100),reliefToExecution,setReliefExecutions,'No fue posible consultar los relevos registrados.')
     ]);
-  },[user]);
+  },[user,filters.dateFrom,filters.dateTo]);
 
   useEffect(()=>{
-    setReviewRequests([]);setPatrolExecutions([]);setReliefExecutions([]);
+    setReviewRequests([]);setCompletedConsignments([]);setPatrolExecutions([]);setReliefExecutions([]);
     void loadReviewRequests();
     return ()=>{++loadRevision.current};
   },[loadReviewRequests]);
@@ -288,7 +307,7 @@ export default function ConsignasExecution({initialCaseId=''}:{initialCaseId?:st
   },[inspectorId,user,detailRevision]);
 
   // El backend es la fuente oficial y aplica alcance RBAC; esta vista no mezcla datos DEMO.
-  const scoped=useMemo(()=>[...reliefExecutions,...reviewRequests,...patrolExecutions],[reliefExecutions,reviewRequests,patrolExecutions]);
+  const scoped=useMemo(()=>[...reliefExecutions,...reviewRequests,...completedConsignments,...patrolExecutions],[reliefExecutions,reviewRequests,completedConsignments,patrolExecutions]);
   useEffect(()=>{if(initialCaseId&&scoped.some(row=>row.id===initialCaseId))setInspectorId(initialCaseId)},[initialCaseId,scoped]);
   const postsWithRecords=useMemo(()=>new Set(scoped.map(row=>`${row.companyCode}|${row.point}|${row.post}`)).size,[scoped]);
 
@@ -333,6 +352,7 @@ export default function ConsignasExecution({initialCaseId=''}:{initialCaseId?:st
     reliefOverdue:scoped.filter(x=>x.type==='RELIEF'&&x.status==='OVERDUE').length,
     patrolRunning:scoped.filter(x=>x.type==='PATROL'&&x.status==='IN_PROGRESS').length,
     adhocActive:scoped.filter(x=>x.type==='ADHOC'&&['IN_PROGRESS','PENDING','CRITICAL'].includes(x.status)).length,
+    consignmentsCompleted:scoped.filter(x=>x.type==='PROTOCOL').length,
     critical:scoped.filter(x=>x.status==='CRITICAL'||(x.status==='OVERDUE'&&x.priority==='HIGH')).length,
   }),[scoped]);
 
@@ -367,7 +387,7 @@ export default function ConsignasExecution({initialCaseId=''}:{initialCaseId?:st
   }
 
   return <div className="cns-page nov-page">
-    <div className="cns-topbar nov-topbar"><div><div className="page-backline">Operaciones / Consignas</div><h2>Consignas</h2><p>Estado de ejecución de relevos, patrullas y consignas ad-hoc</p></div><div className="cns-scope nov-scope"><ShieldCheck size={16}/>{scope.label}</div></div>
+    <div className="cns-topbar nov-topbar"><div><div className="page-backline">Operaciones / Consignas</div><h2>Consignas</h2><p>Estado de ejecución de relevos, patrullas y consignas operativas</p></div><div className="cns-scope nov-scope"><ShieldCheck size={16}/>{scope.label}</div></div>
 
     <div className="cns-kpis nov-kpis">
       <Metric icon={<ShieldCheck size={21}/>} label="Puestos con registros" value={postsWithRecords} subtitle="En el alcance visible" tone="blue"/>
@@ -375,12 +395,13 @@ export default function ConsignasExecution({initialCaseId=''}:{initialCaseId?:st
       <Metric icon={<Clock3 size={21}/>} label="Relevos vencidos" value={metrics.reliefOverdue} subtitle="Requieren atención" tone="red"/>
       <Metric icon={<CarFront size={21}/>} label="Patrullas en curso" value={metrics.patrolRunning} subtitle="En ejecución" tone="green"/>
       <Metric icon={<ClipboardList size={21}/>} label="Consignas ad-hoc activas" value={metrics.adhocActive} subtitle="Pendientes / en curso" tone="purple"/>
+      <Metric icon={<CheckCircle2 size={21}/>} label="Consignas cumplidas" value={metrics.consignmentsCompleted} subtitle="En el período consultado" tone="green"/>
       <Metric icon={<AlertTriangle size={21}/>} label="Alertas críticas" value={metrics.critical} subtitle="Requieren acción inmediata" tone="red"/>
     </div>
 
     <div className="cns-layout">
       <section className="cns-main-card nov-main-card">
-        <div className="cns-card-head"><div className="cns-title"><Search size={20}/><h3>Búsqueda de consignas</h3></div><div className="cns-tabs"><button className={filters.type==='ALL'?'active':''} onClick={()=>set('type','ALL')}>Todos</button><button className={filters.type==='RELIEF'?'active':''} onClick={()=>set('type','RELIEF')}><RefreshCw size={14}/>Relevos</button><button className={filters.type==='PATROL'?'active':''} onClick={()=>set('type','PATROL')}><CarFront size={14}/>Patrullas</button><button className={filters.type==='ADHOC'?'active':''} onClick={()=>set('type','ADHOC')}><FileText size={14}/>Consignas ad-hoc</button></div></div>
+        <div className="cns-card-head"><div className="cns-title"><Search size={20}/><h3>Búsqueda de consignas</h3></div><div className="cns-tabs"><button className={filters.type==='ALL'?'active':''} onClick={()=>set('type','ALL')}>Todos</button><button className={filters.type==='RELIEF'?'active':''} onClick={()=>set('type','RELIEF')}><RefreshCw size={14}/>Relevos</button><button className={filters.type==='PATROL'?'active':''} onClick={()=>set('type','PATROL')}><CarFront size={14}/>Patrullas</button><button className={filters.type==='PROTOCOL'?'active':''} onClick={()=>set('type','PROTOCOL')}><CheckCircle2 size={14}/>Cumplidas</button><button className={filters.type==='ADHOC'?'active':''} onClick={()=>set('type','ADHOC')}><FileText size={14}/>Consignas ad-hoc</button></div></div>
         <FilterAccordion id="cns-search-filters">
           <label className="cns-main-search nov-main-search"><Search size={18}/><input value={filters.query} onChange={e=>set('query',e.target.value)} placeholder="Buscar por código, nombre, cliente, punto, responsable…"/></label>
           <div className="cns-filter-grid nov-filter-grid operational-filter-grid">
@@ -389,7 +410,7 @@ export default function ConsignasExecution({initialCaseId=''}:{initialCaseId?:st
             <Field label="Cliente"><SearchableSelect ariaLabel="Cliente" value={filters.client} onChange={setClient} searchPlaceholder="Buscar cliente…" options={[{value:'',label:'Todos'},...clients.map(x=>({value:x,label:x}))]}/></Field>
             <Field label="Punto"><SearchableSelect ariaLabel="Punto" value={filters.point} onChange={setPoint} disabled={!filters.client} searchPlaceholder="Buscar punto…" options={[{value:'',label:filters.client?'Todos':'Seleccione un cliente primero'},...points.map(x=>({value:x,label:x}))]}/></Field>
             <Field label="Puesto"><SearchableSelect ariaLabel="Puesto" value={filters.post} onChange={value=>set('post',value)} disabled={!filters.point} searchPlaceholder="Buscar puesto…" options={[{value:'',label:filters.point?'Todos':'Seleccione un punto primero'},...posts.map(x=>({value:x,label:x}))]}/></Field>
-            <Field label="Tipo de consigna"><select value={filters.type} onChange={e=>set('type',e.target.value as Filters['type'])}><option value="ALL">Todos</option><option value="RELIEF">Relevos</option><option value="PATROL">Patrullas</option><option value="ADHOC">Consignas ad-hoc</option></select></Field>
+            <Field label="Tipo de consigna"><select value={filters.type} onChange={e=>set('type',e.target.value as Filters['type'])}><option value="ALL">Todos</option><option value="RELIEF">Relevos</option><option value="PATROL">Patrullas</option><option value="PROTOCOL">Consignas cumplidas</option><option value="ADHOC">Consignas ad-hoc</option></select></Field>
             <Field label="Estado"><select value={filters.status} onChange={e=>set('status',e.target.value as Filters['status'])}><option value="ALL">Todos</option><option value="IN_PROGRESS">En curso</option><option value="COMPLETED">Completada</option><option value="OVERDUE">Vencida</option><option value="PENDING">Pendiente</option><option value="CRITICAL">Crítica</option></select></Field>
             <Field label="Responsable"><SearchableSelect ariaLabel="Responsable" value={filters.responsible} onChange={value=>set('responsible',value)} disabled={filters.company==='ALL'} searchPlaceholder="Buscar responsable…" options={[{value:'',label:filters.company!=='ALL'?'Todos':'Seleccione una compañía primero'},...responsibles.map(x=>({value:x,label:x}))]}/></Field>
             <Field label="Fecha inicio"><input type="date" value={filters.dateFrom} onChange={e=>set('dateFrom',e.target.value)}/></Field>
@@ -426,15 +447,16 @@ export default function ConsignasExecution({initialCaseId=''}:{initialCaseId?:st
             <ModalReadField label="Responsable" value={inspected.responsible}/><ModalReadField label="Prioridad" value={priorityLabel(inspected.priority)}/>
           </div>
           <div className="nov-edit-grid two">
-            <ModalReadField label="Fecha y hora de inicio" value={formatDateTime(inspected.start)}/><ModalReadField label="Fecha y hora de fin" value={formatDateTime(inspected.end)}/>
+            <ModalReadField label={inspected.type==='PROTOCOL'?'Fecha y hora de ejecución':'Fecha y hora de inicio'} value={formatDateTime(inspected.start)}/><ModalReadField label={inspected.type==='PROTOCOL'?'Registro recibido':'Fecha y hora de fin'} value={formatDateTime(inspected.end)}/>
           </div>
           <div className="nov-edit-grid two">
             <ModalReadField label="Estado" value={statusLabel(inspected.status)}/><ModalReadField label="Resultado" value={inspected.result}/>
           </div>
-          <section className="cns-detail-progress"><div><strong>Progreso {inspected.type==='RELIEF'?'del relevo':inspected.type==='PATROL'?'de hitos':'de acciones'}</strong><b>{inspected.progressCurrent}/{inspected.progressTotal}</b></div><div className="bar"><i style={{width:`${Math.round(inspected.progressCurrent/Math.max(inspected.progressTotal,1)*100)}%`}}/></div><span>{Math.round(inspected.progressCurrent/Math.max(inspected.progressTotal,1)*100)}% completado</span></section>
-          <PhotoEvidenceGallery eventId={inspected.evidenceEventId} declaredCount={inspected.photoCount} hideInventory={inspected.type==='RELIEF'}/>
+          {inspected.type==='PROTOCOL'&&<div className="nov-edit-grid two"><ModalReadField label="Instrucción" value={inspected.instruction||'—'}/><ModalReadField label="Observación del agente" value={inspected.comment||'Sin observación'}/></div>}
+          {inspected.type!=='PROTOCOL'&&<section className="cns-detail-progress"><div><strong>Progreso {inspected.type==='RELIEF'?'del relevo':inspected.type==='PATROL'?'de hitos':'de acciones'}</strong><b>{inspected.progressCurrent}/{inspected.progressTotal}</b></div><div className="bar"><i style={{width:`${Math.round(inspected.progressCurrent/Math.max(inspected.progressTotal,1)*100)}%`}}/></div><span>{Math.round(inspected.progressCurrent/Math.max(inspected.progressTotal,1)*100)}% completado</span></section>}
+          {inspected.type==='PROTOCOL'?<div className="nov-edit-grid two"><ModalReadField label="Fotos declaradas por el agente" value={String(inspected.photoCount??0)}/></div>:<PhotoEvidenceGallery eventId={inspected.evidenceEventId} declaredCount={inspected.photoCount} hideInventory={inspected.type==='RELIEF'}/>}
           {inspected.type==='RELIEF'&&(detailLoading?<p role="status">Cargando detalle e inventario del relevo…</p>:detailError?<div role="alert" className="cns-validation-error"><span>{detailError}</span><button type="button" onClick={()=>setDetailRevision(value=>value+1)}>Reintentar</button></div>:reliefDetail?.id===inspected.id?<ReliefInventoryCards eventId={inspected.evidenceEventId} items={inspected.inventoryItems}/>:null)}
-          <ReferenceImageGallery eventId={inspected.evidenceEventId}/>
+          {inspected.type!=='PROTOCOL'&&<ReferenceImageGallery eventId={inspected.evidenceEventId}/>}
           <section className="cns-timeline"><div className="cns-timeline-head"><h4>{inspected.type==='RELIEF'?'Hitos del relevo':'Últimos eventos'}</h4></div>{inspected.timeline.map(event=><article key={event.id}><i className={event.state.toLowerCase()}/><div><span>{formatDateTime(event.at)}</span><strong>{event.title}</strong><small>{event.detail}</small></div></article>)}</section>
         </div>
         <footer>{canReview&&inspected.reviewRequest&&<><button type="button" className="discard" onClick={beginDiscard}><Ban size={15}/>Rechazar consigna</button><button type="button" className="approve" onClick={()=>void beginApprove()}><CheckCircle2 size={15}/>Aprobar e incorporar</button></>}<button type="button" className="close" onClick={closeInspector}><X size={15}/>Cerrar</button></footer>

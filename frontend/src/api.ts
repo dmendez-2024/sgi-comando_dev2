@@ -232,6 +232,7 @@ export const api={
  deleteConsignmentStandardImage:(evidenceId:string,imageId:string)=>request<any>(`/api/consignments/evidences/${encodeURIComponent(evidenceId)}/standard-images/${encodeURIComponent(imageId)}`,{method:'DELETE'}),
  consignments:(pointId:string)=>request<any[]>(`/api/consignments?pointId=${encodeURIComponent(pointId)}`),
   consignmentReviewRequests:(status='PENDING')=>request<any[]>(`/api/v1/operator/consignment-review-requests?status=${encodeURIComponent(status)}`),
+  completedConsignments:(dateFrom:string,dateTo:string)=>request<any[]>(`/api/consignments/compliances?${new URLSearchParams({dateFrom,dateTo})}`),
   approveConsignmentReview:(requestId:string,body:any)=>request<any>(`/api/consignment-review-requests/${encodeURIComponent(requestId)}/approve`,{method:'POST',body:JSON.stringify(body)}),
   discardConsignmentReview:(requestId:string,reason:string)=>request<any>(`/api/consignment-review-requests/${encodeURIComponent(requestId)}/discard`,{method:'POST',body:JSON.stringify({reason})}),
   patrolExecutions:()=>request<any[]>('/api/v1/operator/patrol-executions'),
