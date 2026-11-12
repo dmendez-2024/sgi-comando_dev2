@@ -50,6 +50,30 @@ public class VideoGateway {
     /** Lo que este backend registró en cada ruta (una por cámara) y cuándo lo revisó. */
     private final Map<String, Registration> registered = new ConcurrentHashMap<>();
 
+    /** Ambiente de las interconexiones (sgi.interconnections.environment, p. ej. DEVELOPMENT): elige las URLs de sgi.video.mediamtx.&lt;AMBIENTE&gt;.*. */
+    @ConfigProperty(name = "sgi.video.mediamtx.environment") String environment;
+
+    /**
+     * Toma las URLs del ambiente (sgi.video.mediamtx.&lt;AMBIENTE&gt;.*, sin consultar a CORE): DEV usa dev.mediamtx-api / dev.mediamtx
+     * y PRODUCTION las suyas. SGI_VIDEO_MEDIAMTX_API_URL / _PUBLIC_URL solo se usan en pruebas locales (MediaMTX simulado) y,
+     * si vienen, mandan sobre la tabla.
+     */
+    @jakarta.annotation.PostConstruct
+    void urlsByEnvironment() {
+        apiUrl = byEnvironment(apiUrl, "api-url");
+        publicUrl = byEnvironment(publicUrl, "public-url");
+        LOG.infof("[SGI-VIDEO] video_urls ambiente=%s api=%s video=%s", environment,
+            apiUrl.orElse("(sin configurar)"), publicUrl.orElse("(sin configurar)"));
+    }
+
+    private Optional<String> byEnvironment(Optional<String> explicit, String key) {
+        if (explicit != null && explicit.filter(v -> !v.isBlank()).isPresent()) return explicit;
+        String env = environment == null ? "" : environment.trim().toUpperCase(java.util.Locale.ROOT);
+        if (env.isEmpty()) return Optional.empty();
+        return org.eclipse.microprofile.config.ConfigProvider.getConfig()
+            .getOptionalValue("sgi.video.mediamtx." + env + "." + key, String.class).map(String::trim).filter(v -> !v.isBlank());
+    }
+
     public boolean configured() {
         return apiUrl.filter(v -> !v.isBlank()).isPresent() && publicUrl.filter(v -> !v.isBlank()).isPresent();
     }
