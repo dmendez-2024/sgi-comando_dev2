@@ -1,6 +1,6 @@
 import {useCallback,useEffect,useMemo,useState} from 'react';
 import {Activity,AlertTriangle,CalendarDays,ChevronDown,FileText,MapPin,Search} from 'lucide-react';
-import {api,getUser,type UatUser} from '../api';
+import {api,getUser,type OperationalNotification,type UatUser} from '../api';
 import {DashboardProvinceMap,type DashboardProvinceCount,type DashboardProvinceSubdivision} from './Territory';
 import SearchableSelect from '../components/SearchableSelect';
 
@@ -21,12 +21,9 @@ type ConsignmentCompliance={nonCompliant:number;activeConsignments:number;expect
 type SupervisionRouteCompliance={nonCompliantRoutes:number;evaluatedRoutes:number;nonCompliancePct:number|null};
 type MissedReliefs={missedShifts:number;assignedShifts:number};
 type CriticalIncidents={reportedCriticalIncidents:number};
-type ConsoleIncident={id:string;code:string;title:string;status:string;client:string;point:string;pointId?:string;companyId?:string;updatedAt:string};
-type OperatorReport={reportId:string;title:string;type:string;severity:string;status:string;pointId:string;pointName:string;occurredAt:string};
-type ConsignmentReview={id:string;title:string;status:string;clientName:string;pointName:string;pointId:string;submittedAt:string};
-type AttentionItem={id:string;target:'Consola'|'Consignas';source:string;title:string;client:string;point:string;at:string;status:string;pointId:string;companyId?:string};
+type AttentionItem={id:string;target:'Consola'|'Consignas'|'Novedades';source:string;title:string;client:string;point:string;at:string;status:string;pointId:string;companyId?:string};
 type RiskTrendPoint={date:string;scheduledPoints:number;uncoveredPoints:number;riskIndex:number|null};
-type DashboardData={companies:Company[];rows:ServiceRow[];coverage:Coverage|null;metrics:DashboardMetrics|null;suitability:Suitability|null;consignments:ConsignmentCompliance|null;supervisionRoute:SupervisionRouteCompliance|null;missedReliefs:MissedReliefs|null;criticalIncidents:CriticalIncidents|null;consoleIncidents:ConsoleIncident[];operatorReports:OperatorReport[];consignmentReviews:ConsignmentReview[];locations:PointLocation[];provinces:Province[];errors:string[]};
+type DashboardData={companies:Company[];rows:ServiceRow[];coverage:Coverage|null;metrics:DashboardMetrics|null;suitability:Suitability|null;consignments:ConsignmentCompliance|null;supervisionRoute:SupervisionRouteCompliance|null;missedReliefs:MissedReliefs|null;criticalIncidents:CriticalIncidents|null;notifications:OperationalNotification[];locations:PointLocation[];provinces:Province[];errors:string[]};
 type DashboardField=Exclude<keyof DashboardData,'errors'>;
 type DashboardRequest={field:DashboardField;request:()=>Promise<unknown>;message:string;valid?:(value:any)=>boolean};
 const metricFields:DashboardField[]=['coverage','metrics','suitability','consignments','supervisionRoute','missedReliefs','criticalIncidents'];
@@ -122,7 +119,7 @@ const dashboardTitleByUser:Record<UatUser,string>={
   supervisor:'Dashboard de Supervisión',agente:'Dashboard de Puesto',cliente:'Dashboard Cliente',monitor:'Consola',
 };
 
-export default function Dashboard({onOpenAttention}:{onOpenAttention?:(target:'Consola'|'Consignas',id:string)=>void}){
+export default function Dashboard({onOpenAttention}:{onOpenAttention?:(target:'Consola'|'Consignas'|'Novedades',id:string)=>void}){
   const [showAllAttention,setShowAllAttention]=useState(false);
   const [weekStart,setWeekStart]=useState(()=>weekStartIso());
   const [period,setPeriod]=useState<'7d'|'30d'|'6m'>('30d');
@@ -133,7 +130,7 @@ export default function Dashboard({onOpenAttention}:{onOpenAttention?:(target:'C
   const [activeCard,setActiveCard]=useState<(typeof cardCatalog)[number]['id']>('coverageGap');
   const [pending,setPending]=useState<Set<DashboardField>>(()=>new Set(metricFields));
   const [loadErrors,setLoadErrors]=useState<Partial<Record<DashboardField,string>>>({});
-  const [data,setData]=useState<DashboardData>({companies:[],rows:[],coverage:null,metrics:null,suitability:null,consignments:null,supervisionRoute:null,missedReliefs:null,criticalIncidents:null,consoleIncidents:[],operatorReports:[],consignmentReviews:[],locations:[],provinces:[],errors:[]});
+  const [data,setData]=useState<DashboardData>({companies:[],rows:[],coverage:null,metrics:null,suitability:null,consignments:null,supervisionRoute:null,missedReliefs:null,criticalIncidents:null,notifications:[],locations:[],provinces:[],errors:[]});
 
 
   const startRequests=useCallback((requests:DashboardRequest[])=>{
@@ -167,9 +164,7 @@ export default function Dashboard({onOpenAttention}:{onOpenAttention?:(target:'C
       {field:'rows',request:()=>overview().then(value=>value.rows??[]),message:'No se pudo cargar el resumen de Servicios.'},
       {field:'provinces',request:()=>api.territory().then(value=>value.provinces??[]),message:'No se pudo cargar el catálogo territorial.'},
       {field:'locations',request:()=>api.dashboardPointLocations(),message:'No se pudieron cargar las ubicaciones de los puntos.'},
-      {field:'consoleIncidents',request:()=>api.incidents(),message:'No se pudieron consultar las acciones de Consola.'},
-      {field:'operatorReports',request:()=>api.operationalReports(),message:'No se pudieron consultar los reportes de Operador.'},
-      {field:'consignmentReviews',request:()=>api.consignmentReviewRequests('PENDING'),message:'No se pudieron consultar las revisiones de Consignas.'}
+      {field:'notifications',request:()=>api.notifications().then(value=>value.items),message:'No se pudieron consultar las acciones pendientes.'}
     ]);
   },[startRequests]);
 
@@ -188,7 +183,7 @@ export default function Dashboard({onOpenAttention}:{onOpenAttention?:(target:'C
       {field:'consignments',request:()=>api.dashboardConsignmentCompliance(weekStart,companyId,clientId,period),valid:hasConsignmentCompliance,message:'No se pudo cargar el incumplimiento de consignas.'}
     ]);
   },[startRequests,weekStart,companyId,clientId,period]);
-  const attentionLoading=pending.has('consoleIncidents')||pending.has('operatorReports')||pending.has('consignmentReviews');
+  const attentionLoading=pending.has('notifications');
   const errors=Object.values(loadErrors);
 
   const clients=useMemo(()=>{
@@ -204,21 +199,20 @@ export default function Dashboard({onOpenAttention}:{onOpenAttention?:(target:'C
   const uncoveredPoints=data.coverage?.uncoveredPoints??null;
   const coveragePct=data.coverage?.coveragePct??null;
   const attentionRows=useMemo(()=>{
-    const incidents:AttentionItem[]=data.consoleIncidents.filter(row=>!['DRAFT','BORRADOR'].includes(row.status.toUpperCase())).map(row=>({id:`incident:${row.id}`,target:'Consola',source:'Consola',title:row.title||row.code,client:row.client,point:row.point,pointId:row.pointId||'',companyId:row.companyId,at:row.updatedAt,status:'Por revisar'}));
-    const reports:AttentionItem[]=data.operatorReports.filter(row=>!['DRAFT','BORRADOR','CLOSED','RESOLVED','DISCARDED'].includes(row.status.toUpperCase())).map(row=>({id:`operator:${row.reportId}`,target:'Consola',source:'Consola',title:row.title,client:'',point:row.pointName,pointId:row.pointId,at:row.occurredAt,status:'Por revisar'}));
-    const reviews:AttentionItem[]=data.consignmentReviews.filter(row=>row.status==='PENDING').map(row=>({id:`opr-review-${row.id}`,target:'Consignas',source:'Consignas',title:row.title,client:row.clientName,point:row.pointName,pointId:row.pointId,at:row.submittedAt,status:'Por aprobar'}));
+    const closedStatuses=new Set(['FINALIZED','APPROVED','DISCARDED','COMPLETED','RESOLVED','CLOSED']);
+    const alerts:AttentionItem[]=data.notifications.filter(row=>!closedStatuses.has(row.status.toUpperCase())).map(row=>({id:row.id,target:row.destination,source:row.type,title:row.title,client:row.clientName,point:row.pointName,pointId:'',companyId:row.companyId,at:row.occurredAt,status:row.status}));
     const end=shiftDate(weekStart,6),today=dateAtLocalNoon(new Date());if(end>today)end.setTime(today.getTime());
     const start=new Date(end);if(period==='7d')start.setDate(start.getDate()-6);else if(period==='30d')start.setDate(start.getDate()-29);else{start.setMonth(start.getMonth()-6);start.setDate(start.getDate()+1)}
     const from=start.toISOString().slice(0,10),to=end.toISOString().slice(0,10);
-    return [...incidents,...reports,...reviews].filter(row=>{
+    return alerts.filter(row=>{
       if(!row.at)return false;
       const date=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Guayaquil',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(row.at));
       if(date<from||date>to)return false;
       if(companyId&&row.companyId!==companyId&&!pointIds.has(row.pointId))return false;
-      if(clientId&&!pointIds.has(row.pointId))return false;
+      if(clientId&&row.client!==selectedClient?.name)return false;
       return true;
     }).sort((a,b)=>b.at.localeCompare(a.at));
-  },[data.consoleIncidents,data.operatorReports,data.consignmentReviews,weekStart,period,companyId,clientId,pointIds]);
+  },[data.notifications,weekStart,period,companyId,clientId,pointIds]);
   const provinceCounts=useMemo<DashboardProvinceCount[]>(()=>{
     const provinceByName=new Map<string,Province>();
     data.provinces.forEach(province=>{provinceByName.set(normalize(province.name),province);provinceByName.set(normalize(province.code),province)});

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import Sidebar, { SIMULATOR_MENU } from './components/Sidebar';
-import { api, isMonitor } from './api';
+import { api, isMonitor, type OperationalNotification } from './api';
 import { installBackGuard } from './security/identAuth';
 
 import Header from './components/Header';
@@ -54,8 +54,11 @@ export default function App() {
 
   const monitor = isMonitor();
   const navigate = (next:string) => { setNotificationTarget(null); setAttentionCase(''); setActive(next); setMobileNavOpen(false); };
-  const openAttention = (target:'Consola'|'Consignas', id:string) => { setNotificationTarget(null); setAttentionCase(id); setActive(target); setMobileNavOpen(false); };
-  const openNotification = (id?:string) => { setAttentionCase(''); setNotificationTarget(id?{id}:null); setActive('Consola'); setMobileNavOpen(false); };
+  const openAttention = (target:'Consola'|'Consignas'|'Novedades', id:string) => { setNotificationTarget(null); setAttentionCase(id); setActive(target); setMobileNavOpen(false); };
+  const openNotification = (item?:OperationalNotification) => {
+    const target=item?.destination??'Consola'; const id=item?.id??'';
+    setAttentionCase(id);setNotificationTarget(target==='Consola'&&id?{id}:null);setActive(target);setMobileNavOpen(false);
+  };
 
   useEffect(() => {
     document.body.classList.toggle('mobile-nav-open', mobileNavOpen);

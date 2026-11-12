@@ -734,6 +734,8 @@ public class OperatorResource {
             if("PROGRAMMED".equals(patrolRules[2])) {
                 List<?> completed=completedScheduledPatrol(assignmentId,employee,patrolId,c.post.id);
                 if(!completed.isEmpty()) return executionState((Object[])completed.get(0));
+                if(hasActiveScheduledPatrol(assignmentId,employee,patrolId,c.post.id,true))
+                    throw new ClientErrorException("Ya existe una patrulla en curso de otra versión del protocolo",409);
             }
             List<?> active=em.createNativeQuery("""
               select pe.id,pe.started_at,pe.finished_at,pe.result from patrol_execution pe
@@ -752,6 +754,14 @@ public class OperatorResource {
         }
         boolean finishing="FINISH".equals(action);
         if(!finishing && !old.isEmpty()) return executionState((Object[])old.get(0));
+        // El formato anterior registra la ronda completa en una sola solicitud.
+        // Debe respetar el mismo límite que el flujo START/FINISH.
+        if(!finishing && "PROGRAMMED".equals(patrolRules[2])) {
+            List<?> completed=completedScheduledPatrol(assignmentId,employee,patrolId,c.post.id);
+            if(!completed.isEmpty()) return executionState((Object[])completed.get(0));
+            if(hasActiveScheduledPatrol(assignmentId,employee,patrolId,c.post.id,false))
+                throw new ClientErrorException("Ya existe una patrulla en curso para esta asignación",409);
+        }
         if(finishing && old.isEmpty()) throw new NotFoundException("La ejecución de patrulla no fue iniciada");
         if(finishing) {
             Object[] current=(Object[])old.get(0);
@@ -954,6 +964,24 @@ public class OperatorResource {
           order by pe.started_at desc limit 1
           """).setParameter("tenant",tenant.instanceCountryId()).setParameter("assignment",assignmentId)
             .setParameter("employee",employee).setParameter("patrol",patrolId).setParameter("post",postId).getResultList();
+    }
+
+    private boolean hasActiveScheduledPatrol(UUID assignmentId, UUID employee, UUID patrolId, UUID postId, boolean otherVersionOnly) {
+        return !em.createNativeQuery("""
+          select pe.id from patrol_execution pe
+          left join patrol_plan plan on plan.id=pe.patrol_plan_id and plan.instance_country_id=pe.instance_country_id
+          join patrol_definition previous on previous.id=coalesce(pe.patrol_definition_id,plan.patrol_definition_id) and previous.instance_country_id=pe.instance_country_id
+          join patrol_protocol previous_protocol on previous_protocol.id=previous.protocol_id and previous_protocol.instance_country_id=previous.instance_country_id
+          join patrol_definition requested on requested.id=:patrol and requested.instance_country_id=pe.instance_country_id
+          join patrol_protocol requested_protocol on requested_protocol.id=requested.protocol_id and requested_protocol.instance_country_id=requested.instance_country_id
+          where pe.instance_country_id=:tenant and pe.assignment_id=:assignment and pe.employee_id=:employee
+            and requested.schedule_type='PROGRAMMED' and previous.code=requested.code
+            and (:otherVersionOnly=false or previous.id<>requested.id)
+            and previous_protocol.series_id=requested_protocol.series_id
+            and (plan.post_id=:post or plan.id is null) and pe.finished_at is null limit 1
+          """).setParameter("tenant",tenant.instanceCountryId()).setParameter("assignment",assignmentId)
+            .setParameter("employee",employee).setParameter("patrol",patrolId).setParameter("post",postId)
+            .setParameter("otherVersionOnly",otherVersionOnly).getResultList().isEmpty();
     }
     @GET @Path("/patrol-executions")
     public ArrayNode listPatrolExecutions() {

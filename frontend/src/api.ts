@@ -1,5 +1,5 @@
 import {identClaims,identEnabled,identRoles,identToken,notifySessionEnded,renewIdentToken} from './security/identAuth';
-export type OperationalNotification={id:string;type:string;title:string;priority:string;status:string;companyName:string;clientName:string;pointName:string;occurredAt:string};
+export type OperationalNotification={id:string;type:string;destination:'Consola'|'Consignas'|'Novedades';title:string;priority:string;status:string;companyId:string;companyName:string;clientName:string;pointName:string;postName:string;occurredAt:string};
 const API = import.meta.env.VITE_API_URL || '/dev.comando';
 // const API=import.meta.env.VITE_API_URL ?? 'http://localhost:8080';
 export type UatUser='presidente'|'ggeneral'|'dlatam'|'don'|'dnacional'|'dzonal'|'jregional'|'coord'|'asistente'|'supervisor'|'agente'|'cliente'|'monitor';
