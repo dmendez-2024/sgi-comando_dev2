@@ -16,7 +16,7 @@ import java.util.Set;
 import java.util.UUID;
 
 /** Entrega fotos privadas de empleados sin exponer MinIO al navegador. */
-@Path("/api/assignments/employees")
+@Path("/api/assignments")
 @RolesAllowed({"PRESIDENTE","GERENCIA_GENERAL","DIRECTOR_OPERACIONES_LATAM","DIRECTOR_OPERACIONES_NACIONAL","DIRECTOR_NACIONAL","DIRECTOR_ZONAL","JEFE_REGIONAL","COORDINADOR_COMPANIA","ASISTENTE_COORDINACION","SUPERVISOR_SEGURIDAD"})
 public class EmployeePhotoResource {
     private static final Set<String> OPEN_TRANSFER_STATUSES = Set.of(
@@ -28,7 +28,7 @@ public class EmployeePhotoResource {
     @Inject StorageService storage;
 
     @GET
-    @Path("/{employeeId}/photo")
+    @Path("/employeesPhoto/{employeeId}/photo")
     @Produces({"image/jpeg", "image/png", "image/webp"})
     public Response photo(@PathParam("employeeId") UUID employeeId) {
         EmployeeOperationalSnapshot employee = EmployeeOperationalSnapshot.find(
