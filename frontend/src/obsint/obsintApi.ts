@@ -109,7 +109,7 @@ export const obsintConfigApi={
 
 export type ObsintTaskSaved={protocol:ObsintProtocol;code:string};
 
-export type ObsintMonitorOption={employeeId:string;name:string;cargo:string|null;companyId:string|null;companyName:string|null;confidential:boolean};
+export type ObsintMonitorOption={employeeId:string;name:string;cargo:string|null;companyId:string|null;companyName:string|null;confidential:boolean;locked:boolean};
 /** monitors vacío: lo atiende cualquier monitor de turno de la Compañía del Punto (la asignada en Servicios). */
 export type ObsintMonitoring={companyId:string|null;companyName:string|null;monitors:ObsintMonitorOption[];updatedBy:string|null;updatedAt:string|null};
 export type ObsintMonitoringSave={employeeIds:string[]};
