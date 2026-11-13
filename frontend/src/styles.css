@@ -1866,7 +1866,7 @@
 
 /* Operaciones: mantener las tarjetas KPI de Bitácora, Consignas y Novedades en una fila. */
 .bit-global-kpis.nov-kpis{grid-template-columns:repeat(5,minmax(0,1fr));overflow-x:hidden;padding-bottom:0}
-.cns-kpis{grid-template-columns:repeat(7,minmax(140px,1fr));overflow-x:auto;padding-bottom:6px}
+.cns-kpis{grid-template-columns:repeat(6,minmax(145px,1fr));overflow-x:auto;padding-bottom:6px}
 .coord-kpis.nov-kpis{grid-template-columns:repeat(6,minmax(145px,1fr));overflow-x:auto;padding-bottom:6px}
 
 /* Dar más espacio legible al contenido de cada KPI sin cambiar la fila. */
