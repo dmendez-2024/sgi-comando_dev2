@@ -1,5 +1,10 @@
 # SGI: Comando — Changelog
 
+## SGI_COM — CNS vista unificada de consignas ad-hoc — 2026-11-13
+- Los cumplimientos `CUMPLIDA` permanecen en la fuente canónica `consignment_compliance` y se muestran dentro del filtro **Consignas ad-hoc** con Estado **Completada** y Resultado **Cumplida**. Se eliminan el botón, la opción de Tipo y el indicador independientes de “Cumplidas”.
+- La consulta de propuestas pendientes y la de cumplimientos siguen siendo fuentes distintas; solo las propuestas conservan las acciones de aprobar y rechazar. Sin cambios de API, base de datos ni interconexiones.
+- Archivos: `frontend/src/pages/ConsignasExecution.tsx`, `frontend/src/styles.css`. Validación: compilación del frontend.
+
 ## SGI_COM — CNS consulta de consignas cumplidas y progreso de patrullas — 2026-11-12
 - RC de consulta operativa: `GET /api/consignments/compliances` lee cumplimientos `CUMPLIDA` del registro canónico, con rango de fechas, tenant y alcance por compañía. Operaciones → Consignas los presenta separados de las propuestas ad-hoc, con agente, punto, puesto, fecha y cantidad de fotos declaradas. Las fotos individuales viajan como ejecuciones de evidencia separadas y todavía no están vinculadas a este detalle. No cambia el flujo de aprobación de propuestas ni el contrato de envío de SGI Operador.
 - Corrección: el contador y los eventos de patrullas incluyen los hitos recibidos en `task_execution` además de los registros heredados en `patrol_checkpoint_execution`; se cuentan hitos distintos de la ronda, sin duplicar reintentos.
