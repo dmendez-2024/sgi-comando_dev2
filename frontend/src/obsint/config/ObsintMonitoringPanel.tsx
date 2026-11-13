@@ -28,12 +28,12 @@ export function ObsintMonitoringPanel({pointId}:{pointId:string}){
   useEffect(()=>{if(!notice)return;const id=setTimeout(()=>setNotice(''),3200);return()=>clearTimeout(id)},[notice]);
 
   const companyName=current?.companyName??'la Compañía del Punto';
-  const protectedIds=current?.monitors.filter(m=>m.confidential).map(m=>m.employeeId)??[];
+  const protectedIds=current?.monitors.filter(m=>m.locked).map(m=>m.employeeId)??[];
   const dirty=Boolean(current)&&!sameSet(selected,current?.monitors.map(x=>x.employeeId)??[]);
   const toggle=(id:string)=>setSelected(prev=>prev.includes(id)?prev.filter(x=>x!==id):[...prev,id]);
-  /** Los ya elegidos que ya no están en la lista siguen visibles; la marca confidencial del registro asignado prevalece. */
+  /** Los ya elegidos que ya no están en la lista siguen visibles; las marcas confidencial y locked del registro asignado prevalecen. */
   const assigned=new Map((current?.monitors??[]).map(m=>[m.employeeId,m]));
-  const options=[...monitors.map(m=>assigned.get(m.employeeId)?.confidential?{...m,confidential:true}:m),
+  const options=[...monitors.map(m=>{const a=assigned.get(m.employeeId);return a?{...m,confidential:a.confidential,locked:a.locked}:m}),
     ...(current?.monitors??[]).filter(m=>!monitors.some(o=>o.employeeId===m.employeeId))];
   const companies=Array.from(new Map(options.filter(m=>!m.confidential&&m.companyId&&m.companyName)
     .map(m=>[m.companyId!,m.companyName!] as const)).entries()).sort((a,b)=>a[1].localeCompare(b[1],'es'));
@@ -60,8 +60,8 @@ export function ObsintMonitoringPanel({pointId}:{pointId:string}){
     </select></label>}
     {options.length
       ?visibleOptions.length?<div className="obs-mon-list">{visibleOptions.map(m=>{const checked=selected.includes(m.employeeId);
-        return <label key={m.employeeId} className={`${checked?'checked':''}${m.confidential?' confidential':''}`.trim()} title={m.confidential?'Monitorista de otra Compañía':undefined}>
-          <input type="checkbox" checked={checked} disabled={m.confidential||saving} onChange={()=>{if(!m.confidential)toggle(m.employeeId)}}/>
+        return <label key={m.employeeId} className={`${checked?'checked':''}${m.confidential?' confidential':''}`.trim()} title={m.confidential?'Monitorista de otra Compañía':m.locked?'Monitorista de otra Compañía: solo un cargo alto puede quitarlo':undefined}>
+          <input type="checkbox" checked={checked} disabled={m.locked||saving} onChange={()=>{if(!m.locked)toggle(m.employeeId)}}/>
           <span><b>{m.confidential?<><LockKeyhole size={14} aria-hidden="true"/>Confidencial</>:m.name}</b>
             {(m.cargo||m.confidential||multipleCompanies)&&<small>{[m.cargo,m.confidential?'Confidencial':multipleCompanies?m.companyName:null].filter(Boolean).join(' · ')}</small>}</span>
         </label>})}</div>:<p className="obs-mon-rule">No hay monitoristas de esta Compañía.</p>

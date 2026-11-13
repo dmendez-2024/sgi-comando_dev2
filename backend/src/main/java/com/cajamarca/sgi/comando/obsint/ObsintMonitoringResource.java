@@ -23,6 +23,8 @@ import org.jboss.resteasy.reactive.server.ServerExceptionMapper;
  *   <li>Demás roles: solo monitores de la Compañía del Punto. No pueden agregar ni quitar monitoristas de otra Compañía.</li>
  *   <li>Coordinación de Compañía: los monitoristas de otra Compañía llegan con {@code confidential=true}; la pantalla los
  *       muestra como "Confidencial". Es una medida visual: los datos reales viajan igual (SEN-04/05).</li>
+ *   <li>{@code locked=true}: quien mira no puede quitarlo (no es cargo alto y el monitorista es de otra Compañía que la del Punto).
+ *       Es la misma regla con la que se rechaza el guardado, para que la pantalla bloquee la casilla.</li>
  * </ul>
  */
 @Path("/api/obsint/monitoring/points/{pointId}")
@@ -32,8 +34,11 @@ public class ObsintMonitoringResource {
     @Inject ObsintPlatform platform;
     @Inject EntityManager em;
 
-    /** confidential: bandera visual para Coordinación de Compañía (monitorista de otra Compañía). */
-    public record MonitorOption(UUID employeeId, String name, String cargo, UUID companyId, String companyName, boolean confidential) {}
+    /**
+     * confidential: bandera visual para Coordinación de Compañía (monitorista de otra Compañía).
+     * locked: quien mira no puede quitarlo; la pantalla bloquea la casilla y lo reenvía al guardar.
+     */
+    public record MonitorOption(UUID employeeId, String name, String cargo, UUID companyId, String companyName, boolean confidential, boolean locked) {}
     /** monitors vacío: lo atiende cualquier monitor de turno de la Compañía del Punto. */
     public record MonitoringView(UUID companyId, String companyName, List<MonitorOption> monitors, String updatedBy, Instant updatedAt) {}
     public record SaveMonitoring(List<UUID> employeeIds) {}
@@ -63,7 +68,7 @@ public class ObsintMonitoringResource {
             order by case when e.company_id=:pointCompany then 0 else 1 end, c.name, e.full_name""")
             .setParameter("tenant", platform.instanceCountryId()).setParameter("companies", companies)
             .setParameter("pointCompany", companyId).setParameter("cargos", MonitorShiftScope.MONITOR_CARGOS).getResultList();
-        return options(rows);
+        return options(rows, companyId);
     }
 
     /** Reemplaza los monitoristas del Punto por los de la lista (vacía = ninguno). */
@@ -79,11 +84,10 @@ public class ObsintMonitoringResource {
         view(pointId).monitors().forEach(m -> current.put(m.employeeId(), m));
         boolean high = platform.highRole();
 
-        // Quitar: solo cargos altos pueden quitar monitoristas de otra Compañía (los que la Coordinación ve como "Confidencial").
-        if (!high)
-            for (MonitorOption m : current.values())
-                if (!chosen.contains(m.employeeId()) && m.companyId() != null && !companyId.equals(m.companyId()))
-                    throw new ForbiddenException("No puede quitar monitoristas de otra Compañía.");
+        // Quitar: solo cargos altos pueden quitar monitoristas de otra Compañía (los que llegan con locked=true).
+        for (MonitorOption m : current.values())
+            if (!chosen.contains(m.employeeId()) && m.locked())
+                throw new ForbiddenException("No puede quitar monitoristas de otra Compañía.");
 
         // Agregar: los nuevos deben estar entre los elegibles (los ya asignados se pueden mantener tal cual).
         Set<UUID> allowed = new HashSet<>();
@@ -124,17 +128,22 @@ public class ObsintMonitoringResource {
             left join company c on c.id=e.company_id
             where m.instance_country_id=:tenant and m.point_id=:point order by 2""")
             .setParameter("tenant", platform.instanceCountryId()).setParameter("point", pointId).getResultList();
-        return new MonitoringView(companyId, companyName(companyId), options(rows),
+        return new MonitoringView(companyId, companyName(companyId), options(rows, companyId),
             rows.isEmpty() ? null : (String) rows.get(0)[5], rows.isEmpty() ? null : instant(rows.get(0)[6]));
     }
 
-    /** Filas (employee_id, nombre, cargo, company_id, nombre Compañía, ...) con la bandera "Confidencial" para Coordinación. */
-    private List<MonitorOption> options(List<Object[]> rows) {
+    /**
+     * Filas (employee_id, nombre, cargo, company_id, nombre Compañía, ...) con la bandera "Confidencial" para Coordinación
+     * y la bandera locked (no lo puede quitar quien mira).
+     */
+    private List<MonitorOption> options(List<Object[]> rows, UUID pointCompany) {
         Set<UUID> own = platform.companyRole() ? platform.ownCompanies() : null;
+        boolean high = platform.highRole();
         return rows.stream().map(r -> {
             UUID company = uuid(r[3]);
             boolean confidential = own != null && company != null && !own.contains(company);
-            return new MonitorOption(uuid(r[0]), (String) r[1], (String) r[2], company, (String) r[4], confidential);
+            boolean locked = !high && company != null && !company.equals(pointCompany);
+            return new MonitorOption(uuid(r[0]), (String) r[1], (String) r[2], company, (String) r[4], confidential, locked);
         }).toList();
     }
 
