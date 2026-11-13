@@ -114,13 +114,40 @@ class ObsintPointMonitoringTest {
         as("coord").get(URL).then().statusCode(200)
             .body("monitors.find { it.employeeId == '" + OTHER_MONITOR + "' }.confidential", is(true))
             .body("monitors.find { it.employeeId == '" + OTHER_MONITOR + "' }.companyName", is("Otra Compañía pruebas"))
-            .body("monitors.find { it.employeeId == '" + MONITOR_A + "' }.confidential", is(false));
+            .body("monitors.find { it.employeeId == '" + MONITOR_A + "' }.confidential", is(false))
+            .body("monitors.find { it.employeeId == '" + OTHER_MONITOR + "' }.locked", is(true))
+            .body("monitors.find { it.employeeId == '" + MONITOR_A + "' }.locked", is(false));
 
         as("coord").contentType(ContentType.JSON).body(body(MONITOR_A)).put(URL).then().statusCode(403)
             .body("message", containsString("otra Compañía"));
         // Reenviándolo tal cual (como hace la pantalla), puede cambiar los suyos.
         as("coord").contentType(ContentType.JSON).body(body(MONITOR_B, OTHER_MONITOR)).put(URL).then().statusCode(200)
             .body("monitors.employeeId", containsInAnyOrder(MONITOR_B.toString(), OTHER_MONITOR.toString()));
+    }
+
+    /**
+     * Coordinación con dos Compañías (la del Punto y otra): ve con nombre real al monitorista de su otra Compañía (no es
+     * confidencial), pero no puede quitarlo; llega con locked=true para que la pantalla bloquee la casilla.
+     */
+    @Test void coordinatorOfBothCompaniesSeesNameButCannotRemove() {
+        as("presidente").contentType(ContentType.JSON).body(body(MONITOR_A, OTHER_MONITOR)).put(URL).then().statusCode(200)
+            .body("monitors.locked", everyItem(is(false)));
+        QuarkusTransaction.requiringNew().run(() -> em.createNativeQuery("""
+            insert into user_operational_scope(id,instance_country_id,username,scope_type,scope_id,created_at,updated_at)
+            values (gen_random_uuid(),:pe,'coord','COMPANY',:company,now(),now())""")
+            .setParameter("pe", PE).setParameter("company", OTHER_COMPANY).executeUpdate());
+        try {
+            as("coord").get(URL).then().statusCode(200)
+                .body("monitors.find { it.employeeId == '" + OTHER_MONITOR + "' }.confidential", is(false))
+                .body("monitors.find { it.employeeId == '" + OTHER_MONITOR + "' }.locked", is(true))
+                .body("monitors.find { it.employeeId == '" + MONITOR_A + "' }.locked", is(false));
+            as("coord").contentType(ContentType.JSON).body(body(MONITOR_A)).put(URL).then().statusCode(403)
+                .body("message", containsString("otra Compañía"));
+        } finally {
+            QuarkusTransaction.requiringNew().run(() -> em.createNativeQuery("""
+                delete from user_operational_scope where instance_country_id=:pe and username='coord' and scope_type='COMPANY' and scope_id=:company""")
+                .setParameter("pe", PE).setParameter("company", OTHER_COMPANY).executeUpdate());
+        }
     }
 
     /** SEN-02/04: la Coordinación no puede asignar monitores de otra Compañía. */
