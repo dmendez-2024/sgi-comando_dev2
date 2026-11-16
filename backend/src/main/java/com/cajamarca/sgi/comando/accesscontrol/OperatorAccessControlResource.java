@@ -23,7 +23,7 @@ public class OperatorAccessControlResource {
     @Inject OperatorContext operator;
 
     public record ResolveRequest(UUID assignmentId,UUID pointId,String qrValue) {}
-    public record PersonDto(UUID entryId,String identification,String lastNames,String firstNames,String accreditation,String organizationalReference,LocalDate validUntil) {}
+    public record PersonDto(UUID entryId,String identification,String lastNames,String firstNames,String accreditation,String organizationalReference,LocalDate validUntil,String photoBase64) {}
     public record ResolveResponse(String decision,String message,PersonDto person) {}
     public record CatalogEntry(String tokenHash,String identification,String lastNames,String firstNames,String accreditation,String organizationalReference,LocalDate validFrom,LocalDate validUntil,String decision,String message) {}
 
@@ -39,8 +39,10 @@ public class OperatorAccessControlResource {
         AccessControlEntry white=applicable.stream().filter(this::valid).max(Comparator.comparing(row->row.validUntil)).orElse(null);
         if(white==null)return new ResolveResponse("NOT_VALID","La persona no tiene una autorización vigente para este Punto.",null);
         AccessControlEntry black=activeBlack(white,point.id);
-        PersonDto result=new PersonDto(white.id,person.identification,person.lastNames,person.firstNames,white.accreditation,white.organizationalReference,white.validUntil);
-        if(black!=null)return new ResolveResponse("DENIED",black.observations==null?"La persona tiene prohibido el ingreso a este Punto.":black.observations,result);
+        if(black!=null)return new ResolveResponse("DENIED",black.observations==null?"La persona tiene prohibido el ingreso a este Punto.":black.observations,
+            new PersonDto(white.id,person.identification,person.lastNames,person.firstNames,white.accreditation,white.organizationalReference,white.validUntil,null));
+        PersonDto result=new PersonDto(white.id,person.identification,person.lastNames,person.firstNames,white.accreditation,white.organizationalReference,white.validUntil,
+            person.photoData==null||person.photoData.length==0?null:Base64.getEncoder().encodeToString(person.photoData));
         return new ResolveResponse("AUTHORIZED","Autorización vigente. Verifique los datos antes de registrar el ingreso.",result);
     }
 

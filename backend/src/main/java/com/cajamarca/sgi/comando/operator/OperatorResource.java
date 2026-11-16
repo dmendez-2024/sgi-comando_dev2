@@ -502,7 +502,7 @@ public class OperatorResource {
             .setParameter("tenant",tenant.instanceCountryId()).setParameter("post",c.post.id).getResultList();
         if(configuration.isEmpty() || ((Number)configuration.get(0)[0]).intValue()!=protocolVersion) throw new ClientErrorException("El Protocolo de Bitácora cambió; actualiza antes de registrar",409);
         UUID whiteListEntryId=null;
-        if(Boolean.TRUE.equals(configuration.get(0)[2])){
+        if(event.hasNonNull("whiteListEntryId") && !event.path("whiteListEntryId").asText("").isBlank()){
             whiteListEntryId=uuid(event,"whiteListEntryId");
             Number authorizationCount=(Number)em.createNativeQuery("""
               select count(*) from access_control_entry e
