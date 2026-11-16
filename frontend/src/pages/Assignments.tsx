@@ -57,7 +57,14 @@ const DEFAULT_AVATAR='/avatars/82000000-0000-0000-0000-000000000001.png';
 function avatarUrl(photoKey?:string|null){const key=photoKey?.trim();return key?.startsWith('/avatars/')?key:DEFAULT_AVATAR}
 function EmployeeAvatar({employeeId,photoKey,alt='',loading,decoding}:{employeeId?:string;photoKey?:string|null;alt?:string;loading?:'eager'|'lazy';decoding?:'async'|'auto'|'sync'}){
   const fallback=avatarUrl(photoKey);const [src,setSrc]=useState(fallback);
-  useEffect(()=>{setSrc(fallback);if(!employeeId||!photoKey||photoKey.startsWith('/avatars/'))return;let cancelled=false,objectUrl='';void api.assignmentEmployeePhoto(employeeId).then(blob=>{if(cancelled)return;objectUrl=URL.createObjectURL(blob);setSrc(objectUrl)}).catch(()=>{if(!cancelled)setSrc(fallback)});return()=>{cancelled=true;if(objectUrl)URL.revokeObjectURL(objectUrl)}},[employeeId,photoKey,fallback]);
+  useEffect(()=>{
+    setSrc(fallback);if(!employeeId)return;
+    let cancelled=false;let objectUrl='';
+    void api.assignmentEmployeePhoto(employeeId).then(blob=>{
+      if(cancelled)return;objectUrl=URL.createObjectURL(blob);setSrc(objectUrl);
+    }).catch(()=>{if(!cancelled)setSrc(fallback)});
+    return()=>{cancelled=true;if(objectUrl)URL.revokeObjectURL(objectUrl)};
+  },[employeeId,fallback]);
   return <img src={src} alt={alt} loading={loading} decoding={decoding}/>;
 }
 function errorMessage(error:unknown){if(error instanceof ApiError){try{const data=JSON.parse(error.body);if(data?.problems?.length)return data.problems.map((p:any)=>p.message).join(' ');if(data?.blocking&&data?.problems?.length)return data.problems.map((p:any)=>p.message).join(' ')}catch{}return error.body||error.message}return String(error)}

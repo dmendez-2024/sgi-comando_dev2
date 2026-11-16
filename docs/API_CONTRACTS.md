@@ -44,6 +44,7 @@ Base: `/api`
 - `GET /api/assignments/week?companyId=...&weekStart=YYYY-MM-DD&pointId=...` — plan semanal, Turnos Requeridos, Puestos y asignaciones; materializa ocurrencias desde SIC: COM LOCAL.
 - `GET /api/assignments/personnel?companyId=...&weekStart=...&q=...&role=...&page=0&size=50` — personal de la Compañía desde SIC: RRHH LOCAL, paginado.
 - `GET /api/assignments/employees/{employeeId}?weekStart=...` — detalle operativo, habilidades, indisponibilidades y asignaciones recientes.
+- `GET /api/assignments/employees/{employeeId}/photo` — proxy autenticado de la foto de perfil. Valida el alcance territorial, resuelve `personaId`, consulta bajo demanda `SGI_COM_SIC_DHO_0002_v001` mediante CORE y devuelve los bytes de imagen; no persiste la foto en base de datos ni MinIO.
 - `POST /api/assignments/assign` — asignar en Borrador; si el Plan está publicado, distingue `Asignación posterior a publicación` cuando el Turno estaba vacío y `Reasignación` cuando reemplaza una asignación existente.
 - `DELETE /api/assignments/{assignmentId}` — quitar asignación solo mientras el plan está en Borrador.
 - `POST /api/assignments/plans/{planId}/publish` — publicación con snapshot inmutable y Outbox.

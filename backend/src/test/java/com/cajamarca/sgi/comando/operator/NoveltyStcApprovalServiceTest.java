@@ -30,7 +30,8 @@ class NoveltyStcApprovalServiceTest {
         var report = new NoveltyStcApprovalService.ReportData(
             UUID.randomUUID(), "INCIDENT", "Seguridad", "Presentación personal", "Prueba SGIComando",
             "Descripción ingresada", "HIGH", Instant.parse("2026-11-05T19:00:00Z"), "Kaibil",
-            "Cajamarca Protective Services Monitoreo", "PTO-CM-EC-2386", 10L, 30L);
+            "Cajamarca Protective Services Monitoreo", "PTO-CM-EC-2386",
+            "agente@cajamarca.ec", "asistente@cajamarca.ec");
 
         ObjectNode body = service.payload(report, new NoveltyStcApprovalService.Codes(224, 229, 254, 10),
             start, end, "agente@cajamarca.ec", "coordinador@cajamarca.ec", "asistente@cajamarca.ec");
@@ -67,7 +68,8 @@ class NoveltyStcApprovalServiceTest {
         service.mapper = new ObjectMapper();
         var report = new NoveltyStcApprovalService.ReportData(
             UUID.randomUUID(), "INCIDENT", "Seguridad", null, "Incidente", "Descripción", "MEDIUM",
-            Instant.parse("2026-11-05T19:00:00Z"), "Kaibil", "Cliente", "PTO-SIN-NUMERO", 10L, null);
+            Instant.parse("2026-11-05T19:00:00Z"), "Kaibil", "Cliente", "PTO-SIN-NUMERO",
+            "agente@cajamarca.ec", null);
 
         ObjectNode body = service.payload(report, new NoveltyStcApprovalService.Codes(224, 0, 0, 9),
             Instant.parse("2026-11-06T19:00:00Z"), Instant.parse("2026-11-09T04:59:59.999Z"),

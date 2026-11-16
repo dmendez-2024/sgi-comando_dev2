@@ -39,8 +39,9 @@ public final class InterconnectionIds {
     public static final String DHO_MASTER_EVENTS = "SIC_DHO_SGI_COM_0001_v001";
     public static final String DHO_UNAVAILABILITY_EVENTS = "SIC_DHO_SGI_COM_0002_v001";
     public static final String DHO_PAYROLL_SHIFT_QUERY = "SIC_DHO_SGI_COM_0003_v001";
-    /** Consulta puntual SGI:Comando -> SIC:DHO del correo laboral por persona_id. */
-    public static final String DHO_EMPLOYEE_EMAIL = "SGI_COM_SIC_DHO_0002_v001";
+    /** Consulta puntual SGI:Comando -> SIC:DHO de la foto de perfil por persona_id. */
+    public static final String DHO_EMPLOYEE_PHOTO = "SGI_COM_SIC_DHO_0002_v001";
+    public static final String DHO_EMPLOYEE_PHOTO_INTERFACE = "SGI_COM_SIC_DHO_0002_IF01";
     /** Registro de sanciones finalizadas desde SGI Comando hacia SIC:DHO. */
     public static final String DHO_SANCTION_REGISTRATION = "SGI_COM_SIC_DHO_0001_v001";
     public static final String DHO_SANCTION_REGISTRATION_INTERFACE = "SGI_COM_SIC_DHO_0001_IF01";

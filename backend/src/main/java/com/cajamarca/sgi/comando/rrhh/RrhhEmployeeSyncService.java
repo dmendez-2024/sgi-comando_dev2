@@ -47,7 +47,6 @@ public class RrhhEmployeeSyncService {
 
     @Inject TenantContext tenant;
     @Inject AssignmentReleaseService assignmentReleaseService;
-    @Inject EmployeePhotoService employeePhotos;
 
     @ConfigProperty(name = "sgi.integrations.rrhh.use-canonical-employee-id", defaultValue = "false")
     boolean useCanonicalEmployeeId;
@@ -79,8 +78,6 @@ public class RrhhEmployeeSyncService {
             }
             return;
         }
-
-        EmployeePhotoService.DecodedPhoto incomingPhoto = employeePhotos.decode(request.photoBase64());
 
         Long personaId = sourcePersonaId(request);
         UUID employeeId = resolveEmployeeId(tenantId, request);
@@ -154,15 +151,6 @@ public class RrhhEmployeeSyncService {
         employee.roleCode = request.roleCode().trim();
         employee.employmentStatus = employmentStatus;
         employee.updatedFromSourceAt = sourceTimestamp;
-        if (incomingPhoto != null && (!incomingPhoto.sha256().equals(employee.photoSha256)
-            || blank(employee.photoBucket) || blank(employee.photoKey))) {
-            EmployeePhotoService.StoredPhoto stored = employeePhotos.store(tenantId, employeeId, incomingPhoto);
-            employee.photoBucket = stored.bucket();
-            employee.photoKey = stored.objectKey();
-            employee.photoContentType = stored.contentType();
-            employee.photoSha256 = stored.sha256();
-            employee.photoSizeBytes = stored.sizeBytes();
-        }
         if (blank(employee.photoKey)) employee.photoKey = localAvatarKey(employeeId);
         if (!employee.isPersistent()) employee.persist();
 
@@ -344,7 +332,6 @@ public class RrhhEmployeeSyncService {
             hashPart(digest, request.separationEffectiveAt());
             hashPart(digest, trim(request.identificationNumber()));
             hashPart(digest, trim(request.corporateEmail()));
-            hashPart(digest, trim(request.photoBase64()));
             return HexFormat.of().formatHex(digest.digest());
         } catch (NoSuchAlgorithmException e) {
             throw new InternalServerErrorException("SHA-256 no está disponible.", e);

@@ -13,14 +13,11 @@ import jakarta.inject.Inject;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.jboss.logging.Logger;
 
-import java.util.LinkedHashMap;
-import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
 @ApplicationScoped
 public class DhoStcNoveltyIntegrationGateway implements NoveltyIntegrationGateway {
-    static final String DHO_EMAIL_INTERFACE = "SGI_COM_SIC_DHO_0002_IF01";
     static final String STC_CREATE_INTERFACE = "SGI_COM_STC_0001_IF01";
     private static final Logger LOG = Logger.getLogger(DhoStcNoveltyIntegrationGateway.class);
 
@@ -30,32 +27,6 @@ public class DhoStcNoveltyIntegrationGateway implements NoveltyIntegrationGatewa
     /** ktoken legado de STC. No se guarda en CORE ni en código; llega desde Docker. */
     @ConfigProperty(name = "sgi.stc.ktoken", defaultValue = "")
     Optional<String> stcToken;
-
-    @Override
-    public String employeeEmail(UUID instanceCountryId, Long personaId) {
-        if (instanceCountryId == null || personaId == null || personaId <= 0) return null;
-        try {
-            IntegrationRequest request = new IntegrationRequest();
-            Map<String,Object> body = new LinkedHashMap<>();
-            body.put("instanceCountryId", instanceCountryId.toString());
-            body.put("personaId", personaId);
-            request.body = body;
-            request.idempotencyKey = "employee-email:" + instanceCountryId + ":" + personaId;
-            request.maxRetriesOverride = 3;
-            request.retryServerErrors = false;
-            request.retryOnlyTimeouts = true;
-            IntegrationResult result = executor.execute(
-                InterconnectionIds.DHO_EMPLOYEE_EMAIL, DHO_EMAIL_INTERFACE, request);
-            if (!result.successful() || result.body == null || result.body.isBlank()) return null;
-            JsonNode response = mapper.readTree(result.body);
-            String email = response.path("correo").asText("").trim();
-            return email.isEmpty() ? null : email;
-        } catch (Exception error) {
-            LOG.warnf("dho_employee_email_unavailable personaId=%s reason=%s",
-                personaId, error instanceof InterconnectionException e ? e.code() : error.getClass().getSimpleName());
-            return null;
-        }
-    }
 
     @Override
     public CreatedTask createStcTask(ObjectNode payload, UUID noveltyId, String approvingUserEmail) {

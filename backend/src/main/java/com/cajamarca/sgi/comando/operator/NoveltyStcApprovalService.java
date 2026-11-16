@@ -39,7 +39,7 @@ public class NoveltyStcApprovalService {
     record Codes(int category, int subcategory, int incident, int severity) {}
     record ReportData(UUID id, String type, String category, String subcategory, String title,
                       String description, String severity, Instant occurredAt, String companyName,
-                      String clientName, String pointCode, Long reporterPersonaId, Long assistantPersonaId) {}
+                      String clientName, String pointCode, String reporterEmail, String assistantEmail) {}
 
     public ApprovalResult createTask(UUID reportId, Instant approvedAt) {
         ReportData report = report(reportId);
@@ -47,9 +47,9 @@ public class NoveltyStcApprovalService {
         Instant end = endOfIsoWeek(start);
         String approvingEmail = identity.getPrincipal().getName();
 
-        String ownerEmail = gateway.employeeEmail(tenant.instanceCountryId(), report.reporterPersonaId());
+        String ownerEmail = report.reporterEmail();
         String assistantEmail = identity.hasRole("ASISTENTE_COORDINACION")
-            ? approvingEmail : gateway.employeeEmail(tenant.instanceCountryId(), report.assistantPersonaId());
+            ? approvingEmail : report.assistantEmail();
 
         Codes codes = codes(report);
         ObjectNode payload = payload(report, codes, start, end, ownerEmail, approvingEmail, assistantEmail);
@@ -105,7 +105,7 @@ public class NoveltyStcApprovalService {
                    report.description,report.severity,report.occurred_at,
                    coalesce(point_company.name,incident_company.name),
                    coalesce(client_row.name,service_row.client_name,point_row.client_name),point_row.code,
-                   coalesce(report.reporter_persona_id,reporter.persona_id),assistant.persona_id
+                   nullif(btrim(reporter.corporate_email),''),nullif(btrim(assistant.corporate_email),'')
               from operator_operational_report report
               join point point_row on point_row.id=report.point_id
                                   and point_row.instance_country_id=report.instance_country_id
@@ -131,7 +131,7 @@ public class NoveltyStcApprovalService {
         Object[] row = rows.get(0);
         return new ReportData(uuid(row[0]), value(row[1]), value(row[2]), nullable(row[3]), value(row[4]),
             value(row[5]), value(row[6]), instant(row[7]), nullable(row[8]), nullable(row[9]), nullable(row[10]),
-            number(row[11]), number(row[12]));
+            nullable(row[11]), nullable(row[12]));
     }
 
     private Codes codes(ReportData report) {
@@ -206,7 +206,6 @@ public class NoveltyStcApprovalService {
     private static String iso(Instant value) { return value.truncatedTo(ChronoUnit.MILLIS).toString(); }
     private static void addEmail(ArrayNode target, String email) { if (email != null && !email.isBlank()) target.add(email.trim()); }
     private static int positive(Object value, int fallback) { return value instanceof Number n && n.intValue() > 0 ? n.intValue() : fallback; }
-    private static Long number(Object value) { return value instanceof Number n ? n.longValue() : null; }
     private static UUID uuid(Object value) { return value instanceof UUID id ? id : UUID.fromString(value.toString()); }
     private static Instant instant(Object value) {
         if (value instanceof Instant time) return time;

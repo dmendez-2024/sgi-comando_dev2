@@ -49,8 +49,7 @@ public class RrhhEmployeeEventResource {
         String separationReason,
         Instant separationEffectiveAt,
         String identificationNumber,
-        String corporateEmail,
-        String photoBase64
+        String corporateEmail
     ) {}
 
     public record EmployeeEventResponse(boolean accepted, String correlationId) {}

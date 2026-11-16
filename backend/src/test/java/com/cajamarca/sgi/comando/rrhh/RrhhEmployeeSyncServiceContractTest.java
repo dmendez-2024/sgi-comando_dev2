@@ -11,20 +11,17 @@ class RrhhEmployeeSyncServiceContractTest {
 
     @Test
     void additiveProfileFieldsParticipateInIdempotencyHash() {
-        var base = request("0102030405", "juan.paguay@empresa.com", null);
+        var base = request("0102030405", "juan.paguay@empresa.com");
         assertNotEquals(service.contentHash(base), service.contentHash(
-            request("0102030406", "juan.paguay@empresa.com", null)
+            request("0102030406", "juan.paguay@empresa.com")
         ));
         assertNotEquals(service.contentHash(base), service.contentHash(
-            request("0102030405", "otro@empresa.com", null)
-        ));
-        assertNotEquals(service.contentHash(base), service.contentHash(
-            request("0102030405", "juan.paguay@empresa.com", "/9j/4AAQ")
+            request("0102030405", "otro@empresa.com")
         ));
     }
 
     private static RrhhEmployeeEventResource.EmployeeEventRequest request(
-        String identificationNumber, String corporateEmail, String photoBase64
+        String identificationNumber, String corporateEmail
     ) {
         return new RrhhEmployeeEventResource.EmployeeEventRequest(
             42L,
@@ -39,8 +36,7 @@ class RrhhEmployeeSyncServiceContractTest {
             null,
             null,
             identificationNumber,
-            corporateEmail,
-            photoBase64
+            corporateEmail
         );
     }
 }

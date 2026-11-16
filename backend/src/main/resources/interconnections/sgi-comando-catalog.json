@@ -461,7 +461,7 @@
     "interconnectionId": "SGI_COM_SIC_DHO_0002_v001",
     "sourceProgramId": "SGI_COM",
     "targetProgramId": "SIC_DHO",
-    "purpose": "Obtain an employee email from SIC:DHO by Instancia PE and persona_id.",
+    "purpose": "Obtain an employee profile photo from SIC:DHO by personaId.",
     "interactionType": "REST_API",
     "mode": "SYNC",
     "protocol": "HTTP",
@@ -475,25 +475,29 @@
       {
         "interfaceId": "SGI_COM_SIC_DHO_0002_IF01",
         "method": "POST",
-        "path": "/ops.api.dho/ws/sgi/obtenerCorreo",
-        "purpose": "Resolve the employee email used in the STC task payload.",
+        "path": "/ops.api.dho/ws/sgi/empleado/foto",
+        "purpose": "Resolve the employee profile photo displayed on demand in SGI Comando.",
         "contentType": "application/json",
         "request": {
           "headers": [
             "Authorization",
             "X-Correlation-Id",
             "X-Interconnection-Id",
+            "X-Contract-Version",
             "Idempotency-Key"
           ],
           "fields": [
-            "instanceCountryId",
             "personaId"
           ]
         },
         "response": {
           "fields": [
+            "success",
+            "message",
             "personaId",
-            "correo"
+            "contentType",
+            "fileExtension",
+            "photoBase64"
           ]
         }
       }
@@ -654,12 +658,10 @@
             "separationReason? (RESIGNATION|DISMISSAL|POINT_CLOSURE|OTHER; only INACTIVE)",
             "separationEffectiveAt? (ISO-8601; defaults to updatedFromSourceAt)",
             "identificationNumber?",
-            "corporateEmail?",
-            "photoBase64?"
+            "corporateEmail?"
           ],
           "companyRule": "An explicit companyCoreCatalogId or companyCode is authoritative. During the DHO transition, new employees that omit both fields use the configured default company (Kaibil); existing employees retain their current source company.",
           "profileRule": "fullName is persisted exactly as sent by DHO in surname-surname-name-name order. identificationNumber and corporateEmail are additive optional fields during rollout.",
-          "photoRule": "photoBase64 is optional patch data. Omitted or blank preserves the existing photo; when present it must decode to JPEG, PNG or WebP and be at most 5 MiB.",
           "idempotency": "Idempotency-Key is persisted per Instancia PE; same key + same payload is safe, same key + different payload returns conflict.",
           "rotationRule": "Only RESIGNATION and DISMISSAL contribute to Dashboard personnel rotation. POINT_CLOSURE is persisted but excluded."
         },

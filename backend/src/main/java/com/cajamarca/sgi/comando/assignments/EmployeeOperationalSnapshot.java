@@ -21,9 +21,5 @@ public class EmployeeOperationalSnapshot extends BaseEntity {
     @Column(name="preferred_shift") public String preferredShift;
     @Column(name="required_change", nullable=false) public boolean requiredChange;
     @Column(name="photo_key") public String photoKey;
-    @Column(name="photo_bucket", length=63) public String photoBucket;
-    @Column(name="photo_content_type", length=40) public String photoContentType;
-    @Column(name="photo_sha256", length=64) public String photoSha256;
-    @Column(name="photo_size_bytes") public Long photoSizeBytes;
     @Column(name="updated_from_source_at", nullable=false) public Instant updatedFromSourceAt;
 }
